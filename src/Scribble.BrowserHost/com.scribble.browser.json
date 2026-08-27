@@ -1,0 +1,9 @@
+{
+  "name": "com.scribble.browser",
+  "description": "Scribble read-only browser companion",
+  "path": "ScribbleBrowserHost.exe",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://olkepladbgkfkhlglooilnmalckpdada/"
+  ]
+}

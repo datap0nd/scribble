@@ -1,0 +1,30 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Scribble", "src\Scribble\Scribble.csproj", "{760F136D-D942-4644-9208-78EBE0E8D3AB}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GuardrailTests", "tests\GuardrailTests\GuardrailTests.csproj", "{8B38B8DC-C0A5-4BE8-8FEA-91238A3D131D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Scribble.BrowserHost", "src\Scribble.BrowserHost\Scribble.BrowserHost.csproj", "{A310F3E5-41DD-4B5F-9BAC-6C067D80B92E}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{760F136D-D942-4644-9208-78EBE0E8D3AB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{760F136D-D942-4644-9208-78EBE0E8D3AB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{760F136D-D942-4644-9208-78EBE0E8D3AB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{760F136D-D942-4644-9208-78EBE0E8D3AB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8B38B8DC-C0A5-4BE8-8FEA-91238A3D131D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8B38B8DC-C0A5-4BE8-8FEA-91238A3D131D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8B38B8DC-C0A5-4BE8-8FEA-91238A3D131D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8B38B8DC-C0A5-4BE8-8FEA-91238A3D131D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A310F3E5-41DD-4B5F-9BAC-6C067D80B92E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A310F3E5-41DD-4B5F-9BAC-6C067D80B92E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A310F3E5-41DD-4B5F-9BAC-6C067D80B92E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A310F3E5-41DD-4B5F-9BAC-6C067D80B92E}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

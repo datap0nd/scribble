@@ -12,15 +12,15 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Web.Script.Serialization;
-using OutlookLocalAIChat;
-using OutlookLocalAIChat.Chat;
-using OutlookLocalAIChat.Configuration;
-using OutlookLocalAIChat.Interop;
-using OutlookLocalAIChat.Office;
-using OutlookLocalAIChat.Outlook;
-using OutlookLocalAIChat.Security;
-using OutlookLocalAIChat.UI;
-using OutlookLocalAIChat.Utilities;
+using Scribble;
+using Scribble.Chat;
+using Scribble.Configuration;
+using Scribble.Interop;
+using Scribble.Office;
+using Scribble.Outlook;
+using Scribble.Security;
+using Scribble.UI;
+using Scribble.Utilities;
 
 namespace GuardrailTests
 {
@@ -209,7 +209,7 @@ namespace GuardrailTests
                     "Outlook multi-selection accepts one to ten emails",
                     OutlookMultiSelectionIsBounded);
                 Run(
-                    "Active Explorer selection is used for Send to AI365",
+                    "Active Explorer selection is used for Send to Scribble",
                     ActiveExplorerSelectionIsUsed);
                 Run(
                     "External context is explicit and bounded",
@@ -258,7 +258,7 @@ namespace GuardrailTests
                     "Chat pane is a registered COM control",
                     ChatPaneIsComControl);
                 Run(
-                    "Outlook ribbon includes Send to AI365",
+                    "Outlook ribbon includes Send to Scribble",
                     RibbonIncludesSendToAi);
                 Run(
                     "Selected subjects hide reply and forward prefixes",
@@ -422,7 +422,7 @@ namespace GuardrailTests
 
             var csvPath = Path.Combine(
                 Path.GetTempPath(),
-                "AI365-test-" + Guid.NewGuid().ToString("N") + ".csv");
+                "Scribble-test-" + Guid.NewGuid().ToString("N") + ".csv");
             File.WriteAllText(
                 csvPath,
                 "Name,Amount\nWidget,42\nGadget,17");
@@ -1694,7 +1694,7 @@ namespace GuardrailTests
             Assert(visible.Value, "ChatPane must be COM visible.");
             Assert(
                 progId.Value ==
-                "OutlookLocalAIChat.ChatPane",
+                "Scribble.ChatPane",
                 "Unexpected ChatPane ProgID.");
             Assert(
                 type.GUID ==
@@ -1710,8 +1710,8 @@ namespace GuardrailTests
             Assert(
                 xml.Contains("ContextMenuMailItem") &&
                 xml.Contains("OnSendToAi") &&
-                xml.Contains("Send to AI365") &&
-                xml.Contains("label=\"AI365\""),
+                xml.Contains("Send to Scribble") &&
+                xml.Contains("label=\"Scribble\""),
                 "The Outlook explorer ribbon XML is incomplete: " + xml);
         }
 
@@ -1816,7 +1816,7 @@ namespace GuardrailTests
         {
             var pngPath = Path.Combine(
                 Path.GetTempPath(),
-                "AI365-prefetch-" + Guid.NewGuid().ToString("N") + ".png");
+                "Scribble-prefetch-" + Guid.NewGuid().ToString("N") + ".png");
             File.WriteAllBytes(
                 pngPath,
                 Convert.FromBase64String(
@@ -1976,7 +1976,7 @@ namespace GuardrailTests
         {
             var pngPath = Path.Combine(
                 Path.GetTempPath(),
-                "AI365-test-" + Guid.NewGuid().ToString("N") + ".png");
+                "Scribble-test-" + Guid.NewGuid().ToString("N") + ".png");
             File.WriteAllBytes(
                 pngPath,
                 Convert.FromBase64String(
@@ -2168,7 +2168,7 @@ namespace GuardrailTests
         {
             var pngPath = Path.Combine(
                 Path.GetTempPath(),
-                "AI365-pasted-" + Guid.NewGuid().ToString("N"));
+                "Scribble-pasted-" + Guid.NewGuid().ToString("N"));
             File.WriteAllBytes(
                 pngPath,
                 Convert.FromBase64String(
@@ -2218,7 +2218,7 @@ namespace GuardrailTests
         {
             var pngPath = Path.Combine(
                 Path.GetTempPath(),
-                "AI365-sig-" + Guid.NewGuid().ToString("N") + ".png");
+                "Scribble-sig-" + Guid.NewGuid().ToString("N") + ".png");
             File.WriteAllBytes(
                 pngPath,
                 Convert.FromBase64String(
@@ -2297,7 +2297,7 @@ namespace GuardrailTests
         {
             var temp = Path.Combine(
                 Path.GetTempPath(),
-                "AI365-local-" + Guid.NewGuid().ToString("N"));
+                "Scribble-local-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(temp);
             try
             {
@@ -2352,7 +2352,7 @@ namespace GuardrailTests
         {
             var temp = Path.Combine(
                 Path.GetTempPath(),
-                "AI365-legacy-" + Guid.NewGuid().ToString("N"));
+                "Scribble-legacy-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(temp);
             try
             {
@@ -2689,7 +2689,7 @@ namespace GuardrailTests
         {
             var agendaPath = Path.Combine(
                 Path.GetTempPath(),
-                "AI365-agenda-" +
+                "Scribble-agenda-" +
                 Guid.NewGuid().ToString("N") +
                 ".txt");
             File.WriteAllText(
@@ -2787,7 +2787,7 @@ namespace GuardrailTests
         {
             var temp = Path.Combine(
                 Path.GetTempPath(),
-                "AI365-docs-" + Guid.NewGuid().ToString("N"));
+                "Scribble-docs-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(temp);
             var pptxPath = Path.Combine(temp, "deck.pptx");
             var docxPath = Path.Combine(temp, "notes.docx");
@@ -2918,7 +2918,7 @@ namespace GuardrailTests
         {
             var temp = Path.Combine(
                 Path.GetTempPath(),
-                "AI365-xlsx-" + Guid.NewGuid().ToString("N"));
+                "Scribble-xlsx-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(temp);
             try
             {
@@ -3060,7 +3060,7 @@ namespace GuardrailTests
         {
             var temp = Path.Combine(
                 Path.GetTempPath(),
-                "AI365-xlsb-" + Guid.NewGuid().ToString("N"));
+                "Scribble-xlsb-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(temp);
             try
             {
@@ -3177,7 +3177,7 @@ namespace GuardrailTests
         {
             var temp = Path.Combine(
                 Path.GetTempPath(),
-                "AI365-variants-" + Guid.NewGuid().ToString("N"));
+                "Scribble-variants-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(temp);
             try
             {
@@ -3752,7 +3752,7 @@ namespace GuardrailTests
         {
             var temp = Path.Combine(
                 Path.GetTempPath(),
-                "AI365-scale-" + Guid.NewGuid().ToString("N"));
+                "Scribble-scale-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(temp);
             try
             {
@@ -3823,7 +3823,7 @@ namespace GuardrailTests
         {
             var temp = Path.Combine(
                 Path.GetTempPath(),
-                "AI365-trunc-" + Guid.NewGuid().ToString("N"));
+                "Scribble-trunc-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(temp);
             try
             {
@@ -3890,7 +3890,7 @@ namespace GuardrailTests
         {
             var pngPath = Path.Combine(
                 Path.GetTempPath(),
-                "AI365-big-" + Guid.NewGuid().ToString("N") + ".png");
+                "Scribble-big-" + Guid.NewGuid().ToString("N") + ".png");
             using (var bitmap = new System.Drawing.Bitmap(
                 1400,
                 1400,
@@ -4065,7 +4065,7 @@ namespace GuardrailTests
         {
             Assert(
                 SelfUpdater.InstallerUrl.StartsWith(
-                    "https://github.com/datap0nd/ai365/releases/",
+                    "https://github.com/datap0nd/scribble/releases/",
                     StringComparison.Ordinal),
                 "The updater must download only the official release installer over HTTPS.");
 
@@ -4650,7 +4650,7 @@ namespace GuardrailTests
         {
             Assert(
                 AdminPolicy.PolicyKeyPath ==
-                "Software\\Policies\\AI365",
+                "Software\\Policies\\Scribble",
                 "The policy key path changed unexpectedly.");
             // Reading the switch must never throw, whether or not
             // the key exists on this machine.
@@ -4988,8 +4988,8 @@ namespace GuardrailTests
             Assert(
                 authorizedSystem.Contains(
                     "authorized ONE deliverable") &&
-                authorizedSystem.Contains("AI365 Draft") &&
-                authorizedSystem.Contains("[AI365 draft]") &&
+                authorizedSystem.Contains("Scribble Draft") &&
+                authorizedSystem.Contains("[Scribble draft]") &&
                 authorizedSystem.Contains(
                     "Never claim content was saved"),
                 "The authorized document boundary is incomplete.");

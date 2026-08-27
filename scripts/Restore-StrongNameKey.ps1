@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 
-$encodedPath = Join-Path $PSScriptRoot "..\build\OutlookLocalAIChat.snk.base64"
-$keyPath = Join-Path $PSScriptRoot "..\src\OutlookLocalAIChat\Properties\OutlookLocalAIChat.snk"
+$encodedPath = Join-Path $PSScriptRoot "..\build\Scribble.snk.base64"
+$keyPath = Join-Path $PSScriptRoot "..\src\Scribble\Properties\Scribble.snk"
 $encoded = (Get-Content $encodedPath -Raw).Trim()
 $bytes = [Convert]::FromBase64String($encoded)
 [IO.File]::WriteAllBytes($keyPath, $bytes)

@@ -27,7 +27,7 @@ if (-not $signtool) {
     throw "signtool.exe was not found in the Windows SDK."
 }
 
-$pfxPath = Join-Path $env:RUNNER_TEMP "ai365-signing.pfx"
+$pfxPath = Join-Path $env:RUNNER_TEMP "scribble-signing.pfx"
 [IO.File]::WriteAllBytes(
     $pfxPath,
     [Convert]::FromBase64String($env:SIGNING_PFX))

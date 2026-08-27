@@ -171,7 +171,7 @@ The system prompt reinforces these limits, but no security property depends on
 the model obeying it.
 
 Classic Outlook COM add-ins do not have a permission manifest that can deny a
-`Send` scope. AI365's guarantee is capability-based: its source and compiled
+`Send` scope. Scribble's guarantee is capability-based: its source and compiled
 assembly contain no Outlook `Send`, `Submit`, or send/receive invocation; its
 model tools expose no such operation; and the model client never receives the
 Outlook application object. CI scans both source and compiled IL for this
@@ -184,7 +184,7 @@ The API key is encrypted with Windows Data Protection API using the current-user
 scope. The encrypted value is stored in:
 
 ```text
-%LOCALAPPDATA%\OutlookLocalAIChat\settings.json
+%LOCALAPPDATA%\Scribble\settings.json
 ```
 
 Any process running as the same Windows user can potentially invoke DPAPI and
@@ -237,7 +237,7 @@ The design cannot guarantee safety if:
 - Edge, Chrome, the extension platform, or the native-messaging channel has an
   exploitable vulnerability;
 - another Outlook add-in modifies the draft after creation;
-- a user-configured MCP server exercises capabilities outside AI365's own
+- a user-configured MCP server exercises capabilities outside Scribble's own
   read-only browser/Office hosts;
 - the configured AI endpoint mishandles or retains submitted data.
 

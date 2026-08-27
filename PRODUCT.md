@@ -48,8 +48,8 @@ locally linked item. The dedicated host exposes no send operation.
 
 - Microsoft Office Professional Plus 2021 with classic Outlook on Windows.
 - Per-user local installation is preferred.
-- The user opens AI365 from the ribbon or right-clicks one to ten selected
-  emails and chooses **Send to AI365**, then works in a right-docked Outlook
+- The user opens Scribble from the ribbon or right-clicks one to ten selected
+  emails and chooses **Send to Scribble**, then works in a right-docked Outlook
   Custom Task Pane. One selected email receives a temporary read handle. Two to
   ten selected emails become the locked working set.
 - Configuration is stored for the current Windows user. The API key is encrypted
@@ -100,11 +100,13 @@ locally linked item. The dedicated host exposes no send operation.
 
 ## Brand Commitments
 
-The user-facing product name is AI365. The stable COM assembly, ProgID,
-CLSID, settings path, installer filename, and repository name retain the
-`OutlookLocalAIChat` technical identity so upgrades do not break. The UI should feel like a
-restrained Windows productivity utility, not an AI showcase. Language must be
-direct, calm, and explicit about what data is read and when a draft is created.
+The user-facing and name-bearing technical identity is Scribble. Upgrade
+compatibility rests on the unchanged installer AppId, COM CLSIDs, strong-name
+key, assembly version, project GUIDs, and browser extension key/ID. Assemblies,
+ProgIDs, settings paths, installer artifacts, and repository names all use the
+`Scribble` identity. The UI should feel like a restrained Windows productivity
+utility, not an AI showcase. Language must be direct, calm, and explicit about
+what data is read and when a draft is created.
 
 ## Evidence on Hand
 

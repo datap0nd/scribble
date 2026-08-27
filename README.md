@@ -1,8 +1,8 @@
-# AI365
+# Scribble
 
 A Windows-only AI assistant suite for classic Microsoft Office
 (Professional Plus 2021), Microsoft Edge, and Google Chrome: one installer adds
-an **AI365** sidebar to **Outlook, Excel, PowerPoint, Word, and the web**. Every
+an **Scribble** sidebar to **Outlook, Excel, PowerPoint, Word, and the web**. Every
 pane shares the same chat stack -
 local OpenAI-compatible models or Google Gemini via browser sign-in, the same
 settings and writing soul, rich markdown output with tables, optional MCP
@@ -12,13 +12,13 @@ context but can never send email, save a file, or delete anything.
 - **Outlook**: chat with the local Inbox and Sent Items, read attachments and
   images, and open or revise one linked **unsent** draft for human review.
 - **Excel**: chat with the open workbook (bounded sheet and cell reads); the
-  only write surface is a clearly marked **AI365 Draft** worksheet that the
+  only write surface is a clearly marked **Scribble Draft** worksheet that the
   add-in never saves.
 - **PowerPoint**: chat with the open presentation (bounded slide and notes
-  reads); the only write surface is **[AI365 draft]** slides that the add-in
+  reads); the only write surface is **[Scribble draft]** slides that the add-in
   never saves, laid out and styled by the built-in **METO corporate theme**.
 - **Word**: chat with the open document (bounded text reads); the only write
-  surface is a brand-new, unsaved **[AI365 draft]** document that the add-in
+  surface is a brand-new, unsaved **[Scribble draft]** document that the add-in
   never saves.
 - **Edge and Chrome**: chat with the current webpage after explicitly attaching
   its selection, bounded page text, or visible screenshot. The extension is
@@ -26,7 +26,7 @@ context but can never send email, save a file, or delete anything.
 - **Connected**: from any document pane, "email this to ..." opens an
   unsent Outlook draft (optionally attaching the saved file); "put this in
   PowerPoint" / "put this in Excel" / "put this in Word" drafts into the
-  sibling app; and a deliberate **Share to AI365 apps** hand-off moves one
+  sibling app; and a deliberate **Share to Scribble apps** hand-off moves one
   bounded snippet between panes. One **Update** click in Settings refreshes
   the whole installed suite together.
 
@@ -37,24 +37,24 @@ Entra ID.
 
 1. Close Outlook, Excel, PowerPoint, and Word.
 2. Download
-   [AI365Setup.exe](https://github.com/datap0nd/ai365/releases/latest/download/AI365Setup.exe).
+   [ScribbleSetup.exe](https://github.com/datap0nd/scribble/releases/latest/download/ScribbleSetup.exe).
    This link tracks the **Latest** release, which is rebuilt automatically on
    every push to `main`.
-3. Run the installer for your Windows account. It asks which apps get AI365 -
+3. Run the installer for your Windows account. It asks which apps get Scribble -
    all five are selected by default; untick any you do not
    want. Re-running the installer later lets you change the selection, and
    deselected apps are cleanly unregistered. Silent installs (and the
    in-app updater) keep your previous selection.
-4. If you selected Edge and Chrome, leave **Finish setting up AI365 in Edge or
-   Chrome** ticked. Setup opens the Extensions page and the exact AI365 folder.
+4. If you selected Edge and Chrome, leave **Finish setting up Scribble in Edge or
+   Chrome** ticked. Setup opens the Extensions page and the exact Scribble folder.
    Turn on **Developer mode**, select **Load unpacked**, and choose that folder.
    Chrome and Edge use the same one-time process. The installer prepares the
    files and secure local bridge, but the browser must receive this approval
-   from you because AI365 is not in a browser store. If a managed computer
+   from you because Scribble is not in a browser store. If a managed computer
    disables Developer mode, your IT policy must allow the extension.
 5. Start classic Outlook, Excel, PowerPoint, or Word.
-6. In Outlook choose **AI365 > AI365** on the ribbon; in Excel, PowerPoint,
-   and Word the **AI365** button sits on the **Home** tab.
+6. In Outlook choose **Scribble > Scribble** on the ribbon; in Excel, PowerPoint,
+   and Word the **Scribble** button sits on the **Home** tab.
 7. Open **Settings** and enter:
    - the OpenAI-compatible endpoint or base URL;
    - the API key;
@@ -66,18 +66,18 @@ Entra ID.
 10. Optional: open **Writing style**, click **Analyze 15 sent emails**, review
    the generated drafting instructions, edit them, and enable the profile.
 
-To update later, open **Settings** in any AI365 pane and click
-**Update AI365**. You confirm twice - the second dialog warns that the
-Office apps are about to close, so save your work first - and AI365 then
+To update later, open **Settings** in any Scribble pane and click
+**Update Scribble**. You confirm twice - the second dialog warns that the
+Office apps are about to close, so save your work first - and Scribble then
 downloads the latest installer, **closes Outlook, Excel, PowerPoint, and
 Word itself**, and installs silently for your Windows account. Edge and Chrome
 stay open. Only the
-apps that actually have AI365 installed are closed; a host still sitting
+apps that actually have Scribble installed are closed; a host still sitting
 on a save prompt after about thirty seconds is closed forcibly, so an
 update can never stall unfinished. Outlook reopens automatically when the
 update was started there. One update refreshes the whole suite. If the browser
 extension changed, open `edge://extensions` or `chrome://extensions`, find
-AI365, and click **Reload**; unpacked extensions do not reload changed files
+Scribble, and click **Reload**; unpacked extensions do not reload changed files
 automatically.
 
 Settings shows the **Installed version** (for example `2.0.27.0`); the
@@ -118,7 +118,7 @@ tick off simply removes the Gemini models from the list. Picking a Gemini
 model while sign-in is off fails with a clear message instead of sending
 that model name to your local server.
 
-AI365 does not ship with a preset model list or a preferred default. After you
+Scribble does not ship with a preset model list or a preferred default. After you
 enter an endpoint and API key, use **Refresh models** in Settings to populate the
 dropdown from `GET /v1/models`. You can also type any model ID manually. Every
 dropdown entry is tagged **Vision** (reads email images) or **Text**
@@ -128,7 +128,7 @@ For email **images**, pick a model tagged **Vision**. Vision capability is
 detected from the model ID: `vl` or `vision` in the name (for example
 `qwen3-vl-30b`), multimodal Gemma generations (`gemma3`/`gemma-4` and later),
 and common vision families such as LLaVA, Pixtral, MiniCPM-V, InternVL,
-Moondream, and SmolVLM. AI365 loads image attachments automatically and sends
+Moondream, and SmolVLM. Scribble loads image attachments automatically and sends
 them as multimodal input, capped at eight images per request. Multimodal Gemma
 requires the server to load its vision projector; if the server rejects image
 input, use a `vl` model instead. Text-only models get spreadsheet text and
@@ -144,15 +144,15 @@ the tool-call probe allows up to 90 seconds.
 
 ## Use
 
-1. Open **AI365**. The chat appears as a sidebar inside Outlook and starts
+1. Open **Scribble**. The chat appears as a sidebar inside Outlook and starts
    with **no context** - opening the pane never pulls in whatever email
    happens to be selected. You add context deliberately: drag messages onto
    the pane, use **Add email**, right-click messages and choose **Send to
-   AI365**, or run `/search`. Common `RE:`, `FW:`, and `FWD:` prefixes are
+   Scribble**, or run `/search`. Common `RE:`, `FW:`, and `FWD:` prefixes are
    hidden where a subject is shown.
    Right-click works inside the pane for the usual copy, paste, and select-all
    actions.
-2. To choose a bounded group first, enter `/search person or topic`. AI365
+2. To choose a bounded group first, enter `/search person or topic`. Scribble
    searches locally and keeps the newest matching Inbox or Sent Items
    emails as the working set (up to the working-set limit - ten by
    default, adjustable in the Limits tab). No email body is sent during this command.
@@ -163,8 +163,8 @@ the tool-call probe allows up to 90 seconds.
    prompt and can be reopened with **Show**.
 4. Alternatively, Ctrl+click emails in Outlook (up to the working-set
    limit), then choose
-   **Add email**, right-click **Send to AI365**, or drag the selected messages
-   onto the AI365 pane. Multiple messages become the same locked working set.
+   **Add email**, right-click **Send to Scribble**, or drag the selected messages
+   onto the Scribble pane. Multiple messages become the same locked working set.
 5. Use the **+** menu or drag files from Windows Explorer to add external
    context: up to three documents and four images. Documents go through the
    same extractors as email attachments (PDF, Office, text formats), and
@@ -179,9 +179,9 @@ the tool-call probe allows up to 90 seconds.
    only those emails. Without one, it may perform one bounded mailbox search
    and load no more than ten unique email bodies for the request. Meeting
    invites and calendar items are readable like email — subject, body, time,
-   location, and attachments — but AI365 can never accept, decline, or
+   location, and attachments — but Scribble can never accept, decline, or
    schedule anything. When a body
-   is loaded, AI365 also reads up to ten **email attachments** per
+   is loaded, Scribble also reads up to ten **email attachments** per
    message: images (PNG, JPEG, GIF, BMP, WebP, TIFF), spreadsheets (XLSX,
    XLSM, XLSB, XLTX, XLTM, XLS, CSV, TSV — all worksheets, including
    binary BIFF12 workbooks), documents (PDF, PPTX, PPTM, PPSX, PPSM,
@@ -206,7 +206,7 @@ the tool-call probe allows up to 90 seconds.
 8. Ask explicitly, for example "create a reply draft" or "write an email."
    Local code recognizes that drafting intent and exposes one creation attempt
    for that request. The draft opens unsent in Outlook. You can also
-   right-click an email and choose **AI365 - Suggest a response**: the
+   right-click an email and choose **Scribble - Suggest a response**: the
    sidebar asks up to three quick questions (reply tone plus up to two
    model-suggested questions specific to that email), and your answers
    shape the reply draft. Skipping the questions goes straight to a
@@ -231,7 +231,7 @@ Settings is organized into four tabs: **Connection** (endpoint, model, API
 key, updates), **Gemini** (Google sign-in with a responsible-use notice —
 cloud processing under your account; follow your organization's
 confidential-data policies), **Writing soul**, and **Support** (describe a
-problem and AI365 opens a pre-filled, unsent report email to the creator
+problem and Scribble opens a pre-filled, unsent report email to the creator
 with the recent diagnostic log — timestamps, operations, and error codes
 only — for you to review and send yourself).
 
@@ -247,8 +247,8 @@ cadence, and sign-off. They cannot alter any capability or security rule.
 
 ## Edge and Chrome
 
-Click the AI365 toolbar button to open its side panel. Browser context starts
-empty on every panel: AI365 reads the current tab only after you click
+Click the Scribble toolbar button to open its side panel. Browser context starts
+empty on every panel: Scribble reads the current tab only after you click
 **Attach selection**, **Attach page**, or **Attach visible screenshot**. The
 selection is capped at 16,000 characters, page text at 48,000, and a screenshot
 at 5 MB. **Clear context** removes all three before the next message. A
@@ -261,16 +261,16 @@ message, or change the page. Browser settings pages, extension galleries, and
 some protected viewers block page-text extraction; attach a visible screenshot
 or use a normal webpage instead.
 
-Messages go through a per-user native bridge to the same AI365 connection and
+Messages go through a per-user native bridge to the same Scribble connection and
 model configured in Office. The extension never receives the API key, Gemini
 token, or MCP headers. Page content is always labelled as untrusted data. MCP is
 off in browser chat by default. To use a web-search MCP, list its exact tool name
-under that server's **Edge/Chrome tool allowlist** in AI365 Settings and tick the
+under that server's **Edge/Chrome tool allowlist** in Scribble Settings and tick the
 read-only approval. The browser uses at most one approved MCP server and one
 tool call per request; never approve a tool that writes or takes actions.
 
-To repeat the one-time setup, use **Set up AI365 in Microsoft Edge** or **Set
-up AI365 in Google Chrome** from the AI365 Start menu folder. After an AI365
+To repeat the one-time setup, use **Set up Scribble in Microsoft Edge** or **Set
+up Scribble in Google Chrome** from the Scribble Start menu folder. After a Scribble
 update, click **Reload** on the browser's Extensions page. Chrome and Edge both
 require this manual reload for an unpacked extension whose installed files
 changed.
@@ -304,8 +304,8 @@ clearly marked draft surface; when you explicitly ask to change the file
 you are working on ("fill in the missing totals on my sheet", "continue
 this document"), it goes there instead - still unsaved:
 
-- `write_draft_sheet` fills a brand-new numbered **AI365 Draft** worksheet
-  (AI365 Draft, AI365 Draft 2, ... at the end of the workbook). Earlier
+- `write_draft_sheet` fills a brand-new numbered **Scribble Draft** worksheet
+  (Scribble Draft, Scribble Draft 2, ... at the end of the workbook). Earlier
   drafts and your own sheets are never touched, so a follow-up draft can
   never destroy a previous one - delete draft sheets you no longer want,
   or close without saving to discard everything.
@@ -325,7 +325,7 @@ this document"), it goes there instead - still unsaved:
   for explicit change-my-sheet requests ("fill in the missing totals",
   "fix the formulas in column D"). Same formula safety rules; nothing is
   saved, so closing without saving discards everything.
-- `add_draft_slides` adds slides marked **[AI365 draft]**; existing slides
+- `add_draft_slides` adds slides marked **[Scribble draft]**; existing slides
   are never modified. Every slide is painted from the corporate theme (see
   below). By default new slides append at the end, or ask for a position
   ("after slide 2", "at the start") and they insert there. A slide can
@@ -337,7 +337,7 @@ this document"), it goes there instead - still unsaved:
   by default it **appends to the document you are working on** (Ctrl+Z
   undoes it), "replace the selection" rewrites just what you selected, and
   asking for a separate draft opens a brand-new unsaved document headed
-  **[AI365 draft]**. `#`/`##`/`###` headings, `-`/`1.` lists, and
+  **[Scribble draft]**. `#`/`##`/`###` headings, `-`/`1.` lists, and
   `**bold**` render as real Word styles, and `| cell | cell |` rows become
   **real formatted Word tables** - "put this table into word with an
   analysis" produces a styled table plus prose.
@@ -358,7 +358,7 @@ this document"), it goes there instead - still unsaved:
 
 ### Corporate slide theme
 
-Draft slides are not generic bullet pages. AI365 ships the **METO executive
+Draft slides are not generic bullet pages. Scribble ships the **METO executive
 deck theme** compiled into the add-in, and the model supplies content only -
 it can never choose a font, color, size, or position, so even a small local
 model produces on-brand slides:
@@ -397,7 +397,7 @@ on your documents - saving stays a human action, so even a discarded draft
 sheet or slide costs nothing.
 
 Office opens every document in its own window, so each window gets its own
-AI365 pane - the ribbon button works in a freshly created draft document
+Scribble pane - the ribbon button works in a freshly created draft document
 too, not just the first window. Closing and reopening a pane keeps the
 conversation for as long as that Office application stays open; all windows
 of one app share the same chat, which lives only in process memory and is
@@ -422,7 +422,7 @@ out (stdio servers are killed rather than left blocking).
 
 Only you can add a server: nothing in email, document, or model text can
 register one. A server runs with your Windows account's own permissions,
-outside AI365's guardrails - AI365 itself still cannot send email or save or
+outside Scribble's guardrails - Scribble itself still cannot send email or save or
 delete documents, but a server you add acts with whatever powers it has.
 Only add servers you trust, and prefer read-only ones.
 
@@ -464,7 +464,7 @@ message bodies - paste it into a bug report to show exactly what happened.
 
 To disable Google Gemini across a whole machine (for example on a work
 computer), set the registry value `DisableGemini` = `1` (DWORD) under
-`HKLM\Software\Policies\AI365` or `HKCU\Software\Policies\AI365`. Gemini
+`HKLM\Software\Policies\Scribble` or `HKCU\Software\Policies\Scribble`. Gemini
 sign-in is then forced off at load, greyed out in Settings with a policy
 notice, and refused by the request gateway. Policies can only remove
 capabilities, never add any.
@@ -511,12 +511,12 @@ scoped exception, not a general mutation permission.
   only the bounded `create_draft` and `update_draft` operations.
 - The draft path exposes no send, move, delete, schedule, BCC, arbitrary HTML,
   or mailbox traversal operation.
-- Classic Outlook COM has no permission-manifest switch for sending. AI365
+- Classic Outlook COM has no permission-manifest switch for sending. Scribble
   instead hardcodes the absence of a send capability, keeps the Outlook object
   outside the model client, and verifies the source plus compiled assembly in CI.
 - Drafts are saved and displayed as unsent Outlook items.
 - CI fails if forbidden Outlook action calls are introduced.
-- The browser host accepts messages only from AI365's fixed extension identity,
+- The browser host accepts messages only from Scribble's fixed extension identity,
   validates bounded native-message framing and actual JPEG/PNG/WebP screenshot
   bytes, and offers no browser-control or Office-write tools. Attached page
   content and screenshots are explicitly untrusted reference data.
@@ -570,7 +570,7 @@ The local formatter HTML-encodes all text and inserts only fixed headings,
 subheadings, lists, dividers, paragraphs, and `<strong>` markup. The model can
 request these visual structures with a small text layout syntax, but raw HTML is
 rejected. If a model returns Markdown emphasis markers, the shared local formatter
-removes them and applies real bold formatting in both AI365 and Outlook. Stray
+removes them and applies real bold formatting in both Scribble and Outlook. Stray
 formatting asterisks are removed. Arbitrary model HTML is never accepted. Neither
 tool has a send operation.
 
@@ -614,7 +614,7 @@ browser sign-in* in Settings and click **Sign in with Google**. A browser
 window opens on Google's own sign-in pages (standard OAuth installed-app flow
 with PKCE and a loopback redirect — the same flow, OAuth client, and scopes
 the open-source Gemini CLI uses, so a Google Workspace org that allows Gemini
-CLI allows this identically). AI365 never sees the password; it receives
+CLI allows this identically). Scribble never sees the password; it receives
 tokens on 127.0.0.1, stores the refresh token encrypted for the current
 Windows user (DPAPI), and calls Google's Code Assist `generateContent` API,
 where enterprise Gemini licensing resolves from the account alone. Requests
@@ -627,9 +627,9 @@ Cloud project** field in Settings (the same value for everyone in the
 organization; the `GOOGLE_CLOUD_PROJECT` environment variable also works as
 a fallback). The Gemini CLI's other environment settings are not needed:
 `NODE_OPTIONS=--use-system-ca` exists because Node.js does not trust the
-Windows certificate store by default, while AI365 uses it natively (so
+Windows certificate store by default, while Scribble uses it natively (so
 corporate TLS inspection just works), and `GEMINI_TELEMETRY_ENABLED`
-controls CLI telemetry, which AI365 does not have. Note that with any
+controls CLI telemetry, which Scribble does not have. Note that with any
 cloud provider, email content leaves your machine — the local-endpoint
 setup keeps everything on-device.
 
@@ -688,11 +688,11 @@ timeout failures before the endpoint returns an HTTP response.
 
 ## Remove
 
-1. In every browser where you loaded AI365, open `edge://extensions` or
-   `chrome://extensions` and select **Remove** on the AI365 card.
+1. In every browser where you loaded Scribble, open `edge://extensions` or
+   `chrome://extensions` and select **Remove** on the Scribble card.
 2. Close Outlook, Excel, PowerPoint, and Word.
 3. Open Windows **Installed apps** or **Apps & features**.
-4. Uninstall **AI365**.
+4. Uninstall **Scribble**.
 
 Windows uninstallation removes the private native bridge, its registration, and
 the staged extension files. It deliberately does not edit browser profiles, so
@@ -702,7 +702,7 @@ you remove it there.
 Endpoint settings remain under:
 
 ```text
-%LOCALAPPDATA%\OutlookLocalAIChat
+%LOCALAPPDATA%\Scribble
 ```
 
 Delete that folder manually if you also want to remove the encrypted API key and
@@ -720,7 +720,7 @@ Build the assembly and tests:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\Restore-StrongNameKey.ps1
-msbuild OutlookLocalAIChat.sln /m /p:Configuration=Release
+msbuild Scribble.sln /m /p:Configuration=Release
 tests\GuardrailTests\bin\Release\GuardrailTests.exe
 powershell -ExecutionPolicy Bypass -File scripts\Test-Guardrails.ps1
 ```
@@ -736,13 +736,13 @@ Build the installer:
 
 ```powershell
 & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" `
-  "installer\OutlookLocalAIChat.iss"
+  "installer\Scribble.iss"
 ```
 
 The installer is written to:
 
 ```text
-artifacts\AI365Setup.exe
+artifacts\ScribbleSetup.exe
 ```
 
 GitHub Actions builds, smoke-tests, and publishes the same single-file installer.
@@ -760,12 +760,12 @@ powershell -ExecutionPolicy Bypass -File scripts\New-SigningCert.ps1
 ```
 
 It creates a personal self-signed code-signing certificate, prints the two
-secret values to add, and leaves you an `ai365-signing.cer` to trust on each
-machine that runs AI365:
+secret values to add, and leaves you a `scribble-signing.cer` to trust on each
+machine that runs Scribble:
 
 ```powershell
-certutil -user -addstore Root ai365-signing.cer
-certutil -user -addstore TrustedPublisher ai365-signing.cer
+certutil -user -addstore Root scribble-signing.cer
+certutil -user -addstore TrustedPublisher scribble-signing.cer
 ```
 
 Without the secrets the signing steps are skipped and the build stays

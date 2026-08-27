@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
 
-$sourceRoot = Join-Path $PSScriptRoot "..\src\OutlookLocalAIChat"
+$sourceRoot = Join-Path $PSScriptRoot "..\src\Scribble"
 $sourceFiles = Get-ChildItem $sourceRoot -Recurse -Filter *.cs
 
 $forbidden = @(
@@ -253,7 +253,7 @@ if (-not $safeHtmlSource.Contains("WebUtility.HtmlEncode") -or
     throw "Draft formatting must remain locally encoded and structurally bounded."
 }
 
-# ---- AI365 suite guardrails: Excel/PowerPoint hosts and MCP ----
+# ---- Scribble suite guardrails: Excel/PowerPoint hosts and MCP ----
 
 # The document-side hosts may never save, print, protect, close, or
 # quit the user's files or applications. (Outlook draft Save stays
@@ -377,8 +377,8 @@ foreach ($requiredBoundary in @(
 $workbookWriterSource = Get-Content (
     Join-Path $sourceRoot "Office\WorkbookDraftWriter.cs") -Raw
 if (-not $workbookWriterSource.Contains(
-        'DraftSheetName = "AI365 Draft"')) {
-    throw "The Excel write surface must stay pinned to the AI365 Draft sheet."
+        'DraftSheetName = "Scribble Draft"')) {
+    throw "The Excel write surface must stay pinned to the Scribble Draft sheet."
 }
 if (-not $workbookWriterSource.Contains(
         "DraftFormulaPolicy.IsAllowedFormula")) {
@@ -401,13 +401,13 @@ foreach ($blockedFunction in @(
 $presentationWriterSource = Get-Content (
     Join-Path $sourceRoot "Office\PresentationDraftWriter.cs") -Raw
 if (-not $presentationWriterSource.Contains(
-        'DraftMarker = "[AI365 draft]"')) {
-    throw "Appended slides must stay marked as AI365 drafts."
+        'DraftMarker = "[Scribble draft]"')) {
+    throw "Appended slides must stay marked as Scribble drafts."
 }
 # The marker is written by the writer onto every drafted slide, so
 # the model can never suppress it.
 if (-not $presentationWriterSource.Contains("AddDraftTag(")) {
-    throw "Every drafted slide must carry the AI365 draft marker."
+    throw "Every drafted slide must carry the Scribble draft marker."
 }
 
 # The corporate theme is hardcoded and owned by the writer: the
@@ -447,7 +447,7 @@ foreach ($styleKey in @(
 $wordWriterSource = Get-Content (
     Join-Path $sourceRoot "Office\WordDraftWriter.cs") -Raw
 if (-not $wordWriterSource.Contains(
-        'DraftMarker = "[AI365 draft]"') -or
+        'DraftMarker = "[Scribble draft]"') -or
     -not $wordWriterSource.Contains("Documents.Add()")) {
     throw "Word drafts must stay marked, new, and unsaved."
 }
@@ -557,6 +557,24 @@ if (-not $settingsStoreSource.Contains(
         "AdminPolicy.GeminiDisabled")) {
     throw "Settings load must honor the Gemini disable policy."
 }
+foreach ($requiredRenameMigration in @(
+    "LegacyProductDirectoryName",
+    "ResolveLoadPath()",
+    "File.Copy(_legacySettingsPath, _settingsPath, false)",
+    'LegacyProductDirectoryName + ".Settings.v1"'
+)) {
+    if (-not $settingsStoreSource.Contains($requiredRenameMigration)) {
+        throw "Settings rename migration is missing $requiredRenameMigration."
+    }
+}
+$adminPolicySource = Get-Content (
+    Join-Path $sourceRoot "Configuration\AdminPolicy.cs") -Raw
+if (-not $adminPolicySource.Contains("LegacyPolicyKeyPath") -or
+    ([regex]::Matches(
+        $adminPolicySource,
+        "LegacyPolicyKeyPath")).Count -lt 3) {
+    throw "The capability-reducing legacy admin policy is not honored."
+}
 $geminiGatewaySource = Get-Content (
     Join-Path $sourceRoot "Chat\GeminiCodeAssistGateway.cs") -Raw
 if (-not $geminiGatewaySource.Contains(
@@ -583,14 +601,14 @@ foreach ($capability in @(
     }
 }
 
-# ---- AI365 browser companion guardrails ----
+# ---- Scribble browser companion guardrails ----
 
 $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$browserExtensionRoot = Join-Path $repositoryRoot "src\AI365.BrowserExtension"
-$browserHostRoot = Join-Path $repositoryRoot "src\AI365.BrowserHost"
-$browserInstallerPath = Join-Path $repositoryRoot "installer\OutlookLocalAIChat.iss"
+$browserExtensionRoot = Join-Path $repositoryRoot "src\Scribble.BrowserExtension"
+$browserHostRoot = Join-Path $repositoryRoot "src\Scribble.BrowserHost"
+$browserInstallerPath = Join-Path $repositoryRoot "installer\Scribble.iss"
 $browserManifestPath = Join-Path $browserExtensionRoot "manifest.json"
-$nativeManifestPath = Join-Path $browserHostRoot "com.ai365.browser.json"
+$nativeManifestPath = Join-Path $browserHostRoot "com.scribble.browser.json"
 $browserHostProgramPath = Join-Path $browserHostRoot "Program.cs"
 $browserSetupPath = Join-Path $browserHostRoot "BrowserSetup.cs"
 $nativeProtocolPath = Join-Path $browserHostRoot "NativeMessageProtocol.cs"
@@ -598,7 +616,7 @@ $browserFactoryPath = Join-Path $sourceRoot "Chat\BrowserChatRequestFactory.cs"
 $browserServicePath = Join-Path $sourceRoot "Chat\BrowserChatService.cs"
 $expectedExtensionId = "olkepladbgkfkhlglooilnmalckpdada"
 $expectedOrigin = "chrome-extension://$expectedExtensionId/"
-$nativeHostName = "com.ai365.browser"
+$nativeHostName = "com.scribble.browser"
 
 foreach ($requiredBrowserFile in @(
     $browserManifestPath,
@@ -701,7 +719,7 @@ if ($derivedExtensionId -ne $expectedExtensionId) {
 }
 if ($nativeManifest.name -ne $nativeHostName -or
     $nativeManifest.type -ne "stdio" -or
-    $nativeManifest.path -ne "AI365BrowserHost.exe") {
+    $nativeManifest.path -ne "ScribbleBrowserHost.exe") {
     throw "The native messaging manifest host contract changed unexpectedly."
 }
 $allowedOrigins = @($nativeManifest.allowed_origins)
@@ -752,7 +770,7 @@ if ($browserInstallerSource -notmatch
     throw "Browser support must preserve the per-user, non-elevated installer."
 }
 if ($browserInstallerSource -match
-    'Source:\s*"[^\r\n"]*AI365\.BrowserExtension\\\*') {
+    'Source:\s*"[^\r\n"]*Scribble\.BrowserExtension\\\*') {
     throw "Installer must enumerate browser extension assets explicitly."
 }
 $browserHostInstallSource = (
@@ -794,7 +812,7 @@ foreach ($browserInstallTrick in @(
 $browserRunLines = @(
     Get-Content -LiteralPath $browserInstallerPath |
         Where-Object {
-            $_ -match 'AI365BrowserHost\.exe' -and
+            $_ -match 'ScribbleBrowserHost\.exe' -and
             $_ -match '--setup\s+auto'
         }
 )
@@ -806,7 +824,7 @@ if (@($browserRunLines).Count -ne 1 -or
 }
 
 if ($browserInstallerSource -notmatch
-    '#define\s+BrowserNativeHostName\s+"com\.ai365\.browser"') {
+    '#define\s+BrowserNativeHostName\s+"com\.scribble\.browser"') {
     throw "Installer native host macro does not match the signed host identity."
 }
 $browserRegistryContracts = @(
@@ -827,7 +845,7 @@ foreach ($browserRegistryContract in $browserRegistryContracts) {
             Where-Object {
                 $_.Contains($browserRegistryLiteral) -and
                 $_ -match '^Root:\s*HKCU32;' -and
-                $_ -match 'ValueData:\s*"\{app\}\\com\.ai365\.browser\.json"' -and
+                $_ -match 'ValueData:\s*"\{app\}\\com\.scribble\.browser\.json"' -and
                 $_ -match 'Components:\s*browser'
             }
     )
@@ -853,10 +871,24 @@ $allNativeRegistrationLines = @(
     $browserInstallerLines |
         Where-Object { $_ -match 'NativeMessagingHosts' }
 )
-if ($allNativeRegistrationLines.Count -ne 4 -or
+if ($allNativeRegistrationLines.Count -ne 6 -or
     @($allNativeRegistrationLines |
         Where-Object { $_ -notmatch '^Root:\s*HKCU32;' }).Count -ne 0) {
-    throw "Native messaging registration must consist only of four HKCU32 entries."
+    throw "Native messaging registration must consist only of six HKCU32 entries."
+}
+$legacyNativeCleanupLines = @(
+    $allNativeRegistrationLines |
+        Where-Object {
+            $_ -match '\{#LegacyBrowserNativeHostName\}'
+        }
+)
+if ($legacyNativeCleanupLines.Count -ne 2 -or
+    @($legacyNativeCleanupLines |
+        Where-Object {
+            $_ -notmatch 'Flags:[^;]*\bdeletekey\b' -or
+            $_ -match 'ValueData:'
+        }).Count -ne 0) {
+    throw "The retired native-host registrations are not deleted safely."
 }
 
 $nativeProtocolSource = Get-Content -LiteralPath $nativeProtocolPath -Raw

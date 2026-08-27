@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Scribble for the web",
+  "short_name": "Scribble",
+  "description": "Chat with Scribble about page content that you explicitly attach.",
+  "version": "1.0.0",
+  "minimum_chrome_version": "116",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnu5j5zXgOQ2w+Grc06fZE/co0XOX2qNl5ueUg9Ngd4CSN8Hn1L/87gebCZXF7y3Jci138RZ6tYTpMBYt1j1gW7d1P9Q1lZMZc3yenfj0F570sRLXE6PCx5CeG1/+JL802xEbEn862oOrohVM8DHg/D/wvJvHO4GMxkPcs4EOgjMhLfSenHwAvq1XCp+LIEes6XxJ+OuoPOQOAIxwPLaY9tyhPmtQ1ELY4AeYjN9dW+6QpNrpJrAALHAc/03mAY7+H/OBU0UmADYFZeYn5Bik/pya50uS9nS661Zcd6erLiPKyPao6uNMkhAZox716BmqHvFZr/5bXq7R2VkMx8hAtQIDAQAB",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "contextMenus",
+    "nativeMessaging",
+    "sidePanel"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Open Scribble"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "content_security_policy": {
+    "extension_pages": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; connect-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+  }
+}

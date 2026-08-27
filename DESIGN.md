@@ -1,5 +1,5 @@
 ---
-name: AI365
+name: Scribble
 description: A restrained Outlook sidebar for chatting with bounded mailbox context and opening user-reviewed drafts.
 colors:
   action-blue: "#005fb8"
@@ -76,13 +76,13 @@ components:
     height: "34px"
 ---
 
-# Design System: AI365
+# Design System: Scribble
 
 ## Overview
 
 **Creative North Star: "The Guardrailed Desk Tool"**
 
-AI365 is a compact native Outlook sidebar. It should feel native to classic Outlook, not like an AI showcase: familiar system typography, quiet white and cool-gray surfaces, square fields, restrained density, and blue reserved for direct actions.
+Scribble is a compact native Outlook sidebar. It should feel native to classic Outlook, not like an AI showcase: familiar system typography, quiet white and cool-gray surfaces, square fields, restrained density, and blue reserved for direct actions.
 
 The screen tells one ordered story: confirm mailbox scope and the optional selected message, ask a question, observe which bounded read-only context was loaded, then explicitly request one unsent draft in Outlook. The visual hierarchy must keep the local-intent and one-linked-draft boundary obvious. No control may imply that the utility can send mail.
 
@@ -134,7 +134,7 @@ The palette is mostly Windows system color roles, with a fixed Outlook-adjacent 
 
 ### Hierarchy
 
-- **Title** (bold, nominally 12pt): AI365 in the top strip.
+- **Title** (bold, nominally 12pt): Scribble in the top strip.
 - **Body** (regular, nominally 10pt): Transcript turns, composer text, settings fields, and primary reading content.
 - **Label** (bold, nominally 9pt): Speaker names, field labels, and the primary action.
 - **Hint** (regular, no smaller than 8pt): Keyboard guidance, draft disclosure, metadata, and status copy.
@@ -151,7 +151,7 @@ The chat is a single-column, vertically stacked Outlook Custom Task Pane, initia
 
 Horizontal content padding is 14 pixels in the sidebar work areas. The toolbar uses 8 pixels, while the modal settings form uses 24 pixels. Vertical rhythm is compact, generally 3 to 10 pixels between related controls. The transcript stays visually open and scrolls vertically instead of becoming a stack of cards.
 
-The composer is a two-column grid: a fluid multiline text field and a fixed action column. The send button fills the message row. A persistent safety line below the message field says "Say 'create a draft' to open one. AI365 cannot send." After creation it becomes a blue linked state: "One draft linked. Revision requests update this draft only." Long message subjects and status text ellipsize rather than breaking the frame.
+The composer is a two-column grid: a fluid multiline text field and a fixed action column. The send button fills the message row. A persistent safety line below the message field says "Say 'create a draft' to open one. Scribble cannot send." After creation it becomes a blue linked state: "One draft linked. Revision requests update this draft only." Long message subjects and status text ellipsize rather than breaking the frame.
 
 The settings window is a centered modal with separate Connection and Writing style tabs. Connection contains the endpoint, editable model selector, API key, HTTP warning, and endpoint verification. Writing style contains an explicit consent action, a visible disclosure that no analysis runs automatically, an editable profile field, and a draft-only enable checkbox. Save and Cancel remain common bottom actions.
 
@@ -184,7 +184,7 @@ Controls use square native geometry. Text fields have fixed single borders; flat
 ### Mailbox Scope Strip
 
 - **Character:** Quiet context anchor, not a card.
-- **Structure:** Muted full-width band with a bold "AI365" title, an ellipsized optional `Selected: subject` or `Working set: N of 10 emails`, and exactly `Model: model_name`.
+- **Structure:** Muted full-width band with a bold "Scribble" title, an ellipsized optional `Selected: subject` or `Working set: N of 10 emails`, and exactly `Model: model_name`.
 - **State:** When no context is selected, the same region says mailbox search remains available. `/search person or topic` replaces the local ten-email working set, while `/search clear` removes it.
 
 ### Toolbar Links
@@ -198,7 +198,7 @@ Controls use square native geometry. Text fields have fixed single borders; flat
 - **Character:** A spacious, read-only plain-text document.
 - **Structure:** Borderless white surface with vertical scrolling and no automatic URL detection.
 - **Turns:** Speaker names are bold. "You" uses the action color; "Assistant" uses primary text. Model emphasis markers are removed and represented as native bold spans. Context-loading entries are italic secondary text and endpoint errors use explicit diagnostic codes.
-- **Accessibility:** Accessible name is "AI365 conversation"; the description identifies it as a plain-text mailbox conversation and context-loading ledger.
+- **Accessibility:** Accessible name is "Scribble conversation"; the description identifies it as a plain-text mailbox conversation and context-loading ledger.
 
 ### Working-Set Layer
 
@@ -211,7 +211,7 @@ Controls use square native geometry. Text fields have fixed single borders; flat
 
 - **Style:** Multiline square field with a fixed single border, vertical scrolling, and bounded input length.
 - **Authorization:** Deterministic local code recognizes explicit drafting or revision intent only from the latest user-written prompt. Model output and loaded email content cannot authorize mutation.
-- **Instruction:** A persistent safety line explains how to request a draft and states that AI365 cannot send. A separate hint says Ctrl+Enter submits the chat prompt.
+- **Instruction:** A persistent safety line explains how to request a draft and states that Scribble cannot send. A separate hint says Ctrl+Enter submits the chat prompt.
 - **Focus:** Keep the native Windows focus indication. Do not replace it with color-only styling.
 - **Busy State:** Disable the field while waiting, change "Send to AI" to "Cancel," and restore the user's prompt if the request fails, times out, or is discarded.
 

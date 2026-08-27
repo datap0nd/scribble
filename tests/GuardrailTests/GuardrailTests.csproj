@@ -52,9 +52,9 @@
     <Compile Include="Program.cs" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\src\OutlookLocalAIChat\OutlookLocalAIChat.csproj">
+    <ProjectReference Include="..\..\src\Scribble\Scribble.csproj">
       <Project>{760F136D-D942-4644-9208-78EBE0E8D3AB}</Project>
-      <Name>OutlookLocalAIChat</Name>
+      <Name>Scribble</Name>
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

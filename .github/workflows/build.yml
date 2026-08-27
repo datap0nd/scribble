@@ -42,19 +42,19 @@ jobs:
       - name: Stamp build version
         shell: pwsh
         run: |
-          $file = "src/OutlookLocalAIChat/Properties/AssemblyInfo.cs"
+          $file = "src/Scribble/Properties/AssemblyInfo.cs"
           (Get-Content $file) -replace 'AssemblyFileVersion\("[^"]+"\)', 'AssemblyFileVersion("2.0.${{ github.run_number }}.0")' | Set-Content $file
 
       - name: Restore NuGet packages
-        run: msbuild OutlookLocalAIChat.sln /t:Restore /p:Configuration=Release
+        run: msbuild Scribble.sln /t:Restore /p:Configuration=Release
 
       - name: Build solution
-        run: msbuild OutlookLocalAIChat.sln /m /p:Configuration=Release
+        run: msbuild Scribble.sln /m /p:Configuration=Release
 
       - name: Verify WebView2 payload in build output
         shell: pwsh
         run: |
-          $bin = "src\OutlookLocalAIChat\bin\Release"
+          $bin = "src\Scribble\bin\Release"
           Get-ChildItem $bin -Recurse -Include *.dll |
             ForEach-Object { Write-Host $_.FullName.Substring((Resolve-Path $bin).Path.Length + 1) }
           foreach ($required in @(
@@ -77,17 +77,17 @@ jobs:
       - name: Verify browser host and extension payload
         shell: pwsh
         run: |
-          $hostBin = "src\AI365.BrowserHost\bin\Release"
+          $hostBin = "src\Scribble.BrowserHost\bin\Release"
           foreach ($required in @(
-            "AI365BrowserHost.exe",
-            "OutlookLocalAIChat.dll"
+            "ScribbleBrowserHost.exe",
+            "Scribble.dll"
           )) {
             if (-not (Test-Path (Join-Path $hostBin $required))) {
               throw "Missing browser-host build output: $required"
             }
           }
 
-          $extension = "src\AI365.BrowserExtension"
+          $extension = "src\Scribble.BrowserExtension"
           foreach ($required in @(
             "manifest.json",
             "background.js",
@@ -103,7 +103,7 @@ jobs:
           try {
             $manifest = Get-Content (Join-Path $extension "manifest.json") -Raw |
               ConvertFrom-Json
-            $nativeManifest = Get-Content "src\AI365.BrowserHost\com.ai365.browser.json" -Raw |
+            $nativeManifest = Get-Content "src\Scribble.BrowserHost\com.scribble.browser.json" -Raw |
               ConvertFrom-Json
           }
           catch {
@@ -114,8 +114,8 @@ jobs:
               $manifest.side_panel.default_path -ne "sidepanel.html") {
             throw "The Manifest V3 browser entry points are invalid."
           }
-          if ($nativeManifest.name -ne "com.ai365.browser" -or
-              $nativeManifest.path -ne "AI365BrowserHost.exe") {
+          if ($nativeManifest.name -ne "com.scribble.browser" -or
+              $nativeManifest.path -ne "ScribbleBrowserHost.exe") {
             throw "The native messaging host manifest is invalid."
           }
           foreach ($script in @("background.js", "sidepanel.js")) {
@@ -126,7 +126,7 @@ jobs:
           }
 
           $hostPath = (Resolve-Path (
-            Join-Path $hostBin "AI365BrowserHost.exe")).Path
+            Join-Path $hostBin "ScribbleBrowserHost.exe")).Path
           function New-NativeHostProcess([string]$arguments) {
             $startInfo = New-Object Diagnostics.ProcessStartInfo
             $startInfo.FileName = $hostPath
@@ -219,8 +219,8 @@ jobs:
         if: env.SIGNING_PFX != ''
         shell: pwsh
         run: |
-          ./scripts/Sign-File.ps1 -Path "src\OutlookLocalAIChat\bin\Release\OutlookLocalAIChat.dll"
-          ./scripts/Sign-File.ps1 -Path "src\AI365.BrowserHost\bin\Release\AI365BrowserHost.exe"
+          ./scripts/Sign-File.ps1 -Path "src\Scribble\bin\Release\Scribble.dll"
+          ./scripts/Sign-File.ps1 -Path "src\Scribble.BrowserHost\bin\Release\ScribbleBrowserHost.exe"
 
       - name: Run guardrail tests
         run: tests\GuardrailTests\bin\Release\GuardrailTests.exe
@@ -232,29 +232,29 @@ jobs:
       - name: Inspect .NET COM registration contract
         shell: powershell
         run: |
-          $assembly = Resolve-Path "src\OutlookLocalAIChat\bin\Release\OutlookLocalAIChat.dll"
+          $assembly = Resolve-Path "src\Scribble\bin\Release\Scribble.dll"
           & "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\RegAsm.exe" `
             $assembly /codebase /regfile:managed-com.reg
           $registration = Get-Content managed-com.reg -Raw
-          if (-not $registration.Contains("OutlookLocalAIChat.AddIn")) {
+          if (-not $registration.Contains("Scribble.AddIn")) {
             throw "RegAsm did not export the add-in COM class."
           }
           if (-not $registration.Contains("PublicKeyToken=f51b005bfa6d7cc3")) {
             throw "The add-in strong-name identity changed."
           }
-          if (-not $registration.Contains("OutlookLocalAIChat.UI.ChatPane")) {
+          if (-not $registration.Contains("Scribble.UI.ChatPane")) {
             throw "The Outlook sidebar control was not exported to COM."
           }
-          if (-not $registration.Contains("OutlookLocalAIChat.ExcelAddIn")) {
+          if (-not $registration.Contains("Scribble.ExcelAddIn")) {
             throw "RegAsm did not export the Excel add-in COM class."
           }
-          if (-not $registration.Contains("OutlookLocalAIChat.PowerPointAddIn")) {
+          if (-not $registration.Contains("Scribble.PowerPointAddIn")) {
             throw "RegAsm did not export the PowerPoint add-in COM class."
           }
-          if (-not $registration.Contains("OutlookLocalAIChat.WordAddIn")) {
+          if (-not $registration.Contains("Scribble.WordAddIn")) {
             throw "RegAsm did not export the Word add-in COM class."
           }
-          if (-not $registration.Contains("OutlookLocalAIChat.UI.OfficeChatPane")) {
+          if (-not $registration.Contains("Scribble.UI.OfficeChatPane")) {
             throw "The Excel/PowerPoint sidebar control was not exported to COM."
           }
 
@@ -267,24 +267,140 @@ jobs:
         run: |
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" `
             "/DAppVersion=2.0.${{ github.run_number }}" `
-            "installer\OutlookLocalAIChat.iss"
+            "installer\Scribble.iss"
 
       - name: Sign the installer
         if: env.SIGNING_PFX != ''
         shell: pwsh
         run: |
-          ./scripts/Sign-File.ps1 -Path "artifacts\AI365Setup.exe"
+          ./scripts/Sign-File.ps1 -Path "artifacts\ScribbleSetup.exe"
 
       - name: Smoke-test installer registration
         shell: powershell
         run: |
-          $installer = Resolve-Path "artifacts\AI365Setup.exe"
+          $installer = Resolve-Path "artifacts\ScribbleSetup.exe"
+          # Seed the exact file and registry shapes left by the published
+          # pre-rename installer. The names are composed so retired branding
+          # never becomes a current source-tree identity.
+          $legacyNamespace = "Outlook" + "Local" + "AI" + "Chat"
+          $legacyBrand = "AI" + "365"
+          $legacyHostName = "com." + $legacyBrand.ToLowerInvariant() + ".browser"
+          $seededInstallDir = Join-Path $env:LOCALAPPDATA "Programs\Scribble"
+          New-Item -ItemType Directory -Path $seededInstallDir -Force | Out-Null
+          foreach ($legacyFile in @(
+            ($legacyNamespace + ".dll"),
+            ($legacyBrand + "BrowserHost.exe"),
+            ($legacyBrand + "BrowserHost.exe.config"),
+            ($legacyHostName + ".json")
+          )) {
+            [IO.File]::WriteAllText(
+              (Join-Path $seededInstallDir $legacyFile),
+              "upgrade-cleanup-probe")
+          }
+          $legacyRegistryPaths = @(
+            "Software\Microsoft\Office\Outlook\Addins\$legacyNamespace.AddIn",
+            "Software\Classes\$legacyNamespace.AddIn",
+            "Software\Classes\$legacyNamespace.ChatPane",
+            "Software\Microsoft\Office\Excel\Addins\$legacyBrand.ExcelAddIn",
+            "Software\Classes\$legacyBrand.ExcelAddIn",
+            "Software\Microsoft\Office\PowerPoint\Addins\$legacyBrand.PowerPointAddIn",
+            "Software\Classes\$legacyBrand.PowerPointAddIn",
+            "Software\Microsoft\Office\Word\Addins\$legacyBrand.WordAddIn",
+            "Software\Classes\$legacyBrand.WordAddIn",
+            "Software\Classes\$legacyBrand.OfficePane"
+          )
+          foreach ($view in @(
+            [Microsoft.Win32.RegistryView]::Registry64,
+            [Microsoft.Win32.RegistryView]::Registry32
+          )) {
+            $root = [Microsoft.Win32.RegistryKey]::OpenBaseKey(
+              [Microsoft.Win32.RegistryHive]::CurrentUser,
+              $view)
+            try {
+              foreach ($legacyRegistryPath in $legacyRegistryPaths) {
+                $key = $root.CreateSubKey($legacyRegistryPath)
+                $key.Dispose()
+              }
+            }
+            finally {
+              $root.Dispose()
+            }
+          }
+          $browserRoot = [Microsoft.Win32.RegistryKey]::OpenBaseKey(
+            [Microsoft.Win32.RegistryHive]::CurrentUser,
+            [Microsoft.Win32.RegistryView]::Registry32)
+          try {
+            foreach ($browser in @("Microsoft\Edge", "Google\Chrome")) {
+              $key = $browserRoot.CreateSubKey(
+                "Software\$browser\NativeMessagingHosts\$legacyHostName")
+              $key.Dispose()
+            }
+          }
+          finally {
+            $browserRoot.Dispose()
+          }
+
           Start-Process $installer -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait
-          $installedDll = Join-Path $env:LOCALAPPDATA "Programs\OutlookLocalAIChat\OutlookLocalAIChat.dll"
+          $installedDll = Join-Path $env:LOCALAPPDATA "Programs\Scribble\Scribble.dll"
           if (-not (Test-Path $installedDll)) {
             throw "Installed add-in DLL was not found."
           }
           $installedDir = Split-Path $installedDll
+          foreach ($legacyFile in @(
+            ($legacyNamespace + ".dll"),
+            ($legacyBrand + "BrowserHost.exe"),
+            ($legacyBrand + "BrowserHost.exe.config"),
+            ($legacyHostName + ".json")
+          )) {
+            if (Test-Path (Join-Path $installedDir $legacyFile)) {
+              throw "Installer retained a retired payload file: $legacyFile"
+            }
+          }
+          foreach ($view in @(
+            [Microsoft.Win32.RegistryView]::Registry64,
+            [Microsoft.Win32.RegistryView]::Registry32
+          )) {
+            $root = [Microsoft.Win32.RegistryKey]::OpenBaseKey(
+              [Microsoft.Win32.RegistryHive]::CurrentUser,
+              $view)
+            try {
+              foreach ($legacyRegistryPath in $legacyRegistryPaths) {
+                $key = $root.OpenSubKey($legacyRegistryPath)
+                try {
+                  if ($null -ne $key) {
+                    throw "Installer retained a retired registration in $view`: $legacyRegistryPath"
+                  }
+                }
+                finally {
+                  if ($null -ne $key) { $key.Dispose() }
+                }
+              }
+            }
+            finally {
+              $root.Dispose()
+            }
+          }
+          $browserRoot = [Microsoft.Win32.RegistryKey]::OpenBaseKey(
+            [Microsoft.Win32.RegistryHive]::CurrentUser,
+            [Microsoft.Win32.RegistryView]::Registry32)
+          try {
+            foreach ($browser in @("Microsoft\Edge", "Google\Chrome")) {
+              $legacyBrowserPath =
+                "Software\$browser\NativeMessagingHosts\$legacyHostName"
+              $key = $browserRoot.OpenSubKey($legacyBrowserPath)
+              try {
+                if ($null -ne $key) {
+                  throw "Installer retained a retired native host: $legacyBrowserPath"
+                }
+              }
+              finally {
+                if ($null -ne $key) { $key.Dispose() }
+              }
+            }
+          }
+          finally {
+            $browserRoot.Dispose()
+          }
           foreach ($required in @(
             "Microsoft.Web.WebView2.Core.dll",
             "Microsoft.Web.WebView2.WinForms.dll"
@@ -297,8 +413,8 @@ jobs:
           if ($installedLoaders.Count -lt 1) {
             throw "Installer did not ship any WebView2Loader.dll."
           }
-          $installedHost = Join-Path $installedDir "AI365BrowserHost.exe"
-          $installedNativeManifest = Join-Path $installedDir "com.ai365.browser.json"
+          $installedHost = Join-Path $installedDir "ScribbleBrowserHost.exe"
+          $installedNativeManifest = Join-Path $installedDir "com.scribble.browser.json"
           $installedExtension = Join-Path $installedDir "BrowserExtension"
           foreach ($required in @(
             $installedHost,
@@ -326,7 +442,7 @@ jobs:
           }
           $expectedOrigin = "chrome-extension://olkepladbgkfkhlglooilnmalckpdada/"
           $origins = @($nativeManifest.allowed_origins)
-          if ($nativeManifest.name -ne "com.ai365.browser" -or
+          if ($nativeManifest.name -ne "com.scribble.browser" -or
               $origins.Count -ne 1 -or
               $origins[0] -ne $expectedOrigin -or
               $extensionManifest.manifest_version -ne 3) {
@@ -348,8 +464,8 @@ jobs:
             [Microsoft.Win32.RegistryView]::Registry32)
           try {
             foreach ($nativeKeyPath in @(
-              "Software\Microsoft\Edge\NativeMessagingHosts\com.ai365.browser",
-              "Software\Google\Chrome\NativeMessagingHosts\com.ai365.browser"
+              "Software\Microsoft\Edge\NativeMessagingHosts\com.scribble.browser",
+              "Software\Google\Chrome\NativeMessagingHosts\com.scribble.browser"
             )) {
               $nativeKey = $browserRegistryRoot.OpenSubKey($nativeKeyPath)
               try {
@@ -374,7 +490,7 @@ jobs:
             $browserRegistryRoot.Dispose()
           }
           $assembly = [Reflection.Assembly]::LoadFrom($installedDll)
-          $instance = $assembly.CreateInstance("OutlookLocalAIChat.AddIn")
+          $instance = $assembly.CreateInstance("Scribble.AddIn")
           if ($null -eq $instance) {
             throw "The installed add-in class could not be instantiated."
           }
@@ -389,7 +505,7 @@ jobs:
               $view)
             try {
               $addin = $root.OpenSubKey(
-                "Software\Microsoft\Office\Outlook\Addins\OutlookLocalAIChat.AddIn")
+                "Software\Microsoft\Office\Outlook\Addins\Scribble.AddIn")
               if ($null -eq $addin -or $addin.GetValue("LoadBehavior") -ne 3) {
                 throw "Outlook add-in registration is missing in $view."
               }
@@ -409,19 +525,19 @@ jobs:
                 throw "Sidebar COM registration is missing in $view."
               }
               if ([string]$paneServer.GetValue("Class") -ne
-                  "OutlookLocalAIChat.UI.ChatPane") {
+                  "Scribble.UI.ChatPane") {
                 throw "Sidebar COM class is wrong in $view."
               }
               foreach ($suite in @(
-                @("Software\Microsoft\Office\Excel\Addins\AI365.ExcelAddIn",
+                @("Software\Microsoft\Office\Excel\Addins\Scribble.ExcelAddIn",
                   "{C0ABFA36-9854-434D-A542-DD834938737F}",
-                  "OutlookLocalAIChat.ExcelAddIn"),
-                @("Software\Microsoft\Office\PowerPoint\Addins\AI365.PowerPointAddIn",
+                  "Scribble.ExcelAddIn"),
+                @("Software\Microsoft\Office\PowerPoint\Addins\Scribble.PowerPointAddIn",
                   "{69FAE812-274F-43F8-8F45-1B4EB22B5248}",
-                  "OutlookLocalAIChat.PowerPointAddIn"),
-                @("Software\Microsoft\Office\Word\Addins\AI365.WordAddIn",
+                  "Scribble.PowerPointAddIn"),
+                @("Software\Microsoft\Office\Word\Addins\Scribble.WordAddIn",
                   "{B49E9DB7-0C40-46A8-80A3-547626FE5331}",
-                  "OutlookLocalAIChat.WordAddIn")
+                  "Scribble.WordAddIn")
               )) {
                 $suiteAddin = $root.OpenSubKey($suite[0])
                 if ($null -eq $suiteAddin -or
@@ -441,7 +557,7 @@ jobs:
                 "Software\Classes\CLSID\{BC9047E7-9AFE-4F75-BBBC-27241B1DE2FA}\InprocServer32")
               if ($null -eq $officePane -or
                   [string]$officePane.GetValue("Class") -ne
-                  "OutlookLocalAIChat.UI.OfficeChatPane") {
+                  "Scribble.UI.OfficeChatPane") {
                 throw "The Excel/PowerPoint sidebar registration is missing in $view."
               }
               $officePane.Dispose()
@@ -472,13 +588,13 @@ jobs:
                 "Software\Classes\CLSID\$clsid",
                 $false)
               $root.DeleteSubKeyTree(
-                "Software\Classes\OutlookLocalAIChat.AddIn",
+                "Software\Classes\Scribble.AddIn",
                 $false)
               $root.DeleteSubKeyTree(
                 "Software\Classes\CLSID\$paneClsid",
                 $false)
               $root.DeleteSubKeyTree(
-                "Software\Classes\OutlookLocalAIChat.ChatPane",
+                "Software\Classes\Scribble.ChatPane",
                 $false)
             }
             finally {
@@ -490,7 +606,7 @@ jobs:
           try {
             & $regasm64 $installedDll /codebase
             if ($LASTEXITCODE -ne 0) { throw "64-bit RegAsm failed." }
-            $addin64 = New-Object -ComObject OutlookLocalAIChat.AddIn
+            $addin64 = New-Object -ComObject Scribble.AddIn
             if ($null -eq $addin64) { throw "64-bit COM activation failed." }
             if ([Runtime.InteropServices.Marshal]::IsComObject($addin64)) {
               [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($addin64)
@@ -505,7 +621,7 @@ jobs:
             $powershell32 = "$env:WINDIR\SysWOW64\WindowsPowerShell\v1.0\powershell.exe"
             $smoke32 = Join-Path $env:RUNNER_TEMP "smoke-com-32.ps1"
             @'
-          $addin32 = New-Object -ComObject OutlookLocalAIChat.AddIn
+          $addin32 = New-Object -ComObject Scribble.AddIn
           if ($null -eq $addin32) { throw "32-bit COM activation failed." }
           if ([Runtime.InteropServices.Marshal]::IsComObject($addin32)) {
             [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($addin32)
@@ -523,7 +639,7 @@ jobs:
         run: |
           # Reinstall with only the Excel component: the other apps'
           # registration must be removed, Excel's must remain.
-          $installer = Resolve-Path "artifacts\AI365Setup.exe"
+          $installer = Resolve-Path "artifacts\ScribbleSetup.exe"
           Start-Process $installer -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/COMPONENTS=excel" -Wait
           foreach ($view in @(
             [Microsoft.Win32.RegistryView]::Registry64,
@@ -534,9 +650,9 @@ jobs:
               $view)
             try {
               foreach ($gone in @(
-                "Software\Microsoft\Office\Outlook\Addins\OutlookLocalAIChat.AddIn",
-                "Software\Microsoft\Office\PowerPoint\Addins\AI365.PowerPointAddIn",
-                "Software\Microsoft\Office\Word\Addins\AI365.WordAddIn"
+                "Software\Microsoft\Office\Outlook\Addins\Scribble.AddIn",
+                "Software\Microsoft\Office\PowerPoint\Addins\Scribble.PowerPointAddIn",
+                "Software\Microsoft\Office\Word\Addins\Scribble.WordAddIn"
               )) {
                 $key = $root.OpenSubKey($gone)
                 if ($null -ne $key) {
@@ -545,7 +661,7 @@ jobs:
                 }
               }
               $excel = $root.OpenSubKey(
-                "Software\Microsoft\Office\Excel\Addins\AI365.ExcelAddIn")
+                "Software\Microsoft\Office\Excel\Addins\Scribble.ExcelAddIn")
               if ($null -eq $excel -or $excel.GetValue("LoadBehavior") -ne 3) {
                 throw "Excel-only install lost the Excel registration in $view."
               }
@@ -566,8 +682,8 @@ jobs:
             [Microsoft.Win32.RegistryView]::Registry32)
           try {
             foreach ($gone in @(
-              "Software\Microsoft\Edge\NativeMessagingHosts\com.ai365.browser",
-              "Software\Google\Chrome\NativeMessagingHosts\com.ai365.browser"
+              "Software\Microsoft\Edge\NativeMessagingHosts\com.scribble.browser",
+              "Software\Google\Chrome\NativeMessagingHosts\com.scribble.browser"
             )) {
               $key = $browserRoot.OpenSubKey($gone)
               if ($null -ne $key) {
@@ -579,10 +695,10 @@ jobs:
           finally {
             $browserRoot.Dispose()
           }
-          $installedDir = Join-Path $env:LOCALAPPDATA "Programs\OutlookLocalAIChat"
+          $installedDir = Join-Path $env:LOCALAPPDATA "Programs\Scribble"
           foreach ($gone in @(
-            (Join-Path $installedDir "AI365BrowserHost.exe"),
-            (Join-Path $installedDir "com.ai365.browser.json"),
+            (Join-Path $installedDir "ScribbleBrowserHost.exe"),
+            (Join-Path $installedDir "com.scribble.browser.json"),
             (Join-Path $installedDir "BrowserExtension")
           )) {
             if (Test-Path $gone) {
@@ -596,10 +712,10 @@ jobs:
       - name: Smoke-test browser uninstall cleanup
         shell: powershell
         run: |
-          $installedDir = Join-Path $env:LOCALAPPDATA "Programs\OutlookLocalAIChat"
+          $installedDir = Join-Path $env:LOCALAPPDATA "Programs\Scribble"
           $uninstaller = Join-Path $installedDir "unins000.exe"
           if (-not (Test-Path $uninstaller)) {
-            throw "AI365 uninstaller was not found."
+            throw "Scribble uninstaller was not found."
           }
           Start-Process $uninstaller -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait
           $browserRoot = [Microsoft.Win32.RegistryKey]::OpenBaseKey(
@@ -607,8 +723,8 @@ jobs:
             [Microsoft.Win32.RegistryView]::Registry32)
           try {
             foreach ($gone in @(
-              "Software\Microsoft\Edge\NativeMessagingHosts\com.ai365.browser",
-              "Software\Google\Chrome\NativeMessagingHosts\com.ai365.browser"
+              "Software\Microsoft\Edge\NativeMessagingHosts\com.scribble.browser",
+              "Software\Google\Chrome\NativeMessagingHosts\com.scribble.browser"
             )) {
               $key = $browserRoot.OpenSubKey($gone)
               if ($null -ne $key) {
@@ -621,8 +737,8 @@ jobs:
             $browserRoot.Dispose()
           }
           foreach ($gone in @(
-            (Join-Path $installedDir "AI365BrowserHost.exe"),
-            (Join-Path $installedDir "com.ai365.browser.json"),
+            (Join-Path $installedDir "ScribbleBrowserHost.exe"),
+            (Join-Path $installedDir "com.scribble.browser.json"),
             (Join-Path $installedDir "BrowserExtension")
           )) {
             if (Test-Path $gone) {
@@ -633,9 +749,22 @@ jobs:
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AI365Setup
-          path: artifacts/AI365Setup.exe
+          name: ScribbleSetup
+          path: artifacts/ScribbleSetup.exe
           if-no-files-found: error
+
+      # Published builds from before the rename request their updater by its
+      # former filename. Keep one byte-identical alias on the rolling release
+      # so those installations can upgrade into Scribble instead of becoming
+      # stranded. The primary artifact and all new clients use ScribbleSetup.
+      - name: Create updater compatibility alias
+        if: github.ref == 'refs/heads/main'
+        shell: pwsh
+        run: |
+          $legacyInstallerName = ("AI" + "365Setup.exe")
+          Copy-Item `
+            -LiteralPath "artifacts\ScribbleSetup.exe" `
+            -Destination (Join-Path "artifacts" $legacyInstallerName)
 
       - name: Publish latest installer from main
         if: github.ref == 'refs/heads/main'
@@ -646,9 +775,12 @@ jobs:
           body: |
             Built automatically from the latest commit on main.
             Version: 2.0.${{ github.run_number }} (shown as
-            "Installed version" in AI365 Settings after updating)
+            "Installed version" in Scribble Settings after updating)
             Commit: ${{ github.sha }}
-          files: artifacts/AI365Setup.exe
+          files: |
+            artifacts/ScribbleSetup.exe
+            artifacts/*365Setup.exe
+          overwrite_files: true
           make_latest: true
           draft: false
           prerelease: false
@@ -657,5 +789,5 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/AI365Setup.exe
+          files: artifacts/ScribbleSetup.exe
           generate_release_notes: true

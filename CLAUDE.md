@@ -1,4 +1,4 @@
-# AI365 (ai365)
+# Scribble (scribble)
 
 Windows Office COM add-in suite (.NET Framework 4.8, C# 7.3, classic
 csproj): one assembly hosts four add-ins — Outlook (`AddIn.cs`), Excel
@@ -26,11 +26,11 @@ built or run on Linux — the Windows CI workflow
 
 - C# 7.3 only (no target-typed `new`, ranges, or switch expressions).
 - String concatenation over interpolation; match the existing wrapping style.
-- New source files must be added to `OutlookLocalAIChat.csproj` (classic
+- New source files must be added to `Scribble.csproj` (classic
   csproj — no globbing).
 - Security boundaries are load-bearing: the static scan asserts exact strings
   in several files (tool names, draft authorization, working-set caps, the
-  AI365 Draft sheet name, the [AI365 draft] slide marker, and the MCP
+  Scribble Draft sheet name, the [Scribble draft] slide marker, and the MCP
   namespace). Check `scripts/Test-Guardrails.ps1` before renaming or
   rewording anything it references.
 - Hard capability rules across every host: the model can never send email,
