@@ -1,8 +1,9 @@
 # AI365
 
 A Windows-only AI assistant suite for classic Microsoft Office
-(Professional Plus 2021): one installer adds an **AI365** sidebar to
-**Outlook, Excel, PowerPoint, and Word**. Every pane shares the same chat stack -
+(Professional Plus 2021), Microsoft Edge, and Google Chrome: one installer adds
+an **AI365** sidebar to **Outlook, Excel, PowerPoint, Word, and the web**. Every
+pane shares the same chat stack -
 local OpenAI-compatible models or Google Gemini via browser sign-in, the same
 settings and writing soul, rich markdown output with tables, optional MCP
 tool servers, and the same hard guardrails: the model can read bounded
@@ -19,12 +20,15 @@ context but can never send email, save a file, or delete anything.
 - **Word**: chat with the open document (bounded text reads); the only write
   surface is a brand-new, unsaved **[AI365 draft]** document that the add-in
   never saves.
+- **Edge and Chrome**: chat with the current webpage after explicitly attaching
+  its selection, bounded page text, or visible screenshot. The extension is
+  read-only: it cannot click, navigate, submit forms, or modify the page.
 - **Connected**: from any document pane, "email this to ..." opens an
   unsent Outlook draft (optionally attaching the saved file); "put this in
   PowerPoint" / "put this in Excel" / "put this in Word" drafts into the
   sibling app; and a deliberate **Share to AI365 apps** hand-off moves one
   bounded snippet between panes. One **Update** click in Settings refreshes
-  all four add-ins together.
+  the whole installed suite together.
 
 It does not use Microsoft 365 add-in deployment, Microsoft Graph, or
 Entra ID.
@@ -36,34 +40,45 @@ Entra ID.
    [AI365Setup.exe](https://github.com/datap0nd/ai365/releases/latest/download/AI365Setup.exe).
    This link tracks the **Latest** release, which is rebuilt automatically on
    every push to `main`.
-3. Run the installer for your Windows account. It asks which Office apps
-   get AI365 - all four are selected by default; untick any you do not
+3. Run the installer for your Windows account. It asks which apps get AI365 -
+   all five are selected by default; untick any you do not
    want. Re-running the installer later lets you change the selection, and
    deselected apps are cleanly unregistered. Silent installs (and the
    in-app updater) keep your previous selection.
-4. Start classic Outlook, Excel, PowerPoint, or Word.
-5. In Outlook choose **AI365 > AI365** on the ribbon; in Excel, PowerPoint,
+4. If you selected Edge and Chrome, leave **Finish setting up AI365 in Edge or
+   Chrome** ticked. Setup opens the Extensions page and the exact AI365 folder.
+   Turn on **Developer mode**, select **Load unpacked**, and choose that folder.
+   Chrome and Edge use the same one-time process. The installer prepares the
+   files and secure local bridge, but the browser must receive this approval
+   from you because AI365 is not in a browser store. If a managed computer
+   disables Developer mode, your IT policy must allow the extension.
+5. Start classic Outlook, Excel, PowerPoint, or Word.
+6. In Outlook choose **AI365 > AI365** on the ribbon; in Excel, PowerPoint,
    and Word the **AI365** button sits on the **Home** tab.
-6. Open **Settings** and enter:
+7. Open **Settings** and enter:
    - the OpenAI-compatible endpoint or base URL;
    - the API key;
    - **Allow insecure HTTP** only when a non-local endpoint uses plain HTTP.
-7. Click **Refresh models** to load available model IDs from `GET /v1/models`,
+8. Click **Refresh models** to load available model IDs from `GET /v1/models`,
    then choose or type a model that supports OpenAI-compatible chat tool calls.
-8. Click **Check endpoint**. Save only after authentication, the selected
+9. Click **Check endpoint**. Save only after authentication, the selected
    model, and mailbox tool calling pass.
-9. Optional: open **Writing style**, click **Analyze 15 sent emails**, review
+10. Optional: open **Writing style**, click **Analyze 15 sent emails**, review
    the generated drafting instructions, edit them, and enable the profile.
 
 To update later, open **Settings** in any AI365 pane and click
 **Update AI365**. You confirm twice - the second dialog warns that the
 Office apps are about to close, so save your work first - and AI365 then
 downloads the latest installer, **closes Outlook, Excel, PowerPoint, and
-Word itself**, and installs silently for your Windows account. Only the
+Word itself**, and installs silently for your Windows account. Edge and Chrome
+stay open. Only the
 apps that actually have AI365 installed are closed; a host still sitting
 on a save prompt after about thirty seconds is closed forcibly, so an
 update can never stall unfinished. Outlook reopens automatically when the
-update was started there. One update refreshes the whole suite.
+update was started there. One update refreshes the whole suite. If the browser
+extension changed, open `edge://extensions` or `chrome://extensions`, find
+AI365, and click **Reload**; unpacked extensions do not reload changed files
+automatically.
 
 Settings shows the **Installed version** (for example `2.0.27.0`); the
 release page states the version it publishes, so you can confirm an
@@ -230,6 +245,36 @@ line) are followed exactly in every draft. Soul, strength, and rules apply
 only to draft creation and revision, and only to wording, greeting,
 cadence, and sign-off. They cannot alter any capability or security rule.
 
+## Edge and Chrome
+
+Click the AI365 toolbar button to open its side panel. Browser context starts
+empty on every panel: AI365 reads the current tab only after you click
+**Attach selection**, **Attach page**, or **Attach visible screenshot**. The
+selection is capped at 16,000 characters, page text at 48,000, and a screenshot
+at 5 MB. **Clear context** removes all three before the next message. A
+right-click menu can attach the current selection and open the panel too.
+
+The extension does not request browsing history, cookies, downloads, access to
+every website, or background access to other tabs. It cannot click, navigate,
+fill or submit forms, enter credentials, upload, download, purchase, post,
+message, or change the page. Browser settings pages, extension galleries, and
+some protected viewers block page-text extraction; attach a visible screenshot
+or use a normal webpage instead.
+
+Messages go through a per-user native bridge to the same AI365 connection and
+model configured in Office. The extension never receives the API key, Gemini
+token, or MCP headers. Page content is always labelled as untrusted data. MCP is
+off in browser chat by default. To use a web-search MCP, list its exact tool name
+under that server's **Edge/Chrome tool allowlist** in AI365 Settings and tick the
+read-only approval. The browser uses at most one approved MCP server and one
+tool call per request; never approve a tool that writes or takes actions.
+
+To repeat the one-time setup, use **Set up AI365 in Microsoft Edge** or **Set
+up AI365 in Google Chrome** from the AI365 Start menu folder. After an AI365
+update, click **Reload** on the browser's Extensions page. Chrome and Edge both
+require this manual reload for an unpacked extension whose installed files
+changed.
+
 ## Excel, PowerPoint, and Word panes
 
 The Excel, PowerPoint, and Word sidebars reuse the same chat page, models,
@@ -381,6 +426,13 @@ outside AI365's guardrails - AI365 itself still cannot send email or save or
 delete documents, but a server you add acts with whatever powers it has.
 Only add servers you trust, and prefer read-only ones.
 
+Browser chat has a separate, default-off boundary. For one server only, you may
+enter up to 20 exact, case-sensitive MCP tool names in its **Edge/Chrome tool
+allowlist** and affirm that you verified them as read-only. Only those names can
+be exposed there, with at most one call in one tool round. Adding a server for
+Office does not automatically make any of its tools available to webpage
+content.
+
 HTTP(S) servers can carry per-server request headers (one per line as
 `Name: value`, typically `Authorization: Bearer ...`). Headers are sent only
 to that server's own endpoint, never logged, and stored DPAPI-encrypted like
@@ -464,6 +516,10 @@ scoped exception, not a general mutation permission.
   outside the model client, and verifies the source plus compiled assembly in CI.
 - Drafts are saved and displayed as unsent Outlook items.
 - CI fails if forbidden Outlook action calls are introduced.
+- The browser host accepts messages only from AI365's fixed extension identity,
+  validates bounded native-message framing and actual JPEG/PNG/WebP screenshot
+  bytes, and offers no browser-control or Office-write tools. Attached page
+  content and screenshots are explicitly untrusted reference data.
 
 These controls let model output select read-only context and, after explicit
 local authorization, create one unsent draft. They prevent it from reaching an
@@ -483,6 +539,11 @@ Every chat request initially sends the configured endpoint:
 - up to three explicitly added bounded text files;
 - the editable writing profile only when drafting is locally authorized and the
   profile is enabled.
+
+A browser request instead sends only the latest prompt, up to 12 recent chat
+turns, and the current-tab selection, page text, and visible screenshot that the
+user explicitly attached. It never sends browser history, cookies, other tabs,
+or pages in the background.
 
 The model may then request:
 
@@ -627,9 +688,16 @@ timeout failures before the endpoint returns an HTTP response.
 
 ## Remove
 
-1. Close Outlook.
-2. Open Windows **Installed apps** or **Apps & features**.
-3. Uninstall **AI365**.
+1. In every browser where you loaded AI365, open `edge://extensions` or
+   `chrome://extensions` and select **Remove** on the AI365 card.
+2. Close Outlook, Excel, PowerPoint, and Word.
+3. Open Windows **Installed apps** or **Apps & features**.
+4. Uninstall **AI365**.
+
+Windows uninstallation removes the private native bridge, its registration, and
+the staged extension files. It deliberately does not edit browser profiles, so
+if you skip step 1 the browser can retain a broken unpacked-extension card until
+you remove it there.
 
 Endpoint settings remain under:
 
@@ -657,9 +725,12 @@ tests\GuardrailTests\bin\Release\GuardrailTests.exe
 powershell -ExecutionPolicy Bypass -File scripts\Test-Guardrails.ps1
 ```
 
-The repository stores the stable strong-name key as Base64 so local and CI builds
-use the same COM identity. A strong name is an assembly identity mechanism, not a
-trusted publisher signature.
+The solution builds the Office assembly, guardrail tests, and the .NET Framework
+browser bridge. The browser extension is plain Manifest V3 HTML, CSS, and
+JavaScript, so it needs no npm build. The repository stores the stable
+strong-name key as Base64 so local and CI builds use the same COM identity. A
+strong name is an assembly identity mechanism, not a trusted publisher
+signature.
 
 Build the installer:
 
@@ -680,7 +751,7 @@ above always points at the newest build.
 
 ### Code signing (optional)
 
-CI signs the add-in DLL and the installer when the repository has the
+CI signs the add-in DLL, browser bridge, and installer when the repository has the
 `SIGNING_PFX` (base64 PFX) and `SIGNING_PFX_PASSWORD` Actions secrets. To set
 that up once, run on any Windows machine:
 
@@ -706,6 +777,7 @@ verification.
 ## Compatibility
 
 - Classic Outlook, Excel, PowerPoint, and Word for Windows
+- Microsoft Edge or Google Chrome 116 or newer for the browser side panel
 - Microsoft Office Professional Plus 2021
 - 32-bit or 64-bit Office on Windows
 - .NET Framework 4.8

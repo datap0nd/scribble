@@ -256,9 +256,12 @@ namespace OutlookLocalAIChat.Configuration
                     Name = server.Name,
                     Target = server.Target,
                     Arguments = server.Arguments,
-                    Headers = TryUnprotect(
-                        server.ProtectedHeaders),
-                    Enabled = server.Enabled
+                     Headers = TryUnprotect(
+                         server.ProtectedHeaders),
+                    Enabled = server.Enabled,
+                    BrowserTools = server.BrowserTools,
+                    BrowserToolsApproved =
+                        server.BrowserToolsApproved
                 }.Sanitized();
                 if (config.Target.Length == 0)
                 {
@@ -304,7 +307,10 @@ namespace OutlookLocalAIChat.Configuration
                         config.Headers.Trim().Length > 0
                             ? Protect(config.Headers.Trim())
                             : string.Empty,
-                    Enabled = config.Enabled
+                    Enabled = config.Enabled,
+                    BrowserTools = config.BrowserTools,
+                    BrowserToolsApproved =
+                        config.BrowserToolsApproved
                 });
                 if (result.Count == McpServerConfig.MaxServers)
                 {
@@ -389,6 +395,10 @@ namespace OutlookLocalAIChat.Configuration
             public string ProtectedHeaders { get; set; }
 
             public bool Enabled { get; set; }
+
+            public string BrowserTools { get; set; }
+
+            public bool BrowserToolsApproved { get; set; }
         }
 
         // A headers value that fails to unprotect (copied profile,

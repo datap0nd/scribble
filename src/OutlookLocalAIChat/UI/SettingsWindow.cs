@@ -57,7 +57,10 @@ namespace OutlookLocalAIChat.UI
         private readonly TextBox _mcpTarget = new TextBox();
         private readonly TextBox _mcpArguments = new TextBox();
         private readonly TextBox _mcpHeaders = new TextBox();
+        private readonly TextBox _mcpBrowserTools = new TextBox();
         private readonly CheckBox _mcpEnabled = new CheckBox();
+        private readonly CheckBox _mcpBrowserToolsApproved =
+            new CheckBox();
         private readonly CheckBox _useRecommendedLimits =
             new CheckBox();
         private readonly TrackBar _limitMultiplier =
@@ -731,13 +734,13 @@ namespace OutlookLocalAIChat.UI
                 AutoScroll = true,
                 Dock = DockStyle.Fill,
                 ColumnCount = 1,
-                RowCount = 13,
+                RowCount = 16,
                 Padding = new Padding(18, 16, 18, 12)
             };
             layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             layout.RowStyles.Add(
                 new RowStyle(SizeType.Percent, 100));
-            for (var row = 2; row < 13; row++)
+            for (var row = 2; row < 16; row++)
             {
                 layout.RowStyles.Add(
                     new RowStyle(SizeType.AutoSize));
@@ -753,7 +756,10 @@ namespace OutlookLocalAIChat.UI
                 "documents, but a server you add acts with " +
                 "whatever powers it has. Only add servers you " +
                 "trust, prefer read-only ones, and remember their " +
-                "results are treated as untrusted data.");
+                "results are treated as untrusted data. Browser " +
+                "chat gets no MCP tools by default; it can use " +
+                "only exact tool names that you separately approve " +
+                "as read-only below.");
             intro.ForeColor = SystemColors.ControlText;
             layout.Controls.Add(intro, 0, 0);
 
@@ -809,12 +815,38 @@ namespace OutlookLocalAIChat.UI
                 "MCP server HTTP headers";
             layout.Controls.Add(_mcpHeaders, 0, 9);
 
+            layout.Controls.Add(
+                FieldLabel(
+                    "Edge/Chrome tool allowlist (exact MCP names, " +
+                    "one per line; leave blank to disable)"),
+                0,
+                10);
+            _mcpBrowserTools.Dock = DockStyle.Fill;
+            _mcpBrowserTools.Multiline = true;
+            _mcpBrowserTools.ScrollBars = ScrollBars.Vertical;
+            _mcpBrowserTools.MinimumSize = new Size(0, 48);
+            _mcpBrowserTools.MaxLength = 2000;
+            _mcpBrowserTools.AccessibleName =
+                "Read-only MCP tools allowed in browser chat";
+            layout.Controls.Add(_mcpBrowserTools, 0, 11);
+
+            _mcpBrowserToolsApproved.AutoSize = true;
+            _mcpBrowserToolsApproved.Text =
+                "Allow only these tools in Edge/Chrome; I verified " +
+                "that they are read-only";
+            _mcpBrowserToolsApproved.AccessibleName =
+                "Approve listed read-only MCP tools for browser chat";
+            layout.Controls.Add(
+                _mcpBrowserToolsApproved,
+                0,
+                12);
+
             _mcpEnabled.AutoSize = true;
             _mcpEnabled.Checked = true;
             _mcpEnabled.Text = "Enabled";
             _mcpEnabled.AccessibleName =
                 "MCP server enabled";
-            layout.Controls.Add(_mcpEnabled, 0, 10);
+            layout.Controls.Add(_mcpEnabled, 0, 13);
 
             var buttons = new FlowLayoutPanel
             {
@@ -828,15 +860,16 @@ namespace OutlookLocalAIChat.UI
             _mcpRemove.Click += McpRemoveClick;
             buttons.Controls.Add(_mcpSave);
             buttons.Controls.Add(_mcpRemove);
-            layout.Controls.Add(buttons, 0, 11);
+            layout.Controls.Add(buttons, 0, 14);
 
             ConfigureSupportingLabel(_mcpStatus);
             _mcpStatus.Text =
                 "Changes apply after you press Save. Up to " +
                 McpServerConfig.MaxServers +
                 " servers; their tools appear to the model as " +
-                "mcp_<server>_<tool>.";
-            layout.Controls.Add(_mcpStatus, 0, 12);
+                "mcp_<server>_<tool>. Browser chat uses at most " +
+                "one approved server and one tool call per request.";
+            layout.Controls.Add(_mcpStatus, 0, 15);
             page.Controls.Add(layout);
             return page;
         }
@@ -849,6 +882,11 @@ namespace OutlookLocalAIChat.UI
                 _mcpList.Items.Add(
                     server.Name +
                     (server.Enabled ? string.Empty : " (off)") +
+                    (server.BrowserToolsApproved &&
+                     server.ParsedBrowserTools().Count > 0
+                        ? " (browser: " +
+                          server.ParsedBrowserTools().Count + ")"
+                        : string.Empty) +
                     "  -  " +
                     TextBoundary.SingleLine(server.Target, 80));
             }
@@ -869,6 +907,9 @@ namespace OutlookLocalAIChat.UI
             _mcpTarget.Text = server.Target;
             _mcpArguments.Text = server.Arguments;
             _mcpHeaders.Text = server.Headers;
+            _mcpBrowserTools.Text = server.BrowserTools;
+            _mcpBrowserToolsApproved.Checked =
+                server.BrowserToolsApproved;
             _mcpEnabled.Checked = server.Enabled;
         }
 
@@ -882,6 +923,9 @@ namespace OutlookLocalAIChat.UI
                 Target = _mcpTarget.Text,
                 Arguments = _mcpArguments.Text,
                 Headers = _mcpHeaders.Text,
+                BrowserTools = _mcpBrowserTools.Text,
+                BrowserToolsApproved =
+                    _mcpBrowserToolsApproved.Checked,
                 Enabled = _mcpEnabled.Checked
             }.Sanitized();
             if (server.Target.Length == 0)
@@ -889,6 +933,15 @@ namespace OutlookLocalAIChat.UI
                 _mcpStatus.Text =
                     "Enter a command path or an HTTP(S) URL " +
                     "for the server.";
+                return;
+            }
+
+            if (server.BrowserToolsApproved &&
+                server.ParsedBrowserTools().Count == 0)
+            {
+                _mcpStatus.Text =
+                    "List at least one exact read-only tool name, " +
+                    "or untick browser approval.";
                 return;
             }
 
@@ -919,6 +972,27 @@ namespace OutlookLocalAIChat.UI
                 _mcpStatus.Text =
                     "Added " + server.Name +
                     ". Press Save to apply.";
+            }
+
+            if (server.BrowserToolsApproved)
+            {
+                foreach (var entry in _mcpServers)
+                {
+                    if (!ReferenceEquals(entry, server) &&
+                        !string.Equals(
+                            entry.Name,
+                            server.Name,
+                            StringComparison.Ordinal))
+                    {
+                        entry.BrowserToolsApproved = false;
+                    }
+                }
+
+                _mcpStatus.Text =
+                    "Approved " + server.Name +
+                    " for its listed read-only browser tools. " +
+                    "Other browser MCP servers were disabled. " +
+                    "Press Save to apply.";
             }
 
             RefreshMcpList();

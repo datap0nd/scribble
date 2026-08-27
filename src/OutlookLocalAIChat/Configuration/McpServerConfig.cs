@@ -31,6 +31,14 @@ namespace OutlookLocalAIChat.Configuration
 
         public bool Enabled { get; set; } = true;
 
+        // Exact, case-sensitive MCP tool names that the user has
+        // independently verified are read-only and explicitly
+        // approved for webpage conversations. Empty is the safe
+        // default: this server is never exposed to the browser host.
+        public string BrowserTools { get; set; } = string.Empty;
+
+        public bool BrowserToolsApproved { get; set; }
+
         public bool IsHttp
         {
             get
@@ -54,8 +62,41 @@ namespace OutlookLocalAIChat.Configuration
                     Arguments,
                     1000),
                 Headers = TextBoundary.PlainText(Headers, 2000),
-                Enabled = Enabled
+                Enabled = Enabled,
+                BrowserTools = TextBoundary.PlainText(
+                    BrowserTools,
+                    2000),
+                BrowserToolsApproved = BrowserToolsApproved
             };
+        }
+
+        public IReadOnlyList<string> ParsedBrowserTools()
+        {
+            var tools = new List<string>();
+            var seen = new HashSet<string>(
+                StringComparer.Ordinal);
+            var lines = (BrowserTools ?? string.Empty)
+                .Replace("\r\n", "\n")
+                .Replace(',', '\n')
+                .Split('\n');
+            foreach (var raw in lines)
+            {
+                var name = TextBoundary.SingleLine(
+                    raw,
+                    128).Trim();
+                if (name.Length == 0 || !seen.Add(name))
+                {
+                    continue;
+                }
+
+                tools.Add(name);
+                if (tools.Count == 20)
+                {
+                    break;
+                }
+            }
+
+            return tools;
         }
 
         // Parses the Headers text into at most 8 well-formed

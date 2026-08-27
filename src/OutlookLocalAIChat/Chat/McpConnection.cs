@@ -46,6 +46,7 @@ namespace OutlookLocalAIChat.Chat
 
         private readonly McpServerConfig _config;
         private readonly HttpClient _httpClient;
+        private readonly int _maxOperationTimeoutMs;
         private readonly JavaScriptSerializer _serializer =
             new JavaScriptSerializer();
         private readonly object _gate = new object();
@@ -65,10 +66,21 @@ namespace OutlookLocalAIChat.Chat
         public McpConnection(
             McpServerConfig config,
             HttpClient httpClient)
+            : this(config, httpClient, int.MaxValue)
+        {
+        }
+
+        internal McpConnection(
+            McpServerConfig config,
+            HttpClient httpClient,
+            int maxOperationTimeoutMs)
         {
             _config = config ??
                 throw new ArgumentNullException(nameof(config));
             _httpClient = httpClient;
+            _maxOperationTimeoutMs = Math.Max(
+                1000,
+                maxOperationTimeoutMs);
         }
 
         public string ServerName
@@ -84,7 +96,7 @@ namespace OutlookLocalAIChat.Chat
                 var result = Request(
                     "tools/list",
                     new Dictionary<string, object>(),
-                    ListTimeoutMs);
+                    BoundedTimeout(ListTimeoutMs));
                 var tools = new List<McpToolDescriptor>();
                 object toolsValue;
                 if (result == null ||
@@ -159,7 +171,7 @@ namespace OutlookLocalAIChat.Chat
                             new Dictionary<string, object>()
                         }
                     },
-                    CallTimeoutMs);
+                    BoundedTimeout(CallTimeoutMs));
                 isError = false;
                 if (result == null)
                 {
@@ -277,7 +289,7 @@ namespace OutlookLocalAIChat.Chat
                             }
                         }
                     },
-                    InitializeTimeoutMs);
+                    BoundedTimeout(InitializeTimeoutMs));
                 if (result == null)
                 {
                     throw new InvalidOperationException(
@@ -396,7 +408,7 @@ namespace OutlookLocalAIChat.Chat
                 {
                     PostHttp(
                         _serializer.Serialize(message),
-                        InitializeTimeoutMs);
+                        BoundedTimeout(InitializeTimeoutMs));
                 }
                 catch (Exception exception)
                 {
@@ -661,6 +673,11 @@ namespace OutlookLocalAIChat.Chat
 
                 return body;
             }
+        }
+
+        private int BoundedTimeout(int requested)
+        {
+            return Math.Min(requested, _maxOperationTimeoutMs);
         }
 
         // Accepts either a bare JSON-RPC message or an SSE stream

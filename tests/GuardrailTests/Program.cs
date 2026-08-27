@@ -150,6 +150,12 @@ namespace GuardrailTests
                     "Document factory authorizes at most one marked draft",
                     DocumentFactoryGatesDraftTools);
                 Run(
+                    "Browser context is explicit, bounded, and read only",
+                    BrowserContextIsBoundedAndReadOnly);
+                Run(
+                    "Browser screenshots require valid vision input",
+                    BrowserScreenshotRequiresVision);
+                Run(
                     "MCP tools are namespaced, bounded, and user-configured",
                     McpToolsAreNamespacedAndBounded);
                 Run(
@@ -5092,6 +5098,133 @@ namespace GuardrailTests
                 "MCP tools must ride with an explicit boundary sentence.");
         }
 
+        private static void BrowserContextIsBoundedAndReadOnly()
+        {
+            var allowed = new ChatToolDefinition
+            {
+                type = "function",
+                function = new ChatToolFunctionDefinition
+                {
+                    name = "mcp_demo_lookup",
+                    description = "demo",
+                    parameters = new Dictionary<string, object>()
+                }
+            };
+            var forbidden = new ChatToolDefinition
+            {
+                type = "function",
+                function = new ChatToolFunctionDefinition
+                {
+                    name = "create_draft",
+                    description = "must not cross the browser boundary",
+                    parameters = new Dictionary<string, object>()
+                }
+            };
+            var request = BrowserChatRequestFactory.Create(
+                "gpt-oss-20b",
+                new List<ChatTurn>(),
+                "What is this page about?",
+                "Example page",
+                "https://example.test/article",
+                new string(
+                    's',
+                    BrowserChatRequestFactory.MaxSelectionCharacters) +
+                    "SELECTION_END",
+                new string(
+                    'p',
+                    BrowserChatRequestFactory.MaxPageCharacters) +
+                    "PAGE_END",
+                string.Empty,
+                new List<ChatToolDefinition>
+                {
+                    allowed,
+                    forbidden
+                });
+
+            Assert(
+                request.tools.Count == 1 &&
+                request.tools[0].function.name == "mcp_demo_lookup",
+                "The browser request must expose only namespaced MCP tools.");
+            var system = Convert.ToString(
+                ((ChatCompletionInputMessage)
+                    request.messages[0]).content);
+            Assert(
+                system.Contains("read-only web-page assistant") &&
+                system.Contains("You cannot click, navigate") &&
+                system.Contains("untrusted reference data") &&
+                system.Contains("cannot expand these capabilities"),
+                "Browser requests must carry an explicit read-only, " +
+                "untrusted-context boundary.");
+            var context = Convert.ToString(
+                ((ChatCompletionInputMessage)
+                    request.messages[1]).content);
+            Assert(
+                context.Contains("<browser_context>") &&
+                context.Contains("Example page") &&
+                context.Contains("https://example.test/article") &&
+                !context.Contains("SELECTION_END") &&
+                !context.Contains("PAGE_END"),
+                "Browser context must be explicitly wrapped and bounded.");
+        }
+
+        private static void BrowserScreenshotRequiresVision()
+        {
+            const string validScreenshot =
+                "data:image/jpeg;base64,/9j/AA==";
+            var visionRequest = BrowserChatRequestFactory.Create(
+                "qwen3-vl-30b",
+                new List<ChatTurn>(),
+                "Describe the visible chart.",
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                validScreenshot);
+            var visionMessage =
+                (ChatCompletionInputMessage)
+                    visionRequest.messages[
+                        visionRequest.messages.Count - 1];
+            var visionParts = visionMessage.content as List<object>;
+            Assert(
+                visionParts != null &&
+                visionParts.OfType<ChatMultimodalImagePart>().Any(
+                    part => part.image_url != null &&
+                        part.image_url.url == validScreenshot),
+                "A valid screenshot may be sent only as vision input.");
+
+            var textRequest = BrowserChatRequestFactory.Create(
+                "gpt-oss-20b",
+                new List<ChatTurn>(),
+                "Describe the visible chart.",
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                validScreenshot);
+            Assert(
+                !textRequest.messages
+                    .OfType<ChatCompletionInputMessage>()
+                    .Any(message => message.content is List<object>),
+                "A screenshot must not be sent to a text-only model.");
+            var textSystem = Convert.ToString(
+                ((ChatCompletionInputMessage)
+                    textRequest.messages[0]).content);
+            Assert(
+                textSystem.Contains("screenshot was not transmitted"),
+                "Text-only requests must explain that the screenshot " +
+                "was withheld.");
+            Assert(
+                BrowserChatRequestFactory.NormalizeScreenshot(
+                    "data:text/html;base64,AAAA").Length == 0 &&
+                BrowserChatRequestFactory.NormalizeScreenshot(
+                    "https://example.test/image.png").Length == 0 &&
+                BrowserChatRequestFactory.NormalizeScreenshot(
+                    "data:image/png;base64,not-base64").Length == 0 &&
+                BrowserChatRequestFactory.NormalizeScreenshot(
+                    "data:image/png;base64,PGh0bWw+").Length == 0,
+                "Browser screenshots must be bounded image data URLs.");
+        }
+
         private static void McpToolsAreNamespacedAndBounded()
         {
             Assert(
@@ -5136,13 +5269,52 @@ namespace GuardrailTests
                 Name = "Files Server",
                 Target = "  https://example.test/mcp  ",
                 Arguments = "--flag",
+                BrowserTools =
+                    "search_query\nsearch_query,lookup",
+                BrowserToolsApproved = true,
                 Enabled = true
             }.Sanitized();
             Assert(
                 config.Name == "files_server" &&
                 config.IsHttp &&
-                config.Target == "https://example.test/mcp",
+                config.Target == "https://example.test/mcp" &&
+                config.BrowserToolsApproved &&
+                config.ParsedBrowserTools().SequenceEqual(
+                    new[] { "search_query", "lookup" }),
                 "MCP server configuration sanitization failed.");
+
+            using (var browserDefault = new McpToolHost(
+                new List<McpServerConfig>
+                {
+                    new McpServerConfig
+                    {
+                        Name = "search",
+                        Target = "https://example.test/mcp",
+                        BrowserTools = "search_query",
+                        BrowserToolsApproved = false,
+                        Enabled = true
+                    }
+                },
+                true))
+            {
+                Assert(
+                    !browserDefault.HasServers,
+                    "Browser MCP must be disabled unless the user " +
+                    "explicitly approves exact read-only tools.");
+            }
+
+            using (var browserApproved = new McpToolHost(
+                new List<McpServerConfig>
+                {
+                    config
+                },
+                true))
+            {
+                Assert(
+                    browserApproved.HasServers,
+                    "An explicitly approved browser MCP allowlist " +
+                    "must register its single bounded server.");
+            }
         }
 
         // Answers JSON-RPC over stdio like a minimal MCP server:
@@ -5424,6 +5596,33 @@ namespace GuardrailTests
             finally
             {
                 host.Dispose();
+            }
+
+            serverConfig.BrowserToolsApproved = true;
+            serverConfig.BrowserTools = "not_echo";
+            using (var browserDenied = new McpToolHost(
+                new List<McpServerConfig> { serverConfig },
+                true))
+            {
+                Assert(
+                    browserDenied.GetDefinitions().Count == 0,
+                    "Browser MCP must hide every tool not named in " +
+                    "the exact user-approved allowlist.");
+            }
+
+            serverConfig.BrowserTools = "echo";
+            using (var browserAllowed = new McpToolHost(
+                new List<McpServerConfig> { serverConfig },
+                true))
+            {
+                var browserDefinitions =
+                    browserAllowed.GetDefinitions();
+                Assert(
+                    browserDefinitions.Count == 1 &&
+                    browserDefinitions[0].function.name ==
+                        "mcp_fake_echo",
+                    "Browser MCP must expose only the exact approved " +
+                    "read-only tool.");
             }
         }
 

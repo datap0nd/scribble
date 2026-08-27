@@ -2,8 +2,9 @@
 
 ## Security objective
 
-Untrusted email content, user prompts, conversation history, and model responses
-must never reach an Outlook send or source-message mutation capability. Model
+Untrusted email, document, webpage, screenshot, MCP, user-prompt, conversation,
+and model content must never expand the locally available capabilities or reach
+an Outlook send or source-message mutation capability. Model
 tool calls may select bounded read-only mailbox context. The only mutation this
 add-in permits is creating one unsent draft after explicit, request-scoped local
 authorization and updating that same locally linked unsent item after user
@@ -56,6 +57,30 @@ from the latest user-written prompt. Email bodies and model output do not enter
 that decision. Updates are available only for locally recognized revision intent
 while the host retains exactly one linked draft, and remain limited to one
 mutation attempt per user request.
+
+The Edge/Chrome path is separate and read-only:
+
+```text
+Explicit toolbar, context-menu, or attach-button gesture
+    |
+    v
+temporary activeTab access -> bounded selection/page text/visible screenshot
+    |
+    v
+fixed extension origin -> framed per-user native bridge -> BrowserChatService
+    |
+    v
+configured endpoint + explicitly allowlisted read-only MCP tools only
+```
+
+The extension has no host permissions, content script, remote code, browsing
+history, cookie, download, debugger, or browser-management access. It cannot
+click, navigate, fill forms, enter credentials, upload, download, purchase,
+post, message, or mutate a page. The native host accepts only the fixed public
+extension identity and exposes neither browser control nor Office/mailbox tools.
+MCP is disabled in browser chat unless the user enters exact tool names and
+affirms that each is read-only; only one approved server and one call are
+allowed per request.
 
 ## Enforced invariants
 
@@ -121,8 +146,26 @@ mutation attempt per user request.
 17. Writing-style analysis never runs automatically. It requires an explicit
     Settings action, reads at most 15 recent usable Sent Items messages, removes
     obvious quoted history, and uses a no-tool model request. The generated
-    profile is visible and editable. It is added only to locally authorized
-    draft requests and is subordinate to every capability boundary.
+     profile is visible and editable. It is added only to locally authorized
+     draft requests and is subordinate to every capability boundary.
+18. Browser page access requires a user gesture and the temporary `activeTab`
+    grant. Context remains visibly attached in the side panel until the user
+    clears it; it is never collected from other tabs or in the background.
+19. Browser context is capped at 16,000 selection characters, 48,000 page-text
+    characters, a validated 5 MB JPEG/PNG/WebP screenshot, 12 history turns, and
+    a 16,000-character prompt. Native framing and responses have independent
+    hard byte caps and timeouts.
+20. The native-host manifest allowlists one stable extension origin. The host
+    independently requires that exact origin argument, uses strict binary
+    stdin/stdout framing, and returns no settings secrets or stack traces.
+21. `BrowserChatService` can expose only exact, case-sensitive MCP tool names
+    the user separately allowlisted and affirmed as read-only. Browser MCP is
+    default-off, limited to one approved server, one call, one tool round, and
+    shorter per-operation timeouts. It rejects every other requested tool and
+    labels page, screenshot, and MCP results as untrusted data. It has no Outlook
+    or document host object and no page-control API.
+22. Model and webpage output is inserted using DOM `textContent`; it is never
+    parsed as HTML or evaluated as script.
 
 The system prompt reinforces these limits, but no security property depends on
 the model obeying it.
@@ -155,6 +198,10 @@ explicit persisted opt-in in Settings and displays a warning because the API
 key, prompts, and retrieved email context are then sent without transport
 encryption.
 
+The browser extension never receives the API key, Gemini refresh token, or MCP
+headers. The native bridge loads them under the same current-user process and
+sends them only through the existing configured provider/MCP clients.
+
 The Settings endpoint check may send the same Authorization header to
 `GET /v1/models`. It then submits a synthetic tool-call request containing no
 selected-message metadata, email bodies, or mailbox search results. The returned
@@ -175,7 +222,7 @@ application-control policy.
 For organizational distribution:
 
 1. Build in a controlled Windows pipeline.
-2. Sign the DLL and installer with the organization's trusted code-signing
+2. Sign the DLL, browser native host, and installer with the organization's trusted code-signing
    certificate.
 3. Publish hashes and retain build provenance.
 4. Allowlist the publisher rather than a mutable file path.
@@ -187,7 +234,11 @@ The design cannot guarantee safety if:
 - the installed binary or registry entries are replaced;
 - the Windows account is compromised;
 - Outlook, .NET Framework, or Windows has an exploitable vulnerability;
+- Edge, Chrome, the extension platform, or the native-messaging channel has an
+  exploitable vulnerability;
 - another Outlook add-in modifies the draft after creation;
+- a user-configured MCP server exercises capabilities outside AI365's own
+  read-only browser/Office hosts;
 - the configured AI endpoint mishandles or retains submitted data.
 
 Review the endpoint provider's privacy, retention, and data-residency controls

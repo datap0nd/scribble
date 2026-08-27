@@ -499,7 +499,11 @@ $mcpHostSource = Get-Content (
 foreach ($requiredMcpBoundary in @(
     'ToolPrefix = "mcp_"',
     "untrusted_mcp_data",
-    "MaxExposedTools = 40"
+    "MaxExposedTools = 40",
+    "MaxBrowserServers = 1",
+    "BrowserOperationTimeoutMs = 30000",
+    "BrowserToolsApproved",
+    "browserTools.Contains(tool.Name)"
 )) {
     if (-not $mcpHostSource.Contains($requiredMcpBoundary)) {
         throw "MCP host is missing boundary $requiredMcpBoundary."
@@ -519,6 +523,30 @@ foreach ($mcpForbidden in @(
 if (-not $settingsWindowSource.Contains(
         "outside this add-in's guardrails")) {
     throw "The MCP settings page is missing its trust notice."
+}
+$mcpConfigSource = Get-Content (
+    Join-Path $sourceRoot "Configuration\McpServerConfig.cs") -Raw
+foreach ($browserMcpBoundary in @(
+    "ParsedBrowserTools",
+    "BrowserToolsApproved",
+    "Exact, case-sensitive MCP tool names"
+)) {
+    if (-not $mcpConfigSource.Contains($browserMcpBoundary)) {
+        throw "Browser MCP configuration is missing boundary $browserMcpBoundary."
+    }
+}
+if (-not $settingsWindowSource.Contains("I verified ") -or
+    -not $settingsWindowSource.Contains(
+        "that they are read-only")) {
+    throw "MCP settings must require explicit read-only browser-tool approval."
+}
+if (([regex]::Matches(
+        $settingsStoreSource,
+        "\bBrowserToolsApproved\s*=")).Count -lt 2 -or
+    ([regex]::Matches(
+        $settingsStoreSource,
+        "\bBrowserTools\s*=")).Count -lt 2) {
+    throw "Settings storage must round-trip the browser MCP allowlist and approval."
 }
 
 # Administrator policy can only remove capabilities: settings load
@@ -552,6 +580,360 @@ foreach ($capability in @(
 )) {
     if ($documentModelFacingSource.Contains($capability)) {
         throw "Document model-facing source references forbidden capability $capability."
+    }
+}
+
+# ---- AI365 browser companion guardrails ----
+
+$repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$browserExtensionRoot = Join-Path $repositoryRoot "src\AI365.BrowserExtension"
+$browserHostRoot = Join-Path $repositoryRoot "src\AI365.BrowserHost"
+$browserInstallerPath = Join-Path $repositoryRoot "installer\OutlookLocalAIChat.iss"
+$browserManifestPath = Join-Path $browserExtensionRoot "manifest.json"
+$nativeManifestPath = Join-Path $browserHostRoot "com.ai365.browser.json"
+$browserHostProgramPath = Join-Path $browserHostRoot "Program.cs"
+$browserSetupPath = Join-Path $browserHostRoot "BrowserSetup.cs"
+$nativeProtocolPath = Join-Path $browserHostRoot "NativeMessageProtocol.cs"
+$browserFactoryPath = Join-Path $sourceRoot "Chat\BrowserChatRequestFactory.cs"
+$browserServicePath = Join-Path $sourceRoot "Chat\BrowserChatService.cs"
+$expectedExtensionId = "olkepladbgkfkhlglooilnmalckpdada"
+$expectedOrigin = "chrome-extension://$expectedExtensionId/"
+$nativeHostName = "com.ai365.browser"
+
+foreach ($requiredBrowserFile in @(
+    $browserManifestPath,
+    (Join-Path $browserExtensionRoot "background.js"),
+    (Join-Path $browserExtensionRoot "sidepanel.html"),
+    (Join-Path $browserExtensionRoot "sidepanel.css"),
+    (Join-Path $browserExtensionRoot "sidepanel.js"),
+    $nativeManifestPath,
+    $browserHostProgramPath,
+    $browserSetupPath,
+    $nativeProtocolPath,
+    $browserFactoryPath,
+    $browserServicePath,
+    $browserInstallerPath
+)) {
+    if (-not (Test-Path -LiteralPath $requiredBrowserFile -PathType Leaf)) {
+        throw "Browser companion file is missing: $requiredBrowserFile"
+    }
+}
+
+try {
+    $browserManifest = Get-Content -LiteralPath $browserManifestPath -Raw |
+        ConvertFrom-Json
+}
+catch {
+    throw "The browser extension manifest is not valid JSON: $($_.Exception.Message)"
+}
+try {
+    $nativeManifest = Get-Content -LiteralPath $nativeManifestPath -Raw |
+        ConvertFrom-Json
+}
+catch {
+    throw "The native messaging manifest is not valid JSON: $($_.Exception.Message)"
+}
+
+if ($browserManifest.manifest_version -ne 3) {
+    throw "The browser extension must remain on Manifest V3."
+}
+$approvedBrowserPermissions = @(
+    "activeTab",
+    "contextMenus",
+    "nativeMessaging",
+    "scripting",
+    "sidePanel"
+) | Sort-Object
+$actualBrowserPermissions = @($browserManifest.permissions) | Sort-Object
+if (Compare-Object $approvedBrowserPermissions $actualBrowserPermissions) {
+    throw "The browser extension permission set changed from the approved temporary-access surface."
+}
+foreach ($forbiddenManifestProperty in @(
+    "host_permissions",
+    "optional_host_permissions",
+    "optional_permissions",
+    "externally_connectable",
+    "web_accessible_resources"
+)) {
+    if ($browserManifest.PSObject.Properties.Name -contains
+        $forbiddenManifestProperty) {
+        throw "The browser extension must not declare $forbiddenManifestProperty."
+    }
+}
+if ($browserManifest.background.service_worker -ne "background.js" -or
+    $browserManifest.side_panel.default_path -ne "sidepanel.html") {
+    throw "The browser extension entry points changed unexpectedly."
+}
+$extensionCsp = [string]$browserManifest.content_security_policy.extension_pages
+if (-not $extensionCsp.Contains("connect-src 'none'") -or
+    -not $extensionCsp.Contains("object-src 'none'") -or
+    $extensionCsp -match "unsafe-(?:eval|inline)|https?:|\*://") {
+    throw "The extension content security policy permits remote or unsafe content."
+}
+
+function Get-ChromiumExtensionId([string]$ManifestKey) {
+    try {
+        $publicKey = [Convert]::FromBase64String($ManifestKey)
+    }
+    catch {
+        throw "The extension manifest key is not valid Base64."
+    }
+
+    $sha256 = [Security.Cryptography.SHA256]::Create()
+    try {
+        $hash = $sha256.ComputeHash($publicKey)
+    }
+    finally {
+        $sha256.Dispose()
+    }
+
+    $id = New-Object Text.StringBuilder
+    for ($index = 0; $index -lt 16; $index++) {
+        [void]$id.Append([char]([int][char]'a' + ($hash[$index] -shr 4)))
+        [void]$id.Append([char]([int][char]'a' + ($hash[$index] -band 15)))
+    }
+    return $id.ToString()
+}
+
+$derivedExtensionId = Get-ChromiumExtensionId ([string]$browserManifest.key)
+if ($derivedExtensionId -ne $expectedExtensionId) {
+    throw "The manifest key derives extension ID $derivedExtensionId instead of $expectedExtensionId."
+}
+if ($nativeManifest.name -ne $nativeHostName -or
+    $nativeManifest.type -ne "stdio" -or
+    $nativeManifest.path -ne "AI365BrowserHost.exe") {
+    throw "The native messaging manifest host contract changed unexpectedly."
+}
+$allowedOrigins = @($nativeManifest.allowed_origins)
+if ($allowedOrigins.Count -ne 1 -or $allowedOrigins[0] -ne $expectedOrigin) {
+    throw "The native messaging manifest is not pinned to the approved extension origin."
+}
+$browserHostProgramSource = Get-Content -LiteralPath $browserHostProgramPath -Raw
+$programOrigins = @(
+    [regex]::Matches(
+        $browserHostProgramSource,
+        'chrome-extension://[a-p]{32}/'
+    ) | ForEach-Object { $_.Value } | Sort-Object -Unique
+)
+if ($programOrigins.Count -ne 1 -or $programOrigins[0] -ne $expectedOrigin) {
+    throw "The native host executable and manifest do not enforce the same extension origin."
+}
+
+# No extension file may fetch executable content, inject HTML, navigate
+# tabs, or grow a second browser capability surface. Page reads and the
+# visible-tab screenshot remain explicit active-tab operations.
+$browserExecutableFiles = Get-ChildItem $browserExtensionRoot -Recurse -File |
+    Where-Object { $_.Extension -in @(".js", ".html", ".css") }
+$dangerousBrowserPatterns = @(
+    @{ Pattern = 'https?:\/\/|(?:src|href)\s*=\s*["'']\/\/'; Name = "remote URL" },
+    @{ Pattern = '\b(?:eval|Function)\s*\(|\bimportScripts\s*\('; Name = "dynamic code execution" },
+    @{ Pattern = '\b(?:fetch|XMLHttpRequest|WebSocket|EventSource)\b'; Name = "remote transport" },
+    @{ Pattern = '\b(?:innerHTML|outerHTML|insertAdjacentHTML|document\.write)\b'; Name = "HTML injection" },
+    @{ Pattern = 'createElement\s*\(\s*["'']script["'']'; Name = "dynamic script element" },
+    @{ Pattern = 'chrome\.(?:bookmarks|cookies|debugger|downloads|history|management|webRequest)\b'; Name = "unapproved browser API" },
+    @{ Pattern = 'chrome\.tabs\.(?:create|discard|duplicate|executeScript|goBack|goForward|group|highlight|move|reload|remove|ungroup|update)\b'; Name = "tab mutation" },
+    @{ Pattern = 'chrome\.scripting\.(?:insertCSS|registerContentScripts|removeCSS|unregisterContentScripts|updateContentScripts)\b'; Name = "page mutation" },
+    @{ Pattern = 'chrome\.windows\.(?:create|remove|update)\b|\bwindow\.open\s*\('; Name = "window mutation" },
+    @{ Pattern = '@import\s+url|url\s*\(\s*["'']?https?:'; Name = "remote stylesheet" }
+)
+foreach ($dangerousBrowserPattern in $dangerousBrowserPatterns) {
+    $hits = $browserExecutableFiles |
+        Select-String -Pattern $dangerousBrowserPattern.Pattern
+    if ($hits) {
+        $firstHit = $hits | Select-Object -First 1
+        throw "Browser extension contains $($dangerousBrowserPattern.Name): $($firstHit.Path):$($firstHit.LineNumber)."
+    }
+}
+
+$browserInstallerSource = Get-Content -LiteralPath $browserInstallerPath -Raw
+$browserInstallerLines = Get-Content -LiteralPath $browserInstallerPath
+if ($browserInstallerSource -notmatch
+    '(?m)^PrivilegesRequired=lowest\s*$') {
+    throw "Browser support must preserve the per-user, non-elevated installer."
+}
+if ($browserInstallerSource -match
+    'Source:\s*"[^\r\n"]*AI365\.BrowserExtension\\\*') {
+    throw "Installer must enumerate browser extension assets explicitly."
+}
+$browserHostInstallSource = (
+    Get-ChildItem $browserHostRoot -Recurse -Filter *.cs |
+        ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw }
+) -join [Environment]::NewLine
+$browserInstallSurface = $browserInstallerSource + $browserHostInstallSource
+foreach ($browserInstallTrick in @(
+    "--load-extension",
+    "ExtensionInstallForcelist",
+    "ExtensionInstallSources",
+    "ExtensionSettings",
+    "ExtensionInstallAllowlist",
+    "ExtensionInstallBlocklist",
+    "NativeMessagingAllowlist",
+    "NativeMessagingBlocklist",
+    "Software\Policies\Google\Chrome",
+    "Software\Policies\Microsoft\Edge",
+    "Software\Policies\Chromium",
+    "Software\Google\Chrome\Extensions",
+    "Software\Microsoft\Edge\Extensions",
+    "Software\Chromium\Extensions",
+    "Software\Wow6432Node\Google\Chrome\Extensions",
+    "External Extensions",
+    "master_preferences",
+    "Secure Preferences",
+    "Local Extension Settings",
+    "User Data\",
+    "--disable-extensions-except",
+    "--user-data-dir"
+)) {
+    if ($browserInstallSurface.IndexOf(
+            $browserInstallTrick,
+            [StringComparison]::OrdinalIgnoreCase) -ge 0) {
+        throw "Browser setup must not use policy, profile, or forced-install trick: $browserInstallTrick."
+    }
+}
+
+$browserRunLines = @(
+    Get-Content -LiteralPath $browserInstallerPath |
+        Where-Object {
+            $_ -match 'AI365BrowserHost\.exe' -and
+            $_ -match '--setup\s+auto'
+        }
+)
+if (@($browserRunLines).Count -ne 1 -or
+    $browserRunLines[0] -notmatch 'Components:\s*browser' -or
+    $browserRunLines[0] -notmatch 'Flags:[^;]*\bpostinstall\b' -or
+    $browserRunLines[0] -notmatch 'Flags:[^;]*\bskipifsilent\b') {
+    throw "The guided browser setup must be one optional post-install action and must skip silent installs."
+}
+
+if ($browserInstallerSource -notmatch
+    '#define\s+BrowserNativeHostName\s+"com\.ai365\.browser"') {
+    throw "Installer native host macro does not match the signed host identity."
+}
+$browserRegistryContracts = @(
+    @{
+        Display = "Software\Microsoft\Edge\NativeMessagingHosts\$nativeHostName"
+        Literal = "Software\Microsoft\Edge\NativeMessagingHosts\{#BrowserNativeHostName}"
+    },
+    @{
+        Display = "Software\Google\Chrome\NativeMessagingHosts\$nativeHostName"
+        Literal = "Software\Google\Chrome\NativeMessagingHosts\{#BrowserNativeHostName}"
+    }
+)
+foreach ($browserRegistryContract in $browserRegistryContracts) {
+    $browserRegistryPath = $browserRegistryContract.Display
+    $browserRegistryLiteral = $browserRegistryContract.Literal
+    $registrationLines = @(
+        Get-Content -LiteralPath $browserInstallerPath |
+            Where-Object {
+                $_.Contains($browserRegistryLiteral) -and
+                $_ -match '^Root:\s*HKCU32;' -and
+                $_ -match 'ValueData:\s*"\{app\}\\com\.ai365\.browser\.json"' -and
+                $_ -match 'Components:\s*browser'
+            }
+    )
+    if (@($registrationLines).Count -ne 1) {
+        throw "Installer is missing the per-user native host registration for $browserRegistryPath."
+    }
+    if ($registrationLines[0] -notmatch 'Flags:[^;]*\buninsdeletekey\b') {
+        throw "Native host registration must be removed on uninstall: $browserRegistryPath."
+    }
+
+    $deselectionLines = Get-Content -LiteralPath $browserInstallerPath |
+        Where-Object {
+            $_.Contains($browserRegistryLiteral) -and
+            $_ -match '^Root:\s*HKCU32;' -and
+            $_ -match 'Flags:[^;]*\bdeletekey\b' -and
+            $_ -match 'Components:\s*not browser'
+        }
+    if (@($deselectionLines).Count -ne 1) {
+        throw "Installer does not unregister a deselected browser component: $browserRegistryPath."
+    }
+}
+$allNativeRegistrationLines = @(
+    $browserInstallerLines |
+        Where-Object { $_ -match 'NativeMessagingHosts' }
+)
+if ($allNativeRegistrationLines.Count -ne 4 -or
+    @($allNativeRegistrationLines |
+        Where-Object { $_ -notmatch '^Root:\s*HKCU32;' }).Count -ne 0) {
+    throw "Native messaging registration must consist only of four HKCU32 entries."
+}
+
+$nativeProtocolSource = Get-Content -LiteralPath $nativeProtocolPath -Raw
+foreach ($requiredProtocolBoundary in @(
+    "MaxRequestBytes = 16 * 1024 * 1024",
+    "MaxResponseBytes = 900 * 1024",
+    "MaxHistoryTurns = 12",
+    "new UTF8Encoding(false, true)",
+    "length <= 0 || length > MaxRequestBytes",
+    "TimeSpan.FromSeconds(230)",
+    "REQUEST_TYPE_NOT_ALLOWED"
+)) {
+    if (-not $nativeProtocolSource.Contains($requiredProtocolBoundary)) {
+        throw "Native messaging protocol is missing boundary $requiredProtocolBoundary."
+    }
+}
+
+$browserFactorySource = Get-Content -LiteralPath $browserFactoryPath -Raw
+foreach ($requiredBrowserBoundary in @(
+    "read-only web-page assistant",
+    "McpToolHost.IsMcpTool",
+    "MaxSelectionCharacters = 16000",
+    "MaxPageCharacters = 48000",
+    "MaxHistoryTurns = 12",
+    "MaxScreenshotDataUrlCharacters",
+    "MaxScreenshotBytes",
+    "5 * 1024 * 1024",
+    "Convert.FromBase64String",
+    "HasImageSignature"
+)) {
+    if (-not $browserFactorySource.Contains($requiredBrowserBoundary)) {
+        throw "Browser request factory is missing boundary $requiredBrowserBoundary."
+    }
+}
+foreach ($forbiddenBrowserCapability in @(
+    "DraftService",
+    "DraftToolHost",
+    "DocumentDraftHost",
+    "MailboxContextService",
+    "Process.Start",
+    "WebBrowser"
+)) {
+    if ($browserFactorySource.Contains($forbiddenBrowserCapability)) {
+        throw "Browser request factory references forbidden capability $forbiddenBrowserCapability."
+    }
+}
+
+$browserServiceSource = Get-Content -LiteralPath $browserServicePath -Raw
+foreach ($requiredBrowserServiceBoundary in @(
+    "_settings.ApplyLimits()",
+    "BrowserChatRequestFactory.NormalizeScreenshot",
+    "SCREENSHOT_INVALID",
+    "ModelRouting.ResolveForRequest",
+    "McpToolHost.IsMcpTool",
+    "BROWSER_TOOL_NOT_ALLOWED",
+    "MaxBrowserToolRounds = 1",
+    "MaxBrowserToolCallsPerRound = 1"
+)) {
+    if (-not $browserServiceSource.Contains($requiredBrowserServiceBoundary)) {
+        throw "Browser chat service is missing boundary $requiredBrowserServiceBoundary."
+    }
+}
+if ($browserServiceSource -notmatch
+    'new McpToolHost\(\s*_settings\.McpServers,\s*true\)') {
+    throw "Browser chat must construct MCP in explicit allowlist-only mode."
+}
+foreach ($forbiddenBrowserServiceCapability in @(
+    "DraftService",
+    "DraftToolHost",
+    "DocumentDraftHost",
+    "MailboxContextService",
+    "System.Diagnostics.Process",
+    "Process.Start",
+    "WebBrowser"
+)) {
+    if ($browserServiceSource.Contains($forbiddenBrowserServiceCapability)) {
+        throw "Browser chat service references forbidden capability $forbiddenBrowserServiceCapability."
     }
 }
 

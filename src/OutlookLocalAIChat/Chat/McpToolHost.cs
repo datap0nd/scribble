@@ -20,12 +20,18 @@ namespace OutlookLocalAIChat.Chat
     {
         public const string ToolPrefix = "mcp_";
         public const int MaxExposedTools = 40;
+        public const int MaxBrowserServers = 1;
+        public const int BrowserOperationTimeoutMs = 30000;
 
         private readonly List<McpConnection> _connections =
             new List<McpConnection>();
         private readonly Dictionary<string, McpRoute> _routes =
             new Dictionary<string, McpRoute>(
                 StringComparer.Ordinal);
+        private readonly Dictionary<McpConnection, HashSet<string>>
+            _browserAllowedTools =
+                new Dictionary<McpConnection, HashSet<string>>();
+        private readonly bool _browserAllowlistOnly;
         private readonly JavaScriptSerializer _serializer =
             new JavaScriptSerializer();
         private readonly HttpClient _httpClient;
@@ -48,7 +54,15 @@ namespace OutlookLocalAIChat.Chat
 
         public McpToolHost(
             IReadOnlyList<McpServerConfig> servers)
+            : this(servers, false)
         {
+        }
+
+        public McpToolHost(
+            IReadOnlyList<McpServerConfig> servers,
+            bool browserAllowlistOnly)
+        {
+            _browserAllowlistOnly = browserAllowlistOnly;
             _httpClient = new HttpClient
             {
                 Timeout = TimeSpan.FromSeconds(120)
@@ -57,21 +71,50 @@ namespace OutlookLocalAIChat.Chat
             foreach (var server in servers ??
                 new McpServerConfig[0])
             {
-                if (server == null ||
-                    !server.Enabled ||
-                    server.Target.Trim().Length == 0)
+                if (server == null)
                 {
                     continue;
                 }
 
-                if (count == McpServerConfig.MaxServers)
+                var config = server.Sanitized();
+                if (!config.Enabled ||
+                    config.Target.Trim().Length == 0)
+                {
+                    continue;
+                }
+
+                var browserTools =
+                    config.ParsedBrowserTools();
+                if (_browserAllowlistOnly &&
+                    (!config.BrowserToolsApproved ||
+                     browserTools.Count == 0))
+                {
+                    continue;
+                }
+
+                var maximum = _browserAllowlistOnly
+                    ? MaxBrowserServers
+                    : McpServerConfig.MaxServers;
+                if (count == maximum)
                 {
                     break;
                 }
 
-                _connections.Add(new McpConnection(
-                    server.Sanitized(),
-                    _httpClient));
+                var connection = new McpConnection(
+                    config,
+                    _httpClient,
+                    _browserAllowlistOnly
+                        ? BrowserOperationTimeoutMs
+                        : int.MaxValue);
+                _connections.Add(connection);
+                if (_browserAllowlistOnly)
+                {
+                    _browserAllowedTools[connection] =
+                        new HashSet<string>(
+                            browserTools,
+                            StringComparer.Ordinal);
+                }
+
                 count++;
             }
         }
@@ -126,6 +169,16 @@ namespace OutlookLocalAIChat.Chat
                     if (definitions.Count >= MaxExposedTools)
                     {
                         break;
+                    }
+
+                    HashSet<string> browserTools;
+                    if (_browserAllowlistOnly &&
+                        (!_browserAllowedTools.TryGetValue(
+                            connection,
+                            out browserTools) ||
+                         !browserTools.Contains(tool.Name)))
+                    {
+                        continue;
                     }
 
                     var exposedName = BuildExposedName(
@@ -256,6 +309,7 @@ namespace OutlookLocalAIChat.Chat
 
             _connections.Clear();
             _routes.Clear();
+            _browserAllowedTools.Clear();
             _definitions = null;
             _httpClient.Dispose();
         }

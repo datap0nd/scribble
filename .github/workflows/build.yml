@@ -74,11 +74,153 @@ jobs:
             throw "No x86-capable WebView2Loader.dll (Outlook is often 32-bit)."
           }
 
-      - name: Sign the add-in assembly
+      - name: Verify browser host and extension payload
+        shell: pwsh
+        run: |
+          $hostBin = "src\AI365.BrowserHost\bin\Release"
+          foreach ($required in @(
+            "AI365BrowserHost.exe",
+            "OutlookLocalAIChat.dll"
+          )) {
+            if (-not (Test-Path (Join-Path $hostBin $required))) {
+              throw "Missing browser-host build output: $required"
+            }
+          }
+
+          $extension = "src\AI365.BrowserExtension"
+          foreach ($required in @(
+            "manifest.json",
+            "background.js",
+            "sidepanel.html",
+            "sidepanel.css",
+            "sidepanel.js",
+            "README.md"
+          )) {
+            if (-not (Test-Path (Join-Path $extension $required))) {
+              throw "Missing browser extension asset: $required"
+            }
+          }
+          try {
+            $manifest = Get-Content (Join-Path $extension "manifest.json") -Raw |
+              ConvertFrom-Json
+            $nativeManifest = Get-Content "src\AI365.BrowserHost\com.ai365.browser.json" -Raw |
+              ConvertFrom-Json
+          }
+          catch {
+            throw "A browser manifest is not valid JSON: $($_.Exception.Message)"
+          }
+          if ($manifest.manifest_version -ne 3 -or
+              $manifest.background.service_worker -ne "background.js" -or
+              $manifest.side_panel.default_path -ne "sidepanel.html") {
+            throw "The Manifest V3 browser entry points are invalid."
+          }
+          if ($nativeManifest.name -ne "com.ai365.browser" -or
+              $nativeManifest.path -ne "AI365BrowserHost.exe") {
+            throw "The native messaging host manifest is invalid."
+          }
+          foreach ($script in @("background.js", "sidepanel.js")) {
+            & node --check (Join-Path $extension $script)
+            if ($LASTEXITCODE -ne 0) {
+              throw "JavaScript syntax validation failed: $script"
+            }
+          }
+
+          $hostPath = (Resolve-Path (
+            Join-Path $hostBin "AI365BrowserHost.exe")).Path
+          function New-NativeHostProcess([string]$arguments) {
+            $startInfo = New-Object Diagnostics.ProcessStartInfo
+            $startInfo.FileName = $hostPath
+            $startInfo.Arguments = $arguments
+            $startInfo.UseShellExecute = $false
+            $startInfo.CreateNoWindow = $true
+            $startInfo.RedirectStandardInput = $true
+            $startInfo.RedirectStandardOutput = $true
+            $startInfo.RedirectStandardError = $true
+            $process = New-Object Diagnostics.Process
+            $process.StartInfo = $startInfo
+            if (-not $process.Start()) {
+              throw "Could not start the browser native host."
+            }
+            return $process
+          }
+
+          $allowedOrigin = "chrome-extension://olkepladbgkfkhlglooilnmalckpdada/"
+          $pingProcess = New-NativeHostProcess $allowedOrigin
+          $pingJson = '{"type":"ping","requestId":"ci-ping"}'
+          $strictUtf8 = New-Object Text.UTF8Encoding($false, $true)
+          $pingBytes = $strictUtf8.GetBytes($pingJson)
+          $lengthBytes = [BitConverter]::GetBytes($pingBytes.Length)
+          if (-not [BitConverter]::IsLittleEndian) {
+            [Array]::Reverse($lengthBytes)
+          }
+          $pingProcess.StandardInput.BaseStream.Write(
+            $lengthBytes, 0, $lengthBytes.Length)
+          $pingProcess.StandardInput.BaseStream.Write(
+            $pingBytes, 0, $pingBytes.Length)
+          $pingProcess.StandardInput.Close()
+          $output = New-Object IO.MemoryStream
+          $outputTask = $pingProcess.StandardOutput.BaseStream.CopyToAsync($output)
+          $errorTask = $pingProcess.StandardError.ReadToEndAsync()
+          if (-not $pingProcess.WaitForExit(30000)) {
+            $pingProcess.Kill()
+            throw "The browser native host ping timed out."
+          }
+          [void]$outputTask.GetAwaiter().GetResult()
+          $hostError = $errorTask.GetAwaiter().GetResult()
+          if ($pingProcess.ExitCode -ne 0) {
+            throw "The browser native host ping failed ($($pingProcess.ExitCode)): $hostError"
+          }
+          $responseBytes = $output.ToArray()
+          if ($responseBytes.Length -lt 5) {
+            throw "The browser native host returned no framed ping response."
+          }
+          $responseLengthBytes = New-Object byte[] 4
+          [Array]::Copy($responseBytes, 0, $responseLengthBytes, 0, 4)
+          if (-not [BitConverter]::IsLittleEndian) {
+            [Array]::Reverse($responseLengthBytes)
+          }
+          $responseLength = [BitConverter]::ToInt32($responseLengthBytes, 0)
+          if ($responseLength -ne ($responseBytes.Length - 4)) {
+            throw "The native host did not return exactly one valid little-endian frame."
+          }
+          try {
+            $pingResponse = $strictUtf8.GetString(
+              $responseBytes, 4, $responseLength) | ConvertFrom-Json
+          }
+          catch {
+            throw "The native host ping response is not strict UTF-8 JSON: $($_.Exception.Message)"
+          }
+          if ($pingResponse.ok -ne $true -or
+              -not $pingResponse.PSObject.Properties["configured"] -or
+              -not $pingResponse.PSObject.Properties["supportsVision"] -or
+              -not $pingResponse.PSObject.Properties["version"]) {
+            throw "The native host ping response is missing its public status contract."
+          }
+          $pingProcess.Dispose()
+          $output.Dispose()
+
+          foreach ($rejectedOrigin in @(
+            "",
+            "chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/"
+          )) {
+            $rejectedProcess = New-NativeHostProcess $rejectedOrigin
+            $rejectedProcess.StandardInput.Close()
+            if (-not $rejectedProcess.WaitForExit(10000)) {
+              $rejectedProcess.Kill()
+              throw "The native host waited on input from an unauthorized origin."
+            }
+            if ($rejectedProcess.ExitCode -ne 2) {
+              throw "The native host accepted or mishandled rejected origin '$rejectedOrigin'."
+            }
+            $rejectedProcess.Dispose()
+          }
+
+      - name: Sign native binaries
         if: env.SIGNING_PFX != ''
         shell: pwsh
         run: |
           ./scripts/Sign-File.ps1 -Path "src\OutlookLocalAIChat\bin\Release\OutlookLocalAIChat.dll"
+          ./scripts/Sign-File.ps1 -Path "src\AI365.BrowserHost\bin\Release\AI365BrowserHost.exe"
 
       - name: Run guardrail tests
         run: tests\GuardrailTests\bin\Release\GuardrailTests.exe
@@ -154,6 +296,82 @@ jobs:
           $installedLoaders = Get-ChildItem $installedDir -Recurse -Filter WebView2Loader.dll
           if ($installedLoaders.Count -lt 1) {
             throw "Installer did not ship any WebView2Loader.dll."
+          }
+          $installedHost = Join-Path $installedDir "AI365BrowserHost.exe"
+          $installedNativeManifest = Join-Path $installedDir "com.ai365.browser.json"
+          $installedExtension = Join-Path $installedDir "BrowserExtension"
+          foreach ($required in @(
+            $installedHost,
+            $installedNativeManifest,
+            (Join-Path $installedExtension "manifest.json"),
+            (Join-Path $installedExtension "background.js"),
+            (Join-Path $installedExtension "sidepanel.html"),
+            (Join-Path $installedExtension "sidepanel.css"),
+            (Join-Path $installedExtension "sidepanel.js"),
+            (Join-Path $installedExtension "README.md")
+          )) {
+            if (-not (Test-Path $required)) {
+              throw "Installer did not ship browser asset $required."
+            }
+          }
+          try {
+            $nativeManifest = Get-Content $installedNativeManifest -Raw |
+              ConvertFrom-Json
+            $extensionManifest = Get-Content (
+              Join-Path $installedExtension "manifest.json") -Raw |
+              ConvertFrom-Json
+          }
+          catch {
+            throw "An installed browser manifest is invalid JSON: $($_.Exception.Message)"
+          }
+          $expectedOrigin = "chrome-extension://olkepladbgkfkhlglooilnmalckpdada/"
+          $origins = @($nativeManifest.allowed_origins)
+          if ($nativeManifest.name -ne "com.ai365.browser" -or
+              $origins.Count -ne 1 -or
+              $origins[0] -ne $expectedOrigin -or
+              $extensionManifest.manifest_version -ne 3) {
+            throw "Installed browser manifests do not have the expected identity."
+          }
+          $hostPath = [string]$nativeManifest.path
+          if (-not [IO.Path]::IsPathRooted($hostPath)) {
+            $hostPath = Join-Path (Split-Path $installedNativeManifest) $hostPath
+          }
+          if (-not (Test-Path $hostPath) -or
+              -not [string]::Equals(
+                (Resolve-Path $hostPath).Path,
+                (Resolve-Path $installedHost).Path,
+                [StringComparison]::OrdinalIgnoreCase)) {
+            throw "The native manifest does not resolve to the installed host executable."
+          }
+          $browserRegistryRoot = [Microsoft.Win32.RegistryKey]::OpenBaseKey(
+            [Microsoft.Win32.RegistryHive]::CurrentUser,
+            [Microsoft.Win32.RegistryView]::Registry32)
+          try {
+            foreach ($nativeKeyPath in @(
+              "Software\Microsoft\Edge\NativeMessagingHosts\com.ai365.browser",
+              "Software\Google\Chrome\NativeMessagingHosts\com.ai365.browser"
+            )) {
+              $nativeKey = $browserRegistryRoot.OpenSubKey($nativeKeyPath)
+              try {
+                if ($null -eq $nativeKey) {
+                  throw "Native host registration is missing: $nativeKeyPath"
+                }
+                $registeredManifest = [string]$nativeKey.GetValue("")
+                if (-not (Test-Path $registeredManifest) -or
+                    -not [string]::Equals(
+                      (Resolve-Path $registeredManifest).Path,
+                      (Resolve-Path $installedNativeManifest).Path,
+                      [StringComparison]::OrdinalIgnoreCase)) {
+                  throw "Native host registration points to the wrong manifest: $nativeKeyPath"
+                }
+              }
+              finally {
+                if ($null -ne $nativeKey) { $nativeKey.Dispose() }
+              }
+            }
+          }
+          finally {
+            $browserRegistryRoot.Dispose()
           }
           $assembly = [Reflection.Assembly]::LoadFrom($installedDll)
           $instance = $assembly.CreateInstance("OutlookLocalAIChat.AddIn")
@@ -343,9 +561,74 @@ jobs:
               $root.Dispose()
             }
           }
+          $browserRoot = [Microsoft.Win32.RegistryKey]::OpenBaseKey(
+            [Microsoft.Win32.RegistryHive]::CurrentUser,
+            [Microsoft.Win32.RegistryView]::Registry32)
+          try {
+            foreach ($gone in @(
+              "Software\Microsoft\Edge\NativeMessagingHosts\com.ai365.browser",
+              "Software\Google\Chrome\NativeMessagingHosts\com.ai365.browser"
+            )) {
+              $key = $browserRoot.OpenSubKey($gone)
+              if ($null -ne $key) {
+                $key.Dispose()
+                throw "Deselected browser registration $gone survived."
+              }
+            }
+          }
+          finally {
+            $browserRoot.Dispose()
+          }
+          $installedDir = Join-Path $env:LOCALAPPDATA "Programs\OutlookLocalAIChat"
+          foreach ($gone in @(
+            (Join-Path $installedDir "AI365BrowserHost.exe"),
+            (Join-Path $installedDir "com.ai365.browser.json"),
+            (Join-Path $installedDir "BrowserExtension")
+          )) {
+            if (Test-Path $gone) {
+              throw "Deselected browser component file survived: $gone"
+            }
+          }
           # Restore the full install so later steps and artifacts
           # reflect the default everything-selected state.
-          Start-Process $installer -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/COMPONENTS=outlook,excel,powerpoint,word" -Wait
+          Start-Process $installer -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/COMPONENTS=outlook,excel,powerpoint,word,browser" -Wait
+
+      - name: Smoke-test browser uninstall cleanup
+        shell: powershell
+        run: |
+          $installedDir = Join-Path $env:LOCALAPPDATA "Programs\OutlookLocalAIChat"
+          $uninstaller = Join-Path $installedDir "unins000.exe"
+          if (-not (Test-Path $uninstaller)) {
+            throw "AI365 uninstaller was not found."
+          }
+          Start-Process $uninstaller -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait
+          $browserRoot = [Microsoft.Win32.RegistryKey]::OpenBaseKey(
+            [Microsoft.Win32.RegistryHive]::CurrentUser,
+            [Microsoft.Win32.RegistryView]::Registry32)
+          try {
+            foreach ($gone in @(
+              "Software\Microsoft\Edge\NativeMessagingHosts\com.ai365.browser",
+              "Software\Google\Chrome\NativeMessagingHosts\com.ai365.browser"
+            )) {
+              $key = $browserRoot.OpenSubKey($gone)
+              if ($null -ne $key) {
+                $key.Dispose()
+                throw "Uninstall left native host registration $gone behind."
+              }
+            }
+          }
+          finally {
+            $browserRoot.Dispose()
+          }
+          foreach ($gone in @(
+            (Join-Path $installedDir "AI365BrowserHost.exe"),
+            (Join-Path $installedDir "com.ai365.browser.json"),
+            (Join-Path $installedDir "BrowserExtension")
+          )) {
+            if (Test-Path $gone) {
+              throw "Uninstall left browser component path behind: $gone"
+            }
+          }
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4

@@ -1,0 +1,9 @@
+{
+  "name": "com.ai365.browser",
+  "description": "AI365 read-only browser companion",
+  "path": "AI365BrowserHost.exe",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://olkepladbgkfkhlglooilnmalckpdada/"
+  ]
+}

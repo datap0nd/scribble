@@ -19,6 +19,7 @@
 #define ControlCategory "{{40FC6ED4-2438-11CF-A3DB-080036F12502}"
 #define LockbackInterface "{{000C0601-0000-0000-C000-000000000046}"
 #define AssemblyName "OutlookLocalAIChat, Version=1.1.0.0, Culture=neutral, PublicKeyToken=f51b005bfa6d7cc3"
+#define BrowserNativeHostName "com.ai365.browser"
 
 [Setup]
 AppId={{6BA7BCA9-F17E-4B50-8734-242063264160}
@@ -36,23 +37,24 @@ Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 CloseApplications=yes
-CloseApplicationsFilter=outlook.exe,excel.exe,powerpnt.exe,winword.exe
+CloseApplicationsFilter=outlook.exe,excel.exe,powerpnt.exe,winword.exe,AI365BrowserHost.exe
 RestartApplications=no
 UninstallDisplayName={#AppName}
 VersionInfoVersion={#AppVersion}
-VersionInfoDescription=AI assistant suite for Outlook, Excel, PowerPoint, and Word - drafts only, never sends or saves
+VersionInfoDescription=AI assistant suite for Outlook, Excel, PowerPoint, Word, Edge, and Chrome
 VersionInfoProductName={#AppName}
 VersionInfoCompany={#AppPublisher}
 
 [Types]
-Name: "full"; Description: "All Office apps (recommended)"
-Name: "custom"; Description: "Choose which Office apps get AI365"; Flags: iscustom
+Name: "full"; Description: "All apps (recommended)"
+Name: "custom"; Description: "Choose which apps get AI365"; Flags: iscustom
 
 [Components]
 Name: "outlook"; Description: "AI365 for Outlook (mailbox chat and email drafts)"; Types: full
 Name: "excel"; Description: "AI365 for Excel (workbook chat and draft sheets)"; Types: full
 Name: "powerpoint"; Description: "AI365 for PowerPoint (presentation chat and draft slides)"; Types: full
 Name: "word"; Description: "AI365 for Word (document chat and draft documents)"; Types: full
+Name: "browser"; Description: "AI365 for Edge and Chrome (one-time browser approval required)"; Types: full
 
 [Files]
 Source: "..\src\OutlookLocalAIChat\bin\Release\OutlookLocalAIChat.dll"; DestDir: "{app}"; Flags: ignoreversion
@@ -63,8 +65,31 @@ Source: "..\src\OutlookLocalAIChat\bin\Release\runtimes\win-x86\native\WebView2L
 Source: "..\src\OutlookLocalAIChat\bin\Release\runtimes\win-x64\native\WebView2Loader.dll"; DestDir: "{app}\runtimes\win-x64\native"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\src\OutlookLocalAIChat\bin\Release\runtimes\win-arm64\native\WebView2Loader.dll"; DestDir: "{app}\runtimes\win-arm64\native"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\src\OutlookLocalAIChat\bin\Release\WebView2Loader.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "..\src\AI365.BrowserHost\bin\Release\AI365BrowserHost.exe"; DestDir: "{app}"; Flags: ignoreversion; Components: browser
+Source: "..\src\AI365.BrowserHost\bin\Release\AI365BrowserHost.exe.config"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist; Components: browser
+Source: "..\src\AI365.BrowserHost\com.ai365.browser.json"; DestDir: "{app}"; Flags: ignoreversion; Components: browser
+Source: "..\src\AI365.BrowserExtension\manifest.json"; DestDir: "{app}\BrowserExtension"; Flags: ignoreversion; Components: browser
+Source: "..\src\AI365.BrowserExtension\background.js"; DestDir: "{app}\BrowserExtension"; Flags: ignoreversion; Components: browser
+Source: "..\src\AI365.BrowserExtension\sidepanel.html"; DestDir: "{app}\BrowserExtension"; Flags: ignoreversion; Components: browser
+Source: "..\src\AI365.BrowserExtension\sidepanel.css"; DestDir: "{app}\BrowserExtension"; Flags: ignoreversion; Components: browser
+Source: "..\src\AI365.BrowserExtension\sidepanel.js"; DestDir: "{app}\BrowserExtension"; Flags: ignoreversion; Components: browser
+Source: "..\src\AI365.BrowserExtension\README.md"; DestDir: "{app}\BrowserExtension"; Flags: ignoreversion; Components: browser
 Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
+
+[InstallDelete]
+; These paths contain shipped browser files only. Clearing them before
+; reinstall also removes a browser component that the user deselected.
+Type: filesandordirs; Name: "{app}\BrowserExtension"
+Type: files; Name: "{app}\AI365BrowserHost.exe"
+Type: files; Name: "{app}\AI365BrowserHost.exe.config"
+Type: files; Name: "{app}\com.ai365.browser.json"
+
+[UninstallDelete]
+Type: filesandordirs; Name: "{app}\BrowserExtension"
+Type: files; Name: "{app}\AI365BrowserHost.exe"
+Type: files; Name: "{app}\AI365BrowserHost.exe.config"
+Type: files; Name: "{app}\com.ai365.browser.json"
 
 [Registry]
 ; Deselected components are cleanly unregistered on reinstall or
@@ -102,6 +127,14 @@ Root: HKCU32; Subkey: "Software\Classes\CLSID\{#OfficePaneClsid}"; ValueType: no
 Root: HKCU64; Subkey: "Software\Classes\CLSID\{#OfficePaneClsid}"; ValueType: none; Flags: deletekey; Components: not excel and not powerpoint and not word; Check: IsWin64
 Root: HKCU32; Subkey: "Software\Classes\{#OfficePaneProgId}"; ValueType: none; Flags: deletekey; Components: not excel and not powerpoint and not word
 Root: HKCU64; Subkey: "Software\Classes\{#OfficePaneProgId}"; ValueType: none; Flags: deletekey; Components: not excel and not powerpoint and not word; Check: IsWin64
+Root: HKCU32; Subkey: "Software\Microsoft\Edge\NativeMessagingHosts\{#BrowserNativeHostName}"; ValueType: none; Flags: deletekey; Components: not browser
+Root: HKCU32; Subkey: "Software\Google\Chrome\NativeMessagingHosts\{#BrowserNativeHostName}"; ValueType: none; Flags: deletekey; Components: not browser
+
+; The browser bridge is private to this Windows account. Setup stages the
+; unpacked extension but Edge or Chrome still requires the user's one-time
+; approval; no policy, force-install, or browser-profile keys are written.
+Root: HKCU32; Subkey: "Software\Microsoft\Edge\NativeMessagingHosts\{#BrowserNativeHostName}"; ValueType: string; ValueName: ""; ValueData: "{app}\com.ai365.browser.json"; Flags: uninsdeletekey; Components: browser
+Root: HKCU32; Subkey: "Software\Google\Chrome\NativeMessagingHosts\{#BrowserNativeHostName}"; ValueType: string; ValueName: ""; ValueData: "{app}\com.ai365.browser.json"; Flags: uninsdeletekey; Components: browser
 
 ; 32-bit COM registration. Required for 32-bit Office, including on 64-bit Windows.
 Root: HKCU32; Subkey: "Software\Classes\CLSID\{#AppClsid}"; ValueType: string; ValueName: ""; ValueData: "{#AppName}"; Flags: uninsdeletekey; Components: outlook
@@ -349,6 +382,13 @@ Root: HKCU64; Subkey: "Software\Microsoft\Office\Word\Addins\{#WordProgId}"; Val
 Root: HKCU64; Subkey: "Software\Microsoft\Office\Word\Addins\{#WordProgId}"; ValueType: string; ValueName: "Description"; ValueData: "Chat with your document. AI365 never saves, deletes, or sends."; Check: IsWin64; Components: word
 Root: HKCU64; Subkey: "Software\Microsoft\Office\Word\Addins\{#WordProgId}"; ValueType: dword; ValueName: "LoadBehavior"; ValueData: "3"; Check: IsWin64; Components: word
 Root: HKCU64; Subkey: "Software\Microsoft\Office\Word\Addins\{#WordProgId}"; ValueType: dword; ValueName: "CommandLineSafe"; ValueData: "0"; Check: IsWin64; Components: word
+
+[Icons]
+Name: "{group}\Set up AI365 in Microsoft Edge"; Filename: "{app}\AI365BrowserHost.exe"; Parameters: "--setup edge"; Components: browser
+Name: "{group}\Set up AI365 in Google Chrome"; Filename: "{app}\AI365BrowserHost.exe"; Parameters: "--setup chrome"; Components: browser
+
+[Run]
+Filename: "{app}\AI365BrowserHost.exe"; Parameters: "--setup auto"; Description: "Finish setting up AI365 in Edge or Chrome"; Flags: nowait postinstall skipifsilent; Components: browser
 
 [Code]
 function GetAssemblyCodeBase(Param: String): String;
