@@ -753,19 +753,6 @@ jobs:
           path: artifacts/ScribbleSetup.exe
           if-no-files-found: error
 
-      # Published builds from before the rename request their updater by its
-      # former filename. Keep one byte-identical alias on the rolling release
-      # so those installations can upgrade into Scribble instead of becoming
-      # stranded. The primary artifact and all new clients use ScribbleSetup.
-      - name: Create updater compatibility alias
-        if: github.ref == 'refs/heads/main'
-        shell: pwsh
-        run: |
-          $legacyInstallerName = ("AI" + "365Setup.exe")
-          Copy-Item `
-            -LiteralPath "artifacts\ScribbleSetup.exe" `
-            -Destination (Join-Path "artifacts" $legacyInstallerName)
-
       - name: Publish latest installer from main
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
@@ -777,10 +764,7 @@ jobs:
             Version: 2.0.${{ github.run_number }} (shown as
             "Installed version" in Scribble Settings after updating)
             Commit: ${{ github.sha }}
-          files: |
-            artifacts/ScribbleSetup.exe
-            artifacts/*365Setup.exe
-          overwrite_files: true
+          files: artifacts/ScribbleSetup.exe
           make_latest: true
           draft: false
           prerelease: false
