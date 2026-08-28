@@ -99,6 +99,16 @@ namespace Scribble.Configuration
                 true,
                 "Lowest latency of the Gemini family. Fine for quick questions and summaries; weaker on multi-step tool use than flash."),
             new ModelGuideEntry(
+                "qwen3.8-27b",
+                new[] { "qwen3.8", "27b" },
+                "Fast agentic Qwen model - recommended",
+                "Fast",
+                "Excellent",
+                true,
+                "Best Qwen default for mailbox tools, drafting, and email images. " +
+                "The official weights have a native 262K-token context, but Scribble " +
+                "still retrieves only the evidence needed for each step."),
+            new ModelGuideEntry(
                 "qwen3-vl-30b",
                 new[] { "qwen", "vl" },
                 "Vision model for email images",
@@ -114,14 +124,6 @@ namespace Scribble.Configuration
                 "Very good",
                 false,
                 "Strong mailbox tool use and drafting. Good default for Excel/CSV attachments and everyday mail questions."),
-            new ModelGuideEntry(
-                "qwen3.8-27b",
-                new[] { "qwen", "27" },
-                "Lighter Qwen text model",
-                "Medium",
-                "Very good",
-                false,
-                "Balanced text model when the 35B route feels heavy. Handles spreadsheets; not for image understanding."),
             new ModelGuideEntry(
                 "gemma-4-31b-it",
                 new[] { "gemma", "31" },
@@ -321,7 +323,7 @@ namespace Scribble.Configuration
 
         public static string BuildGuideOverview()
         {
-            return "Refresh models, then pick from the guide.";
+            return "Connect and load models, then pick from the guide.";
         }
 
         private static int MatchScore(

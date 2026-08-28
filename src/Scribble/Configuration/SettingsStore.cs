@@ -59,19 +59,34 @@ namespace Scribble.Configuration
                     return new AppSettings();
                 }
 
+                var geminiDisabled = AdminPolicy.GeminiDisabled;
+                var storedModel = (stored.Model ?? string.Empty).Trim();
+
                 return new AppSettings
                 {
                     BaseUrl = stored.BaseUrl ?? string.Empty,
-                    Model = stored.Model ?? string.Empty,
+                    Model = ModelSelectionPolicy.IsGenerativeModel(
+                        storedModel)
+                            ? storedModel
+                            : string.Empty,
                     ApiKey = Unprotect(stored.ProtectedApiKey),
-                    AllowInsecureHttp = stored.AllowInsecureHttp,
+                    // Migrate every existing installation to the
+                    // streamlined endpoint flow: HTTP works without
+                    // a separate opt-in checkbox.
+                    AllowInsecureHttp = true,
                     UseGeminiSignIn = stored.UseGeminiSignIn &&
-                        !AdminPolicy.GeminiDisabled,
-                    GeminiRefreshToken = Unprotect(
-                        stored.ProtectedGeminiRefreshToken),
-                    GeminiProject = TextBoundary.SingleLine(
-                        stored.GeminiProject,
-                        200),
+                        !geminiDisabled,
+                    // Do not decrypt dormant Google credentials into
+                    // memory while the capability is unavailable.
+                    GeminiRefreshToken = geminiDisabled
+                        ? string.Empty
+                        : Unprotect(
+                            stored.ProtectedGeminiRefreshToken),
+                    GeminiProject = geminiDisabled
+                        ? string.Empty
+                        : TextBoundary.SingleLine(
+                            stored.GeminiProject,
+                            200),
                     ToneProfile = TextBoundary.PlainText(
                         stored.ToneProfile,
                         TextBoundary.MaxToneProfileCharacters),
@@ -92,36 +107,20 @@ namespace Scribble.Configuration
                         stored.DiscoveredModels),
                     McpServers = NormalizeMcpServers(
                         stored.McpServers),
-                    // A missing UseCustomLimits (older settings
-                    // files) means recommended limits; missing
-                    // custom values (0) fall back to recommended.
-                    UseRecommendedLimits = !stored.UseCustomLimits,
-                    LimitContextMultiplier = OrDefault(
-                        stored.LimitContextMultiplier,
-                        1),
-                    LimitPromptCharacters = OrDefault(
-                        stored.LimitPromptCharacters,
-                        TextBoundary
-                            .RecommendedUserPromptCharacters),
-                    LimitAssistantCharacters = OrDefault(
-                        stored.LimitAssistantCharacters,
-                        TextBoundary
-                            .RecommendedAssistantCharacters),
-                    LimitHistoryTurns = OrDefault(
-                        stored.LimitHistoryTurns,
-                        TextBoundary
-                            .RecommendedConversationTurns),
-                    LimitToolRounds = OrDefault(
-                        stored.LimitToolRounds,
-                        TextBoundary.RecommendedToolRounds),
-                    LimitToolCallsPerRound = OrDefault(
-                        stored.LimitToolCallsPerRound,
-                        TextBoundary
-                            .RecommendedToolCallsPerRound),
-                    LimitWorkingSetMessages = OrDefault(
-                        stored.LimitWorkingSetMessages,
-                        LimitOverrides
-                            .RecommendedWorkingSetMessages)
+                    UseRecommendedLimits = true,
+                    LimitContextMultiplier = 1,
+                    LimitPromptCharacters = TextBoundary
+                        .RecommendedUserPromptCharacters,
+                    LimitAssistantCharacters = TextBoundary
+                        .RecommendedAssistantCharacters,
+                    LimitHistoryTurns = TextBoundary
+                        .RecommendedConversationTurns,
+                    LimitToolRounds = TextBoundary
+                        .RecommendedToolRounds,
+                    LimitToolCallsPerRound = TextBoundary
+                        .RecommendedToolCallsPerRound,
+                    LimitWorkingSetMessages = LimitOverrides
+                        .RecommendedWorkingSetMessages
                 };
             }
             catch
@@ -166,25 +165,42 @@ namespace Scribble.Configuration
                 throw new InvalidOperationException("Enter a model name.");
             }
 
+            if (!ModelSelectionPolicy.IsGenerativeModel(settings.Model))
+            {
+                if (GeminiCodeAssistGateway.IsGeminiModel(
+                    settings.Model))
+                {
+                    throw new InvalidOperationException(
+                        "Google Gemini is unavailable in this build. " +
+                        "Choose a model served by your endpoint.");
+                }
+
+                throw new InvalidOperationException(
+                    "Choose a generative chat model.");
+            }
+
             // The endpoint is required whenever the selected model
             // is not a Gemini model - the Gemini tick no longer
             // decides the transport, the model does - and a typed
             // endpoint is always validated even alongside Gemini.
+            var useGemini =
+                !AdminPolicy.GeminiDisabled &&
+                settings.UseGeminiSignIn;
             var needsEndpoint =
                 !GeminiCodeAssistGateway.IsGeminiModel(
                     settings.Model) ||
-                !settings.UseGeminiSignIn;
+                !useGemini;
             if (needsEndpoint ||
                 settings.BaseUrl.Trim().Length > 0)
             {
                 Uri endpoint;
                 if (!AppSettings.TryGetChatCompletionsUri(
                     settings.BaseUrl,
-                    settings.AllowInsecureHttp,
+                    true,
                     out endpoint))
                 {
                     throw new InvalidOperationException(
-                        "Use HTTPS, loopback HTTP, or explicitly allow insecure HTTP.");
+                        "Use an HTTP or HTTPS endpoint URL.");
                 }
 
                 if (needsEndpoint &&
@@ -205,16 +221,22 @@ namespace Scribble.Configuration
                     settings.ApiKey.Trim().Length > 0
                         ? Protect(settings.ApiKey.Trim())
                         : string.Empty,
-                AllowInsecureHttp = settings.AllowInsecureHttp,
-                UseGeminiSignIn = settings.UseGeminiSignIn,
+                AllowInsecureHttp = true,
+                UseGeminiSignIn = useGemini,
+                // A disabled save deliberately removes previously
+                // issued direct-Gemini credentials. Retaining the
+                // implementation does not require retaining tokens.
                 ProtectedGeminiRefreshToken =
+                    useGemini &&
                     settings.GeminiRefreshToken.Trim().Length > 0
                         ? Protect(
                             settings.GeminiRefreshToken.Trim())
                         : string.Empty,
-                GeminiProject = TextBoundary.SingleLine(
-                    settings.GeminiProject,
-                    200),
+                GeminiProject = useGemini
+                    ? TextBoundary.SingleLine(
+                        settings.GeminiProject,
+                        200)
+                    : string.Empty,
                 ToneProfile = TextBoundary.PlainText(
                     settings.ToneProfile,
                     TextBoundary.MaxToneProfileCharacters),
@@ -232,19 +254,20 @@ namespace Scribble.Configuration
                     settings.DiscoveredModels),
                 McpServers = StoreMcpServers(
                     settings.McpServers),
-                UseCustomLimits = !settings.UseRecommendedLimits,
-                LimitContextMultiplier =
-                    settings.LimitContextMultiplier,
-                LimitPromptCharacters =
-                    settings.LimitPromptCharacters,
-                LimitAssistantCharacters =
-                    settings.LimitAssistantCharacters,
-                LimitHistoryTurns = settings.LimitHistoryTurns,
-                LimitToolRounds = settings.LimitToolRounds,
-                LimitToolCallsPerRound =
-                    settings.LimitToolCallsPerRound,
-                LimitWorkingSetMessages =
-                    settings.LimitWorkingSetMessages
+                UseCustomLimits = false,
+                LimitContextMultiplier = 1,
+                LimitPromptCharacters = TextBoundary
+                    .RecommendedUserPromptCharacters,
+                LimitAssistantCharacters = TextBoundary
+                    .RecommendedAssistantCharacters,
+                LimitHistoryTurns = TextBoundary
+                    .RecommendedConversationTurns,
+                LimitToolRounds = TextBoundary
+                    .RecommendedToolRounds,
+                LimitToolCallsPerRound = TextBoundary
+                    .RecommendedToolCallsPerRound,
+                LimitWorkingSetMessages = LimitOverrides
+                    .RecommendedWorkingSetMessages
             };
 
             File.WriteAllText(
@@ -365,7 +388,7 @@ namespace Scribble.Configuration
         {
             return (models ?? Enumerable.Empty<string>())
                 .Select(model => TextBoundary.PlainText(model, 200))
-                .Where(model => model.Length > 0)
+                .Where(ModelSelectionPolicy.IsGenerativeModel)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(model => model, StringComparer.OrdinalIgnoreCase)
                 .ToList();
@@ -416,11 +439,6 @@ namespace Scribble.Configuration
             public int LimitToolCallsPerRound { get; set; }
 
             public int LimitWorkingSetMessages { get; set; }
-        }
-
-        private static int OrDefault(int value, int fallback)
-        {
-            return value > 0 ? value : fallback;
         }
 
         private sealed class StoredMcpServer

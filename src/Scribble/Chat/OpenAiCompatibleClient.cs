@@ -100,6 +100,14 @@ namespace Scribble.Chat
                 return false;
             }
 
+            if (AdminPolicy.GeminiDisabled)
+            {
+                throw new AiEndpointException(
+                    "GEMINI_DISABLED_BY_POLICY",
+                    "Google Gemini is unavailable in this build. " +
+                    "Choose a model served by your endpoint.");
+            }
+
             if (settings == null || !settings.UseGeminiSignIn)
             {
                 throw new AiEndpointException(
@@ -296,7 +304,8 @@ namespace Scribble.Chat
                 throw new ArgumentNullException(nameof(settings));
             }
 
-            if (!settings.UseGeminiSignIn)
+            if (AdminPolicy.GeminiDisabled ||
+                !settings.UseGeminiSignIn)
             {
                 return await FetchEndpointModelsAsync(
                     settings,

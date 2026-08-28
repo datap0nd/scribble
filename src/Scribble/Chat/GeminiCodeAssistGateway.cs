@@ -436,6 +436,7 @@ namespace Scribble.Chat
             AppSettings settings,
             CancellationToken cancellationToken)
         {
+            EnsureGeminiAllowed();
             var nowMs = NowUtcMilliseconds();
             if (_cachedAccessToken.Length > 0 &&
                 _cachedTokenExpiryMs - nowMs >
@@ -791,11 +792,25 @@ namespace Scribble.Chat
         // Public entry points.
         // ------------------------------------------------------------------
 
+        private static void EnsureGeminiAllowed()
+        {
+            if (!AdminPolicy.GeminiDisabled)
+            {
+                return;
+            }
+
+            throw new AiEndpointException(
+                "GEMINI_DISABLED_BY_POLICY",
+                "Google Gemini is unavailable in this build. Use " +
+                "an OpenAI-compatible endpoint in Settings.");
+        }
+
         public async Task<IReadOnlyList<string>> VerifySignInAsync(
             HttpClient httpClient,
             AppSettings settings,
             CancellationToken cancellationToken)
         {
+            EnsureGeminiAllowed();
             await GetAccessTokenAsync(
                 httpClient,
                 settings,
@@ -814,14 +829,7 @@ namespace Scribble.Chat
                 ChatCompletionRequest requestModel,
                 CancellationToken cancellationToken)
         {
-            if (AdminPolicy.GeminiDisabled)
-            {
-                throw new AiEndpointException(
-                    "GEMINI_DISABLED_BY_POLICY",
-                    "Google Gemini is disabled by administrator " +
-                    "policy on this computer. Use a local or " +
-                    "OpenAI-compatible endpoint in Settings.");
-            }
+            EnsureGeminiAllowed();
 
             var project = await GetProjectAsync(
                 httpClient,
@@ -914,6 +922,7 @@ namespace Scribble.Chat
                 Action<string> onTextDelta,
                 CancellationToken cancellationToken)
         {
+            EnsureGeminiAllowed();
             var project = await GetProjectAsync(
                 httpClient,
                 settings,

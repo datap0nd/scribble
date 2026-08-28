@@ -632,7 +632,10 @@ namespace Scribble.UI
 
         private void RefreshModelPicker()
         {
-            var current = (_settings?.Model ?? string.Empty).Trim();
+            var saved = (_settings?.Model ?? string.Empty).Trim();
+            var current = ModelSelectionPolicy.IsGenerativeModel(saved)
+                ? saved
+                : string.Empty;
             var models = new List<string>(
                 _settings?.DiscoveredModels ?? new List<string>());
             if (current.Length > 0 &&
@@ -648,7 +651,7 @@ namespace Scribble.UI
             var items = new List<object>();
             foreach (var model in models)
             {
-                if (ModelCatalog.IsDisallowedModel(model))
+                if (!ModelSelectionPolicy.IsGenerativeModel(model))
                 {
                     continue;
                 }
@@ -1542,7 +1545,8 @@ namespace Scribble.UI
 
         private void HandleSetModel(string model)
         {
-            if (_busy || model.Length == 0)
+            if (_busy ||
+                !ModelSelectionPolicy.IsGenerativeModel(model))
             {
                 return;
             }

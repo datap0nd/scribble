@@ -132,8 +132,11 @@ namespace GuardrailTests
                     "Gemini translation preserves the tool contract",
                     GeminiTranslationPreservesToolContract);
                 Run(
-                    "Gemini sign-in settings are mode-aware",
-                    GeminiSignInSettingsAreModeAware);
+                    "Direct Gemini is unavailable to end users",
+                    GeminiIsUnavailableToEndUsers);
+                Run(
+                    "Gemini gateway fails closed before network access",
+                    GeminiGatewayFailsClosed);
                 Run(
                     "Context budgets scale only in large-context mode",
                     ContextBudgetsScaleOnlyInLargeContextMode);
@@ -167,12 +170,20 @@ namespace GuardrailTests
                 Run(
                     "Model catalog describes vision capability",
                     ModelCatalogDescribesVisionCapability);
+                Run(
+                    "Qwen is preferred without locking out other models",
+                    QwenIsPreferredWithoutLockIn);
                 Run("HTTPS endpoint is accepted", HttpsEndpointIsAccepted);
                 Run("Loopback HTTP endpoint is accepted", LoopbackHttpIsAccepted);
-                Run("Remote HTTP endpoint is rejected", RemoteHttpIsRejected);
                 Run(
-                    "Remote HTTP endpoint requires explicit opt in",
-                    RemoteHttpIsAcceptedWithOptIn);
+                    "Remote HTTP can be rejected by an explicit policy",
+                    RemoteHttpCanBeRejectedExplicitly);
+                Run(
+                    "Remote HTTP endpoint is accepted by default",
+                    RemoteHttpIsAcceptedByDefault);
+                Run(
+                    "Legacy HTTP opt-in state migrates to the default",
+                    LegacyHttpSettingMigratesToDefault);
                 Run(
                     "Models endpoint is normalized",
                     ModelsEndpointIsNormalized);
@@ -294,8 +305,8 @@ namespace GuardrailTests
                     "Admin policy reads only documented switches",
                     AdminPolicyIsReadOnlyAndScoped);
                 Run(
-                    "User limits clamp and default to recommended",
-                    LimitsClampAndDefaultToRecommended);
+                    "User settings always apply fixed recommended limits",
+                    SettingsAlwaysApplyRecommendedLimits);
                 Console.WriteLine("PASS: " + _passed + " guardrail tests");
                 return 0;
             }
@@ -345,25 +356,26 @@ namespace GuardrailTests
                 "Loopback HTTP should be accepted.");
         }
 
-        private static void RemoteHttpIsRejected()
+        private static void RemoteHttpCanBeRejectedExplicitly()
         {
             Uri endpoint;
             Assert(
                 !AppSettings.TryGetChatCompletionsUri(
                     "http://ai.example.test/v1",
+                    false,
                     out endpoint),
-                "Remote HTTP must be rejected.");
+                "The low-level explicit transport guard must still " +
+                "be able to reject remote HTTP.");
         }
 
-        private static void RemoteHttpIsAcceptedWithOptIn()
+        private static void RemoteHttpIsAcceptedByDefault()
         {
             Uri endpoint;
             Assert(
                 AppSettings.TryGetChatCompletionsUri(
                     "http://ai.example.test/v1/chat/completions",
-                    true,
                     out endpoint),
-                "Explicitly allowed remote HTTP should be accepted.");
+                "Remote HTTP should work without a separate opt in.");
             Assert(
                 endpoint.AbsoluteUri ==
                 "http://ai.example.test/v1/chat/completions",
@@ -373,12 +385,72 @@ namespace GuardrailTests
             {
                 BaseUrl = "http://ai.example.test/v1",
                 Model = "local-model",
-                ApiKey = "test-key",
-                AllowInsecureHttp = true
+                ApiKey = "test-key"
             };
             Assert(
                 settings.IsConfigured,
-                "Remote HTTP opt in was not honored by configuration.");
+                "A new settings object should accept remote HTTP by default.");
+        }
+
+        private static void LegacyHttpSettingMigratesToDefault()
+        {
+            var directory = Path.Combine(
+                Path.GetTempPath(),
+                "Scribble-http-settings-" +
+                Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(directory);
+            try
+            {
+                var path = Path.Combine(directory, "settings.json");
+                File.WriteAllText(
+                    path,
+                    "{\"BaseUrl\":\"http://ai.example.test/v1\"," +
+                    "\"Model\":\"qwen3.6-35b-a3b\"," +
+                    "\"ProtectedApiKey\":\"\"," +
+                    "\"AllowInsecureHttp\":false}",
+                    Encoding.UTF8);
+                var store = new SettingsStore();
+                SetPrivateField(store, "_settingsPath", path);
+                SetPrivateField(
+                    store,
+                    "_legacySettingsPath",
+                    Path.Combine(directory, "legacy.json"));
+
+                var loaded = store.Load();
+                Assert(
+                    loaded.AllowInsecureHttp,
+                    "A legacy false value must migrate to HTTP enabled.");
+                loaded.ApiKey = "test-key";
+                store.Save(loaded);
+                Assert(
+                    File.ReadAllText(path, Encoding.UTF8).Contains(
+                        "\"AllowInsecureHttp\":true"),
+                    "The migrated HTTP default was not persisted.");
+            }
+            finally
+            {
+                if (Directory.Exists(directory))
+                {
+                    Directory.Delete(directory, true);
+                }
+            }
+        }
+
+        private static void SetPrivateField(
+            object instance,
+            string name,
+            object value)
+        {
+            var field = instance.GetType().GetField(
+                name,
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            if (field == null)
+            {
+                throw new InvalidOperationException(
+                    "Missing private field: " + name);
+            }
+
+            field.SetValue(instance, value);
         }
 
         private static void ModelsEndpointIsNormalized()
@@ -3643,7 +3715,7 @@ namespace GuardrailTests
                 "thinking budget.");
         }
 
-        private static void GeminiSignInSettingsAreModeAware()
+        private static void GeminiIsUnavailableToEndUsers()
         {
             var settings = new AppSettings
             {
@@ -3651,14 +3723,14 @@ namespace GuardrailTests
                 Model = "gemini-2.5-flash"
             };
             Assert(
-                settings.IsConfigured &&
-                settings.HasConnectionSettings,
-                "Gemini sign-in mode must not require an " +
-                "endpoint or API key.");
-            settings.Model = string.Empty;
-            Assert(
-                !settings.IsConfigured,
-                "Gemini sign-in mode still requires a model.");
+                AdminPolicy.GeminiDisabled &&
+                !AdminPolicy.GeminiEnabledForEndUsers &&
+                !settings.IsConfigured &&
+                !settings.HasConnectionSettings &&
+                !ModelSelectionPolicy.IsGenerativeModel(
+                    settings.Model),
+                "Direct Gemini must remain unavailable even when " +
+                "legacy settings try to enable it.");
 
             var classic = new AppSettings
             {
@@ -3669,6 +3741,43 @@ namespace GuardrailTests
                 !classic.IsConfigured,
                 "Endpoint mode must still require endpoint and " +
                 "key.");
+        }
+
+        private static void GeminiGatewayFailsClosed()
+        {
+            var gateway = new GeminiCodeAssistGateway();
+            AssertGeminiBlocked(() => gateway.VerifySignInAsync(
+                null,
+                null,
+                CancellationToken.None));
+            AssertGeminiBlocked(() => gateway.GenerateAsync(
+                null,
+                null,
+                null,
+                CancellationToken.None));
+            AssertGeminiBlocked(() => gateway.GenerateStreamAsync(
+                null,
+                null,
+                null,
+                null,
+                CancellationToken.None));
+        }
+
+        private static void AssertGeminiBlocked(Func<Task> operation)
+        {
+            try
+            {
+                operation().GetAwaiter().GetResult();
+                throw new InvalidOperationException(
+                    "A disabled Gemini entry point reached its network path.");
+            }
+            catch (AiEndpointException exception)
+            {
+                Assert(
+                    exception.Code == "GEMINI_DISABLED_BY_POLICY",
+                    "Disabled Gemini returned the wrong diagnostic: " +
+                    exception.Code);
+            }
         }
 
         private static void SoulStrengthAndDraftRulesStayBounded()
@@ -4040,6 +4149,8 @@ namespace GuardrailTests
         {
             Assert(
                 ModelCatalog.SupportsVision("qwen3-vl-30b") &&
+                ModelCatalog.SupportsVision("Qwen/Qwen3.8-27B") &&
+                ModelCatalog.SupportsVision("qwen3.8-27b-fast") &&
                 ModelCatalog.SupportsVision("gemma-4-31b-it") &&
                 ModelCatalog.SupportsVision(
                     "models/gemini-2.5-flash") &&
@@ -4056,9 +4167,45 @@ namespace GuardrailTests
 
             var overview = ModelCatalog.BuildGuideOverview();
             Assert(
-                overview.Contains("Refresh models") &&
+                overview.Contains("Connect and load models") &&
                 overview.Length < 80,
                 "The model guide overview is incomplete.");
+        }
+
+        private static void QwenIsPreferredWithoutLockIn()
+        {
+            var preferred = ModelSelectionPolicy.PreferredModel(
+                new[]
+                {
+                    "llama-3.3-70b-instruct",
+                    "Qwen3.6-35B-A3B-Base",
+                    "Qwen3.6-Coder-35B-A3B-Instruct",
+                    "Qwen-Image-Edit",
+                    "Qwen-Audio-Chat",
+                    "qwen3-vl-30b",
+                    "Qwen3.5-35B-A3B-Instruct",
+                    "Qwen3.6-35B-A3B-Instruct",
+                    "Qwen3.8-27B-Fast"
+                });
+            Assert(
+                preferred == "Qwen3.8-27B-Fast",
+                "The Qwen3.8 27B family should be preferred: " +
+                preferred);
+            Assert(
+                ModelSelectionPolicy.PreferredModel(
+                    new[] { "custom-chat-model" }) ==
+                    "custom-chat-model",
+                "A sole compatible endpoint model should remain usable.");
+            Assert(
+                ModelSelectionPolicy.PreferredModel(
+                    new[] { "llama-chat", "mistral-instruct" }) ==
+                    string.Empty,
+                "Multiple non-Qwen models should remain a user choice.");
+            Assert(
+                ModelSelectionPolicy.PreferredModel(
+                    new[] { "Qwen3-Reranker", "Qwen-Image" }) ==
+                    string.Empty,
+                "Specialized Qwen routes must not be selected automatically.");
         }
 
         private static void SelfUpdateIsOfficialAndBounded()
@@ -4348,16 +4495,20 @@ namespace GuardrailTests
                 mixed.HasEndpointCredentials,
                 "A local model must stay usable with Gemini enabled.");
 
-            // A Gemini model needs no endpoint credentials.
+            // Gemini classification remains available for the
+            // retained translation implementation, but selection is
+            // disabled in the shipped product.
             var google = new AppSettings
             {
                 Model = "gemini-2.5-flash",
                 UseGeminiSignIn = true
             };
             Assert(
-                google.IsConfigured &&
-                !google.HasEndpointCredentials,
-                "A Gemini model must be usable without an endpoint.");
+                !google.IsConfigured &&
+                !google.HasConnectionSettings &&
+                !ModelSelectionPolicy.IsGenerativeModel(
+                    google.Model),
+                "A Gemini model must not be selectable or configured.");
 
             // A Gemini model with the tick off is not configured -
             // the pane must say so instead of posting a gemini id to
@@ -4580,7 +4731,7 @@ namespace GuardrailTests
                 "MCP headers must cap at eight entries.");
         }
 
-        private static void LimitsClampAndDefaultToRecommended()
+        private static void SettingsAlwaysApplyRecommendedLimits()
         {
             try
             {
@@ -4608,20 +4759,20 @@ namespace GuardrailTests
                 wild.ApplyLimits();
                 Assert(
                     TextBoundary.MaxUserPromptCharacters ==
-                    LimitOverrides.MaxPromptCharacters &&
+                    TextBoundary.RecommendedUserPromptCharacters &&
                     TextBoundary.MaxAssistantCharacters ==
-                    LimitOverrides.MinAssistantCharacters &&
+                    TextBoundary.RecommendedAssistantCharacters &&
                     TextBoundary.MaxConversationTurns ==
-                    LimitOverrides.MaxHistoryTurns &&
+                    TextBoundary.RecommendedConversationTurns &&
                     TextBoundary.MaxToolRounds ==
-                    LimitOverrides.MaxToolRoundsLimit &&
+                    TextBoundary.RecommendedToolRounds &&
                     TextBoundary.MaxToolCallsPerRound ==
-                    LimitOverrides.MinToolCallsPerRound &&
+                    TextBoundary.RecommendedToolCallsPerRound &&
                     MailboxWorkingSet.MaxMessages ==
-                    LimitOverrides.MaxWorkingSetMessages &&
-                    ContextScale.Scaled(1000) ==
-                    1000 * ContextScale.MaxUserMultiplier,
-                    "Custom limits must clamp to the hard bounds.");
+                    LimitOverrides.RecommendedWorkingSetMessages &&
+                    ContextScale.Scaled(1000) == 1000,
+                    "Legacy custom values must be ignored in favor " +
+                    "of the reviewed fixed defaults.");
 
                 var recommended = new AppSettings
                 {
@@ -4650,7 +4801,9 @@ namespace GuardrailTests
         {
             Assert(
                 AdminPolicy.PolicyKeyPath ==
-                "Software\\Policies\\Scribble",
+                "Software\\Policies\\Scribble" &&
+                !AdminPolicy.GeminiEnabledForEndUsers &&
+                AdminPolicy.GeminiDisabled,
                 "The policy key path changed unexpectedly.");
             // Reading the switch must never throw, whether or not
             // the key exists on this machine.

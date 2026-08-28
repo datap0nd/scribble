@@ -470,9 +470,9 @@ if (-not $officePaneSource.Contains(
     throw "Document drafts are not gated by the local intent policy."
 }
 
-# User-adjustable limits stay clamped and never touch capability
-# caps; the panes must push settings limits into the effective
-# values.
+# End-user settings always reset request budgets to the reviewed
+# defaults. The legacy clamp implementation remains as an internal
+# defense, but no Settings tab can activate it.
 $textBoundarySource = Get-Content (
     Join-Path $sourceRoot "Security\TextBoundary.cs") -Raw
 foreach ($requiredLimitBoundary in @(
@@ -490,6 +490,18 @@ foreach ($requiredLimitBoundary in @(
 if (-not $chatPaneSource.Contains("ApplyLimits()") -or
     -not $officePaneSource.Contains("ApplyLimits()")) {
     throw "Panes do not apply the configured limits."
+}
+$appSettingsSource = Get-Content (
+    Join-Path $sourceRoot "Configuration\AppSettings.cs") -Raw
+if (-not $appSettingsSource.Contains(
+        "LimitOverrides.Apply(`r`n                true,") -and
+    -not $appSettingsSource.Contains(
+        "LimitOverrides.Apply(`n                true,")) {
+    throw "App settings must always select the reviewed limits."
+}
+if ($settingsWindowSource.Contains(
+        "tabs.TabPages.Add(BuildLimitsPage())")) {
+    throw "The end-user Limits tab must remain absent."
 }
 
 # MCP tools stay namespaced, bounded, and separated from the draft
@@ -549,8 +561,9 @@ if (([regex]::Matches(
     throw "Settings storage must round-trip the browser MCP allowlist and approval."
 }
 
-# Administrator policy can only remove capabilities: settings load
-# forces Gemini off and the gateway refuses to run under policy.
+# Direct Gemini is default-deny for end users. Settings load avoids
+# decrypting dormant Google credentials, the UI omits the tab, and
+# every gateway entry point refuses to run before credential access.
 $settingsStoreSource = Get-Content (
     Join-Path $sourceRoot "Configuration\SettingsStore.cs") -Raw
 if (-not $settingsStoreSource.Contains(
@@ -569,7 +582,11 @@ foreach ($requiredRenameMigration in @(
 }
 $adminPolicySource = Get-Content (
     Join-Path $sourceRoot "Configuration\AdminPolicy.cs") -Raw
-if (-not $adminPolicySource.Contains("LegacyPolicyKeyPath") -or
+if (-not $adminPolicySource.Contains(
+        "GeminiEnabledForEndUsers") -or
+    -not $adminPolicySource.Contains("#if SCRIBBLE_DIRECT_GEMINI") -or
+    -not $adminPolicySource.Contains("return false;") -or
+    -not $adminPolicySource.Contains("LegacyPolicyKeyPath") -or
     ([regex]::Matches(
         $adminPolicySource,
         "LegacyPolicyKeyPath")).Count -lt 3) {
@@ -578,8 +595,37 @@ if (-not $adminPolicySource.Contains("LegacyPolicyKeyPath") -or
 $geminiGatewaySource = Get-Content (
     Join-Path $sourceRoot "Chat\GeminiCodeAssistGateway.cs") -Raw
 if (-not $geminiGatewaySource.Contains(
-        "GEMINI_DISABLED_BY_POLICY")) {
+        "GEMINI_DISABLED_BY_POLICY") -or
+    ([regex]::Matches(
+        $geminiGatewaySource,
+        "EnsureGeminiAllowed\(\);")).Count -lt 4) {
     throw "The Gemini gateway must refuse to run under policy."
+}
+if (-not $settingsWindowSource.Contains(
+        "if (!AdminPolicy.GeminiDisabled)") -or
+    -not $settingsWindowSource.Contains(
+        "tabs.TabPages.Add(BuildGeminiPage())")) {
+    throw "The Gemini settings page must remain behind the product gate."
+}
+if (-not $settingsStoreSource.Contains(
+        "GeminiRefreshToken = geminiDisabled") -or
+    -not $settingsStoreSource.Contains(
+        "ProtectedGeminiRefreshToken =")) {
+    throw "Disabled Gemini credentials must stay out of memory and new saves."
+}
+
+# HTTP is accepted without an opt-in control. A non-loopback HTTP
+# endpoint must still produce a clear plaintext-transport warning.
+if ($settingsWindowSource.Contains("_allowInsecureHttp") -or
+    -not $settingsWindowSource.Contains(
+        "this remote HTTP endpoint receives the API key")) {
+    throw "The streamlined HTTP behavior or warning is missing."
+}
+if (-not $appSettingsSource.Contains(
+        "AllowInsecureHttp { get; set; } = true") -or
+    -not $settingsStoreSource.Contains(
+        "AllowInsecureHttp = true")) {
+    throw "HTTP endpoints must work without a separate opt-in."
 }
 
 # The document-side model-facing sources carry the same capability

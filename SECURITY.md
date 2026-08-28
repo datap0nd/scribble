@@ -191,14 +191,19 @@ Any process running as the same Windows user can potentially invoke DPAPI and
 recover current-user secrets. This protects the key at rest from casual file
 inspection, not from a compromised user session.
 
-The key is sent in the Authorization header of the configured endpoint. HTTPS
-protects that header and submitted mailbox context in transit. Loopback HTTP is
-permitted automatically for local model servers. Non-local HTTP requires an
-explicit persisted opt-in in Settings and displays a warning because the API
-key, prompts, and retrieved email context are then sent without transport
-encryption.
+Direct Gemini is disabled in the standard build. Dormant Gemini tokens are not
+decrypted during settings load and are removed from the settings file on the
+next successful save.
 
-The browser extension never receives the API key, Gemini refresh token, or MCP
+The key is sent in the Authorization header of the configured endpoint. HTTPS
+protects that header and submitted mailbox context in transit. HTTP is accepted
+without a separate opt-in so local and LAN-hosted model servers are easy to
+configure. Settings displays a prominent warning for non-loopback HTTP because
+the API key, prompts, and retrieved email context are then sent without
+transport encryption. Use HTTPS for every endpoint outside a trusted local
+development setup.
+
+The browser extension never receives the API key, dormant Gemini credentials, or MCP
 headers. The native bridge loads them under the same current-user process and
 sends them only through the existing configured provider/MCP clients.
 

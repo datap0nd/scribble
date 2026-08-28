@@ -87,13 +87,14 @@ locally linked item. The dedicated host exposes no send operation.
   Draft formatting also accepts exact bold phrases. Stray formatting asterisks
   are removed before display.
 - Support an OpenAI-compatible `/v1/chat/completions` endpoint.
-- Recommend `qwen3.5-35b-a3b` as the balanced default while preserving editable
-  model identifiers and quality-first or speed-first fallbacks.
+- Recommend the Qwen3.8-27B family as the fast agentic default while preserving
+  editable model identifiers and user choice when several other models are
+  available.
 - Verify authentication, optional `/v1/models` discovery, and actual read-only
   tool-call compatibility from Settings without loading mailbox data.
-- Permit HTTPS endpoints and loopback HTTP endpoints for local model servers.
-- Permit non-local HTTP only after an explicit persisted opt-in that warns the
-  user that the API key and mailbox context will travel without encryption.
+- Permit HTTP and HTTPS endpoint URLs without a separate opt-in control.
+- Warn clearly for non-loopback HTTP that the API key and mailbox context will
+  travel without transport encryption; recommend HTTPS outside the computer.
 - Target both 32-bit and 64-bit Office from one installer when practical.
 - A production installer should be code-signed. Signing credentials are not
   included in the repository.

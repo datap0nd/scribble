@@ -153,7 +153,7 @@ Horizontal content padding is 14 pixels in the sidebar work areas. The toolbar u
 
 The composer is a two-column grid: a fluid multiline text field and a fixed action column. The send button fills the message row. A persistent safety line below the message field says "Say 'create a draft' to open one. Scribble cannot send." After creation it becomes a blue linked state: "One draft linked. Revision requests update this draft only." Long message subjects and status text ellipsize rather than breaking the frame.
 
-The settings window is a centered modal with separate Connection and Writing style tabs. Connection contains the endpoint, editable model selector, API key, HTTP warning, and endpoint verification. Writing style contains an explicit consent action, a visible disclosure that no analysis runs automatically, an editable profile field, and a draft-only enable checkbox. Save and Cancel remain common bottom actions.
+The settings window is a centered modal with Connection, MCP, Writing style, and Support tabs. Connection leads with endpoint URL and API key, then an explicit model-discovery action, editable model selector, remote-HTTP warning, and optional compatibility test. Direct Gemini and user-adjustable Limits tabs are absent. Writing style contains an explicit consent action, a visible disclosure that no analysis runs automatically, an editable profile field, and a draft-only enable checkbox. Save and Cancel remain common bottom actions.
 
 The context toolbar uses short native actions for Add email, Add files, New, and Settings. Email drops resolve the current Outlook Explorer selection. File drops and the file picker accept only a small supported text-format set, show each accepted file in the context ledger, and expose the fixed three-file boundary in status text.
 
@@ -238,10 +238,10 @@ Controls use square native geometry. Text fields have fixed single borders; flat
 
 ### Settings Fields and Actions
 
-- **Fields:** Endpoint, editable Model selector, and API key are stacked square inputs with bold labels and accessible descriptions. The model selector offers the balanced default plus quality-first and speed-first presets. The API key uses the system password character.
-- **Disclosure:** Explain that prompts, recent conversation, and model-requested bounded mailbox context go to the configured endpoint, the key is encrypted for the current Windows user, and non-local HTTP is available only through an explicit warning-bearing opt-in.
-- **Insecure HTTP:** Use a native checkbox labeled "Allow insecure HTTP for non-local endpoints." When enabled, show an adjacent text warning that the API key, prompts, and retrieved email context are sent without transport encryption.
-- **Actions:** Check endpoint is a left-aligned secondary action. Save is primary; Cancel is secondary. Enter activates Save and Escape activates Cancel.
+- **Fields:** Endpoint URL and API key come first, followed by an editable Model selector populated after connection. Inputs use bold labels and accessible descriptions; the API key uses the system password character.
+- **Disclosure:** Explain that prompts, recent conversation, and model-requested bounded mailbox context go to the configured endpoint and that the key is encrypted for the current Windows user.
+- **HTTP warning:** Do not require an opt-in checkbox. Accept HTTP by default, but show an adjacent alert whenever a non-loopback endpoint will receive the API key, prompts, and retrieved email context without transport encryption.
+- **Actions:** **Connect & load models** is the primary setup action. **Test selected model** is secondary. Save is primary; Cancel is secondary. Enter activates Save and Escape activates Cancel.
 - **Endpoint Check:** Show progress, allow cancellation, and report the actual diagnostic code. A successful state means authentication, the selected model, and one synthetic read-only tool call passed. The probe must not load or execute against mailbox data.
 - **Errors:** Validation failures appear inline as an accessible alert without closing the modal.
 

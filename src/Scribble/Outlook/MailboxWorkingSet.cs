@@ -7,9 +7,8 @@ namespace Scribble.Outlook
 {
     public static class MailboxWorkingSet
     {
-        // Recommended default of 10; the effective limit can be
-        // raised or lowered from the Settings Limits tab within
-        // the hard clamps in LimitOverrides.
+        // Fixed end-user default of ten. The legacy override wrapper
+        // is reset to this value whenever settings are applied.
         public const int RecommendedMaxMessages = 10;
 
         public static int MaxMessages

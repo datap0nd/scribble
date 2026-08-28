@@ -13,7 +13,10 @@ namespace Scribble.Configuration
 
         public string ApiKey { get; set; } = string.Empty;
 
-        public bool AllowInsecureHttp { get; set; }
+        // HTTP endpoints are accepted without a separate opt-in.
+        // The settings UI warns when a non-loopback URL will carry
+        // credentials and context without transport encryption.
+        public bool AllowInsecureHttp { get; set; } = true;
 
         public string ToneProfile { get; set; } = string.Empty;
 
@@ -49,10 +52,9 @@ namespace Scribble.Configuration
         public List<McpServerConfig> McpServers { get; set; } =
             new List<McpServerConfig>();
 
-        // Limits tab: recommended limits by default; when the user
-        // opts out, the custom values below apply within hard
-        // clamps. Only text and loop budgets - never capability
-        // caps.
+        // Legacy serialized fields retained for settings-file
+        // compatibility. End users no longer customize these
+        // budgets; ApplyLimits always selects the reviewed defaults.
         public bool UseRecommendedLimits { get; set; } = true;
 
         public int LimitContextMultiplier { get; set; } = 1;
@@ -81,31 +83,30 @@ namespace Scribble.Configuration
         public void ApplyLimits()
         {
             LimitOverrides.Apply(
-                UseRecommendedLimits,
-                LimitPromptCharacters,
-                LimitAssistantCharacters,
-                LimitHistoryTurns,
-                LimitToolRounds,
-                LimitToolCallsPerRound,
-                LimitWorkingSetMessages);
+                true,
+                TextBoundary.RecommendedUserPromptCharacters,
+                TextBoundary.RecommendedAssistantCharacters,
+                TextBoundary.RecommendedConversationTurns,
+                TextBoundary.RecommendedToolRounds,
+                TextBoundary.RecommendedToolCallsPerRound,
+                LimitOverrides.RecommendedWorkingSetMessages);
             ContextScale.ApplyUserMultiplier(
-                UseRecommendedLimits
-                    ? 1
-                    : LimitContextMultiplier);
+                1);
         }
 
         public bool IsConfigured
         {
             get
             {
-                if (UseGeminiSignIn &&
+                if (!AdminPolicy.GeminiDisabled &&
+                    UseGeminiSignIn &&
                     GeminiCodeAssistGateway.IsGeminiModel(Model))
                 {
                     return Model.Trim().Length > 0;
                 }
 
                 Uri endpoint;
-                return Model.Trim().Length > 0 &&
+                return ModelSelectionPolicy.IsGenerativeModel(Model) &&
                        ApiKey.Trim().Length > 0 &&
                        TryGetChatCompletionsUri(
                            BaseUrl,
@@ -135,7 +136,8 @@ namespace Scribble.Configuration
         {
             get
             {
-                if (UseGeminiSignIn)
+                if (!AdminPolicy.GeminiDisabled &&
+                    UseGeminiSignIn)
                 {
                     return true;
                 }
@@ -153,7 +155,7 @@ namespace Scribble.Configuration
         {
             return TryGetChatCompletionsUri(
                 value,
-                false,
+                true,
                 out endpoint);
         }
 

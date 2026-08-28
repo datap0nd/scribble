@@ -60,6 +60,12 @@ namespace Scribble.Configuration
             HttpClient httpClient,
             TimeSpan timeout)
         {
+            if (AdminPolicy.GeminiDisabled)
+            {
+                throw new InvalidOperationException(
+                    "Google Gemini sign-in is unavailable in this build.");
+            }
+
             var port = FindFreeLoopbackPort();
             var redirectUri =
                 "http://localhost:" + port + "/oauth2callback";

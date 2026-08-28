@@ -5,10 +5,9 @@ namespace Scribble.Security
 {
     public static class TextBoundary
     {
-        // Recommended defaults. The effective Max* values below can
-        // be adjusted by the user from the Settings Limits tab
-        // (LimitOverrides), always inside hard clamps; drafting and
-        // sending capability rules are never adjustable.
+        // Reviewed defaults. AppSettings resets the effective Max*
+        // values below to these constants on every load/save;
+        // drafting and sending capability rules are never adjustable.
         public const int RecommendedUserPromptCharacters = 4000;
         public const int RecommendedAssistantCharacters = 12000;
         public const int RecommendedConversationTurns = 12;
@@ -115,9 +114,8 @@ namespace Scribble.Security
             Recompute();
         }
 
-        // User-chosen context multiplier from the Settings Limits
-        // tab; the larger of the provider multiplier and the user's
-        // choice wins, clamped to MaxUserMultiplier.
+        // Legacy context multiplier hook. End-user settings always
+        // pass one; the clamp remains an internal safety boundary.
         public static void ApplyUserMultiplier(int multiplier)
         {
             _userMultiplier = Math.Max(
@@ -139,11 +137,12 @@ namespace Scribble.Security
         }
     }
 
-    // Effective request limits, settable only from the Settings
-    // Limits tab within the hard clamps below. Everything here is a
-    // text, loop, or working-set budget - drafting and sending
-    // capability rules (one draft per request, no sending, marked
-    // draft surfaces only) live elsewhere and are never adjustable.
+    // Effective request limits. AppSettings always resets these to
+    // the reviewed defaults; the clamped setter remains as an
+    // internal compatibility boundary for older callers. Everything
+    // here is a text, loop, or working-set budget - drafting and
+    // sending capability rules live elsewhere and are never
+    // adjustable.
     public static class LimitOverrides
     {
         public const int MinPromptCharacters = 2000;

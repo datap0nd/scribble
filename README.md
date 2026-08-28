@@ -4,7 +4,7 @@ A Windows-only AI assistant suite for classic Microsoft Office
 (Professional Plus 2021), Microsoft Edge, and Google Chrome: one installer adds
 an **Scribble** sidebar to **Outlook, Excel, PowerPoint, Word, and the web**. Every
 pane shares the same chat stack -
-local OpenAI-compatible models or Google Gemini via browser sign-in, the same
+an OpenAI-compatible endpoint, the same
 settings and writing soul, rich markdown output with tables, optional MCP
 tool servers, and the same hard guardrails: the model can read bounded
 context but can never send email, save a file, or delete anything.
@@ -57,11 +57,14 @@ Entra ID.
    and Word the **Scribble** button sits on the **Home** tab.
 7. Open **Settings** and enter:
    - the OpenAI-compatible endpoint or base URL;
-   - the API key;
-   - **Allow insecure HTTP** only when a non-local endpoint uses plain HTTP.
-8. Click **Refresh models** to load available model IDs from `GET /v1/models`,
-   then choose or type a model that supports OpenAI-compatible chat tool calls.
-9. Click **Check endpoint**. Save only after authentication, the selected
+   - the API key.
+8. Click **Connect & load models** to load available model IDs from
+   `GET /v1/models`, then choose or type a model that supports
+   OpenAI-compatible chat tool calls. If the field is empty, Scribble prefers
+   a suitable discovered Qwen model, with Qwen3.8-27B preferred when available.
+   If there is only one other usable model it is selected; otherwise the choice
+   remains with the user.
+9. Click **Test selected model**. Save only after authentication, the selected
    model, and mailbox tool calling pass.
 10. Optional: open **Writing style**, click **Analyze 15 sent emails**, review
    the generated drafting instructions, edit them, and enable the profile.
@@ -92,10 +95,11 @@ https://ai.example.test/v1/chat/completions
 http://127.0.0.1:1234/v1
 ```
 
-HTTPS is recommended. Plain HTTP is accepted automatically for loopback
-addresses such as `localhost` and `127.0.0.1`. For another HTTP host, enable
-**Allow insecure HTTP** in Settings. That opt-in sends the API key, prompts, and
-retrieved email context without transport encryption.
+HTTP and HTTPS URLs are accepted without a separate opt-in. HTTPS is strongly
+recommended outside the local computer. Settings shows a warning for remote
+HTTP because the API key, prompts, and retrieved email context then cross the
+network without transport encryption. Loopback HTTP such as `localhost` and
+`127.0.0.1` remains the normal setup for a local Qwen server.
 
 The first unsigned build may trigger a Windows SmartScreen warning. A trusted
 code-signing certificate is required to remove that warning for normal company
@@ -108,19 +112,16 @@ inert text nodes - model output is still never parsed as HTML.
 
 ## Model choice
 
-**The model picker decides where every request goes.** A `gemini-*` model
-is sent to Google; every other model is sent to your OpenAI-compatible
-endpoint. The **Gemini sign-in** tick only controls whether Gemini models
-are *offered* in the list - with it on, the picker shows Gemini models and
-your endpoint's own models together, so switching to a local model is just
-a picker change, and the endpoint and API key stay editable. Turning the
-tick off simply removes the Gemini models from the list. Picking a Gemini
-model while sign-in is off fails with a clear message instead of sending
-that model name to your local server.
+Direct Google Gemini access is unavailable to end users. The retained Gemini
+implementation is protected by a default-off product gate and request-level
+checks; Gemini model IDs are removed from saved and discovered model lists.
+Every selectable model is sent only to the configured OpenAI-compatible
+endpoint.
 
-Scribble does not ship with a preset model list or a preferred default. After you
-enter an endpoint and API key, use **Refresh models** in Settings to populate the
-dropdown from `GET /v1/models`. You can also type any model ID manually. Every
+After you enter an endpoint and API key, use **Connect & load models** in
+Settings to populate the dropdown from `GET /v1/models`. Scribble prefers a
+discovered Qwen model when no model is already selected. You can still type any
+endpoint model ID manually. Every
 dropdown entry is tagged **Vision** (reads email images) or **Text**
 (filename-only), and the sidebar header shows the same tag for the saved model.
 
@@ -135,9 +136,9 @@ input, use a `vl` model instead. Text-only models get spreadsheet text and
 image metadata only, and the chat will say so if you ask about an image.
 Optional: enable **Auto-switch to vision for images** to temporarily use a
 discovered vision model while keeping your everyday text model saved. Save after
-**Refresh models** so auto-switch knows which vision models are available.
+**Connect & load models** so auto-switch knows which vision models are available.
 
-Embedding-only models are excluded from discovery. **Check endpoint** verifies
+Embedding-only and Gemini models are excluded from discovery. **Test selected model** verifies
 authentication with a lightweight `search_mailbox` tool-call probe. It does not
 read mailbox data during the check. Model discovery allows up to 15 seconds;
 the tool-call probe allows up to 90 seconds.
@@ -154,8 +155,8 @@ the tool-call probe allows up to 90 seconds.
    actions.
 2. To choose a bounded group first, enter `/search person or topic`. Scribble
    searches locally and keeps the newest matching Inbox or Sent Items
-   emails as the working set (up to the working-set limit - ten by
-   default, adjustable in the Limits tab). No email body is sent during this command.
+   emails as the working set (up to the fixed ten-email limit). No email body
+   is sent during this command.
 3. Review the listed subjects and send another `/search` to replace the set if
    it is wrong. Results appear in a collapsible working-set layer as ten
    distinct email cards with subject, sender, and date. Use `/search clear` to
@@ -227,10 +228,9 @@ remain in memory until cleared or Outlook closes. `/search clear` removes the
 email working set but retains external files. **Clear** removes all context, and
 **New** starts a new conversation with no retained context.
 
-Settings is organized into four tabs: **Connection** (endpoint, model, API
-key, updates), **Gemini** (Google sign-in with a responsible-use notice —
-cloud processing under your account; follow your organization's
-confidential-data policies), **Writing soul**, and **Support** (describe a
+Settings is organized into four tabs: **Connection** (endpoint, API key,
+model discovery, compatibility test, updates), **MCP**, **Writing style**, and
+**Support** (describe a
 problem and Scribble opens a pre-filled, unsent report email to the creator
 with the recent diagnostic log — timestamps, operations, and error codes
 only — for you to review and send yourself).
@@ -438,21 +438,19 @@ HTTP(S) servers can carry per-server request headers (one per line as
 to that server's own endpoint, never logged, and stored DPAPI-encrypted like
 the API key.
 
-## Limits tab
+## Fixed request budgets
 
-Settings has a **Limits** tab. **Use recommended limits** stays ticked by
-default and keeps the values this README describes. Untick it to adjust,
-at your own risk: the reading-budget multiplier (email bodies, attachments,
-and documents, up to x8), your message length (up to 16,000 characters),
-answer length (up to 48,000), history turns (up to 24), tool rounds and
-tool calls per round (up to 8 each), and how many emails the working set
-holds per request (3 to 50, ten by default). Every slider is hard-clamped
-in code - the settings file cannot push a value past those bounds. Raising
-limits sends more mailbox text to the model and can overflow a small local
-model's context window. Drafting guardrails are not adjustable from here
-or anywhere else: one deliverable per request, one unsent email draft per
-request, and never-send/never-save stay fixed. With Gemini sign-in the reading budgets already scale x4
-automatically; the larger of that and your multiplier wins.
+Scribble uses reviewed, non-editable per-field budgets as a conservative Qwen
+baseline: 4,000 prompt characters, 12,000 retained answer
+characters, 12 history turns, four tool rounds, four calls per round, and ten
+emails in the working set. Legacy custom-limit values are ignored on load and
+replaced on save. Searching may inspect a broader local candidate pool, but
+only the bounded top results enter model context. Five hundred emails is not a
+safe working-set value: bodies alone could reach millions of characters and
+overflow both the endpoint context and Scribble's tool-result boundary. These
+values do not reveal or guarantee the server's actual context window;
+attachment-heavy multi-round requests still depend on the endpoint's configured
+limit.
 
 ## Diagnostics and administration
 
@@ -462,12 +460,11 @@ drafting, which tools were exposed to the model, every tool call with its
 status, and how the request ended. It contains no API keys, settings, or
 message bodies - paste it into a bug report to show exactly what happened.
 
-To disable Google Gemini across a whole machine (for example on a work
-computer), set the registry value `DisableGemini` = `1` (DWORD) under
-`HKLM\Software\Policies\Scribble` or `HKCU\Software\Policies\Scribble`. Gemini
-sign-in is then forced off at load, greyed out in Settings with a policy
-notice, and refused by the request gateway. Policies can only remove
-capabilities, never add any.
+Direct Google Gemini is disabled for end users in this build. The registry
+value `DisableGemini` = `1` (DWORD) under
+`HKLM\Software\Policies\Scribble` or `HKCU\Software\Policies\Scribble` remains
+a defense-in-depth kill switch for a possible future managed build. Policies
+can only remove capabilities, never add any.
 
 ## Hard security boundary
 
@@ -580,7 +577,7 @@ mailbox automatically.
 
 The optional Settings check sends the API key to `GET /v1/models` when that route
 is available, then submits a lightweight synthetic chat request that contains no
-mailbox data. **Refresh models** loads the dropdown without running that probe.
+mailbox data. **Connect & load models** loads the dropdown without running that probe.
 A successful check proves that authentication, the entered model, and the
 tool-call response shape work before the first real mailbox question.
 
@@ -601,56 +598,13 @@ The request uses `model`, `messages`, `stream: false`, and standard
 OpenAI-compatible function tools. The endpoint and selected model must support
 chat-completions tool calling. The final response must provide
 `choices[0].message.content` as text. `GET /v1/models` is optional. When
-available, **Refresh models** or **Check endpoint** populates the editable model
+available, **Connect & load models** or **Test selected model** populates the editable model
 list in Settings.
 
-Cloud OpenAI-compatibility layers work too. For **Google Gemini**, set the
-base URL to `https://generativelanguage.googleapis.com/v1beta/openai` and use
-an API key from Google AI Studio as the key; Gemini models are detected as
-vision-capable and support tool calling.
-
-**Gemini with Google sign-in (no API key):** enable *Use Google Gemini with
-browser sign-in* in Settings and click **Sign in with Google**. A browser
-window opens on Google's own sign-in pages (standard OAuth installed-app flow
-with PKCE and a loopback redirect — the same flow, OAuth client, and scopes
-the open-source Gemini CLI uses, so a Google Workspace org that allows Gemini
-CLI allows this identically). Scribble never sees the password; it receives
-tokens on 127.0.0.1, stores the refresh token encrypted for the current
-Windows user (DPAPI), and calls Google's Code Assist `generateContent` API,
-where enterprise Gemini licensing resolves from the account alone. Requests
-are translated to Gemini's native format and back, so tool calling, vision,
-and every hard guardrail (read-only mailbox, one-shot unsent drafts, no send
-capability) apply unchanged. An existing Gemini CLI sign-in on the machine is
-honored automatically as a fallback. If your organization's Gemini license
-designates a Google Cloud project, enter that project id in the **Google
-Cloud project** field in Settings (the same value for everyone in the
-organization; the `GOOGLE_CLOUD_PROJECT` environment variable also works as
-a fallback). The Gemini CLI's other environment settings are not needed:
-`NODE_OPTIONS=--use-system-ca` exists because Node.js does not trust the
-Windows certificate store by default, while Scribble uses it natively (so
-corporate TLS inspection just works), and `GEMINI_TELEMETRY_ENABLED`
-controls CLI telemetry, which Scribble does not have. Note that with any
-cloud provider, email content leaves your machine — the local-endpoint
-setup keeps everything on-device.
-
-Context budgets are provider-aware: in Gemini mode every text budget is
-multiplied by four — attachments carry up to 80,000 extracted characters
-each (192,000 per message), email bodies up to 96,000 characters, inline
-selected-email text 24,000, external documents 80,000 each (192,000
-total), and tool results up to 480,000 characters — because Gemini models
-have ~1M-token context windows. Local endpoints keep the standard
-budgets, and capability caps (ten emails, ten attachments, three external
-documents, tool rounds, the 25 MB intake) never scale.
-
-Gemini responses are speed-tuned: internal "thinking" is disabled on
-`gemini-2.5-flash` and `flash-lite` and floored at the model minimum on
-`pro` (thinking is the dominant latency cost on ordinary mailbox
-questions), responses stream into the chat token by token, the selected
-email's bounded body is inlined into the first request so common questions
-answer in a single model round instead of a tool round trip, and the
-system prompt asks for concise answers. `gemini-2.5-flash` is the
-recommended model: near-pro quality on mail tasks with far lower latency
-and higher quotas.
+Direct Gemini model IDs and Google browser sign-in are unavailable in this
+build. The dormant translation code remains for a possible future managed
+release, but its OAuth, discovery, streaming, and non-streaming entry points
+all fail closed while the product gate is off.
 
 If a request fails, the sidebar shows diagnostic identifiers such as:
 
@@ -782,6 +736,6 @@ verification.
 - 32-bit or 64-bit Office on Windows
 - .NET Framework 4.8
 - OpenAI-compatible endpoint and model with tool-calling support
-- HTTPS, loopback HTTP, or explicitly enabled remote HTTP
+- HTTP or HTTPS endpoint URL (HTTPS recommended outside the computer)
 
 The new Outlook for Windows does not load COM add-ins.

@@ -15,12 +15,32 @@ namespace Scribble.Configuration
         private static readonly string LegacyPolicyKeyPath =
             "Software\\Policies\\" + "AI" + "365";
 
+        // Direct Gemini is retained for a possible future managed
+        // release, but is not an end-user capability in this build.
+        // The registry policy remains a one-way, defense-in-depth
+        // kill switch if the build gate is ever opened.
+        public static bool GeminiEnabledForEndUsers
+        {
+            get
+            {
+#if SCRIBBLE_DIRECT_GEMINI
+                return true;
+#else
+                return false;
+#endif
+            }
+        }
+
         // DisableGemini = 1 hides and blocks Google Gemini sign-in
         // across the suite; only the user's own OpenAI-compatible
         // endpoint remains available.
         public static bool GeminiDisabled
         {
-            get { return ReadFlag("DisableGemini"); }
+            get
+            {
+                return !GeminiEnabledForEndUsers ||
+                       ReadFlag("DisableGemini");
+            }
         }
 
         private static bool ReadFlag(string valueName)

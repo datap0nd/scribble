@@ -20,7 +20,6 @@ namespace Scribble.UI
         private readonly TextBox _endpoint = new TextBox();
         private readonly ComboBox _model = new ComboBox();
         private readonly TextBox _apiKey = new TextBox();
-        private readonly CheckBox _allowInsecureHttp = new CheckBox();
         private readonly Label _transportWarning = new Label();
         private readonly CheckBox _switchVisionForImages = new CheckBox();
         private readonly Label _modelGuidance = new Label();
@@ -30,9 +29,9 @@ namespace Scribble.UI
         private readonly Label _toneStatus = new Label();
         private readonly Label _error = new Label();
         private readonly Button _checkEndpoint =
-            MakeButton("Check endpoint", false, 128);
+            MakeButton("Test selected model", false, 148);
         private readonly Button _refreshModels =
-            MakeButton("Refresh models", false, 120);
+            MakeButton("Connect & load models", true, 168);
         private readonly Button _analyzeTone =
             MakeButton("Analyze 15 sent emails", false, 176);
         private readonly Button _updateButton =
@@ -61,23 +60,6 @@ namespace Scribble.UI
         private readonly CheckBox _mcpEnabled = new CheckBox();
         private readonly CheckBox _mcpBrowserToolsApproved =
             new CheckBox();
-        private readonly CheckBox _useRecommendedLimits =
-            new CheckBox();
-        private readonly TrackBar _limitMultiplier =
-            new TrackBar();
-        private readonly TrackBar _limitPrompt = new TrackBar();
-        private readonly TrackBar _limitAnswer = new TrackBar();
-        private readonly TrackBar _limitTurns = new TrackBar();
-        private readonly TrackBar _limitRounds = new TrackBar();
-        private readonly TrackBar _limitCalls = new TrackBar();
-        private readonly TrackBar _limitEmails = new TrackBar();
-        private readonly Label _limitMultiplierValue = new Label();
-        private readonly Label _limitPromptValue = new Label();
-        private readonly Label _limitAnswerValue = new Label();
-        private readonly Label _limitTurnsValue = new Label();
-        private readonly Label _limitRoundsValue = new Label();
-        private readonly Label _limitCallsValue = new Label();
-        private readonly Label _limitEmailsValue = new Label();
         private readonly Button _mcpSave =
             MakeButton("Add / update server", false, 150);
         private readonly Button _mcpRemove =
@@ -92,6 +74,7 @@ namespace Scribble.UI
         private readonly SettingsStore _store;
         private readonly object _outlookApplication;
         private CancellationTokenSource _checkCancellation;
+        private CancellationTokenSource _modelRefreshCancellation;
         private CancellationTokenSource _toneCancellation;
         private CancellationTokenSource _updateCancellation;
         private bool _checking;
@@ -120,8 +103,8 @@ namespace Scribble.UI
 
             Text = "Scribble settings";
             StartPosition = FormStartPosition.CenterParent;
-            ClientSize = new Size(700, 670);
-            MinimumSize = new Size(620, 620);
+            ClientSize = new Size(700, 620);
+            MinimumSize = new Size(620, 560);
             MaximizeBox = false;
             MinimizeBox = false;
             ShowIcon = false;
@@ -151,10 +134,12 @@ namespace Scribble.UI
                 AccessibleName = "Scribble settings sections"
             };
             tabs.TabPages.Add(BuildConnectionPage());
-            tabs.TabPages.Add(BuildGeminiPage());
+            if (!AdminPolicy.GeminiDisabled)
+            {
+                tabs.TabPages.Add(BuildGeminiPage());
+            }
             tabs.TabPages.Add(BuildMcpPage());
             tabs.TabPages.Add(BuildWritingStylePage());
-            tabs.TabPages.Add(BuildLimitsPage());
             tabs.TabPages.Add(BuildSupportPage());
             root.Controls.Add(tabs, 0, 0);
 
@@ -172,10 +157,11 @@ namespace Scribble.UI
             CancelButton = GetCancelButton(buttons);
 
             _endpoint.Text = current?.BaseUrl ?? string.Empty;
-            _model.Text = current?.Model ?? string.Empty;
+            _model.Text = ModelSelectionPolicy.IsGenerativeModel(
+                current?.Model)
+                    ? current.Model
+                    : string.Empty;
             _apiKey.Text = current?.ApiKey ?? string.Empty;
-            _allowInsecureHttp.Checked =
-                current?.AllowInsecureHttp ?? false;
             _toneProfile.Text = TextBoundary.PlainText(
                 current?.ToneProfile,
                 TextBoundary.MaxToneProfileCharacters);
@@ -213,49 +199,10 @@ namespace Scribble.UI
             }
 
             RefreshMcpList();
-            _useRecommendedLimits.Checked =
-                current?.UseRecommendedLimits ?? true;
-            _limitMultiplier.Value = ClampTrack(
-                _limitMultiplier,
-                current?.LimitContextMultiplier ?? 1);
-            _limitPrompt.Value = ClampTrack(
-                _limitPrompt,
-                (current?.LimitPromptCharacters ??
-                 TextBoundary.RecommendedUserPromptCharacters) /
-                1000);
-            _limitAnswer.Value = ClampTrack(
-                _limitAnswer,
-                (current?.LimitAssistantCharacters ??
-                 TextBoundary.RecommendedAssistantCharacters) /
-                1000);
-            _limitTurns.Value = ClampTrack(
-                _limitTurns,
-                current?.LimitHistoryTurns ??
-                TextBoundary.RecommendedConversationTurns);
-            _limitRounds.Value = ClampTrack(
-                _limitRounds,
-                current?.LimitToolRounds ??
-                TextBoundary.RecommendedToolRounds);
-            _limitCalls.Value = ClampTrack(
-                _limitCalls,
-                current?.LimitToolCallsPerRound ??
-                TextBoundary.RecommendedToolCallsPerRound);
-            _limitEmails.Value = ClampTrack(
-                _limitEmails,
-                current?.LimitWorkingSetMessages ??
-                LimitOverrides.RecommendedWorkingSetMessages);
-            UpdateLimitsUi();
             UpdateToneStrengthLabel();
             UpdateModelGuidance();
             UpdateTransportWarning();
             UpdateGeminiModeUi();
-        }
-
-        private static int ClampTrack(TrackBar slider, int value)
-        {
-            return Math.Max(
-                slider.Minimum,
-                Math.Min(slider.Maximum, value));
         }
 
         public AppSettings SavedSettings { get; private set; }
@@ -264,9 +211,11 @@ namespace Scribble.UI
             FormClosedEventArgs eventArgs)
         {
             _checkCancellation?.Cancel();
+            _modelRefreshCancellation?.Cancel();
             _toneCancellation?.Cancel();
             _updateCancellation?.Cancel();
             _checkCancellation?.Dispose();
+            _modelRefreshCancellation?.Dispose();
             _toneCancellation?.Dispose();
             _updateCancellation?.Dispose();
             _client.Dispose();
@@ -308,7 +257,9 @@ namespace Scribble.UI
             ConfigureField(
                 _endpoint,
                 "AI endpoint",
-                "HTTPS endpoint, loopback HTTP, or explicitly allowed remote HTTP.");
+                "HTTP or HTTPS URL for an OpenAI-compatible endpoint.");
+            _endpoint.TextChanged +=
+                (sender, args) => UpdateTransportWarning();
             ConfigureModelField();
             ConfigureField(
                 _apiKey,
@@ -335,16 +286,6 @@ namespace Scribble.UI
                 "organization requires a designated project. The " +
                 "same id works for everyone in the organization.");
 
-            _allowInsecureHttp.AutoSize = true;
-            _allowInsecureHttp.Text =
-                "Allow insecure HTTP for non-local endpoints";
-            _allowInsecureHttp.AccessibleName =
-                "Allow insecure HTTP";
-            _allowInsecureHttp.AccessibleDescription =
-                "Allows the API key, prompts, and email context to be sent " +
-                "without transport encryption.";
-            _allowInsecureHttp.CheckedChanged += InsecureHttpChanged;
-
             _switchVisionForImages.AutoSize = true;
             _switchVisionForImages.Text =
                 "Auto-switch to vision for images";
@@ -352,7 +293,7 @@ namespace Scribble.UI
                 "Switch to vision model for images";
             _switchVisionForImages.AccessibleDescription =
                 "Uses your saved model list to pick a vision model for this request only. " +
-                "Save settings after Refresh models so Scribble knows which vision models are available.";
+                "Save settings after Connect and load models so Scribble knows which vision models are available.";
 
             _useToneProfile.AutoSize = true;
             _useToneProfile.Text =
@@ -387,29 +328,40 @@ namespace Scribble.UI
                 AutoSize = true,
                 AutoSizeMode = AutoSizeMode.GrowAndShrink,
                 ColumnCount = 1,
-                RowCount = 14,
+                RowCount = 15,
                 Padding = new Padding(18, 16, 18, 12),
                 Width = 640
             };
             layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
+            layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
+            layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
-            layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
             layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
-            layout.Controls.Add(FieldLabel("Endpoint or base URL"), 0, 0);
-            layout.Controls.Add(_endpoint, 0, 1);
-            layout.Controls.Add(FieldLabel("Model"), 0, 2);
-            layout.Controls.Add(_model, 0, 3);
+            var intro = SupportingText(
+                "Enter the endpoint URL and API key, then load the " +
+                "models it serves. The model field stays editable for " +
+                "servers that do not expose a model list.");
+            intro.ForeColor = SystemColors.ControlText;
+            layout.Controls.Add(intro, 0, 0);
+            layout.Controls.Add(FieldLabel("Endpoint URL"), 0, 1);
+            layout.Controls.Add(_endpoint, 0, 2);
+            layout.Controls.Add(FieldLabel("API key"), 0, 3);
+            layout.Controls.Add(_apiKey, 0, 4);
+
+            ConfigureSupportingLabel(_transportWarning);
+            _transportWarning.AccessibleRole = AccessibleRole.Alert;
+            layout.Controls.Add(_transportWarning, 0, 5);
 
             _checkEndpoint.Click += CheckEndpointClick;
             _refreshModels.Click += RefreshModelsClick;
@@ -422,26 +374,33 @@ namespace Scribble.UI
                 Padding = new Padding(0, 4, 0, 0),
                 Margin = new Padding(0)
             };
-            checkRow.Controls.Add(_checkEndpoint);
             checkRow.Controls.Add(_refreshModels);
-            layout.Controls.Add(checkRow, 0, 4);
+            layout.Controls.Add(checkRow, 0, 6);
 
             ConfigureSupportingLabel(_testStatus);
             _testStatus.Text =
-                "Use Refresh models to load the model list from your endpoint. " +
-                "Check endpoint also verifies tool-call compatibility.";
+                "Connect loads the model list. Test selected model also " +
+                "verifies mailbox tool-call compatibility.";
             _testStatus.AccessibleRole = AccessibleRole.StatusBar;
-            layout.Controls.Add(_testStatus, 0, 5);
+            layout.Controls.Add(_testStatus, 0, 7);
 
+            layout.Controls.Add(FieldLabel("Model"), 0, 8);
+            layout.Controls.Add(_model, 0, 9);
             ConfigureSupportingLabel(_modelGuidance);
-            layout.Controls.Add(_modelGuidance, 0, 6);
-            layout.Controls.Add(_switchVisionForImages, 0, 7);
-            layout.Controls.Add(FieldLabel("API key"), 0, 8);
-            layout.Controls.Add(_apiKey, 0, 9);
-            layout.Controls.Add(_allowInsecureHttp, 0, 10);
-            ConfigureSupportingLabel(_transportWarning);
-            _transportWarning.AccessibleRole = AccessibleRole.Alert;
-            layout.Controls.Add(_transportWarning, 0, 11);
+            layout.Controls.Add(_modelGuidance, 0, 10);
+
+            var testRow = new FlowLayoutPanel
+            {
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = false,
+                Padding = new Padding(0, 4, 0, 0),
+                Margin = new Padding(0)
+            };
+            testRow.Controls.Add(_checkEndpoint);
+            layout.Controls.Add(testRow, 0, 11);
+            layout.Controls.Add(_switchVisionForImages, 0, 12);
 
             _updateButton.Click += UpdateClick;
             var updateRow = new FlowLayoutPanel
@@ -459,15 +418,15 @@ namespace Scribble.UI
                 SelfUpdater.InstalledVersion() + ".");
             versionLabel.Padding = new Padding(8, 8, 0, 0);
             updateRow.Controls.Add(versionLabel);
-            layout.Controls.Add(updateRow, 0, 12);
+            layout.Controls.Add(updateRow, 0, 13);
 
             ConfigureSupportingLabel(_updateStatus);
             _updateStatus.Text =
                 "Update downloads the latest Scribble release and installs " +
-                "silently once Outlook, Excel, and PowerPoint are closed. " +
-                "One update refreshes all three add-ins.";
+                "silently once Outlook, Excel, PowerPoint, and Word are closed. " +
+                "One update refreshes all four add-ins.";
             _updateStatus.AccessibleRole = AccessibleRole.StatusBar;
-            layout.Controls.Add(_updateStatus, 0, 13);
+            layout.Controls.Add(_updateStatus, 0, 14);
             page.Controls.Add(layout);
             return page;
         }
@@ -476,7 +435,10 @@ namespace Scribble.UI
             object sender,
             EventArgs eventArgs)
         {
-            if (_updating || _checking || _analyzingTone)
+            if (_updating ||
+                _checking ||
+                _refreshingModels ||
+                _analyzingTone)
             {
                 return;
             }
@@ -1017,186 +979,6 @@ namespace Scribble.UI
                 "Removed " + name + ". Press Save to apply.";
         }
 
-        private TabPage BuildLimitsPage()
-        {
-            var page = new TabPage("Limits")
-            {
-                AutoScroll = true
-            };
-            var layout = new TableLayoutPanel
-            {
-                Dock = DockStyle.Top,
-                AutoSize = true,
-                AutoSizeMode = AutoSizeMode.GrowAndShrink,
-                ColumnCount = 2,
-                Padding = new Padding(18, 16, 18, 12),
-                Width = 640
-            };
-            layout.ColumnStyles.Add(
-                new ColumnStyle(SizeType.Percent, 100));
-            layout.ColumnStyles.Add(
-                new ColumnStyle(SizeType.AutoSize));
-
-            var intro = SupportingText(
-                "These limits control how much text Scribble reads " +
-                "and sends per request. The recommended values are " +
-                "sized for local models with modest context " +
-                "windows. Raising them sends more mailbox and " +
-                "document text to the model and can overflow a " +
-                "small model's context window or slow requests " +
-                "down - change them at your own risk. Drafting " +
-                "guardrails are not affected: one deliverable per " +
-                "request, one unsent email draft per request, and " +
-                "never-send/never-save stay fixed regardless.");
-            intro.ForeColor = SystemColors.ControlText;
-            layout.Controls.Add(intro, 0, 0);
-            layout.SetColumnSpan(intro, 2);
-
-            _useRecommendedLimits.AutoSize = true;
-            _useRecommendedLimits.Checked = true;
-            _useRecommendedLimits.Text =
-                "Use recommended limits";
-            _useRecommendedLimits.AccessibleName =
-                "Use recommended limits";
-            _useRecommendedLimits.CheckedChanged +=
-                (sender, args) => UpdateLimitsUi();
-            layout.Controls.Add(_useRecommendedLimits, 0, 1);
-            layout.SetColumnSpan(_useRecommendedLimits, 2);
-
-            var row = 2;
-            AddLimitRow(
-                layout,
-                ref row,
-                "Reading budget multiplier (email bodies, " +
-                "attachments, documents)",
-                _limitMultiplier,
-                _limitMultiplierValue,
-                1,
-                ContextScale.MaxUserMultiplier,
-                1);
-            AddLimitRow(
-                layout,
-                ref row,
-                "Your message length (thousand characters)",
-                _limitPrompt,
-                _limitPromptValue,
-                LimitOverrides.MinPromptCharacters / 1000,
-                LimitOverrides.MaxPromptCharacters / 1000,
-                1);
-            AddLimitRow(
-                layout,
-                ref row,
-                "Answer length (thousand characters)",
-                _limitAnswer,
-                _limitAnswerValue,
-                LimitOverrides.MinAssistantCharacters / 1000,
-                LimitOverrides.MaxAssistantCharactersLimit / 1000,
-                4);
-            AddLimitRow(
-                layout,
-                ref row,
-                "Conversation turns kept as history",
-                _limitTurns,
-                _limitTurnsValue,
-                LimitOverrides.MinHistoryTurns,
-                LimitOverrides.MaxHistoryTurns,
-                2);
-            AddLimitRow(
-                layout,
-                ref row,
-                "Tool rounds per request",
-                _limitRounds,
-                _limitRoundsValue,
-                LimitOverrides.MinToolRounds,
-                LimitOverrides.MaxToolRoundsLimit,
-                1);
-            AddLimitRow(
-                layout,
-                ref row,
-                "Tool calls per round",
-                _limitCalls,
-                _limitCallsValue,
-                LimitOverrides.MinToolCallsPerRound,
-                LimitOverrides.MaxToolCallsPerRoundLimit,
-                1);
-            AddLimitRow(
-                layout,
-                ref row,
-                "Emails in the working set (per request)",
-                _limitEmails,
-                _limitEmailsValue,
-                LimitOverrides.MinWorkingSetMessages,
-                LimitOverrides.MaxWorkingSetMessages,
-                5);
-
-            var note = SupportingText(
-                "With Google Gemini sign-in the reading budgets " +
-                "already scale x4 automatically; the larger of " +
-                "that and your multiplier wins. Changes apply " +
-                "after Save.");
-            layout.Controls.Add(note, 0, row);
-            layout.SetColumnSpan(note, 2);
-
-            page.Controls.Add(layout);
-            return page;
-        }
-
-        private void AddLimitRow(
-            TableLayoutPanel layout,
-            ref int row,
-            string caption,
-            TrackBar slider,
-            Label valueLabel,
-            int minimum,
-            int maximum,
-            int tickFrequency)
-        {
-            layout.Controls.Add(FieldLabel(caption), 0, row);
-            ConfigureSupportingLabel(valueLabel);
-            valueLabel.AutoSize = true;
-            valueLabel.Margin = new Padding(8, 6, 0, 0);
-            layout.Controls.Add(valueLabel, 1, row);
-            row++;
-            slider.Minimum = minimum;
-            slider.Maximum = maximum;
-            slider.TickFrequency = tickFrequency;
-            slider.SmallChange = 1;
-            slider.LargeChange = tickFrequency;
-            slider.Dock = DockStyle.Fill;
-            slider.AccessibleName = caption;
-            slider.ValueChanged +=
-                (sender, args) => UpdateLimitsUi();
-            layout.Controls.Add(slider, 0, row);
-            layout.SetColumnSpan(slider, 2);
-            row++;
-        }
-
-        private void UpdateLimitsUi()
-        {
-            var custom = !_useRecommendedLimits.Checked;
-            _limitMultiplier.Enabled = custom;
-            _limitPrompt.Enabled = custom;
-            _limitAnswer.Enabled = custom;
-            _limitTurns.Enabled = custom;
-            _limitRounds.Enabled = custom;
-            _limitCalls.Enabled = custom;
-            _limitEmails.Enabled = custom;
-            _limitMultiplierValue.Text =
-                "x" + _limitMultiplier.Value;
-            _limitPromptValue.Text =
-                (_limitPrompt.Value * 1000).ToString("N0");
-            _limitAnswerValue.Text =
-                (_limitAnswer.Value * 1000).ToString("N0");
-            _limitTurnsValue.Text =
-                _limitTurns.Value.ToString();
-            _limitRoundsValue.Text =
-                _limitRounds.Value.ToString();
-            _limitCallsValue.Text =
-                _limitCalls.Value.ToString();
-            _limitEmailsValue.Text =
-                _limitEmails.Value.ToString();
-        }
-
         private TabPage BuildSupportPage()
         {
             var page = new TabPage("Support")
@@ -1685,10 +1467,16 @@ namespace Scribble.UI
                 BaseUrl = _endpoint.Text,
                 Model = _model.Text,
                 ApiKey = _apiKey.Text,
-                AllowInsecureHttp = _allowInsecureHttp.Checked,
-                UseGeminiSignIn = _useGeminiSignIn.Checked,
-                GeminiRefreshToken = _geminiRefreshToken,
-                GeminiProject = _geminiProject.Text,
+                AllowInsecureHttp = true,
+                UseGeminiSignIn =
+                    !AdminPolicy.GeminiDisabled &&
+                    _useGeminiSignIn.Checked,
+                GeminiRefreshToken = AdminPolicy.GeminiDisabled
+                    ? string.Empty
+                    : _geminiRefreshToken,
+                GeminiProject = AdminPolicy.GeminiDisabled
+                    ? string.Empty
+                    : _geminiProject.Text,
                 ToneProfile = profile,
                 UseToneProfile =
                     _useToneProfile.Checked && profile.Length > 0,
@@ -1702,17 +1490,20 @@ namespace Scribble.UI
                 McpServers = _mcpServers
                     .Select(server => server.Sanitized())
                     .ToList(),
-                UseRecommendedLimits =
-                    _useRecommendedLimits.Checked,
-                LimitContextMultiplier = _limitMultiplier.Value,
-                LimitPromptCharacters =
-                    _limitPrompt.Value * 1000,
-                LimitAssistantCharacters =
-                    _limitAnswer.Value * 1000,
-                LimitHistoryTurns = _limitTurns.Value,
-                LimitToolRounds = _limitRounds.Value,
-                LimitToolCallsPerRound = _limitCalls.Value,
-                LimitWorkingSetMessages = _limitEmails.Value
+                UseRecommendedLimits = true,
+                LimitContextMultiplier = 1,
+                LimitPromptCharacters = TextBoundary
+                    .RecommendedUserPromptCharacters,
+                LimitAssistantCharacters = TextBoundary
+                    .RecommendedAssistantCharacters,
+                LimitHistoryTurns = TextBoundary
+                    .RecommendedConversationTurns,
+                LimitToolRounds = TextBoundary
+                    .RecommendedToolRounds,
+                LimitToolCallsPerRound = TextBoundary
+                    .RecommendedToolCallsPerRound,
+                LimitWorkingSetMessages = LimitOverrides
+                    .RecommendedWorkingSetMessages
             };
         }
 
@@ -1724,7 +1515,7 @@ namespace Scribble.UI
                     TextBoundary.PlainText(
                         Convert.ToString(item),
                         200))
-                .Where(item => item.Length > 0)
+                .Where(ModelSelectionPolicy.IsGenerativeModel)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(item => item, StringComparer.OrdinalIgnoreCase)
                 .ToList();
@@ -1735,7 +1526,7 @@ namespace Scribble.UI
         {
             foreach (var model in models ?? Enumerable.Empty<string>())
             {
-                if (ModelCatalog.IsDisallowedModel(model))
+                if (!ModelSelectionPolicy.IsGenerativeModel(model))
                 {
                     continue;
                 }
@@ -1749,6 +1540,8 @@ namespace Scribble.UI
                     _model.Items.Add(model);
                 }
             }
+
+            SelectPreferredModelIfEmpty();
         }
 
         private async void AnalyzeToneClick(
@@ -1857,6 +1650,11 @@ namespace Scribble.UI
                 return;
             }
 
+            if (_refreshingModels)
+            {
+                return;
+            }
+
             _error.Text = string.Empty;
             var settings = ReadFormSettings();
             if (!settings.HasConnectionSettings)
@@ -1916,7 +1714,7 @@ namespace Scribble.UI
                 {
                     throw new AiEndpointException(
                         "MODEL_REQUIRED",
-                        "Choose a model or use Refresh models after model discovery returns at least one generative model.");
+                        "Choose a model or use Connect & load models after discovery returns at least one generative model.");
                 }
 
                 _testStatus.Text =
@@ -1982,7 +1780,15 @@ namespace Scribble.UI
             object sender,
             EventArgs eventArgs)
         {
-            if (_refreshingModels || _checking)
+            if (_refreshingModels)
+            {
+                _modelRefreshCancellation?.Cancel();
+                return;
+            }
+
+            if (_checking ||
+                _analyzingTone ||
+                _updating)
             {
                 return;
             }
@@ -1997,7 +1803,12 @@ namespace Scribble.UI
             }
 
             _refreshingModels = true;
-            _refreshModels.Enabled = false;
+            _refreshModels.Text = "Cancel connection";
+            SetCommonControlsEnabled(false);
+            _modelRefreshCancellation =
+                new CancellationTokenSource(
+                    TimeSpan.FromSeconds(
+                        ModelDiscoveryTimeoutSeconds));
             try
             {
                 _testStatus.ForeColor = SecondaryText;
@@ -2005,28 +1816,21 @@ namespace Scribble.UI
                     "Loading models from the endpoint (up to " +
                     ModelDiscoveryTimeoutSeconds +
                     " seconds)...";
-                using (var cancellation = new CancellationTokenSource(
-                    TimeSpan.FromSeconds(ModelDiscoveryTimeoutSeconds)))
-                {
-                    var models = await _client.GetModelsAsync(
-                        settings,
-                        cancellation.Token);
-                    var added = AddDiscoveredModels(models);
-                    _testStatus.ForeColor = SuccessText;
-                    _testStatus.Text =
-                        "Model list refreshed: " +
-                        _model.Items.Count.ToString() +
-                        " models available" +
-                        (added > 0
-                            ? " (" + added.ToString() + " new)"
-                            : "") +
-                        ".";
-                }
+                var models = await _client.GetModelsAsync(
+                    settings,
+                    _modelRefreshCancellation.Token);
+                var available = ReplaceDiscoveredModels(models);
+                _testStatus.ForeColor = SuccessText;
+                _testStatus.Text =
+                    "Model list loaded: " +
+                    available.ToString() +
+                    " models available.";
             }
             catch (OperationCanceledException)
             {
                 _error.Text =
-                    "[MODEL_REFRESH_TIMEOUT] Model discovery timed out after " +
+                    "[MODEL_REFRESH_CANCELLED] Model discovery was cancelled " +
+                    "or timed out after " +
                     ModelDiscoveryTimeoutSeconds +
                     " seconds.";
             }
@@ -2038,9 +1842,14 @@ namespace Scribble.UI
             }
             finally
             {
+                _modelRefreshCancellation?.Dispose();
+                _modelRefreshCancellation = null;
                 _refreshingModels = false;
-                _refreshModels.Enabled =
-                    !_checking && !_analyzingTone;
+                _refreshModels.Text = "Connect & load models";
+                SetCommonControlsEnabled(
+                    !_checking &&
+                    !_analyzingTone &&
+                    !_updating);
             }
         }
 
@@ -2049,7 +1858,7 @@ namespace Scribble.UI
             var added = 0;
             foreach (var model in models ?? Enumerable.Empty<string>())
             {
-                if (ModelCatalog.IsDisallowedModel(model))
+                if (!ModelSelectionPolicy.IsGenerativeModel(model))
                 {
                     continue;
                 }
@@ -2065,15 +1874,75 @@ namespace Scribble.UI
                 }
             }
 
+            SelectPreferredModelIfEmpty();
             UpdateModelGuidance();
             return added;
+        }
+
+        private int ReplaceDiscoveredModels(
+            IEnumerable<string> models)
+        {
+            var discovered = (models ?? Enumerable.Empty<string>())
+                .Where(ModelSelectionPolicy.IsGenerativeModel)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (discovered.Count == 0)
+            {
+                return 0;
+            }
+
+            var selected = _model.Text.Trim();
+            _model.BeginUpdate();
+            try
+            {
+                _model.Items.Clear();
+                foreach (var model in discovered)
+                {
+                    _model.Items.Add(model);
+                }
+            }
+            finally
+            {
+                _model.EndUpdate();
+            }
+
+            _model.Text = discovered.Any(model =>
+                string.Equals(
+                    model,
+                    selected,
+                    StringComparison.OrdinalIgnoreCase))
+                        ? selected
+                        : string.Empty;
+            SelectPreferredModelIfEmpty();
+            UpdateModelGuidance();
+            return discovered.Count;
+        }
+
+        private void SelectPreferredModelIfEmpty()
+        {
+            if (_model.Text.Trim().Length > 0 ||
+                _model.Items.Count == 0)
+            {
+                return;
+            }
+
+            var models = _model.Items
+                .Cast<object>()
+                .Select(item => Convert.ToString(item))
+                .Where(ModelSelectionPolicy.IsGenerativeModel)
+                .ToList();
+            var preferred = ModelSelectionPolicy.PreferredModel(models);
+            if (!string.IsNullOrWhiteSpace(preferred))
+            {
+                _model.Text = preferred;
+            }
         }
 
         private void SetChecking(bool checking)
         {
             _checking = checking;
             _checkEndpoint.Text =
-                checking ? "Cancel check" : "Check endpoint";
+                checking ? "Cancel test" : "Test selected model";
             SetCommonControlsEnabled(!checking && !_analyzingTone);
             if (checking)
             {
@@ -2100,15 +1969,12 @@ namespace Scribble.UI
             _endpoint.Enabled = enabled;
             _model.Enabled = enabled;
             _apiKey.Enabled = enabled;
-            _allowInsecureHttp.Enabled = enabled;
             _switchVisionForImages.Enabled = enabled;
             _useToneProfile.Enabled = enabled;
             _toneProfile.Enabled = enabled;
             _checkEndpoint.Enabled = enabled || _checking;
-            _refreshModels.Enabled =
-                (enabled || _refreshingModels) &&
-                !_checking &&
-                !_refreshingModels;
+            _refreshModels.Enabled = _refreshingModels ||
+                (enabled && !_checking);
             _analyzeTone.Enabled = enabled || _analyzingTone;
             _updateButton.Enabled = enabled && !_updating;
             _commonControlsEnabled = enabled;
@@ -2138,22 +2004,21 @@ namespace Scribble.UI
             object sender,
             FormClosingEventArgs eventArgs)
         {
-            if (!_checking && !_analyzingTone && !_updating)
+            if (!_checking &&
+                !_refreshingModels &&
+                !_analyzingTone &&
+                !_updating)
             {
                 return;
             }
 
             eventArgs.Cancel = true;
             _checkCancellation?.Cancel();
+            _modelRefreshCancellation?.Cancel();
             _toneCancellation?.Cancel();
             _updateCancellation?.Cancel();
             _error.Text =
                 "Cancelling the active settings operation. Close again when it finishes.";
-        }
-
-        private void InsecureHttpChanged(object sender, EventArgs eventArgs)
-        {
-            UpdateTransportWarning();
         }
 
         private void GeminiModeChanged(
@@ -2179,8 +2044,6 @@ namespace Scribble.UI
                 _geminiProject.Enabled = false;
                 _endpoint.Enabled = _commonControlsEnabled;
                 _apiKey.Enabled = _commonControlsEnabled;
-                _allowInsecureHttp.Enabled =
-                    _commonControlsEnabled;
                 _googleStatus.Text =
                     "Disabled by administrator policy " +
                     "(Software\\Policies\\Scribble, DisableGemini).";
@@ -2194,7 +2057,6 @@ namespace Scribble.UI
             // and usable for local models at the same time.
             _endpoint.Enabled = baseline;
             _apiKey.Enabled = baseline;
-            _allowInsecureHttp.Enabled = baseline;
             _useGeminiSignIn.Enabled = baseline && !_signingIn;
             _geminiProject.Enabled = baseline && gemini;
             _googleSignIn.Enabled =
@@ -2238,7 +2100,10 @@ namespace Scribble.UI
             object sender,
             EventArgs eventArgs)
         {
-            if (_signingIn || _checking || _updating)
+            if (_signingIn ||
+                _checking ||
+                _refreshingModels ||
+                _updating)
             {
                 return;
             }
@@ -2293,7 +2158,7 @@ namespace Scribble.UI
             if (text.Length == 0)
             {
                 _modelGuidance.Text =
-                    "Use Refresh models, then choose a model that supports tool calls. " +
+                    "Use Connect & load models, then choose a model that supports tool calls. " +
                     "Entries tagged Vision can read email images; Text entries cannot.";
                 return;
             }
@@ -2309,19 +2174,30 @@ namespace Scribble.UI
 
         private void UpdateTransportWarning()
         {
-            if (_allowInsecureHttp.Checked)
+            Uri endpoint;
+            if (Uri.TryCreate(
+                    _endpoint.Text.Trim(),
+                    UriKind.Absolute,
+                    out endpoint) &&
+                endpoint.Scheme.Equals(
+                    Uri.UriSchemeHttp,
+                    StringComparison.OrdinalIgnoreCase) &&
+                !endpoint.IsLoopback)
             {
                 _transportWarning.ForeColor = ErrorText;
                 _transportWarning.Text =
-                    "Warning: with HTTP, the API key, prompts, and retrieved email " +
-                    "context cross the network without transport encryption.";
+                    "Warning: this remote HTTP endpoint receives the API key, " +
+                    "prompts, and retrieved email context without transport encryption.";
                 return;
             }
 
             _transportWarning.ForeColor = SecondaryText;
-            _transportWarning.Text =
-                "Loopback HTTP remains available without this setting. " +
-                "HTTPS is recommended for every remote endpoint.";
+            _transportWarning.Text = endpoint != null &&
+                endpoint.Scheme.Equals(
+                    Uri.UriSchemeHttp,
+                    StringComparison.OrdinalIgnoreCase)
+                    ? "Local HTTP is supported by default. Traffic to a loopback endpoint stays on this computer."
+                    : "HTTPS is recommended for endpoints outside this computer.";
         }
     }
 }
