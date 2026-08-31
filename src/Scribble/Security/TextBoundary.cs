@@ -137,12 +137,13 @@ namespace Scribble.Security
         }
     }
 
-    // Effective request limits. AppSettings always resets these to
-    // the reviewed defaults; the clamped setter remains as an
-    // internal compatibility boundary for older callers. Everything
-    // here is a text, loop, or working-set budget - drafting and
-    // sending capability rules live elsewhere and are never
-    // adjustable.
+    // Effective request limits. AppSettings resets the text and
+    // loop budgets to the reviewed defaults on every load/save; the
+    // mailbox working-set size is the one budget the user owns and
+    // is applied from settings, clamped to the range below.
+    // Everything here is a text, loop, or working-set budget -
+    // drafting and sending capability rules live elsewhere and are
+    // never adjustable.
     public static class LimitOverrides
     {
         public const int MinPromptCharacters = 2000;
@@ -156,8 +157,8 @@ namespace Scribble.Security
         public const int MinToolCallsPerRound = 2;
         public const int MaxToolCallsPerRoundLimit = 8;
         public const int RecommendedWorkingSetMessages = 10;
-        public const int MinWorkingSetMessages = 3;
-        public const int MaxWorkingSetMessages = 50;
+        public const int MinWorkingSetMessages = 1;
+        public const int MaxWorkingSetMessages = 10000;
 
         private static int _promptCharacters =
             TextBoundary.RecommendedUserPromptCharacters;

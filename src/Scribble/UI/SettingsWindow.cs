@@ -44,6 +44,8 @@ namespace Scribble.UI
         private readonly TextBox _geminiProject = new TextBox();
         private readonly TrackBar _toneStrength = new TrackBar();
         private readonly Label _toneStrengthValue = new Label();
+        private readonly NumericUpDown _workingSetSize =
+            new NumericUpDown();
         private readonly RichTextBox _draftRules =
             new RichTextBox();
         private readonly RichTextBox _supportText =
@@ -140,6 +142,7 @@ namespace Scribble.UI
             }
             tabs.TabPages.Add(BuildMcpPage());
             tabs.TabPages.Add(BuildWritingStylePage());
+            tabs.TabPages.Add(BuildLimitsPage());
             tabs.TabPages.Add(BuildSupportPage());
             root.Controls.Add(tabs, 0, 0);
 
@@ -183,6 +186,16 @@ namespace Scribble.UI
             _draftRules.Text = TextBoundary.PlainText(
                 current?.DraftRules,
                 2000);
+            var storedWorkingSet =
+                current?.LimitWorkingSetMessages ?? 0;
+            _workingSetSize.Value = Math.Max(
+                LimitOverrides.MinWorkingSetMessages,
+                Math.Min(
+                    LimitOverrides.MaxWorkingSetMessages,
+                    storedWorkingSet > 0
+                        ? storedWorkingSet
+                        : LimitOverrides
+                            .RecommendedWorkingSetMessages));
             foreach (var server in current?.McpServers ??
                 new List<McpServerConfig>())
             {
@@ -979,6 +992,71 @@ namespace Scribble.UI
                 "Removed " + name + ". Press Save to apply.";
         }
 
+        private TabPage BuildLimitsPage()
+        {
+            var page = new TabPage("Limits")
+            {
+                AutoScroll = true
+            };
+            var layout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Top,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                ColumnCount = 2,
+                Padding = new Padding(18, 16, 18, 12)
+            };
+            layout.ColumnStyles.Add(
+                new ColumnStyle(SizeType.Percent, 100));
+            layout.ColumnStyles.Add(
+                new ColumnStyle(SizeType.AutoSize));
+
+            var intro = SupportingText(
+                "How many emails Scribble can work with in a " +
+                "single request: the /search and Outlook " +
+                "multi-selection working set, mailbox search " +
+                "results, and the request-wide cap on message " +
+                "bodies. The default of " +
+                LimitOverrides.RecommendedWorkingSetMessages +
+                " suits local models with modest context " +
+                "windows. Raising it sends more mailbox text to " +
+                "the model, which can slow requests down or " +
+                "overflow a small model's context window. " +
+                "Drafting guardrails are unaffected: Scribble " +
+                "still never sends email and every draft stays " +
+                "yours to review.");
+            intro.ForeColor = SystemColors.ControlText;
+            layout.Controls.Add(intro, 0, 0);
+            layout.SetColumnSpan(intro, 2);
+
+            layout.Controls.Add(
+                FieldLabel("Emails per request (working set)"),
+                0,
+                1);
+            _workingSetSize.Minimum =
+                LimitOverrides.MinWorkingSetMessages;
+            _workingSetSize.Maximum =
+                LimitOverrides.MaxWorkingSetMessages;
+            _workingSetSize.Value =
+                LimitOverrides.RecommendedWorkingSetMessages;
+            _workingSetSize.Increment = 10;
+            _workingSetSize.Width = 90;
+            _workingSetSize.Margin =
+                new Padding(0, 6, 0, 0);
+            _workingSetSize.AccessibleName =
+                "Emails per request (working set)";
+            layout.Controls.Add(_workingSetSize, 1, 1);
+
+            var note = SupportingText(
+                "Applies after Save, from the next request " +
+                "onward.");
+            layout.Controls.Add(note, 0, 2);
+            layout.SetColumnSpan(note, 2);
+
+            page.Controls.Add(layout);
+            return page;
+        }
+
         private TabPage BuildSupportPage()
         {
             var page = new TabPage("Support")
@@ -1502,8 +1580,8 @@ namespace Scribble.UI
                     .RecommendedToolRounds,
                 LimitToolCallsPerRound = TextBoundary
                     .RecommendedToolCallsPerRound,
-                LimitWorkingSetMessages = LimitOverrides
-                    .RecommendedWorkingSetMessages
+                LimitWorkingSetMessages =
+                    (int)_workingSetSize.Value
             };
         }
 

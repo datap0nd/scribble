@@ -184,8 +184,8 @@ Controls use square native geometry. Text fields have fixed single borders; flat
 ### Mailbox Scope Strip
 
 - **Character:** Quiet context anchor, not a card.
-- **Structure:** Muted full-width band with a bold "Scribble" title, an ellipsized optional `Selected: subject` or `Working set: N of 10 emails`, and exactly `Model: model_name`.
-- **State:** When no context is selected, the same region says mailbox search remains available. `/search person or topic` replaces the local ten-email working set, while `/search clear` removes it.
+- **Structure:** Muted full-width band with a bold "Scribble" title, an ellipsized optional `Selected: subject` or `Working set: N of M emails` (M is the configured per-request size, default 10), and exactly `Model: model_name`.
+- **State:** When no context is selected, the same region says mailbox search remains available. `/search person or topic` replaces the local email working set, while `/search clear` removes it.
 
 ### Toolbar Links
 
@@ -253,7 +253,7 @@ Controls use square native geometry. Text fields have fixed single borders; flat
 - **Do** state that Inbox and Sent Items are available only through bounded read tools.
 - **Do** keep the automatic local intent boundary visible and replace its guidance with linked-draft state after creation.
 - **Do** keep `Selected: subject` at the top and hide repeated `RE:`, `FW:`, and `FWD:` display prefixes.
-- **Do** cap `/search`, Outlook multi-selection, and request-wide body loading at ten emails.
+- **Do** cap `/search`, Outlook multi-selection, and request-wide body loading at the working-set size the user configured in Settings > Limits (default ten emails).
 - **Do** say "unsent draft" and "for your review" in successful draft status text.
 - **Do** inherit Windows system fonts, focus behavior, text scaling, and high-contrast colors.
 - **Do** preserve keyboard operation, including Ctrl+Enter to send, Enter to save settings, and Escape to cancel settings.

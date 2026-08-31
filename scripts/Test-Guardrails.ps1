@@ -152,7 +152,7 @@ foreach ($requiredBoundary in @(
     "_searchExecuted"
 )) {
     if (-not $workingSetBoundarySource.Contains($requiredBoundary)) {
-        throw "Ten-message mailbox boundary is missing $requiredBoundary."
+        throw "Working-set mailbox boundary is missing $requiredBoundary."
     }
 }
 
@@ -470,9 +470,10 @@ if (-not $officePaneSource.Contains(
     throw "Document drafts are not gated by the local intent policy."
 }
 
-# End-user settings always reset request budgets to the reviewed
-# defaults. The legacy clamp implementation remains as an internal
-# defense, but no Settings tab can activate it.
+# End-user settings always reset the text and loop budgets to the
+# reviewed defaults. The mailbox working-set size is the one budget
+# the user owns; it is clamped and applied through the same
+# LimitOverrides path.
 $textBoundarySource = Get-Content (
     Join-Path $sourceRoot "Security\TextBoundary.cs") -Raw
 foreach ($requiredLimitBoundary in @(
@@ -480,7 +481,8 @@ foreach ($requiredLimitBoundary in @(
     "MaxAssistantCharactersLimit = 48000",
     "MaxToolRoundsLimit = 8",
     "MaxUserMultiplier = 8",
-    "MaxWorkingSetMessages = 50",
+    "MinWorkingSetMessages = 1",
+    "MaxWorkingSetMessages = 10000",
     "if (useRecommended)"
 )) {
     if (-not $textBoundarySource.Contains($requiredLimitBoundary)) {
@@ -493,15 +495,30 @@ if (-not $chatPaneSource.Contains("ApplyLimits()") -or
 }
 $appSettingsSource = Get-Content (
     Join-Path $sourceRoot "Configuration\AppSettings.cs") -Raw
-if (-not $appSettingsSource.Contains(
-        "LimitOverrides.Apply(`r`n                true,") -and
-    -not $appSettingsSource.Contains(
-        "LimitOverrides.Apply(`n                true,")) {
-    throw "App settings must always select the reviewed limits."
+foreach ($requiredAppLimit in @(
+    "TextBoundary.RecommendedUserPromptCharacters,",
+    "TextBoundary.RecommendedAssistantCharacters,",
+    "TextBoundary.RecommendedConversationTurns,",
+    "TextBoundary.RecommendedToolRounds,",
+    "TextBoundary.RecommendedToolCallsPerRound,"
+)) {
+    if (-not $appSettingsSource.Contains($requiredAppLimit)) {
+        throw "App settings must keep text and loop budgets at the reviewed defaults."
+    }
 }
-if ($settingsWindowSource.Contains(
-        "tabs.TabPages.Add(BuildLimitsPage())")) {
-    throw "The end-user Limits tab must remain absent."
+if (-not $settingsWindowSource.Contains(
+        "tabs.TabPages.Add(BuildLimitsPage())") -or
+    -not $settingsWindowSource.Contains("_workingSetSize")) {
+    throw "The Limits tab must expose the user-owned working-set size."
+}
+foreach ($lockedSetting in @(
+    "LimitPromptCharacters = TextBoundary",
+    "LimitAssistantCharacters = TextBoundary",
+    "LimitToolRounds = TextBoundary"
+)) {
+    if (-not $settingsWindowSource.Contains($lockedSetting)) {
+        throw "Settings must not expose text or loop budgets: $lockedSetting."
+    }
 }
 
 # MCP tools stay namespaced, bounded, and separated from the draft

@@ -214,10 +214,10 @@ namespace GuardrailTests
                     "Local search command is explicit and bounded",
                     LocalSearchCommandIsBounded);
                 Run(
-                    "Working set exposes only ten approved emails",
+                    "Working set is bounded by the configured size",
                     WorkingSetIsStrictlyBounded);
                 Run(
-                    "Outlook multi-selection accepts one to ten emails",
+                    "Outlook multi-selection accepts up to the working-set size",
                     OutlookMultiSelectionIsBounded);
                 Run(
                     "Active Explorer selection is used for Send to Scribble",
@@ -305,7 +305,7 @@ namespace GuardrailTests
                     "Admin policy reads only documented switches",
                     AdminPolicyIsReadOnlyAndScoped);
                 Run(
-                    "User settings always apply fixed recommended limits",
+                    "Text budgets stay fixed; the working set honors the user",
                     SettingsAlwaysApplyRecommendedLimits);
                 Console.WriteLine("PASS: " + _passed + " guardrail tests");
                 return 0;
@@ -763,6 +763,7 @@ namespace GuardrailTests
 
         private static void WorkingSetIsStrictlyBounded()
         {
+            new AppSettings().ApplyLimits();
             var messages = Enumerable.Range(1, 12)
                 .Select(index => new MessageSnapshot(
                     "entry-" + index,
@@ -839,6 +840,25 @@ namespace GuardrailTests
                 lockedThread.Content.Contains(
                     "MAILBOX_WORKING_SET_LOCKED"),
                 "The working-set host bypassed its ten-email lock.");
+
+            try
+            {
+                var raised = new AppSettings
+                {
+                    LimitWorkingSetMessages = 500
+                };
+                raised.ApplyLimits();
+                var expanded = MailboxWorkingSet.Normalize(messages);
+                Assert(
+                    MailboxWorkingSet.MaxMessages == 500 &&
+                    expanded.Count == 12 &&
+                    MailboxWorkingSet.HandleAt(499) == "context500",
+                    "A user-raised working-set size was not honored.");
+            }
+            finally
+            {
+                new AppSettings().ApplyLimits();
+            }
         }
 
         private static void OutlookMultiSelectionIsBounded()
@@ -869,7 +889,7 @@ namespace GuardrailTests
             catch (InvalidOperationException exception)
             {
                 overflow = exception.Message.Contains(
-                    "no more than ten");
+                    "no more than " + MailboxWorkingSet.MaxMessages);
             }
 
             Assert(
@@ -4768,11 +4788,22 @@ namespace GuardrailTests
                     TextBoundary.RecommendedToolRounds &&
                     TextBoundary.MaxToolCallsPerRound ==
                     TextBoundary.RecommendedToolCallsPerRound &&
-                    MailboxWorkingSet.MaxMessages ==
-                    LimitOverrides.RecommendedWorkingSetMessages &&
+                    MailboxWorkingSet.MaxMessages == 1000 &&
                     ContextScale.Scaled(1000) == 1000,
-                    "Legacy custom values must be ignored in favor " +
-                    "of the reviewed fixed defaults.");
+                    "Text and loop budgets must stay at the " +
+                    "reviewed fixed defaults while the working-set " +
+                    "size honors the user's setting.");
+
+                var overflowing = new AppSettings
+                {
+                    LimitWorkingSetMessages = 999999
+                };
+                overflowing.ApplyLimits();
+                Assert(
+                    MailboxWorkingSet.MaxMessages ==
+                    LimitOverrides.MaxWorkingSetMessages,
+                    "An out-of-range working-set size must clamp " +
+                    "to the maximum.");
 
                 var recommended = new AppSettings
                 {
@@ -4788,7 +4819,8 @@ namespace GuardrailTests
                     MailboxWorkingSet.MaxMessages ==
                     MailboxWorkingSet.RecommendedMaxMessages &&
                     ContextScale.Scaled(1000) == 1000,
-                    "Recommended mode must ignore stored custom values.");
+                    "Defaults must apply when no working-set size " +
+                    "is stored.");
             }
             finally
             {

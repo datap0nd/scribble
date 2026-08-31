@@ -80,7 +80,9 @@ namespace Scribble.Chat
                         description =
                             "Load the bounded plain-text bodies of messages returned by " +
                             "search_mailbox, the selected email, or the user-approved " +
-                            "ten-message working set. At most ten unique message bodies " +
+                            "working set. At most " +
+                            MailboxWorkingSet.MaxMessages +
+                            " unique message bodies " +
                             "can be loaded in one request. Attachments are included as " +
                             "extracted text where possible (Excel, PDF, PowerPoint, " +
                             "Word including legacy formats, RTF, and text files); " +
@@ -100,7 +102,9 @@ namespace Scribble.Chat
                                             "items",
                                             StringSchema(
                                                 "A temporary handle returned by search_mailbox, " +
-                                                "selected, or context1 through context10 from the " +
+                                                "selected, or context1 through context" +
+                                                MailboxWorkingSet.MaxMessages +
+                                                " from the " +
                                                 "user-approved working set.")
                                         },
                                         { "minItems", 1 },
@@ -119,8 +123,9 @@ namespace Scribble.Chat
                         name = ReadThread,
                         description =
                             "Load bounded messages in the Outlook conversation containing " +
-                            "a searched or selected message, subject to the ten-message " +
-                            "request-wide context cap.",
+                            "a searched or selected message, subject to the " +
+                            MailboxWorkingSet.MaxMessages +
+                            "-message request-wide context cap.",
                         parameters = ObjectSchema(
                             new Dictionary<string, object>
                             {

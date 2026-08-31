@@ -155,10 +155,11 @@ the tool-call probe allows up to 90 seconds.
    actions.
 2. To choose a bounded group first, enter `/search person or topic`. Scribble
    searches locally and keeps the newest matching Inbox or Sent Items
-   emails as the working set (up to the fixed ten-email limit). No email body
-   is sent during this command.
+   emails as the working set (up to the per-request size configured in
+   Settings > Limits; the default is ten). No email body is sent during this
+   command.
 3. Review the listed subjects and send another `/search` to replace the set if
-   it is wrong. Results appear in a collapsible working-set layer as ten
+   it is wrong. Results appear in a collapsible working-set layer as
    distinct email cards with subject, sender, and date. Use `/search clear` to
    remove it. The layer collapses automatically when you send a normal AI
    prompt and can be reopened with **Show**.
@@ -178,7 +179,8 @@ the tool-call probe allows up to 90 seconds.
    notice the model can see.
 6. Ask a normal mailbox question. When a working set exists, the model can read
    only those emails. Without one, it may perform one bounded mailbox search
-   and load no more than ten unique email bodies for the request. Meeting
+   and load no more unique email bodies than the configured working-set size
+   for the request. Meeting
    invites and calendar items are readable like email — subject, body, time,
    location, and attachments — but Scribble can never accept, decline, or
    schedule anything. When a body
@@ -222,8 +224,9 @@ the tool-call probe allows up to 90 seconds.
 
 Selecting an email is optional for mailbox questions. When one is selected, the
 model receives its metadata and may request its body using the temporary
-`selected` handle. A two-to-ten-email selection is stored as a locked working
-set with `context1` through `context10` handles. The conversation and working set
+`selected` handle. A multi-email selection is stored as a locked working
+set with `context1` through `contextN` handles (N is the configured
+working-set size, default 10). The conversation and working set
 remain in memory until cleared or Outlook closes. `/search clear` removes the
 email working set but retains external files. **Clear** removes all context, and
 **New** starts a new conversation with no retained context.
@@ -438,19 +441,21 @@ HTTP(S) servers can carry per-server request headers (one per line as
 to that server's own endpoint, never logged, and stored DPAPI-encrypted like
 the API key.
 
-## Fixed request budgets
+## Request budgets
 
-Scribble uses reviewed, non-editable per-field budgets as a conservative Qwen
-baseline: 4,000 prompt characters, 12,000 retained answer
-characters, 12 history turns, four tool rounds, four calls per round, and ten
-emails in the working set. Legacy custom-limit values are ignored on load and
-replaced on save. Searching may inspect a broader local candidate pool, but
-only the bounded top results enter model context. Five hundred emails is not a
-safe working-set value: bodies alone could reach millions of characters and
-overflow both the endpoint context and Scribble's tool-result boundary. These
-values do not reveal or guarantee the server's actual context window;
-attachment-heavy multi-round requests still depend on the endpoint's configured
-limit.
+Scribble uses reviewed, non-editable per-field text budgets as a conservative
+Qwen baseline: 4,000 prompt characters, 12,000 retained answer characters, 12
+history turns, four tool rounds, and four calls per round. Legacy custom values
+for those budgets are ignored on load and replaced on save.
+
+The number of emails per request is yours: **Settings > Limits > Emails per
+request** sets the working set, search-result, and request-wide body-loading
+size, from 1 to 10,000 (default ten). Scribble's tool-result boundary scales
+with your choice. Be deliberate with large values: hundreds of email bodies can
+reach millions of characters, overflow a small model's context window, and slow
+requests down. These values do not reveal or guarantee the server's actual
+context window; attachment-heavy multi-round requests still depend on the
+endpoint's configured limit.
 
 ## Diagnostics and administration
 
@@ -473,7 +478,7 @@ scoped exception, not a general mutation permission.
 
 - A request without a working set exposes three read-only tools:
   `search_mailbox`, `read_messages`, and `read_thread`. A request with a locked
-  working set exposes only `read_messages`, and only for its ten approved
+  working set exposes only `read_messages`, and only for its approved
   handles.
 - `create_draft` is added only when local code recognizes an explicit drafting
   instruction in the latest user-written prompt, such as "create a draft" or
@@ -530,7 +535,8 @@ See [SECURITY.md](SECURITY.md) for the full threat model.
 
 Every chat request initially sends the configured endpoint:
 
-- selected email metadata, or metadata for up to ten working-set emails;
+- selected email metadata, or metadata for the working-set emails (up to the
+  configured per-request size);
 - up to 12 recent chat turns;
 - the current prompt;
 - up to three explicitly added bounded text files;
@@ -544,14 +550,16 @@ or pages in the background.
 
 The model may then request:
 
-- one search with up to ten bounded result summaries from the primary Inbox
-  and Sent Items when no working set is locked;
-- no more than ten unique message bodies across the entire request;
-- conversation messages only within that same request-wide ten-body limit;
+- one search with bounded result summaries (up to the configured per-request
+  size) from the primary Inbox and Sent Items when no working set is locked;
+- no more unique message bodies than the configured per-request size across
+  the entire request;
+- conversation messages only within that same request-wide body limit;
 - at most four tool calls per round and four context-retrieval rounds.
 
-`/search` is handled locally before an LLM request is created. It returns at
-most ten metadata matches and does not transmit bodies. A later normal prompt
+`/search` is handled locally before an LLM request is created. It returns
+metadata matches (up to the configured per-request size) and does not transmit
+bodies. A later normal prompt
 sends the working-set metadata and exposes only the body-read tool for those
 exact handles.
 

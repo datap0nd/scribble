@@ -13,7 +13,7 @@ feedback.
 ## Capability separation
 
 ```text
-Prompt + optional selected-message, ten-email working set, and bounded files
+Prompt + optional selected-message, bounded email working set, and bounded files
     |
     v
 OpenAiCompatibleClient -> messages + read-only tool schema -> endpoint
@@ -94,12 +94,14 @@ allowed per request.
 2. `MailboxToolHost` has one public dispatcher and rejects any tool name outside
    that compile-time allowlist.
 3. Model-selected searches are limited to one search of the primary Inbox and
-   Sent Items per request and return no more than ten summaries. No request can
-   load more than ten unique message bodies, including thread reads. Body
-   lengths, calls per round, and tool rounds are also capped.
+   Sent Items per request and return no more summaries than the configured
+   working-set size. No request can load more unique message bodies than that
+   size, including thread reads. Body lengths, calls per round, and tool
+   rounds are also capped.
 4. Search results receive temporary handles. Read operations accept only handles
    issued within the current request, plus the optional `selected` handle or a
-   locally approved ten-email working set.
+   locally approved email working set (sized by the user in Settings >
+   Limits, default ten).
    Reply creation also requires one of those exact handles. Missing, expired,
    and fabricated handles are rejected without consuming draft permission, and
    the host never substitutes the selected or latest item.
@@ -131,9 +133,10 @@ allowed per request.
     only the current selection and working set. The visible **Clear** action
     removes both mailbox and external context.
 14. `/search` is parsed and executed locally without calling the endpoint. It
-    stores only the newest ten matching metadata records. A later normal prompt
-    exposes only those handles, so the model cannot broaden the approved set.
-    Ctrl+click multi-selection uses the same one-to-ten normalization and cap.
+    stores only the newest matching metadata records, bounded by the
+    configured working-set size. A later normal prompt exposes only those
+    handles, so the model cannot broaden the approved set. Ctrl+click
+    multi-selection uses the same normalization and cap.
 15. The chat never evaluates Markdown or HTML. A bounded local parser removes
     emphasis markers and produces plain text plus bold character ranges. The
     RichTextBox applies those ranges natively. The draft path consumes the same

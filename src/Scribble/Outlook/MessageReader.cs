@@ -114,7 +114,9 @@ namespace Scribble.Outlook
                 if (explorer == null)
                 {
                     throw new InvalidOperationException(
-                        "Open an Outlook mailbox view and select one to ten emails.");
+                        "Open an Outlook mailbox view and select one to " +
+                        MailboxWorkingSet.MaxMessages +
+                        " emails.");
                 }
 
                 dynamic activeExplorer = explorer;
@@ -178,7 +180,9 @@ namespace Scribble.Outlook
                 if (count > MailboxWorkingSet.MaxMessages)
                 {
                     throw new InvalidOperationException(
-                        "Select no more than ten emails before using Send to Scribble.");
+                        "Select no more than " +
+                        MailboxWorkingSet.MaxMessages +
+                        " emails before using Send to Scribble.");
                 }
 
                 var messages = new List<MessageSnapshot>(count);

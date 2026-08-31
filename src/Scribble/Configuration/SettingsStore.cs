@@ -119,8 +119,8 @@ namespace Scribble.Configuration
                         .RecommendedToolRounds,
                     LimitToolCallsPerRound = TextBoundary
                         .RecommendedToolCallsPerRound,
-                    LimitWorkingSetMessages = LimitOverrides
-                        .RecommendedWorkingSetMessages
+                    LimitWorkingSetMessages = NormalizeWorkingSet(
+                        stored.LimitWorkingSetMessages)
                 };
             }
             catch
@@ -266,8 +266,8 @@ namespace Scribble.Configuration
                     .RecommendedToolRounds,
                 LimitToolCallsPerRound = TextBoundary
                     .RecommendedToolCallsPerRound,
-                LimitWorkingSetMessages = LimitOverrides
-                    .RecommendedWorkingSetMessages
+                LimitWorkingSetMessages = NormalizeWorkingSet(
+                    settings.LimitWorkingSetMessages)
             };
 
             File.WriteAllText(
@@ -381,6 +381,23 @@ namespace Scribble.Configuration
             }
 
             return result;
+        }
+
+        // Settings written before the working-set size became
+        // user-adjustable (or hand-edited files) may carry zero or
+        // out-of-range values; zero means "use the default".
+        private static int NormalizeWorkingSet(int value)
+        {
+            if (value <= 0)
+            {
+                return LimitOverrides.RecommendedWorkingSetMessages;
+            }
+
+            return Math.Max(
+                LimitOverrides.MinWorkingSetMessages,
+                Math.Min(
+                    LimitOverrides.MaxWorkingSetMessages,
+                    value));
         }
 
         private static List<string> NormalizeDiscoveredModels(

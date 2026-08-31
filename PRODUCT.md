@@ -24,12 +24,13 @@ final review.
 ## Product Purpose
 
 The add-in provides a native chat sidebar inside Outlook. A local `/search`
-command or Outlook multi-selection creates a reviewable working set of at most
-ten emails. A normal prompt sends recent in-memory conversation plus optional
+command or Outlook multi-selection creates a reviewable working set bounded by
+the per-request size the user sets in Settings > Limits (default ten
+emails). A normal prompt sends recent in-memory conversation plus optional
 selected-message or working-set metadata to a user-configured OpenAI-compatible
 endpoint. The model may request bounded read-only searches and message bodies
-from the primary Inbox and Sent Items, but it can never load more than ten
-unique bodies per request. After the user explicitly arms one request, the model may
+from the primary Inbox and Sent Items, but it can never load more unique
+bodies per request than that configured size. After the user explicitly arms one request, the model may
 create one unsent Outlook reply or new-message draft. That visible Outlook item
 then remains linked to the chat so later feedback updates the same draft.
 
@@ -50,8 +51,9 @@ locally linked item. The dedicated host exposes no send operation.
 - Per-user local installation is preferred.
 - The user opens Scribble from the ribbon or right-clicks one to ten selected
   emails and chooses **Send to Scribble**, then works in a right-docked Outlook
-  Custom Task Pane. One selected email receives a temporary read handle. Two to
-  ten selected emails become the locked working set.
+  Custom Task Pane. One selected email receives a temporary read handle. Selecting
+  two or more emails (up to the configured working-set size) creates the locked
+  working set.
 - Configuration is stored for the current Windows user. The API key is encrypted
   with Windows Data Protection API.
 - Conversations are kept in memory and disappear when Outlook closes or the user
@@ -63,8 +65,8 @@ locally linked item. The dedicated host exposes no send operation.
 - Handle `/search person or topic` locally, retain only the newest ten metadata
   matches, show them as distinct collapsible context cards, and allow another
   `/search` to replace that set before an LLM call.
-- Accept Ctrl+click multi-selection of two to ten Outlook emails as the same
-  locked working set.
+- Accept Ctrl+click multi-selection of two or more Outlook emails (up to the
+  configured working-set size) as the same locked working set.
 - Hold a text conversation about the mailbox, a selected message, or a retrieved
   conversation.
 - Generate text suitable for a reply or a new message.

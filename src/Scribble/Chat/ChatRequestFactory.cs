@@ -250,8 +250,12 @@ namespace Scribble.Chat
                     : string.Empty) +
                 BuildImageBoundary(model, imagesExpected) +
                 (hasWorkingSet
-                    ? " A user-approved working set of no more than ten emails is locked for this request. Use only read_messages with its supplied context handles. Do not search the mailbox or expand conversation threads."
-                    : " At most ten unique message bodies may be loaded in one request. Perform no more than one mailbox search.");
+                    ? " A user-approved working set of no more than " +
+                      MailboxWorkingSet.MaxMessages +
+                      " emails is locked for this request. Use only read_messages with its supplied context handles. Do not search the mailbox or expand conversation threads."
+                    : " At most " +
+                      MailboxWorkingSet.MaxMessages +
+                      " unique message bodies may be loaded in one request. Perform no more than one mailbox search.");
             var boundedTone = TextBoundary.PlainText(
                 toneProfile,
                 TextBoundary.MaxToneProfileCharacters);

@@ -1210,7 +1210,9 @@ namespace Scribble.UI
             if (messages == null || messages.Count == 0)
             {
                 throw new InvalidOperationException(
-                    "Select one to ten emails in Outlook first.");
+                    "Select one to " +
+                    MailboxWorkingSet.MaxMessages +
+                    " emails in Outlook first.");
             }
 
             if (messages.Count == 1)

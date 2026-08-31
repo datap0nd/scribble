@@ -53,8 +53,10 @@ namespace Scribble.Configuration
             new List<McpServerConfig>();
 
         // Legacy serialized fields retained for settings-file
-        // compatibility. End users no longer customize these
-        // budgets; ApplyLimits always selects the reviewed defaults.
+        // compatibility. The text and loop budgets are no longer
+        // user-customized; ApplyLimits always selects the reviewed
+        // defaults for those. The mailbox working-set size is the
+        // one budget the user owns (Settings > Limits).
         public bool UseRecommendedLimits { get; set; } = true;
 
         public int LimitContextMultiplier { get; set; } = 1;
@@ -79,17 +81,21 @@ namespace Scribble.Configuration
 
         // Pushes this settings object's limit choices into the
         // process-wide effective limits. Called wherever settings
-        // are loaded or saved.
+        // are loaded or saved. Text and loop budgets stay at the
+        // reviewed defaults; the working-set size honors the user's
+        // setting, falling back to the default when unset.
         public void ApplyLimits()
         {
             LimitOverrides.Apply(
-                true,
+                false,
                 TextBoundary.RecommendedUserPromptCharacters,
                 TextBoundary.RecommendedAssistantCharacters,
                 TextBoundary.RecommendedConversationTurns,
                 TextBoundary.RecommendedToolRounds,
                 TextBoundary.RecommendedToolCallsPerRound,
-                LimitOverrides.RecommendedWorkingSetMessages);
+                LimitWorkingSetMessages > 0
+                    ? LimitWorkingSetMessages
+                    : LimitOverrides.RecommendedWorkingSetMessages);
             ContextScale.ApplyUserMultiplier(
                 1);
         }

@@ -14,6 +14,11 @@ namespace Scribble.Outlook
     {
         private const int MaxDirectMessageBodyCharacters = 6000;
         private const int MaxThreadMessageBodyCharacters = 2000;
+        // Per-message allowance for the result-size gate, so a
+        // user-raised working set can actually be returned. At the
+        // default working set of ten this equals the standard
+        // MaxToolResultCharacters budget.
+        private const int PerMessageResultCharacters = 12000;
         private static int MaxThreadMessages
         {
             get { return MailboxWorkingSet.MaxMessages; }
@@ -481,9 +486,12 @@ namespace Scribble.Outlook
             IReadOnlyList<VisionImagePayload> visionImages = null)
         {
             var json = _serializer.Serialize(payload);
-            if (json.Length >
+            var allowedCharacters = Math.Max(
                 ContextScale.Scaled(
-                    TextBoundary.MaxToolResultCharacters))
+                    TextBoundary.MaxToolResultCharacters),
+                MailboxWorkingSet.MaxMessages *
+                    PerMessageResultCharacters);
+            if (json.Length > allowedCharacters)
             {
                 return Error(
                     callId,

@@ -83,7 +83,11 @@ namespace Scribble.Outlook
                     "The source message is unavailable.");
             }
 
-            var limit = Math.Max(1, Math.Min(20, maxMessages));
+            var limit = Math.Max(
+                1,
+                Math.Min(
+                    Math.Max(20, MailboxWorkingSet.MaxMessages),
+                    maxMessages));
             var messages = new List<MessageSnapshot>();
             object session = null;
             object sourceItem = null;
