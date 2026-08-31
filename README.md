@@ -1,7 +1,7 @@
 # Scribble
 
 A Windows-only AI assistant suite for classic Microsoft Office
-(Professional Plus 2021), Microsoft Edge, and Google Chrome: one installer adds
+(Professional Plus 2021) and Google Chrome: one installer adds
 an **Scribble** sidebar to **Outlook, Excel, PowerPoint, Word, and the web**. Every
 pane shares the same chat stack -
 an OpenAI-compatible endpoint, the same
@@ -20,10 +20,12 @@ context but can never send email, save a file, or delete anything.
 - **Word**: chat with the open document (bounded text reads); the only write
   surface is a brand-new, unsaved **[Scribble draft]** document that the add-in
   never saves.
-- **Edge and Chrome**: chat about the tab you are on - its title, address,
+- **Chrome**: chat about the tab you are on - its title, address,
   selection, and readable text are attached automatically - and let Scribble
-  browse http/https pages in that same visible tab to complete a request. It
-  can also open an unsent Outlook draft when you ask for one. It never clicks,
+  browse http/https pages in that same visible tab to complete a request. When
+  you ask, it opens an unsent Outlook draft or a new unsaved Excel workbook
+  with a table and chart built from what it found. A Stop button halts a
+  running chain of steps. It never clicks,
   fills forms, signs in, purchases, downloads, uploads, or sends anything.
 - **The web from Office**: the Excel, PowerPoint, and Word panes can fetch
   http/https pages read-only (`fetch_web_page`) - bounded text and links, no
@@ -53,10 +55,10 @@ Entra ID.
    want. Re-running the installer later lets you change the selection, and
    deselected apps are cleanly unregistered. Silent installs (and the
    in-app updater) keep your previous selection.
-4. If you selected Edge and Chrome, leave **Finish setting up Scribble in Edge or
+4. If you selected Chrome, leave **Finish setting up Scribble in Google
    Chrome** ticked. Setup opens the Extensions page and the exact Scribble folder.
    Turn on **Developer mode**, select **Load unpacked**, and choose that folder.
-   Chrome and Edge use the same one-time process. The installer prepares the
+   The installer prepares the
    files and secure local bridge, but the browser must receive this approval
    from you because Scribble is not in a browser store. If a managed computer
    disables Developer mode, your IT policy must allow the extension.
@@ -81,13 +83,13 @@ To update later, open **Settings** in any Scribble pane and click
 **Update Scribble**. You confirm twice - the second dialog warns that the
 Office apps are about to close, so save your work first - and Scribble then
 downloads the latest installer, **closes Outlook, Excel, PowerPoint, and
-Word itself**, and installs silently for your Windows account. Edge and Chrome
+Word itself**, and installs silently for your Windows account. Chrome
 stay open. Only the
 apps that actually have Scribble installed are closed; a host still sitting
 on a save prompt after about thirty seconds is closed forcibly, so an
 update can never stall unfinished. Outlook reopens automatically when the
 update was started there. One update refreshes the whole suite. If the browser
-extension changed, open `edge://extensions` or `chrome://extensions`, find
+extension changed, open `chrome://extensions`, find
 Scribble, and click **Reload**; unpacked extensions do not reload changed files
 automatically.
 
@@ -256,7 +258,7 @@ line) are followed exactly in every draft. Soul, strength, and rules apply
 only to draft creation and revision, and only to wording, greeting,
 cadence, and sign-off. They cannot alter any capability or security rule.
 
-## Edge and Chrome
+## Chrome
 
 Click the Scribble toolbar button to open its side panel. The current tab's
 title, address, selection, and readable text are captured automatically and sent
@@ -281,14 +283,13 @@ native bridge to the same Scribble connection and model configured there. The
 extension never receives the API key, Gemini token, or MCP headers. Page
 content is always labelled as untrusted data. MCP stays off in browser chat by
 default: to use a web-search MCP, list its exact tool name under that server's
-**Edge/Chrome tool allowlist** in Scribble Settings and tick the read-only
+**Chrome tool allowlist** in Scribble Settings and tick the read-only
 approval; never approve a tool that writes or takes actions.
 
-To repeat the one-time setup, use **Set up Scribble in Microsoft Edge** or **Set
-up Scribble in Google Chrome** from the Scribble Start menu folder. After a Scribble
-update, click **Reload** on the browser's Extensions page. Chrome and Edge both
-require this manual reload for an unpacked extension whose installed files
-changed.
+To repeat the one-time setup, use **Set up Scribble in Google Chrome** from the
+Scribble Start menu folder. After a Scribble update, click **Reload** on
+`chrome://extensions` - Chrome requires this manual reload for an unpacked
+extension whose installed files changed.
 
 ## Excel, PowerPoint, and Word panes
 
@@ -442,7 +443,7 @@ delete documents, but a server you add acts with whatever powers it has.
 Only add servers you trust, and prefer read-only ones.
 
 Browser chat has a separate, default-off boundary. For one server only, you may
-enter up to 20 exact, case-sensitive MCP tool names in its **Edge/Chrome tool
+enter up to 20 exact, case-sensitive MCP tool names in its **Chrome tool
 allowlist** and affirm that you verified them as read-only. Only those names can
 be exposed there, with at most one call in one tool round. Adding a server for
 Office does not automatically make any of its tools available to webpage
@@ -457,7 +458,7 @@ the API key.
 
 Scribble uses reviewed, non-editable per-field text budgets as a conservative
 Qwen baseline: 4,000 prompt characters, 12,000 retained answer characters, 12
-history turns, four tool rounds, and four calls per round. Legacy custom values
+history turns, six tool rounds, and four calls per round. Legacy custom values
 for those budgets are ignored on load and replaced on save.
 
 The number of emails per request is yours: **Settings > Limits > Emails per
@@ -665,8 +666,8 @@ timeout failures before the endpoint returns an HTTP response.
 
 ## Remove
 
-1. In every browser where you loaded Scribble, open `edge://extensions` or
-   `chrome://extensions` and select **Remove** on the Scribble card.
+1. In Chrome, open `chrome://extensions` and select **Remove** on the
+   Scribble card.
 2. Close Outlook, Excel, PowerPoint, and Word.
 3. Open Windows **Installed apps** or **Apps & features**.
 4. Uninstall **Scribble**.
@@ -754,7 +755,7 @@ verification.
 ## Compatibility
 
 - Classic Outlook, Excel, PowerPoint, and Word for Windows
-- Microsoft Edge or Google Chrome 116 or newer for the browser side panel
+- Google Chrome 116 or newer for the browser side panel
 - Microsoft Office Professional Plus 2021
 - 32-bit or 64-bit Office on Windows
 - .NET Framework 4.8

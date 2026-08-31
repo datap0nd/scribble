@@ -12,6 +12,10 @@ namespace Scribble.BrowserHost
     {
         internal static int Run(string requestedBrowser)
         {
+            // Chrome is the only supported browser; the historical
+            // "edge"/"auto" argument values all resolve to Chrome.
+            _ = requestedBrowser;
+
             var extensionDirectory = Path.Combine(
                 AppDomain.CurrentDomain.BaseDirectory,
                 "BrowserExtension");
@@ -27,19 +31,11 @@ namespace Scribble.BrowserHost
                 return 1;
             }
 
-            bool canceled;
-            var browser = ResolveBrowser(
-                requestedBrowser,
-                out canceled);
+            var browser = ResolveBrowser();
             if (browser == null)
             {
-                if (canceled)
-                {
-                    return 0;
-                }
-
                 MessageBox.Show(
-                    "Microsoft Edge or Google Chrome was not found on this computer.",
+                    "Google Chrome was not found on this computer.",
                     "Scribble browser setup",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
@@ -89,31 +85,11 @@ namespace Scribble.BrowserHost
             return 0;
         }
 
-        private static BrowserChoice ResolveBrowser(
-            string requested,
-            out bool canceled)
+        // Scribble supports Google Chrome only; every requested
+        // value resolves to the Chrome installation.
+        private static BrowserChoice ResolveBrowser()
         {
-            canceled = false;
-            var edge = Find(
-                "Microsoft Edge",
-                "msedge.exe",
-                "edge://extensions",
-                new[]
-                {
-                    Combine(
-                        Environment.SpecialFolder.ProgramFilesX86,
-                        "Microsoft", "Edge", "Application",
-                        "msedge.exe"),
-                    Combine(
-                        Environment.SpecialFolder.ProgramFiles,
-                        "Microsoft", "Edge", "Application",
-                        "msedge.exe"),
-                    Combine(
-                        Environment.SpecialFolder.LocalApplicationData,
-                        "Microsoft", "Edge", "Application",
-                        "msedge.exe")
-                });
-            var chrome = Find(
+            return Find(
                 "Google Chrome",
                 "chrome.exe",
                 "chrome://extensions",
@@ -132,46 +108,6 @@ namespace Scribble.BrowserHost
                         "Google", "Chrome", "Application",
                         "chrome.exe")
                 });
-
-            if (string.Equals(
-                requested,
-                "edge",
-                StringComparison.OrdinalIgnoreCase))
-            {
-                return edge;
-            }
-
-            if (string.Equals(
-                requested,
-                "chrome",
-                StringComparison.OrdinalIgnoreCase))
-            {
-                return chrome;
-            }
-
-            if (edge != null && chrome != null)
-            {
-                var choice = MessageBox.Show(
-                    "Set up Scribble in Microsoft Edge?\n\n" +
-                    "Choose No to set it up in Google Chrome instead.",
-                    "Choose a browser",
-                    MessageBoxButtons.YesNoCancel,
-                    MessageBoxIcon.Question);
-                if (choice == DialogResult.Yes)
-                {
-                    return edge;
-                }
-
-                if (choice == DialogResult.No)
-                {
-                    return chrome;
-                }
-
-                canceled = true;
-                return null;
-            }
-
-            return edge ?? chrome;
         }
 
         private static BrowserChoice Find(

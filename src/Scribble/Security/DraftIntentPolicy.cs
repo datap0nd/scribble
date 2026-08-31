@@ -28,7 +28,39 @@ namespace Scribble.Security
             "prepare a draft",
             "prepare a reply",
             "prepare an email",
-            "turn this into a draft"
+            "turn this into a draft",
+            "email this",
+            "email him",
+            "email her",
+            "email them",
+            "email it to",
+            "email that to",
+            "email the team",
+            "send an email",
+            "send email",
+            "send a mail",
+            "send this by email",
+            "send this as an email",
+            "mail this",
+            "mail it to",
+            "reply to this",
+            "reply to the",
+            "respond to this",
+            "respond to the",
+            "answer this email",
+            "follow up with"
+        };
+
+        // Leading verbs that read as "email <someone> about ...".
+        // Checked only at the start of the prompt so questions like
+        // "what did the email say" never authorize a draft.
+        private static readonly string[] LeadingCreateVerbs =
+        {
+            "email ",
+            "mail ",
+            "draft ",
+            "reply ",
+            "respond "
         };
 
         private static readonly string[] UpdateActions =
@@ -83,11 +115,44 @@ namespace Scribble.Security
             "bolden "
         };
 
+        // Deliberately lenient keyword gate (owner's direction):
+        // any email-shaped word exposes the draft tool. Exposure is
+        // cheap - the draft itself stays one-shot, unsent, and
+        // review-only - while a missed match reads as a refusal.
+        private static readonly string[] CreateKeywords =
+        {
+            "email",
+            "e-mail",
+            " mail ",
+            "draft",
+            "reply",
+            "respond",
+            "response",
+            "follow up",
+            "follow-up",
+            "outlook"
+        };
+
         public static bool AllowsCreate(string userPrompt)
         {
-            return ContainsAny(
-                Normalize(userPrompt),
-                CreatePhrases);
+            var prompt = Normalize(userPrompt);
+            if (ContainsAny(prompt, CreatePhrases) ||
+                ContainsAny(prompt, CreateKeywords))
+            {
+                return true;
+            }
+
+            foreach (var verb in LeadingCreateVerbs)
+            {
+                if (prompt.StartsWith(
+                    verb,
+                    StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         public static bool AllowsUpdate(string userPrompt)

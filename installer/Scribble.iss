@@ -56,7 +56,7 @@ CloseApplicationsFilter=outlook.exe,excel.exe,powerpnt.exe,winword.exe,ScribbleB
 RestartApplications=no
 UninstallDisplayName={#AppName}
 VersionInfoVersion={#AppVersion}
-VersionInfoDescription=AI assistant suite for Outlook, Excel, PowerPoint, Word, Edge, and Chrome
+VersionInfoDescription=AI assistant suite for Outlook, Excel, PowerPoint, Word, and Chrome
 VersionInfoProductName={#AppName}
 VersionInfoCompany={#AppPublisher}
 
@@ -69,7 +69,7 @@ Name: "outlook"; Description: "Scribble for Outlook (mailbox chat and email draf
 Name: "excel"; Description: "Scribble for Excel (workbook chat and draft sheets)"; Types: full
 Name: "powerpoint"; Description: "Scribble for PowerPoint (presentation chat and draft slides)"; Types: full
 Name: "word"; Description: "Scribble for Word (document chat and draft documents)"; Types: full
-Name: "browser"; Description: "Scribble for Edge and Chrome (one-time browser approval required)"; Types: full
+Name: "browser"; Description: "Scribble for Chrome (one-time browser approval required)"; Types: full
 
 [Files]
 Source: "..\src\Scribble\bin\Release\Scribble.dll"; DestDir: "{app}"; Flags: ignoreversion
@@ -176,13 +176,14 @@ Root: HKCU32; Subkey: "Software\Classes\CLSID\{#OfficePaneClsid}"; ValueType: no
 Root: HKCU64; Subkey: "Software\Classes\CLSID\{#OfficePaneClsid}"; ValueType: none; Flags: deletekey; Components: not excel and not powerpoint and not word; Check: IsWin64
 Root: HKCU32; Subkey: "Software\Classes\{#OfficePaneProgId}"; ValueType: none; Flags: deletekey; Components: not excel and not powerpoint and not word
 Root: HKCU64; Subkey: "Software\Classes\{#OfficePaneProgId}"; ValueType: none; Flags: deletekey; Components: not excel and not powerpoint and not word; Check: IsWin64
-Root: HKCU32; Subkey: "Software\Microsoft\Edge\NativeMessagingHosts\{#BrowserNativeHostName}"; ValueType: none; Flags: deletekey; Components: not browser
 Root: HKCU32; Subkey: "Software\Google\Chrome\NativeMessagingHosts\{#BrowserNativeHostName}"; ValueType: none; Flags: deletekey; Components: not browser
+; Edge is no longer supported: any Edge registration from an earlier
+; Scribble version is removed unconditionally on install or update.
+Root: HKCU32; Subkey: "Software\Microsoft\Edge\NativeMessagingHosts\{#BrowserNativeHostName}"; ValueType: none; Flags: deletekey
 
 ; The browser bridge is private to this Windows account. Setup stages the
-; unpacked extension but Edge or Chrome still requires the user's one-time
+; unpacked extension but Chrome still requires the user's one-time
 ; approval; no policy, force-install, or browser-profile keys are written.
-Root: HKCU32; Subkey: "Software\Microsoft\Edge\NativeMessagingHosts\{#BrowserNativeHostName}"; ValueType: string; ValueName: ""; ValueData: "{app}\com.scribble.browser.json"; Flags: uninsdeletekey; Components: browser
 Root: HKCU32; Subkey: "Software\Google\Chrome\NativeMessagingHosts\{#BrowserNativeHostName}"; ValueType: string; ValueName: ""; ValueData: "{app}\com.scribble.browser.json"; Flags: uninsdeletekey; Components: browser
 
 ; 32-bit COM registration. Required for 32-bit Office, including on 64-bit Windows.
@@ -433,11 +434,10 @@ Root: HKCU64; Subkey: "Software\Microsoft\Office\Word\Addins\{#WordProgId}"; Val
 Root: HKCU64; Subkey: "Software\Microsoft\Office\Word\Addins\{#WordProgId}"; ValueType: dword; ValueName: "CommandLineSafe"; ValueData: "0"; Check: IsWin64; Components: word
 
 [Icons]
-Name: "{group}\Set up Scribble in Microsoft Edge"; Filename: "{app}\ScribbleBrowserHost.exe"; Parameters: "--setup edge"; Components: browser
 Name: "{group}\Set up Scribble in Google Chrome"; Filename: "{app}\ScribbleBrowserHost.exe"; Parameters: "--setup chrome"; Components: browser
 
 [Run]
-Filename: "{app}\ScribbleBrowserHost.exe"; Parameters: "--setup auto"; Description: "Finish setting up Scribble in Edge or Chrome"; Flags: nowait postinstall skipifsilent; Components: browser
+Filename: "{app}\ScribbleBrowserHost.exe"; Parameters: "--setup auto"; Description: "Finish setting up Scribble in Google Chrome"; Flags: nowait postinstall skipifsilent; Components: browser
 
 [Code]
 function GetAssemblyCodeBase(Param: String): String;

@@ -999,6 +999,10 @@ namespace GuardrailTests
                     "Find the matching message and create a draft responding to it.") &&
                 DraftIntentPolicy.AllowsCreate(
                     "Please write a reply to the selected email.") &&
+                DraftIntentPolicy.AllowsCreate(
+                    "Email John about the delivery delay.") &&
+                DraftIntentPolicy.AllowsCreate(
+                    "Can you email this to the team?") &&
                 !DraftIntentPolicy.AllowsCreate(
                     "Summarize the latest messages in my mailbox.") &&
                 !DraftIntentPolicy.AllowsCreate(
@@ -5362,6 +5366,28 @@ namespace GuardrailTests
                     tool.function.name == "open_outlook_draft"),
                 "The unsent-draft tool must appear only when drafting " +
                 "is authorized.");
+
+            var excelRequest = BrowserChatRequestFactory.Create(
+                "gpt-oss-20b",
+                new List<ChatTurn>(),
+                "Put the prices in an excel table.",
+                "Example page",
+                "https://example.test/article",
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                null,
+                false,
+                null,
+                null,
+                true);
+            Assert(
+                excelRequest.tools.Any(tool =>
+                    tool.function.name == "open_excel_table") &&
+                !request.tools.Any(tool =>
+                    tool.function.name == "open_excel_table"),
+                "The unsaved-workbook tool must appear only when the " +
+                "user asked for Excel.");
 
             var system = Convert.ToString(
                 ((ChatCompletionInputMessage)

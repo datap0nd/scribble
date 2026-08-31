@@ -11,7 +11,7 @@ namespace Scribble.Security
         public const int RecommendedUserPromptCharacters = 4000;
         public const int RecommendedAssistantCharacters = 12000;
         public const int RecommendedConversationTurns = 12;
-        public const int RecommendedToolRounds = 4;
+        public const int RecommendedToolRounds = 6;
         public const int RecommendedToolCallsPerRound = 4;
 
         public const int MaxMessageBodyCharacters = 24000;

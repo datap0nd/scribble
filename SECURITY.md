@@ -58,7 +58,7 @@ that decision. Updates are available only for locally recognized revision intent
 while the host retains exactly one linked draft, and remain limited to one
 mutation attempt per user request.
 
-The Edge/Chrome path is separate and read-only:
+The Chrome path is separate:
 
 ```text
 Explicit toolbar, context-menu, or attach-button gesture
@@ -175,9 +175,11 @@ unless the user enters exact tool names and affirms that each is read-only.
     labels page, screenshot, and MCP results as untrusted data. Every page
     read returns a bounded link list so multi-step navigation follows exact
     URLs instead of guessing. Its only
-    Outlook capability is `OutlookDraftLauncher`, which can display an unsent
-    draft and nothing else - no send, read, delete, or mailbox access - and it
-    has no document host object and no page-control API.
+    Office capabilities are `OutlookDraftLauncher` (displays one unsent draft;
+    no send, read, delete, or mailbox access) and `ExcelTableLauncher` (opens
+    one brand-new unsaved workbook with a bounded table and optional chart; no
+    save, print, protect, or close capability, and it never touches existing
+    files). It has no page-control API.
 21a. The Excel, PowerPoint, and Word panes expose `fetch_web_page`: one
     bounded read-only HTTP GET per call (http/https only, no cookies, no
     credentials, 3 MB / 48,000-character caps, results marked untrusted).
@@ -262,7 +264,7 @@ The design cannot guarantee safety if:
 - the installed binary or registry entries are replaced;
 - the Windows account is compromised;
 - Outlook, .NET Framework, or Windows has an exploitable vulnerability;
-- Edge, Chrome, the extension platform, or the native-messaging channel has an
+- Chrome, the extension platform, or the native-messaging channel has an
   exploitable vulnerability;
 - another Outlook add-in modifies the draft after creation;
 - a user-configured MCP server exercises capabilities outside Scribble's own

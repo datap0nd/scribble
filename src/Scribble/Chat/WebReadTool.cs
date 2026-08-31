@@ -52,9 +52,13 @@ namespace Scribble.Chat
                         "Build search-result URLs directly when a site has a search " +
                         "page (for example /s?k=... on Amazon or /search?q=... on " +
                         "Google), then open precise result links from the returned " +
-                        "link list. It cannot sign in, submit forms, purchase, or " +
-                        "download files, and some sites block automated fetching - " +
-                        "say so plainly when a page comes back blocked or empty.",
+                        "link list. Never fetch general search engines such as " +
+                        "google.com or bing.com - they block automated reads; go to " +
+                        "the target site directly. It cannot sign in, submit forms, " +
+                        "purchase, or download files. If a page comes back blocked " +
+                        "or empty, stop retrying, say so plainly, and suggest the " +
+                        "Scribble panel in Chrome, which browses the user's real " +
+                        "signed-in tab.",
                     parameters = new Dictionary<string, object>
                     {
                         { "type", "object" },
@@ -128,7 +132,7 @@ namespace Scribble.Chat
                             "The page returned HTTP " +
                             ((int)response.StatusCode).ToString(
                                 CultureInfo.InvariantCulture) +
-                            ". The site may block automated fetching.");
+                            ". The site likely blocks automated fetching; do not retry or try a search engine - tell the user and suggest the Scribble panel in Chrome instead.");
                     }
 
                     html = response.Content
@@ -194,12 +198,21 @@ namespace Scribble.Chat
                 Timeout = TimeSpan.FromSeconds(TimeoutSeconds),
                 MaxResponseContentBufferSize = MaxResponseBytes
             };
+            // Sites like Amazon serve real HTML to ordinary
+            // browser requests but block obvious bots, so the
+            // headers match a desktop Chrome request.
             client.DefaultRequestHeaders.UserAgent.ParseAdd(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Scribble/2.0");
-            client.DefaultRequestHeaders.Accept.Add(
-                new MediaTypeWithQualityHeaderValue("text/html"));
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+                "AppleWebKit/537.36 (KHTML, like Gecko) " +
+                "Chrome/139.0.0.0 Safari/537.36");
+            client.DefaultRequestHeaders.TryAddWithoutValidation(
+                "Accept",
+                "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
             client.DefaultRequestHeaders.AcceptLanguage.ParseAdd(
-                "en");
+                "en-US,en;q=0.9");
+            client.DefaultRequestHeaders.TryAddWithoutValidation(
+                "Upgrade-Insecure-Requests",
+                "1");
             return client;
         }
 

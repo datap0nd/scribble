@@ -13,13 +13,15 @@ namespace Scribble.Chat
         public const string NavigatePage = "browser_navigate";
         public const string ReadPage = "browser_read_page";
         public const string OpenOutlookDraft = "open_outlook_draft";
+        public const string OpenExcelTable = "open_excel_table";
 
         public static readonly IReadOnlyList<string> ApprovedNames =
             new[]
             {
                 NavigatePage,
                 ReadPage,
-                OpenOutlookDraft
+                OpenOutlookDraft,
+                OpenExcelTable
             };
 
         // Tools the extension itself must execute with chrome APIs.
@@ -52,7 +54,8 @@ namespace Scribble.Chat
         }
 
         public static List<ChatToolDefinition> CreateDefinitions(
-            bool allowOutlookDraft)
+            bool allowOutlookDraft,
+            bool allowExcelTable = false)
         {
             var definitions = new List<ChatToolDefinition>
             {
@@ -119,6 +122,113 @@ namespace Scribble.Chat
                     }
                 }
             };
+
+            if (allowExcelTable)
+            {
+                definitions.Add(new ChatToolDefinition
+                {
+                    type = "function",
+                    function = new ChatToolFunctionDefinition
+                    {
+                        name = OpenExcelTable,
+                        description =
+                            "Open a brand-new, unsaved Excel workbook on the user's " +
+                            "desktop containing one table built from your rows, with " +
+                            "an optional native chart. Use it when the user asks to " +
+                            "put results in Excel, a spreadsheet, or a workbook. " +
+                            "Nothing is saved; the user reviews the workbook " +
+                            "themselves. Available only because the user's own latest " +
+                            "message asked for Excel; at most one workbook per " +
+                            "request.",
+                        parameters = new Dictionary<string, object>
+                        {
+                            { "type", "object" },
+                            {
+                                "properties",
+                                new Dictionary<string, object>
+                                {
+                                    {
+                                        "title",
+                                        new Dictionary<string, object>
+                                        {
+                                            { "type", "string" },
+                                            {
+                                                "description",
+                                                "Optional title written above the table."
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "columns",
+                                        new Dictionary<string, object>
+                                        {
+                                            { "type", "array" },
+                                            {
+                                                "items",
+                                                new Dictionary<string, object>
+                                                {
+                                                    { "type", "string" }
+                                                }
+                                            },
+                                            {
+                                                "description",
+                                                "Column headers, up to 20."
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "rows",
+                                        new Dictionary<string, object>
+                                        {
+                                            { "type", "array" },
+                                            {
+                                                "items",
+                                                new Dictionary<string, object>
+                                                {
+                                                    { "type", "array" },
+                                                    {
+                                                        "items",
+                                                        new Dictionary<string, object>
+                                                        {
+                                                            { "type", "string" }
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                            {
+                                                "description",
+                                                "Data rows matching the headers, up to 500. " +
+                                                "Numeric strings become real numbers."
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "chart_kind",
+                                        new Dictionary<string, object>
+                                        {
+                                            { "type", "string" },
+                                            {
+                                                "description",
+                                                "Optional chart: column, bar, line, or pie. " +
+                                                "Omit or use none for no chart."
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "chart_title",
+                                        new Dictionary<string, object>
+                                        {
+                                            { "type", "string" },
+                                            { "description", "Optional chart title." }
+                                        }
+                                    }
+                                }
+                            },
+                            { "required", new[] { "columns", "rows" } }
+                        }
+                    }
+                });
+            }
 
             if (allowOutlookDraft)
             {

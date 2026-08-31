@@ -38,6 +38,7 @@ const elements = {
 
 let conversationHistory = [];
 let isSending = false;
+let stopRequested = false;
 let isPinging = false;
 let isOpeningSettings = false;
 let panelWindowId = null;
@@ -77,6 +78,12 @@ elements.prompt.addEventListener("keydown", (event) => {
 
 elements.composer.addEventListener("submit", (event) => {
   event.preventDefault();
+  if (isSending) {
+    stopRequested = true;
+    elements.send.disabled = true;
+    setActivity("Stopping after the current step…");
+    return;
+  }
   void sendChatMessage();
 });
 
@@ -323,13 +330,19 @@ async function sendChatMessage() {
   appendMessage("user", prompt);
   elements.prompt.value = "";
   isSending = true;
+  stopRequested = false;
   renderComposerState();
+  showPal();
   setActivity("Scribble is thinking…");
 
   const exchange = [];
 
   try {
     for (let turn = 0; ; turn++) {
+      if (stopRequested) {
+        throw new NativeResponseError("Stopped. Nothing further was executed.", "STOPPED");
+      }
+
       const context = await capturePageContext();
       const request = {
         type: "chat",
@@ -390,7 +403,19 @@ async function sendChatMessage() {
           continue;
         }
 
+        if (stopRequested) {
+          results.push({
+            id: boundText(toolRequest?.id, 100),
+            content: "[STOPPED] The user stopped the request before this step ran."
+          });
+          continue;
+        }
+
         results.push(await executeBrowserTool(toolRequest));
+      }
+
+      if (stopRequested) {
+        throw new NativeResponseError("Stopped. Remaining steps were not executed.", "STOPPED");
       }
 
       exchange.push({
@@ -418,6 +443,7 @@ async function sendChatMessage() {
     }
   } finally {
     isSending = false;
+    hidePal();
     renderConnectionDetails();
     renderComposerState();
     elements.prompt.focus();
@@ -544,6 +570,118 @@ function emptyContext() {
   };
 }
 
+// Pixel pal: the same little sprite that works away in the Office
+// panes while the model thinks. Pure canvas pixels - no external
+// assets, no HTML from dynamic text.
+let palTimer = null;
+let palFrame = 0;
+let palCanvas = null;
+let typingRow = null;
+const PAL_SCALE = 4;
+const palColors = {
+  B: "#5c8fff", D: "#3f6cd1", W: "#ffffff", K: "#22242a",
+  Y: "#f5c451", G: "#3ddc97", M: "#6a6b72"
+};
+const palFrames = [
+  [
+    "......Y......",
+    "......D......",
+    "..BBBBBBBBB..",
+    "..BWWBBBWWB..",
+    "..BWKBBBKWB..",
+    "..BBBBBBBBB..",
+    "...BDDDDDB...",
+    "....BBBBB....",
+    "..B..BBB..B..",
+    "..BB.....BB..",
+    "...MMMMMMM...",
+    "..MMMMMMMMM.."
+  ],
+  [
+    "......G......",
+    "......D......",
+    "..BBBBBBBBB..",
+    "..BWWBBBWWB..",
+    "..BWKBBBKWB..",
+    "..BBBBBBBBB..",
+    "...BDDDDDB...",
+    "....BBBBB....",
+    ".....BBB.....",
+    "..BB.....BB..",
+    "..BMMMMMMMB..",
+    "..MMMMMMMMM.."
+  ],
+  [
+    "......Y......",
+    "......D......",
+    "..BBBBBBBBB..",
+    "..BBBBBBBBB..",
+    "..BDBBBBBDB..",
+    "..BBBBBBBBB..",
+    "...BDDDDDB...",
+    "....BBBBB....",
+    "..B..BBB..B..",
+    "..BB.....BB..",
+    "...MMMMMMM...",
+    "..MMMMMMMMM.."
+  ]
+];
+const palCycle = [0, 1, 0, 2, 1];
+
+function drawPal(frameIndex) {
+  if (!palCanvas) {
+    return;
+  }
+  const rows = palFrames[palCycle[frameIndex % palCycle.length]];
+  const ctx = palCanvas.getContext("2d");
+  ctx.clearRect(0, 0, palCanvas.width, palCanvas.height);
+  for (let y = 0; y < rows.length; y++) {
+    for (let x = 0; x < rows[y].length; x++) {
+      const color = palColors[rows[y].charAt(x)];
+      if (!color) {
+        continue;
+      }
+      ctx.fillStyle = color;
+      ctx.fillRect(x * PAL_SCALE, y * PAL_SCALE, PAL_SCALE, PAL_SCALE);
+    }
+  }
+}
+
+function showPal() {
+  if (!typingRow) {
+    typingRow = document.createElement("div");
+    typingRow.className = "typing";
+    palCanvas = document.createElement("canvas");
+    palCanvas.width = 13 * PAL_SCALE;
+    palCanvas.height = 12 * PAL_SCALE;
+    typingRow.append(palCanvas);
+    const dots = document.createElement("div");
+    dots.className = "dots";
+    for (let i = 0; i < 3; i++) {
+      dots.append(document.createElement("span"));
+    }
+    typingRow.append(dots);
+  }
+  elements.messages.append(typingRow);
+  elements.messages.scrollTop = elements.messages.scrollHeight;
+  if (!palTimer) {
+    palFrame = 0;
+    drawPal(0);
+    palTimer = setInterval(() => {
+      palFrame++;
+      drawPal(palFrame);
+    }, 260);
+  }
+}
+
+function hidePal() {
+  if (palTimer) {
+    clearInterval(palTimer);
+    palTimer = null;
+  }
+  typingRow?.remove();
+}
+
 function setContextNotice(message, isError = false) {
   elements.contextNotice.textContent = message || "";
   elements.contextNotice.classList.toggle("error", isError);
@@ -573,6 +711,9 @@ function appendMessage(role, content) {
 
   article.append(label, body);
   elements.messages.append(article);
+  if (isSending && typingRow && typingRow.parentElement) {
+    elements.messages.append(typingRow);
+  }
   elements.messages.scrollTop = elements.messages.scrollHeight;
 }
 
@@ -761,11 +902,13 @@ function renderComposerState() {
   const length = Math.min(elements.prompt.value.length, MAX_PROMPT_CHARS);
   elements.promptCount.textContent = `${formatNumber(length)} / ${formatNumber(MAX_PROMPT_CHARS)}`;
   elements.send.disabled = isSending
-    || isOpeningSettings
-    || !connection.connected
-    || !connection.configured
-    || !elements.prompt.value.trim();
-  elements.send.textContent = isSending ? "Sending…" : "Send";
+    ? stopRequested
+    : (isOpeningSettings
+      || !connection.connected
+      || !connection.configured
+      || !elements.prompt.value.trim());
+  elements.send.textContent = isSending ? "Stop" : "Send";
+  elements.send.classList.toggle("stop", isSending);
   elements.clearChat.disabled = isSending ||
     elements.messages.querySelector(".message") === null;
 }

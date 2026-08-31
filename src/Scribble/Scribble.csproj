@@ -112,6 +112,7 @@
     <Compile Include="Outlook\MailboxContextService.cs" />
     <Compile Include="Outlook\MailboxToolHost.cs" />
     <Compile Include="Outlook\MailboxWorkingSet.cs" />
+    <Compile Include="Office\ExcelTableLauncher.cs" />
     <Compile Include="Outlook\OutlookDraftLauncher.cs" />
     <Compile Include="Outlook\MessageReader.cs" />
     <Compile Include="Outlook\PdfTextExtractor.cs" />

@@ -1,6 +1,6 @@
 # Scribble browser extension
 
-This is one Manifest V3 extension for both Microsoft Edge and Google Chrome. It opens Scribble in the browser side panel and sends chat requests to the local native-messaging host named `com.scribble.browser`.
+This is a Manifest V3 extension for Google Chrome. It opens Scribble in the browser side panel and sends chat requests to the local native-messaging host named `com.scribble.browser`.
 
 The extension is intentionally store-independent: it contains plain HTML, CSS, and JavaScript and can be installed with **Load unpacked**. No build step or npm installation is required.
 
@@ -12,17 +12,7 @@ Install Scribble browser support first. Scribble Setup must install and register
 chrome-extension://olkepladbgkfkhlglooilnmalckpdada/
 ```
 
-The fixed public key in `manifest.json` keeps that extension ID stable across computers and folder locations. Edge and Chrome use the same ID.
-
-## Install in Microsoft Edge
-
-1. Keep this entire folder in a permanent location. Moving or deleting it breaks a manually loaded extension.
-2. Open `edge://extensions` in Edge.
-3. Turn on **Developer mode**.
-4. Choose **Load unpacked**.
-5. Select this `Scribble.BrowserExtension` folder—the folder that directly contains `manifest.json`.
-6. Pin Scribble from Edge's Extensions menu if you want the toolbar button to remain visible.
-7. Click the Scribble toolbar button to open the side panel.
+The fixed public key in `manifest.json` keeps that extension ID stable across computers and folder locations.
 
 ## Install in Google Chrome
 
@@ -57,7 +47,7 @@ page and model text as untrusted plain text and never renders either as HTML.
 
 MCP tools are unavailable here by default. To use a read-only web-search tool,
 open Scribble Settings in an Office app, enter that tool's exact MCP name in the
-server's **Edge/Chrome tool allowlist**, and tick the read-only approval. Browser
+server's **Chrome tool allowlist**, and tick the read-only approval. Browser
 chat uses at most one approved server and one tool call per request. Never
 approve an MCP tool that writes data or takes actions.
 
@@ -80,4 +70,4 @@ There are no content scripts, no remote scripts, and no background page collecti
 - **No model is configured:** open Scribble Settings from an Office app and select/configure a model.
 - **The page cannot be read:** browser settings pages, extension galleries, PDF viewers, and some protected pages block injected scripts; those tabs are shared as address-only. Try a regular webpage.
 
-For diagnostics, open the extension entry on `edge://extensions` or `chrome://extensions` and inspect the service worker or side-panel developer tools.
+For diagnostics, open the extension entry on `chrome://extensions` and inspect the service worker or side-panel developer tools.

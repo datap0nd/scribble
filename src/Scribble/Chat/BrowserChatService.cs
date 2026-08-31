@@ -180,7 +180,18 @@ namespace Scribble.Chat
             // draft has been opened in this request.
             var allowOutlookDraft =
                 DraftIntentPolicy.AllowsCreate(safePrompt) &&
-                !ExchangeContainsDraft(exchange);
+                !ExchangeContainsCall(
+                    exchange,
+                    BrowserToolCatalog.OpenOutlookDraft);
+
+            // The unsaved-workbook tool follows the same pattern:
+            // exposed only when the user's own prompt mentions
+            // Excel, once per request.
+            var allowExcelTable =
+                MentionsExcel(safePrompt) &&
+                !ExchangeContainsCall(
+                    exchange,
+                    BrowserToolCatalog.OpenExcelTable);
 
             IReadOnlyList<ChatToolDefinition> definitions = null;
             if (_mcpTools.HasServers)
@@ -202,10 +213,12 @@ namespace Scribble.Chat
                 definitions,
                 allowOutlookDraft,
                 exchange,
-                links);
+                links,
+                allowExcelTable);
 
             var roundsUsed = CountExchangeTurns(exchange);
             var draftOpened = false;
+            var tableOpened = false;
             while (true)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -274,6 +287,18 @@ namespace Scribble.Chat
                             call,
                             allowOutlookDraft && !draftOpened));
                         draftOpened = true;
+                        continue;
+                    }
+
+                    if (string.Equals(
+                        name,
+                        BrowserToolCatalog.OpenExcelTable,
+                        StringComparison.Ordinal))
+                    {
+                        hostResults.Add(ExecuteExcelTable(
+                            call,
+                            allowExcelTable && !tableOpened));
+                        tableOpened = true;
                         continue;
                     }
 
@@ -365,8 +390,9 @@ namespace Scribble.Chat
             return count;
         }
 
-        private static bool ExchangeContainsDraft(
-            IReadOnlyList<BrowserExchangeTurn> exchange)
+        private static bool ExchangeContainsCall(
+            IReadOnlyList<BrowserExchangeTurn> exchange,
+            string toolName)
         {
             foreach (var turn in exchange ??
                 new BrowserExchangeTurn[0])
@@ -376,7 +402,7 @@ namespace Scribble.Chat
                 {
                     if (string.Equals(
                         call?.function?.name,
-                        BrowserToolCatalog.OpenOutlookDraft,
+                        toolName,
                         StringComparison.Ordinal))
                     {
                         return true;
@@ -385,6 +411,103 @@ namespace Scribble.Chat
             }
 
             return false;
+        }
+
+        private static bool MentionsExcel(string prompt)
+        {
+            var value = (prompt ?? string.Empty)
+                .ToLowerInvariant();
+            return value.Contains("excel") ||
+                value.Contains("spreadsheet") ||
+                value.Contains("workbook") ||
+                value.Contains("sheet") ||
+                value.Contains("table") ||
+                value.Contains("chart");
+        }
+
+        private static MailboxToolResult ExecuteExcelTable(
+            ChatToolCall call,
+            bool allowed)
+        {
+            if (!allowed)
+            {
+                return new MailboxToolResult(
+                    call.id,
+                    "[EXCEL_TABLE_NOT_AUTHORIZED] The unsaved-workbook tool is available only when the user's own latest message asks for Excel, and at most once per request.",
+                    "EXCEL_TABLE_NOT_AUTHORIZED");
+            }
+
+            try
+            {
+                var serializer =
+                    new System.Web.Script.Serialization
+                        .JavaScriptSerializer();
+                var arguments =
+                    serializer.DeserializeObject(
+                        call.function.arguments ?? "{}") as
+                        IDictionary<string, object> ??
+                    new Dictionary<string, object>();
+                var status = Office.ExcelTableLauncher.OpenTable(
+                    Argument(arguments, "title"),
+                    StringListArgument(arguments, "columns"),
+                    RowsArgument(arguments, "rows"),
+                    Argument(arguments, "chart_kind"),
+                    Argument(arguments, "chart_title"));
+                return new MailboxToolResult(
+                    call.id,
+                    status,
+                    "Unsaved Excel workbook opened for review.");
+            }
+            catch (Exception exception)
+            {
+                return new MailboxToolResult(
+                    call.id,
+                    "[EXCEL_TABLE_FAILED] " + TextBoundary.PlainText(
+                        exception.Message,
+                        600),
+                    "EXCEL_TABLE_FAILED");
+            }
+        }
+
+        private static List<string> StringListArgument(
+            IDictionary<string, object> arguments,
+            string key)
+        {
+            var result = new List<string>();
+            object value;
+            var array = arguments.TryGetValue(key, out value)
+                ? value as object[]
+                : null;
+            foreach (var item in array ?? new object[0])
+            {
+                result.Add(Convert.ToString(item));
+            }
+
+            return result;
+        }
+
+        private static List<IReadOnlyList<string>> RowsArgument(
+            IDictionary<string, object> arguments,
+            string key)
+        {
+            var result = new List<IReadOnlyList<string>>();
+            object value;
+            var array = arguments.TryGetValue(key, out value)
+                ? value as object[]
+                : null;
+            foreach (var row in array ?? new object[0])
+            {
+                var cells = new List<string>();
+                foreach (var cell in row as object[] ??
+                    new object[0])
+                {
+                    cells.Add(Convert.ToString(cell));
+                }
+
+                result.Add(cells);
+            }
+
+            return result;
         }
 
         private MailboxToolResult ExecuteDraft(

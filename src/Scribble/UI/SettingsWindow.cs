@@ -792,7 +792,7 @@ namespace Scribble.UI
 
             layout.Controls.Add(
                 FieldLabel(
-                    "Edge/Chrome tool allowlist (exact MCP names, " +
+                    "Chrome tool allowlist (exact MCP names, " +
                     "one per line; leave blank to disable)"),
                 0,
                 10);
@@ -807,7 +807,7 @@ namespace Scribble.UI
 
             _mcpBrowserToolsApproved.AutoSize = true;
             _mcpBrowserToolsApproved.Text =
-                "Allow only these tools in Edge/Chrome; I verified " +
+                "Allow only these tools in Chrome; I verified " +
                 "that they are read-only";
             _mcpBrowserToolsApproved.AccessibleName =
                 "Approve listed read-only MCP tools for browser chat";

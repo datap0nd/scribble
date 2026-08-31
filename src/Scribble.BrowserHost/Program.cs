@@ -23,7 +23,7 @@ namespace Scribble.BrowserHost
                         : "auto");
             }
 
-            // Edge and Chrome already enforce allowed_origins from
+            // Chrome already enforces allowed_origins from
             // the native-host manifest. Check the supplied origin a
             // second time so a differently registered extension can
             // never use this executable by accident.

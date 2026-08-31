@@ -281,6 +281,7 @@ $officeGuardedFiles = @(
     (Join-Path $sourceRoot "Office\DraftChartTypes.cs"),
     (Join-Path $sourceRoot "Office\MetoTheme.cs"),
     (Join-Path $sourceRoot "Office\DocumentDraftHost.cs"),
+    (Join-Path $sourceRoot "Office\ExcelTableLauncher.cs"),
     (Join-Path $sourceRoot "ExcelAddIn.cs"),
     (Join-Path $sourceRoot "PowerPointAddIn.cs"),
     (Join-Path $sourceRoot "WordAddIn.cs"),
@@ -901,10 +902,6 @@ if ($browserInstallerSource -notmatch
 }
 $browserRegistryContracts = @(
     @{
-        Display = "Software\Microsoft\Edge\NativeMessagingHosts\$nativeHostName"
-        Literal = "Software\Microsoft\Edge\NativeMessagingHosts\{#BrowserNativeHostName}"
-    },
-    @{
         Display = "Software\Google\Chrome\NativeMessagingHosts\$nativeHostName"
         Literal = "Software\Google\Chrome\NativeMessagingHosts\{#BrowserNativeHostName}"
     }
@@ -943,10 +940,24 @@ $allNativeRegistrationLines = @(
     $browserInstallerLines |
         Where-Object { $_ -match 'NativeMessagingHosts' }
 )
-if ($allNativeRegistrationLines.Count -ne 6 -or
+if ($allNativeRegistrationLines.Count -ne 5 -or
     @($allNativeRegistrationLines |
         Where-Object { $_ -notmatch '^Root:\s*HKCU32;' }).Count -ne 0) {
     throw "Native messaging registration must consist only of six HKCU32 entries."
+}
+# Edge is unsupported: its current-host registration must exist only
+# as an unconditional cleanup deletekey, never as a live registration.
+$edgeLines = @(
+    $allNativeRegistrationLines |
+        Where-Object { $_ -match 'Microsoft\\Edge' }
+)
+if ($edgeLines.Count -ne 2 -or
+    @($edgeLines |
+        Where-Object {
+            $_ -notmatch 'Flags:[^;]*\bdeletekey\b' -or
+            $_ -match 'ValueData:'
+        }).Count -ne 0) {
+    throw "Edge native-messaging keys may exist only as cleanup deletions."
 }
 $legacyNativeCleanupLines = @(
     $allNativeRegistrationLines |
