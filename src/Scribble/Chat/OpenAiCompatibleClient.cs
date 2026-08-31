@@ -160,7 +160,8 @@ namespace Scribble.Chat
                     "The configured endpoint is invalid.");
             }
 
-            var requestJson = _serializer.Serialize(requestModel);
+            var requestJson = _serializer.Serialize(
+                SerializablePayload(requestModel));
 
             using (var request = new HttpRequestMessage(HttpMethod.Post, endpoint))
             {
@@ -760,6 +761,36 @@ namespace Scribble.Chat
             }
 
             return string.Empty;
+        }
+
+        // Strict OpenAI-compatible endpoints reject requests that
+        // carry "tools": [] or null tool fields with 400, so the
+        // optional fields are included only when they carry a value.
+        private static Dictionary<string, object> SerializablePayload(
+            ChatCompletionRequest requestModel)
+        {
+            var payload = new Dictionary<string, object>
+            {
+                { "model", requestModel.model },
+                { "messages", requestModel.messages },
+                { "stream", requestModel.stream }
+            };
+            if (requestModel.tools != null &&
+                requestModel.tools.Count > 0)
+            {
+                payload["tools"] = requestModel.tools;
+                if (requestModel.tool_choice != null)
+                {
+                    payload["tool_choice"] = requestModel.tool_choice;
+                }
+            }
+
+            if (requestModel.max_tokens.HasValue)
+            {
+                payload["max_tokens"] = requestModel.max_tokens.Value;
+            }
+
+            return payload;
         }
 
         private static string BuildHttpCode(int status, string reason)
