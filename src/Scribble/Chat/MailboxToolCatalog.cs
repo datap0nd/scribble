@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using Scribble.Outlook;
 
 namespace Scribble.Chat
@@ -32,8 +33,12 @@ namespace Scribble.Chat
                         description =
                             "Search the user's local primary Outlook Inbox and Sent Items. " +
                             "Returns bounded metadata, snippets, and temporary message " +
-                            "handles, newest first. Only one search is allowed per request, " +
-                            "so choose the query carefully before calling.",
+                            "handles, newest first. Set max_results to whatever the user " +
+                            "asked for - a sweep of several hundred messages is supported " +
+                            "and wide sweeps return compact summaries so they fit. Up to " +
+                            LimitText(MailboxSearchBudget.MaxSearchesPerRequest) +
+                            " searches are allowed per request, so prefer one wide sweep " +
+                            "over repeated narrow ones.",
                         parameters = ObjectSchema(
                             new Dictionary<string, object>
                             {
@@ -63,9 +68,17 @@ namespace Scribble.Chat
                                 {
                                     "max_results",
                                     IntegerSchema(
-                                        "Maximum number of result summaries to return.",
+                                        "Maximum number of result summaries to return. " +
+                                        "Defaults to " +
+                                        LimitText(
+                                            MailboxSearchBudget
+                                                .RecommendedResults) +
+                                        "; raise it to " +
+                                        LimitText(
+                                            MailboxSearchBudget.MaxResults) +
+                                        " when the user asks for a wide sweep.",
                                         1,
-                                        MailboxWorkingSet.MaxMessages)
+                                        MailboxSearchBudget.MaxResults)
                                 }
                             },
                             "query")
@@ -80,8 +93,13 @@ namespace Scribble.Chat
                         description =
                             "Load the bounded plain-text bodies of messages returned by " +
                             "search_mailbox, the selected email, or the user-approved " +
-                            "ten-message working set. At most ten unique message bodies " +
-                            "can be loaded in one request. Attachments are included as " +
+                            "working set. At most " +
+                            LimitText(MailboxSearchBudget.MaxBodyMessages) +
+                            " unique message bodies can be loaded in one request, or " +
+                            LimitText(MailboxWorkingSet.MaxMessages) +
+                            " while an approved working set is locked. Read bodies only " +
+                            "for the messages that matter; use search summaries for the " +
+                            "rest. Attachments are included as " +
                             "extracted text where possible (Excel, PDF, PowerPoint, " +
                             "Word including legacy formats, RTF, and text files); " +
                             "unreadable types are noted. Image attachments are " +
@@ -104,7 +122,10 @@ namespace Scribble.Chat
                                                 "user-approved working set.")
                                         },
                                         { "minItems", 1 },
-                                        { "maxItems", MailboxWorkingSet.MaxMessages }
+                                        {
+                                            "maxItems",
+                                            MailboxSearchBudget.MaxBodyMessages
+                                        }
                                     }
                                 }
                             },
@@ -119,8 +140,8 @@ namespace Scribble.Chat
                         name = ReadThread,
                         description =
                             "Load bounded messages in the Outlook conversation containing " +
-                            "a searched or selected message, subject to the ten-message " +
-                            "request-wide context cap.",
+                            "a searched or selected message, subject to the request-wide " +
+                            "message-body cap.",
                         parameters = ObjectSchema(
                             new Dictionary<string, object>
                             {
@@ -158,6 +179,12 @@ namespace Scribble.Chat
             }
 
             return false;
+        }
+
+        private static string LimitText(int value)
+        {
+            return value.ToString(
+                CultureInfo.InvariantCulture);
         }
 
         private static Dictionary<string, object> ObjectSchema(

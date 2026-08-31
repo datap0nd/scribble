@@ -10,7 +10,6 @@ namespace Scribble.Outlook
     {
         private const int InboxFolder = 6;
         private const int SentItemsFolder = 5;
-        private const int MaxFallbackScannedItemsPerFolder = 600;
 
         private readonly object _outlookApplication;
 
@@ -31,8 +30,11 @@ namespace Scribble.Outlook
             var boundedResults = Math.Max(
                 1,
                 Math.Min(
-                    MailboxWorkingSet.MaxMessages,
+                    MailboxSearchBudget.MaxResults,
                     maxResults));
+            var snippetCharacters =
+                MailboxSearchBudget.SnippetCharacters(
+                    boundedResults);
             var cutoff = DateTime.Now.AddDays(-boundedDays);
             var hits = new List<MailboxSearchHit>();
 
@@ -44,6 +46,7 @@ namespace Scribble.Outlook
                     boundedQuery,
                     cutoff,
                     boundedResults,
+                    snippetCharacters,
                     hits);
             }
 
@@ -55,6 +58,7 @@ namespace Scribble.Outlook
                     boundedQuery,
                     cutoff,
                     boundedResults,
+                    snippetCharacters,
                     hits);
             }
 
@@ -83,7 +87,11 @@ namespace Scribble.Outlook
                     "The source message is unavailable.");
             }
 
-            var limit = Math.Max(1, Math.Min(20, maxMessages));
+            var limit = Math.Max(
+                1,
+                Math.Min(
+                    MailboxSearchBudget.MaxThreadMessages,
+                    maxMessages));
             var messages = new List<MessageSnapshot>();
             object session = null;
             object sourceItem = null;
@@ -180,6 +188,7 @@ namespace Scribble.Outlook
             string query,
             DateTime cutoff,
             int maxResults,
+            int snippetCharacters,
             List<MailboxSearchHit> output)
         {
             object session = null;
@@ -230,7 +239,8 @@ namespace Scribble.Outlook
                     ? count
                     : Math.Min(
                         count,
-                        MaxFallbackScannedItemsPerFolder);
+                        MailboxSearchBudget.ScannedItemsPerFolder(
+                            maxResults));
 
                 for (var index = 1;
                      index <= scanLimit &&
@@ -268,7 +278,10 @@ namespace Scribble.Outlook
                         output.Add(new MailboxSearchHit(
                             snapshot,
                             folderName,
-                            BuildSnippet(snapshot.Body, query)));
+                            BuildSnippet(
+                                snapshot.Body,
+                                query,
+                                snippetCharacters)));
                         folderHitCount++;
                     }
                     finally
@@ -326,8 +339,16 @@ namespace Scribble.Outlook
                 StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
-        private static string BuildSnippet(string body, string query)
+        private static string BuildSnippet(
+            string body,
+            string query,
+            int maximumCharacters)
         {
+            if (maximumCharacters <= 0)
+            {
+                return string.Empty;
+            }
+
             var plain = TextBoundary.PlainText(body, 4000)
                 .Replace("\r", " ")
                 .Replace("\n", " ")
@@ -354,7 +375,9 @@ namespace Scribble.Outlook
                 return string.Empty;
             }
 
-            var length = Math.Min(500, plain.Length - start);
+            var length = Math.Min(
+                maximumCharacters,
+                plain.Length - start);
             var snippet = plain.Substring(start, length).Trim();
             return start > 0 ? "..." + snippet : snippet;
         }

@@ -217,6 +217,9 @@ namespace GuardrailTests
                     "Working set exposes only ten approved emails",
                     WorkingSetIsStrictlyBounded);
                 Run(
+                    "Mailbox sweeps follow the width the user asked for",
+                    MailboxSweepFollowsTheUserWidth);
+                Run(
                     "Outlook multi-selection accepts one to ten emails",
                     OutlookMultiSelectionIsBounded);
                 Run(
@@ -718,8 +721,12 @@ namespace GuardrailTests
             Assert(
                 json.Contains("\"tools\"") &&
                 json.Contains("\"tool_choice\":\"auto\"") &&
-                json.Contains("\"maximum\":10") &&
-                json.Contains("\"maxItems\":10"),
+                json.Contains(
+                    "\"maximum\":" +
+                    MailboxSearchBudget.MaxResults) &&
+                json.Contains(
+                    "\"maxItems\":" +
+                    MailboxSearchBudget.MaxBodyMessages),
                 "Request does not expose bounded mailbox tools.");
             Assert(json.Contains("\"stream\":false"), "Streaming must be off.");
 
@@ -759,6 +766,101 @@ namespace GuardrailTests
                 ordinary.Kind == LocalSearchCommandKind.None &&
                 longSearch.Query.Length == 240,
                 "The local /search command contract is incomplete.");
+        }
+
+        private static void MailboxSweepFollowsTheUserWidth()
+        {
+            var items = new FakeMailboxItems(
+                Enumerable.Range(1, 600)
+                    .Select(index => (object)new FakeSweptMailItem(
+                        "sweep-" + index,
+                        "Subject " + index,
+                        DateTime.Now.AddMinutes(-index)))
+                    .ToArray());
+            var application = new FakeOutlookApplication();
+            application.Session.RegisterFolder(
+                6,
+                new FakeMailboxFolder(items));
+            var host = new MailboxToolHost(application, null);
+
+            var wide = host.Execute(
+                MailboxCall(
+                    "wide-sweep",
+                    MailboxToolCatalog.SearchMailbox,
+                    "{\"query\":\"\",\"folder\":\"inbox\"," +
+                    "\"max_results\":500}"));
+            var payload = (Dictionary<string, object>)
+                new JavaScriptSerializer()
+                    .DeserializeObject(wide.Content);
+            var returned = (object[])payload["results"];
+            var first = (Dictionary<string, object>)returned[0];
+            Assert(
+                Convert.ToInt32(payload["result_count"]) == 500 &&
+                returned.Length == 500 &&
+                !payload.ContainsKey("truncated_for_context") &&
+                wide.Content.Length <=
+                    TextBoundary.MaxToolResultCharacters &&
+                Convert.ToString(first["subject"]) == "Subject 1" &&
+                items.ScannedCount >= 500,
+                "A 500-email sweep did not come back whole.");
+
+            var narrow = host.Execute(
+                MailboxCall(
+                    "narrow-sweep",
+                    MailboxToolCatalog.SearchMailbox,
+                    "{\"query\":\"\",\"folder\":\"inbox\"," +
+                    "\"max_results\":5}"));
+            Assert(
+                narrow.Content.Contains("\"result_count\":5") &&
+                narrow.Content.Contains("\"snippet\"") &&
+                narrow.Content.Contains("\"to\"") &&
+                !wide.Content.Contains("\"snippet\""),
+                "Sweep detail did not scale with the requested width.");
+
+            var bodies = host.Execute(
+                MailboxCall(
+                    "wide-read",
+                    MailboxToolCatalog.ReadMessages,
+                    "{\"handles\":[" +
+                    string.Join(
+                        ",",
+                        Enumerable.Range(1, 25)
+                            .Select(index => "\"m" + index + "\"")
+                            .ToArray()) +
+                    "]}"));
+            var overflow = host.Execute(
+                MailboxCall(
+                    "overflow-read",
+                    MailboxToolCatalog.ReadMessages,
+                    "{\"handles\":[\"m26\"]}"));
+            Assert(
+                bodies.StatusText.Contains("Loaded 25 new message bodies") &&
+                bodies.StatusText.Contains("Request total: 25 of 25") &&
+                overflow.Content.Contains(
+                    "MAILBOX_CONTEXT_LIMIT_REACHED"),
+                "The per-request body budget is not the reviewed one.");
+
+            var third = host.Execute(
+                MailboxCall(
+                    "third-sweep",
+                    MailboxToolCatalog.SearchMailbox,
+                    "{\"query\":\"\",\"folder\":\"inbox\"}"));
+            var fourth = host.Execute(
+                MailboxCall(
+                    "fourth-sweep",
+                    MailboxToolCatalog.SearchMailbox,
+                    "{\"query\":\"\",\"folder\":\"inbox\"}"));
+            var refused = host.Execute(
+                MailboxCall(
+                    "fifth-sweep",
+                    MailboxToolCatalog.SearchMailbox,
+                    "{\"query\":\"\",\"folder\":\"inbox\"}"));
+            Assert(
+                third.Content.Contains("\"result_count\":25") &&
+                fourth.Content.Contains("\"result_count\":25") &&
+                refused.Content.Contains(
+                    "MAILBOX_SEARCH_LIMIT_REACHED"),
+                "The per-request search budget is not the reviewed one.");
         }
 
         private static void WorkingSetIsStrictlyBounded()
@@ -6097,6 +6199,95 @@ namespace GuardrailTests
         public string StoreID { get; } = "store";
     }
 
+    public sealed class FakeMailboxFolder
+    {
+        public FakeMailboxFolder(FakeMailboxItems items)
+        {
+            Items = items;
+        }
+
+        public string StoreID { get; } = "store";
+
+        public FakeMailboxItems Items { get; }
+    }
+
+    public sealed class FakeMailboxItems
+    {
+        private readonly List<object> _items;
+
+        public FakeMailboxItems(IEnumerable<object> items)
+        {
+            _items = new List<object>(items);
+        }
+
+        public int Count
+        {
+            get { return _items.Count; }
+        }
+
+        public int ScannedCount { get; private set; }
+
+        public object Item(int index)
+        {
+            ScannedCount++;
+            return _items[index - 1];
+        }
+
+        public void Sort(string property, bool descending)
+        {
+        }
+
+        // No server-side DASL in the test host, so the service
+        // takes its manual scan path.
+        public object Restrict(string filter)
+        {
+            throw new InvalidOperationException(
+                "Restrict is unavailable in the test host.");
+        }
+    }
+
+    public sealed class FakeSweptMailItem
+    {
+        public FakeSweptMailItem(
+            string entryId,
+            string subject,
+            DateTime receivedAt)
+        {
+            EntryID = entryId;
+            Subject = subject;
+            ReceivedTime = receivedAt;
+            Parent = new FakeMailFolder();
+            Attachments = new FakeOutlookAttachments();
+        }
+
+        public string MessageClass { get; } = "IPM.Note";
+
+        public string EntryID { get; }
+
+        public string Subject { get; }
+
+        public string SenderName { get; } = "Sender";
+
+        public string SenderEmailAddress { get; } =
+            "sender@example.test";
+
+        public string To { get; } = "recipient@example.test";
+
+        public string Body { get; } = "Swept message body";
+
+        public string HTMLBody { get; } = string.Empty;
+
+        public DateTime ReceivedTime { get; }
+
+        public DateTime SentOn { get; } = DateTime.MinValue;
+
+        public DateTime CreationTime { get; } = DateTime.MinValue;
+
+        public FakeMailFolder Parent { get; }
+
+        public FakeOutlookAttachments Attachments { get; }
+    }
+
     public sealed class FakeOutlookApplication
     {
         private readonly FakeOutlookSession _session =
@@ -6155,6 +6346,27 @@ namespace GuardrailTests
     {
         private readonly Dictionary<string, object> _items =
             new Dictionary<string, object>(StringComparer.Ordinal);
+        private readonly Dictionary<int, FakeMailboxFolder> _folders =
+            new Dictionary<int, FakeMailboxFolder>();
+
+        public void RegisterFolder(
+            int folderKind,
+            FakeMailboxFolder folder)
+        {
+            _folders[folderKind] = folder;
+        }
+
+        public object GetDefaultFolder(int folderKind)
+        {
+            FakeMailboxFolder folder;
+            if (!_folders.TryGetValue(folderKind, out folder))
+            {
+                throw new InvalidOperationException(
+                    "The test host has no folder " + folderKind + ".");
+            }
+
+            return folder;
+        }
 
         public void Register(
             string entryId,

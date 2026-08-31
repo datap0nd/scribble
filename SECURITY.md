@@ -93,10 +93,14 @@ allowed per request.
    never exposes both.
 2. `MailboxToolHost` has one public dispatcher and rejects any tool name outside
    that compile-time allowlist.
-3. Model-selected searches are limited to one search of the primary Inbox and
-   Sent Items per request and return no more than ten summaries. No request can
-   load more than ten unique message bodies, including thread reads. Body
-   lengths, calls per round, and tool rounds are also capped.
+3. Model-selected searches are limited to four searches of the primary Inbox
+   and Sent Items per request. A search returns metadata summaries only - the
+   user chooses the sweep width, up to 500 - and each summary is shortened so
+   the result stays inside the request's text budget. Message bodies keep a
+   narrower budget: no request can load more than 25 unique bodies, including
+   thread reads, and a locked working set still reads its ten approved emails
+   and nothing else. Body lengths, calls per round, and tool rounds are also
+   capped.
 4. Search results receive temporary handles. Read operations accept only handles
    issued within the current request, plus the optional `selected` handle or a
    locally approved ten-email working set.

@@ -109,6 +109,7 @@
     <Compile Include="Outlook\DraftToolHost.cs" />
     <Compile Include="Outlook\MailboxContextService.cs" />
     <Compile Include="Outlook\MailboxToolHost.cs" />
+    <Compile Include="Outlook\MailboxSearchBudget.cs" />
     <Compile Include="Outlook\MailboxWorkingSet.cs" />
     <Compile Include="Outlook\MessageReader.cs" />
     <Compile Include="Outlook\PdfTextExtractor.cs" />

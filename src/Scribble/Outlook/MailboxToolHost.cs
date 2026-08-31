@@ -16,7 +16,30 @@ namespace Scribble.Outlook
         private const int MaxThreadMessageBodyCharacters = 2000;
         private static int MaxThreadMessages
         {
-            get { return MailboxWorkingSet.MaxMessages; }
+            get { return MailboxSearchBudget.MaxThreadMessages; }
+        }
+
+        // Bodies are the expensive intake, so they keep a budget of
+        // their own. An approved working set is read in full and
+        // nothing else; a free request may read further than the
+        // pinned set, up to the reviewed body budget.
+        private int MaxBodyMessages
+        {
+            get
+            {
+                return _workingSetOnly
+                    ? MailboxWorkingSet.MaxMessages
+                    : MailboxSearchBudget.MaxBodyMessages;
+            }
+        }
+
+        private static int ResultBudget
+        {
+            get
+            {
+                return ContextScale.Scaled(
+                    TextBoundary.MaxToolResultCharacters);
+            }
         }
 
         private readonly MailboxContextService _mailbox;
@@ -28,7 +51,7 @@ namespace Scribble.Outlook
         private readonly HashSet<string> _loadedBodyHandles =
             new HashSet<string>(StringComparer.Ordinal);
         private readonly bool _workingSetOnly;
-        private bool _searchExecuted;
+        private int _searchExecutedCount;
         private int _nextHandle = 1;
 
         public MailboxToolHost(
@@ -140,15 +163,18 @@ namespace Scribble.Outlook
                     "A user-approved working set is active. Search and thread expansion are disabled for this request.");
             }
 
-            if (_searchExecuted)
+            if (_searchExecutedCount >=
+                MailboxSearchBudget.MaxSearchesPerRequest)
             {
                 return Error(
                     callId,
                     "MAILBOX_SEARCH_LIMIT_REACHED",
-                    "Only one mailbox search is allowed per request. Use /search to refine the working set.");
+                    MailboxSearchBudget.MaxSearchesPerRequest.ToString(
+                        CultureInfo.InvariantCulture) +
+                    " mailbox searches have already run for this request. Widen max_results instead of searching again.");
             }
 
-            _searchExecuted = true;
+            _searchExecutedCount++;
             var query = GetString(arguments, "query", string.Empty);
             var folder = GetString(arguments, "folder", "all")
                 .ToLowerInvariant();
@@ -168,48 +194,118 @@ namespace Scribble.Outlook
             var maxResults = GetInteger(
                 arguments,
                 "max_results",
-                MailboxWorkingSet.MaxMessages,
+                MailboxSearchBudget.RecommendedResults,
                 1,
-                MailboxWorkingSet.MaxMessages);
+                MailboxSearchBudget.MaxResults);
             var hits = _mailbox.Search(
                 query,
                 folder,
                 daysBack,
                 maxResults);
 
+            var subjectCharacters =
+                MailboxSearchBudget.SubjectCharacters(maxResults);
+            var senderCharacters =
+                MailboxSearchBudget.SenderCharacters(maxResults);
+            var withRecipients =
+                MailboxSearchBudget.IncludesRecipients(maxResults);
             var results = new List<object>();
             foreach (var hit in hits)
             {
                 var handle = Register(hit.Message);
-                results.Add(new Dictionary<string, object>
+                var summary = new Dictionary<string, object>
                 {
                     { "handle", handle },
                     { "folder", hit.FolderName },
-                    { "subject", hit.Message.Subject },
-                    { "from", hit.Message.Sender },
-                    { "to", hit.Message.Recipients },
+                    {
+                        "subject",
+                        TextBoundary.SingleLine(
+                            hit.Message.Subject,
+                            subjectCharacters)
+                    },
+                    {
+                        "from",
+                        TextBoundary.SingleLine(
+                            hit.Message.Sender,
+                            senderCharacters)
+                    },
                     {
                         "received",
                         hit.Message.ReceivedAt?.ToString("O") ??
                         "unknown"
-                    },
-                    { "snippet", hit.Snippet }
-                });
+                    }
+                };
+                if (withRecipients)
+                {
+                    summary["to"] = hit.Message.Recipients;
+                }
+
+                if (hit.Snippet.Length > 0)
+                {
+                    summary["snippet"] = hit.Snippet;
+                }
+
+                results.Add(summary);
+            }
+
+            // A wide sweep is packed to whatever the request's
+            // tool-result budget actually holds rather than
+            // refused outright: the model gets the newest
+            // summaries and is told the tail was dropped.
+            var returned = PackSummaries(results);
+            var trimmed = returned.Count < results.Count;
+            var payload = new Dictionary<string, object>
+            {
+                { "untrusted_email_data", true },
+                { "query", query },
+                { "folder", folder },
+                { "requested_count", maxResults },
+                { "match_count", results.Count },
+                { "result_count", returned.Count },
+                { "results", returned }
+            };
+            if (trimmed)
+            {
+                payload["truncated_for_context"] = true;
             }
 
             return Success(
                 callId,
-                new Dictionary<string, object>
-                {
-                    { "untrusted_email_data", true },
-                    { "query", query },
-                    { "folder", folder },
-                    { "result_count", results.Count },
-                    { "results", results }
-                },
+                payload,
                 "Mailbox search loaded " +
-                results.Count.ToString(CultureInfo.InvariantCulture) +
-                " result summaries.");
+                returned.Count.ToString(CultureInfo.InvariantCulture) +
+                " result summaries" +
+                (trimmed
+                    ? " of " +
+                      results.Count.ToString(
+                          CultureInfo.InvariantCulture) +
+                      " matches; the rest did not fit this request."
+                    : "."));
+        }
+
+        // Keeps the newest summaries that fit the tool-result
+        // budget. Each entry is measured once, so a 500-result
+        // sweep costs one pass rather than a serialize-and-retry
+        // loop.
+        private List<object> PackSummaries(List<object> results)
+        {
+            var budget = ResultBudget - 600;
+            var used = 0;
+            var packed = new List<object>(results.Count);
+            foreach (var result in results)
+            {
+                var length = _serializer.Serialize(result).Length + 1;
+                if (packed.Count > 0 &&
+                    used + length > budget)
+                {
+                    break;
+                }
+
+                used += length;
+                packed.Add(result);
+            }
+
+            return packed;
         }
 
         private MailboxToolResult ReadMessages(
@@ -218,7 +314,7 @@ namespace Scribble.Outlook
         {
             var handles = GetStringList(arguments, "handles")
                 .Distinct(StringComparer.Ordinal)
-                .Take(MailboxWorkingSet.MaxMessages)
+                .Take(MaxBodyMessages)
                 .ToArray();
             if (handles.Length == 0)
             {
@@ -231,6 +327,7 @@ namespace Scribble.Outlook
             var messages = new List<object>();
             var visionImages = new List<VisionImagePayload>();
             var loadedCount = 0;
+            var used = 0;
             foreach (var handle in handles)
             {
                 MessageSnapshot message;
@@ -259,8 +356,7 @@ namespace Scribble.Outlook
                     continue;
                 }
 
-                if (_loadedBodyHandles.Count >=
-                    MailboxWorkingSet.MaxMessages)
+                if (_loadedBodyHandles.Count >= MaxBodyMessages)
                 {
                     messages.Add(new Dictionary<string, object>
                     {
@@ -270,12 +366,44 @@ namespace Scribble.Outlook
                     continue;
                 }
 
-                messages.Add(
-                    SerializeMessage(
-                        handle,
-                        message,
-                        MaxDirectMessageBodyCharacters,
-                        visionImages));
+                // Bodies carry attachment text, so a wide read is
+                // measured as it is built: what does not fit is
+                // deferred with its handle intact rather than
+                // costing the whole result.
+                var pendingImages = new List<VisionImagePayload>();
+                var serialized = SerializeMessage(
+                    handle,
+                    message,
+                    MailboxSearchBudget.BodyCharacters(
+                        handles.Length,
+                        ResultBudget,
+                        MaxDirectMessageBodyCharacters),
+                    pendingImages);
+                var length =
+                    _serializer.Serialize(serialized).Length + 1;
+                if (loadedCount > 0 &&
+                    used + length > ResultBudget - 600)
+                {
+                    messages.Add(new Dictionary<string, object>
+                    {
+                        { "handle", handle },
+                        { "deferred_for_context", true },
+                        {
+                            "note",
+                            "This body did not fit the remaining result " +
+                            "budget. Request it again in a later step."
+                        }
+                    });
+                    break;
+                }
+
+                used += length;
+                messages.Add(serialized);
+                foreach (var image in pendingImages)
+                {
+                    visionImages.Add(image);
+                }
+
                 _loadedBodyHandles.Add(handle);
                 loadedCount++;
             }
@@ -293,7 +421,7 @@ namespace Scribble.Outlook
                 _loadedBodyHandles.Count.ToString(
                     CultureInfo.InvariantCulture) +
                 " of " +
-                MailboxWorkingSet.MaxMessages.ToString(
+                MaxBodyMessages.ToString(
                     CultureInfo.InvariantCulture) +
                 ".",
                 visionImages);
@@ -321,21 +449,21 @@ namespace Scribble.Outlook
                     "The message handle is unknown or expired.");
             }
 
-            var remaining = MailboxWorkingSet.MaxMessages -
+            var remaining = MaxBodyMessages -
                 _loadedBodyHandles.Count;
             if (remaining <= 0)
             {
                 return Error(
                     callId,
                     "MAILBOX_CONTEXT_LIMIT_REACHED",
-                    MailboxWorkingSet.MaxMessages.ToString(
+                    MaxBodyMessages.ToString(
                         CultureInfo.InvariantCulture) +
                     " unique message bodies are already loaded for this request.");
             }
 
             var conversation = _mailbox.ReadConversation(
                 source,
-                MaxThreadMessages);
+                Math.Min(remaining, MaxThreadMessages));
             var messages = new List<object>();
             var visionImages = new List<VisionImagePayload>();
             foreach (var message in conversation)
@@ -346,8 +474,7 @@ namespace Scribble.Outlook
                     continue;
                 }
 
-                if (_loadedBodyHandles.Count >=
-                    MailboxWorkingSet.MaxMessages)
+                if (_loadedBodyHandles.Count >= MaxBodyMessages)
                 {
                     break;
                 }
@@ -376,7 +503,7 @@ namespace Scribble.Outlook
                 _loadedBodyHandles.Count.ToString(
                     CultureInfo.InvariantCulture) +
                 " of " +
-                MailboxWorkingSet.MaxMessages.ToString(
+                MaxBodyMessages.ToString(
                     CultureInfo.InvariantCulture) +
                 ".",
                 visionImages);

@@ -544,10 +544,13 @@ or pages in the background.
 
 The model may then request:
 
-- one search with up to ten bounded result summaries from the primary Inbox
-  and Sent Items when no working set is locked;
-- no more than ten unique message bodies across the entire request;
-- conversation messages only within that same request-wide ten-body limit;
+- up to four searches of the primary Inbox and Sent Items when no working set
+  is locked, each returning up to 500 bounded result summaries - a wide sweep
+  returns compact summaries, and anything past the request's text budget is
+  reported as trimmed rather than silently dropped;
+- no more than 25 unique message bodies across the entire request, or ten while
+  an approved working set is locked;
+- conversation messages only within that same request-wide body limit;
 - at most four tool calls per round and four context-retrieval rounds.
 
 `/search` is handled locally before an LLM request is created. It returns at

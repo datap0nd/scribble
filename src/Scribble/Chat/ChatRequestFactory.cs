@@ -223,6 +223,12 @@ namespace Scribble.Chat
             };
         }
 
+        private static string LimitText(int value)
+        {
+            return value.ToString(
+                System.Globalization.CultureInfo.InvariantCulture);
+        }
+
         private static string BuildSystemBoundary(
             bool allowDraftCreate,
             bool allowDraftUpdate,
@@ -251,7 +257,13 @@ namespace Scribble.Chat
                 BuildImageBoundary(model, imagesExpected) +
                 (hasWorkingSet
                     ? " A user-approved working set of no more than ten emails is locked for this request. Use only read_messages with its supplied context handles. Do not search the mailbox or expand conversation threads."
-                    : " At most ten unique message bodies may be loaded in one request. Perform no more than one mailbox search.");
+                    : " One mailbox search can return up to " +
+                      LimitText(MailboxSearchBudget.MaxResults) +
+                      " result summaries, so set max_results to the sweep the user asked for rather than assuming a small cap; up to " +
+                      LimitText(MailboxSearchBudget.MaxSearchesPerRequest) +
+                      " searches and " +
+                      LimitText(MailboxSearchBudget.MaxBodyMessages) +
+                      " unique message bodies are allowed per request. Answer from the summaries when they are enough, and read bodies only where the answer needs them.");
             var boundedTone = TextBoundary.PlainText(
                 toneProfile,
                 TextBoundary.MaxToneProfileCharacters);

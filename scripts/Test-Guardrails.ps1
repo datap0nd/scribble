@@ -32,6 +32,7 @@ $draftToolHostPath = Join-Path $sourceRoot "Outlook\DraftToolHost.cs"
 $chatPanePath = Join-Path $sourceRoot "UI\ChatPane.cs"
 $intentPath = Join-Path $sourceRoot "Security\DraftIntentPolicy.cs"
 $workingSetPath = Join-Path $sourceRoot "Outlook\MailboxWorkingSet.cs"
+$searchBudgetPath = Join-Path $sourceRoot "Outlook\MailboxSearchBudget.cs"
 $safeModelTextPath = Join-Path $sourceRoot "Security\SafeModelText.cs"
 $toneFactoryPath = Join-Path $sourceRoot "Chat\ToneProfileRequestFactory.cs"
 $externalContextPath = Join-Path $sourceRoot "Chat\ExternalContextDocument.cs"
@@ -156,11 +157,35 @@ foreach ($requiredBoundary in @(
     }
 }
 
+# A mailbox sweep is a read-only metadata scan, so its width is the
+# user's to choose up to MaxResults; bodies keep the narrower budget
+# and an approved working set still reads ten emails and nothing
+# else. Both ceilings stay declared in one reviewed place.
+$searchBudgetSource = Get-Content $searchBudgetPath -Raw
+foreach ($requiredSweepBoundary in @(
+    "public const int MaxResults = 500",
+    "public const int MaxBodyMessages = 25",
+    "public const int MaxSearchesPerRequest = 4",
+    "public const int MaxThreadMessages = 20"
+)) {
+    if (-not $searchBudgetSource.Contains($requiredSweepBoundary)) {
+        throw "Mailbox sweep budget is missing $requiredSweepBoundary."
+    }
+}
+
+if (-not $toolHostSource.Contains(
+        "? MailboxWorkingSet.MaxMessages") -or
+    -not $toolHostSource.Contains(
+        ": MailboxSearchBudget.MaxBodyMessages") -or
+    -not $toolHostSource.Contains("PackSummaries(results)")) {
+    throw "Mailbox bodies are not held to a request budget under the tool-result cap."
+}
+
 if (-not $mailboxContextSource.Contains(
         "Math.Min") -or
     -not $mailboxContextSource.Contains(
-        "MailboxWorkingSet.MaxMessages")) {
-    throw "The underlying Outlook search service is not capped to the working-set limit."
+        "MailboxSearchBudget.MaxResults")) {
+    throw "The underlying Outlook search service is not capped to the sweep budget."
 }
 
 if (-not $chatPaneSource.Contains("LocalSearchCommand.Parse(prompt)") -or

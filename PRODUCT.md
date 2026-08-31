@@ -28,8 +28,9 @@ command or Outlook multi-selection creates a reviewable working set of at most
 ten emails. A normal prompt sends recent in-memory conversation plus optional
 selected-message or working-set metadata to a user-configured OpenAI-compatible
 endpoint. The model may request bounded read-only searches and message bodies
-from the primary Inbox and Sent Items, but it can never load more than ten
-unique bodies per request. After the user explicitly arms one request, the model may
+from the primary Inbox and Sent Items. A search sweep is as wide as the user
+asks for, up to 500 summaries, but the model can never load more than 25 unique
+bodies per request. After the user explicitly arms one request, the model may
 create one unsent Outlook reply or new-message draft. That visible Outlook item
 then remains linked to the chat so later feedback updates the same draft.
 
@@ -74,8 +75,9 @@ locally linked item. The dedicated host exposes no send operation.
   selected source message. Never fall back to the latest mailbox item.
 - Never send, schedule, move, delete, mark, categorize, or modify the source email.
 - Without a working set, expose only `search_mailbox`, `read_messages`, and
-  `read_thread`, with one search and ten unique bodies per request. With a
-  working set, expose only `read_messages` for those approved handles.
+  `read_thread`, with four searches and 25 unique bodies per request. With a
+  working set, expose only `read_messages` for those approved handles, capped
+  at the ten approved emails.
   Conditionally expose `create_draft` for a locally recognized drafting request
   or `update_draft` for a locally recognized revision of the one linked draft,
   never both.

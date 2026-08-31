@@ -52,9 +52,10 @@ main conversation.
 - The active tool loop appends assistant/tool exchanges without an aggregate
   request budget. Per-result limits do not prevent the combined request from
   exceeding the endpoint context window.
-- Normal mailbox search and body loading are capped at ten messages. This is a
-  good interactive working-set limit, but it cannot execute an explicitly broad
-  aggregate request.
+- Mailbox search now sweeps as wide as the user asks - up to 500 summaries a
+  pass, four passes a request - and message bodies are capped separately at 25.
+  The remaining gap is aggregation across requests: a sweep still answers from
+  one request's summaries rather than a durable index.
 - Tool results are intentionally absent from durable chat history, so evidence
   discovered in one request is available later only if the assistant happened
   to repeat it in prose.
