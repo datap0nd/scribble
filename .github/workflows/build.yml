@@ -463,8 +463,15 @@ jobs:
             [Microsoft.Win32.RegistryHive]::CurrentUser,
             [Microsoft.Win32.RegistryView]::Registry32)
           try {
+            # Edge is unsupported: its registration must be removed
+            # by every install or update.
+            $edgeKey = $browserRegistryRoot.OpenSubKey(
+              "Software\Microsoft\Edge\NativeMessagingHosts\com.scribble.browser")
+            if ($null -ne $edgeKey) {
+              $edgeKey.Dispose()
+              throw "Edge native host registration must not exist."
+            }
             foreach ($nativeKeyPath in @(
-              "Software\Microsoft\Edge\NativeMessagingHosts\com.scribble.browser",
               "Software\Google\Chrome\NativeMessagingHosts\com.scribble.browser"
             )) {
               $nativeKey = $browserRegistryRoot.OpenSubKey($nativeKeyPath)
