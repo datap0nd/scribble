@@ -64,23 +64,27 @@ The Edge/Chrome path is separate and read-only:
 Explicit toolbar, context-menu, or attach-button gesture
     |
     v
-temporary activeTab access -> bounded selection/page text/visible screenshot
+active-tab capture (title/URL/selection/page text) + model-driven
+http/https navigation of that same visible tab
     |
     v
 fixed extension origin -> framed per-user native bridge -> BrowserChatService
     |
     v
-configured endpoint + explicitly allowlisted read-only MCP tools only
+configured endpoint + browser tools + allowlisted read-only MCP tools
 ```
 
-The extension has no host permissions, content script, remote code, browsing
-history, cookie, download, debugger, or browser-management access. It cannot
-click, navigate, fill forms, enter credentials, upload, download, purchase,
-post, message, or mutate a page. The native host accepts only the fixed public
-extension identity and exposes neither browser control nor Office/mailbox tools.
-MCP is disabled in browser chat unless the user enters exact tool names and
-affirms that each is read-only; only one approved server and one call are
-allowed per request.
+The extension holds http/https host permissions so the panel can read and
+navigate the user's own visible tab without a per-click gesture. It has no
+content scripts, remote code, browsing-history, cookie, download, debugger, or
+browser-management access, and it never reads other tabs or pages in the
+background. It cannot click page controls, fill or submit forms, enter
+credentials, upload, download, purchase, post, message, or mutate a page -
+navigation and reading only, http/https only. The native host accepts only the
+fixed public extension identity; its only write-shaped capability is opening
+one unsent Outlook draft, exposed solely when the user's own latest prompt
+asks for a draft, and it can never send. MCP is disabled in browser chat
+unless the user enters exact tool names and affirms that each is read-only.
 
 ## Enforced invariants
 
@@ -151,9 +155,10 @@ allowed per request.
     obvious quoted history, and uses a no-tool model request. The generated
      profile is visible and editable. It is added only to locally authorized
      draft requests and is subordinate to every capability boundary.
-18. Browser page access requires a user gesture and the temporary `activeTab`
-    grant. Context remains visibly attached in the side panel until the user
-    clears it; it is never collected from other tabs or in the background.
+18. Browser context is the active tab of the panel's own window, captured at
+    send time and shown in the panel header. It is never collected from other
+    tabs or in the background. Model-driven navigation is restricted to
+    http/https URLs in that same visible tab, so every step is user-visible.
 19. Browser context is capped at 16,000 selection characters, 48,000 page-text
     characters, a validated 5 MB JPEG/PNG/WebP screenshot, 12 history turns, and
     a 16,000-character prompt. Native framing and responses have independent
@@ -161,12 +166,16 @@ allowed per request.
 20. The native-host manifest allowlists one stable extension origin. The host
     independently requires that exact origin argument, uses strict binary
     stdin/stdout framing, and returns no settings secrets or stack traces.
-21. `BrowserChatService` can expose only exact, case-sensitive MCP tool names
-    the user separately allowlisted and affirmed as read-only. Browser MCP is
-    default-off, limited to one approved server, one call, one tool round, and
-    shorter per-operation timeouts. It rejects every other requested tool and
-    labels page, screenshot, and MCP results as untrusted data. It has no Outlook
-    or document host object and no page-control API.
+21. `BrowserChatService` exposes the fixed browser tools (navigate, read
+    page, and - only when the user's own prompt asks for a draft - one unsent
+    Outlook draft per request) plus exact, case-sensitive MCP tool names the
+    user separately allowlisted and affirmed as read-only. Tool use is bounded
+    to eight rounds and four calls per round per request. It rejects every
+    other requested tool and
+    labels page, screenshot, and MCP results as untrusted data. Its only
+    Outlook capability is `OutlookDraftLauncher`, which can display an unsent
+    draft and nothing else - no send, read, delete, or mailbox access - and it
+    has no document host object and no page-control API.
 22. Model and webpage output is inserted using DOM `textContent`; it is never
     parsed as HTML or evaluated as script.
 

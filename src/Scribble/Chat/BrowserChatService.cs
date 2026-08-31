@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Scribble.Configuration;
+using Scribble.Outlook;
 using Scribble.Security;
 
 namespace Scribble.Chat
@@ -13,10 +14,32 @@ namespace Scribble.Chat
             string content,
             string model,
             bool screenshotUsed)
+            : this(
+                content,
+                model,
+                screenshotUsed,
+                null,
+                null,
+                null)
+        {
+        }
+
+        public BrowserChatResult(
+            string content,
+            string model,
+            bool screenshotUsed,
+            string pendingAssistantContent,
+            IReadOnlyList<ChatToolCall> pendingCalls,
+            IReadOnlyList<BrowserExchangeResult> hostResults)
         {
             Content = content ?? string.Empty;
             Model = model ?? string.Empty;
             ScreenshotUsed = screenshotUsed;
+            PendingAssistantContent =
+                pendingAssistantContent ?? string.Empty;
+            PendingCalls = pendingCalls ?? new ChatToolCall[0];
+            HostResults = hostResults ??
+                new BrowserExchangeResult[0];
         }
 
         public string Content { get; }
@@ -24,16 +47,36 @@ namespace Scribble.Chat
         public string Model { get; }
 
         public bool ScreenshotUsed { get; }
+
+        // The assistant turn and calls the extension must complete
+        // (navigation or page reads) before the loop can continue.
+        public string PendingAssistantContent { get; }
+
+        public IReadOnlyList<ChatToolCall> PendingCalls { get; }
+
+        // Results for calls in PendingCalls the host already
+        // executed itself (MCP tools, the unsent Outlook draft).
+        public IReadOnlyList<BrowserExchangeResult> HostResults
+        {
+            get;
+        }
+
+        public bool HasPendingCalls
+        {
+            get { return PendingCalls.Count > 0; }
+        }
     }
 
-    // Runs the browser host's read-only model loop. The browser can
-    // provide user-approved page context and user-configured MCP
-    // tools; no Office, mailbox, navigation, or page-mutation tool
-    // is present in this process.
+    // Runs the browser host's model loop. The extension executes
+    // navigation and page reads in the user's own visible tab and
+    // replays the results; the host executes user-configured MCP
+    // tools and the prompt-gated unsent-Outlook-draft tool. No
+    // click, form, credential, or page-mutation capability exists
+    // anywhere in this process, and it can never send email.
     public sealed class BrowserChatService : IDisposable
     {
-        public const int MaxBrowserToolRounds = 1;
-        public const int MaxBrowserToolCallsPerRound = 1;
+        public const int MaxBrowserToolRounds = 8;
+        public const int MaxBrowserToolCallsPerRound = 4;
 
         private readonly AppSettings _settings;
         private readonly OpenAiCompatibleClient _client;
@@ -91,13 +134,14 @@ namespace Scribble.Chat
             string selection,
             string pageText,
             string screenshotDataUrl,
+            IReadOnlyList<BrowserExchangeTurn> exchange,
             CancellationToken cancellationToken)
         {
             if (!IsConfigured)
             {
                 throw new AiEndpointException(
                     "CONFIGURATION_INCOMPLETE",
-                    "Open Scribble in an Office app and configure the endpoint, model, and API key first.");
+                    "Open Scribble Settings and configure the endpoint, model, and API key first.");
             }
 
             var safePrompt = TextBoundary.PlainText(
@@ -130,6 +174,13 @@ namespace Scribble.Chat
                 safeScreenshot.Length > 0 &&
                 ModelCatalog.IsVisionCapable(activeModel);
 
+            // The unsent-draft tool is exposed only when the user's
+            // own latest prompt asks for a draft, and only until one
+            // draft has been opened in this request.
+            var allowOutlookDraft =
+                DraftIntentPolicy.AllowsCreate(safePrompt) &&
+                !ExchangeContainsDraft(exchange);
+
             IReadOnlyList<ChatToolDefinition> definitions = null;
             if (_mcpTools.HasServers)
             {
@@ -147,19 +198,21 @@ namespace Scribble.Chat
                 selection,
                 pageText,
                 safeScreenshot,
-                definitions);
+                definitions,
+                allowOutlookDraft,
+                exchange);
 
-            for (var round = 0;
-                 round <= MaxBrowserToolRounds;
-                 round++)
+            var roundsUsed = CountExchangeTurns(exchange);
+            var draftOpened = false;
+            while (true)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var response = await _client.CompleteAsync(
                     _settings,
                     request,
                     cancellationToken).ConfigureAwait(false);
-                var toolCalls = response.tool_calls;
-                if (toolCalls == null || toolCalls.Count == 0)
+                var toolCalls = NormalizeCalls(response.tool_calls);
+                if (toolCalls.Count == 0)
                 {
                     if (string.IsNullOrWhiteSpace(response.content))
                     {
@@ -174,49 +227,215 @@ namespace Scribble.Chat
                         screenshotUsed);
                 }
 
-                if (round == MaxBrowserToolRounds)
+                if (roundsUsed >= MaxBrowserToolRounds)
                 {
                     throw new AiEndpointException(
                         "TOOL_ROUND_LIMIT",
                         "The model exceeded the maximum number of bounded tool rounds.");
                 }
 
-                if (toolCalls.Count >
-                    MaxBrowserToolCallsPerRound)
+                if (toolCalls.Count > MaxBrowserToolCallsPerRound)
                 {
                     throw new AiEndpointException(
                         "TOOL_CALL_LIMIT",
                         "The model requested too many tools in one round.");
                 }
 
-                var results = new List<MailboxToolResult>();
-                foreach (var toolCall in toolCalls)
+                roundsUsed++;
+                var needsBrowser = false;
+                foreach (var call in toolCalls)
+                {
+                    if (BrowserToolCatalog.IsBrowserExecuted(
+                        call.function.name))
+                    {
+                        needsBrowser = true;
+                        break;
+                    }
+                }
+
+                var hostResults = new List<MailboxToolResult>();
+                foreach (var call in toolCalls)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    var name = toolCall?.function?.name;
-                    if (!McpToolHost.IsMcpTool(name) ||
-                        !_mcpTools.HasServers)
+                    var name = call.function.name;
+                    if (BrowserToolCatalog.IsBrowserExecuted(name))
                     {
-                        throw new AiEndpointException(
-                            "BROWSER_TOOL_NOT_ALLOWED",
-                            "The browser model requested a tool that this read-only host does not expose.");
+                        continue;
                     }
 
-                    results.Add(await Task.Run(
-                        () => _mcpTools.Execute(toolCall),
-                        cancellationToken).ConfigureAwait(false));
+                    if (string.Equals(
+                        name,
+                        BrowserToolCatalog.OpenOutlookDraft,
+                        StringComparison.Ordinal))
+                    {
+                        hostResults.Add(ExecuteDraft(
+                            call,
+                            allowOutlookDraft && !draftOpened));
+                        draftOpened = true;
+                        continue;
+                    }
+
+                    if (McpToolHost.IsMcpTool(name) &&
+                        _mcpTools.HasServers)
+                    {
+                        hostResults.Add(await Task.Run(
+                            () => _mcpTools.Execute(call),
+                            cancellationToken)
+                            .ConfigureAwait(false));
+                        continue;
+                    }
+
+                    hostResults.Add(new MailboxToolResult(
+                        call.id,
+                        "[BROWSER_TOOL_NOT_ALLOWED] This host does not expose the requested tool.",
+                        "BROWSER_TOOL_NOT_ALLOWED"));
+                }
+
+                if (needsBrowser)
+                {
+                    var pendingResults =
+                        new List<BrowserExchangeResult>();
+                    foreach (var result in hostResults)
+                    {
+                        pendingResults.Add(
+                            new BrowserExchangeResult
+                            {
+                                Id = result.ToolCallId,
+                                Content = result.Content
+                            });
+                    }
+
+                    return new BrowserChatResult(
+                        string.Empty,
+                        activeModel,
+                        screenshotUsed,
+                        response.content,
+                        toolCalls,
+                        pendingResults);
                 }
 
                 ChatRequestFactory.AppendToolExchange(
                     request,
                     response,
-                    results,
+                    hostResults,
                     activeModel);
             }
+        }
 
-            throw new AiEndpointException(
-                "TOOL_ROUND_LIMIT",
-                "The model did not finish after bounded tool use.");
+        private static List<ChatToolCall> NormalizeCalls(
+            IReadOnlyList<ChatToolCall> toolCalls)
+        {
+            var result = new List<ChatToolCall>();
+            if (toolCalls == null)
+            {
+                return result;
+            }
+
+            foreach (var call in toolCalls)
+            {
+                if (call?.function == null ||
+                    string.IsNullOrWhiteSpace(call.id) ||
+                    string.IsNullOrWhiteSpace(call.function.name))
+                {
+                    continue;
+                }
+
+                result.Add(call);
+            }
+
+            return result;
+        }
+
+        private static int CountExchangeTurns(
+            IReadOnlyList<BrowserExchangeTurn> exchange)
+        {
+            var count = 0;
+            foreach (var turn in exchange ??
+                new BrowserExchangeTurn[0])
+            {
+                if (turn?.ToolCalls != null &&
+                    turn.ToolCalls.Count > 0)
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
+        private static bool ExchangeContainsDraft(
+            IReadOnlyList<BrowserExchangeTurn> exchange)
+        {
+            foreach (var turn in exchange ??
+                new BrowserExchangeTurn[0])
+            {
+                foreach (var call in turn?.ToolCalls ??
+                    new List<ChatToolCall>())
+                {
+                    if (string.Equals(
+                        call?.function?.name,
+                        BrowserToolCatalog.OpenOutlookDraft,
+                        StringComparison.Ordinal))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        private MailboxToolResult ExecuteDraft(
+            ChatToolCall call,
+            bool allowed)
+        {
+            if (!allowed)
+            {
+                return new MailboxToolResult(
+                    call.id,
+                    "[DRAFT_NOT_AUTHORIZED] The unsent-draft tool is available only when the user's own latest message asks for a draft, and at most once per request.",
+                    "DRAFT_NOT_AUTHORIZED");
+            }
+
+            try
+            {
+                var serializer =
+                    new System.Web.Script.Serialization
+                        .JavaScriptSerializer();
+                var arguments =
+                    serializer.DeserializeObject(
+                        call.function.arguments ?? "{}") as
+                        IDictionary<string, object> ??
+                    new Dictionary<string, object>();
+                var status = OutlookDraftLauncher.OpenDraft(
+                    Argument(arguments, "to"),
+                    Argument(arguments, "cc"),
+                    Argument(arguments, "subject"),
+                    Argument(arguments, "body"));
+                return new MailboxToolResult(
+                    call.id,
+                    status,
+                    "Unsent Outlook draft opened for review.");
+            }
+            catch (Exception exception)
+            {
+                return new MailboxToolResult(
+                    call.id,
+                    "[DRAFT_FAILED] " + TextBoundary.PlainText(
+                        exception.Message,
+                        600),
+                    "DRAFT_FAILED");
+            }
+        }
+
+        private static string Argument(
+            IDictionary<string, object> arguments,
+            string key)
+        {
+            object value;
+            return arguments.TryGetValue(key, out value)
+                ? Convert.ToString(value)
+                : string.Empty;
         }
 
         public void Dispose()

@@ -30,6 +30,31 @@ namespace Scribble.BrowserHost
         public string screenshotDataUrl { get; set; }
     }
 
+    internal sealed class BrowserNativeToolCall
+    {
+        public string id { get; set; }
+
+        public string name { get; set; }
+
+        public string arguments { get; set; }
+    }
+
+    internal sealed class BrowserNativeToolResult
+    {
+        public string id { get; set; }
+
+        public string content { get; set; }
+    }
+
+    internal sealed class BrowserNativeExchangeTurn
+    {
+        public string assistantContent { get; set; }
+
+        public List<BrowserNativeToolCall> toolCalls { get; set; }
+
+        public List<BrowserNativeToolResult> results { get; set; }
+    }
+
     internal sealed class BrowserNativeRequest
     {
         public string type { get; set; }
@@ -41,6 +66,8 @@ namespace Scribble.BrowserHost
         public List<BrowserHistoryTurn> history { get; set; }
 
         public BrowserPageContext context { get; set; }
+
+        public List<BrowserNativeExchangeTurn> exchange { get; set; }
     }
 
     internal sealed class BrowserNativeResponse
@@ -60,6 +87,16 @@ namespace Scribble.BrowserHost
         public bool supportsVision { get; set; }
 
         public string version { get; set; }
+
+        // When set, the panel must execute these browser tool calls
+        // (navigation, page reads) and continue the chat with an
+        // exchange entry carrying assistantContent, toolRequests,
+        // and the merged hostResults + browser results.
+        public List<BrowserNativeToolCall> toolRequests { get; set; }
+
+        public string assistantContent { get; set; }
+
+        public List<BrowserNativeToolResult> hostResults { get; set; }
     }
 
     internal static class NativeMessageProtocol
@@ -162,6 +199,23 @@ namespace Scribble.BrowserHost
                         false);
                 }
 
+                if (string.Equals(
+                    request.type,
+                    "openSettings",
+                    StringComparison.Ordinal))
+                {
+                    service.Dispose();
+                    service = null;
+                    SettingsLauncher.ShowSettingsDialog();
+                    service = new BrowserChatService();
+                    return Success(
+                        service,
+                        requestId,
+                        string.Empty,
+                        service.Model,
+                        false);
+                }
+
                 if (!string.Equals(
                     request.type,
                     "chat",
@@ -170,7 +224,7 @@ namespace Scribble.BrowserHost
                     return Error(
                         requestId,
                         "REQUEST_TYPE_NOT_ALLOWED",
-                        "Only ping and chat requests are allowed.",
+                        "Only ping, chat, and openSettings requests are allowed.",
                         service);
                 }
 
@@ -197,9 +251,18 @@ namespace Scribble.BrowserHost
                             context.selection,
                             context.pageText,
                             context.screenshotDataUrl,
+                            NormalizeExchange(request.exchange),
                             cancellation.Token)
                         .GetAwaiter()
                         .GetResult();
+                    if (result.HasPendingCalls)
+                    {
+                        return PendingTools(
+                            service,
+                            requestId,
+                            result);
+                    }
+
                     return Success(
                         service,
                         requestId,
@@ -312,6 +375,127 @@ namespace Scribble.BrowserHost
                 MaxJsonLength = MaxRequestBytes,
                 RecursionLimit = 100
             };
+        }
+
+        private static IReadOnlyList<BrowserExchangeTurn>
+            NormalizeExchange(
+                IReadOnlyList<BrowserNativeExchangeTurn> exchange)
+        {
+            var result = new List<BrowserExchangeTurn>();
+            if (exchange == null)
+            {
+                return result;
+            }
+
+            foreach (var turn in exchange)
+            {
+                if (turn == null)
+                {
+                    continue;
+                }
+
+                var calls = new List<ChatToolCall>();
+                foreach (var call in turn.toolCalls ??
+                    new List<BrowserNativeToolCall>())
+                {
+                    if (call == null)
+                    {
+                        continue;
+                    }
+
+                    calls.Add(new ChatToolCall
+                    {
+                        id = call.id,
+                        type = "function",
+                        function = new ChatToolCallFunction
+                        {
+                            name = call.name,
+                            arguments = call.arguments
+                        }
+                    });
+                }
+
+                var results = new List<BrowserExchangeResult>();
+                foreach (var toolResult in turn.results ??
+                    new List<BrowserNativeToolResult>())
+                {
+                    if (toolResult == null)
+                    {
+                        continue;
+                    }
+
+                    results.Add(new BrowserExchangeResult
+                    {
+                        Id = toolResult.id,
+                        Content = toolResult.content
+                    });
+                }
+
+                result.Add(new BrowserExchangeTurn
+                {
+                    AssistantContent = turn.assistantContent,
+                    ToolCalls = calls,
+                    Results = results
+                });
+                if (result.Count ==
+                    BrowserChatRequestFactory.MaxExchangeTurns)
+                {
+                    break;
+                }
+            }
+
+            return result;
+        }
+
+        private static BrowserNativeResponse PendingTools(
+            BrowserChatService service,
+            string requestId,
+            BrowserChatResult result)
+        {
+            var response = Success(
+                service,
+                requestId,
+                string.Empty,
+                result.Model,
+                result.ScreenshotUsed);
+            response.assistantContent = TextBoundary.PlainText(
+                result.PendingAssistantContent,
+                LimitOverrides.MaxAssistantCharactersLimit);
+            response.toolRequests =
+                new List<BrowserNativeToolCall>();
+            foreach (var call in result.PendingCalls)
+            {
+                response.toolRequests.Add(new BrowserNativeToolCall
+                {
+                    id = TextBoundary.SingleLine(call.id, 100),
+                    name = TextBoundary.SingleLine(
+                        call.function.name,
+                        100),
+                    arguments = TextBoundary.PlainText(
+                        call.function.arguments,
+                        BrowserChatRequestFactory
+                            .MaxToolArgumentCharacters)
+                });
+            }
+
+            response.hostResults =
+                new List<BrowserNativeToolResult>();
+            foreach (var hostResult in result.HostResults)
+            {
+                response.hostResults.Add(
+                    new BrowserNativeToolResult
+                    {
+                        id = hostResult.Id,
+                        // Bounded well below MaxResponseBytes so a
+                        // large MCP result cannot make the framed
+                        // response undeliverable.
+                        content = TextBoundary.PlainText(
+                            hostResult.Content,
+                            120000)
+                    });
+            }
+
+            return response;
         }
 
         private static IReadOnlyList<ChatTurn> NormalizeHistory(

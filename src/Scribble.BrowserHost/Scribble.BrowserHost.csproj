@@ -44,6 +44,7 @@
     <Compile Include="BrowserSetup.cs" />
     <Compile Include="NativeMessageProtocol.cs" />
     <Compile Include="Program.cs" />
+    <Compile Include="SettingsLauncher.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="com.scribble.browser.json" />

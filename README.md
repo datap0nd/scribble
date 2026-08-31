@@ -20,9 +20,11 @@ context but can never send email, save a file, or delete anything.
 - **Word**: chat with the open document (bounded text reads); the only write
   surface is a brand-new, unsaved **[Scribble draft]** document that the add-in
   never saves.
-- **Edge and Chrome**: chat with the current webpage after explicitly attaching
-  its selection, bounded page text, or visible screenshot. The extension is
-  read-only: it cannot click, navigate, submit forms, or modify the page.
+- **Edge and Chrome**: chat about the tab you are on - its title, address,
+  selection, and readable text are attached automatically - and let Scribble
+  browse http/https pages in that same visible tab to complete a request. It
+  can also open an unsent Outlook draft when you ask for one. It never clicks,
+  fills forms, signs in, purchases, downloads, uploads, or sends anything.
 - **Connected**: from any document pane, "email this to ..." opens an
   unsent Outlook draft (optionally attaching the saved file); "put this in
   PowerPoint" / "put this in Excel" / "put this in Word" drafts into the
@@ -250,27 +252,31 @@ cadence, and sign-off. They cannot alter any capability or security rule.
 
 ## Edge and Chrome
 
-Click the Scribble toolbar button to open its side panel. Browser context starts
-empty on every panel: Scribble reads the current tab only after you click
-**Attach selection**, **Attach page**, or **Attach visible screenshot**. The
-selection is capped at 16,000 characters, page text at 48,000, and a screenshot
-at 5 MB. **Clear context** removes all three before the next message. A
-right-click menu can attach the current selection and open the panel too.
+Click the Scribble toolbar button to open its side panel. The current tab's
+title, address, selection, and readable text are captured automatically and sent
+with every message - there is nothing to attach. The panel header shows which
+tab is being shared; the selection is capped at 16,000 characters and page text
+at 48,000. A right-click **Ask Scribble about this page** opens the panel too.
 
-The extension does not request browsing history, cookies, downloads, access to
-every website, or background access to other tabs. It cannot click, navigate,
-fill or submit forms, enter credentials, upload, download, purchase, post,
-message, or change the page. Browser settings pages, extension galleries, and
-some protected viewers block page-text extraction; attach a visible screenshot
-or use a normal webpage instead.
+Scribble can also browse for you: ask it to look something up and the model
+navigates the same visible tab to http/https pages (`browser_navigate`),
+re-reads them (`browser_read_page`), and works across up to eight bounded tool
+rounds per request. When your own message asks for an email draft, it can open
+one unsent Outlook draft window for your review (`open_outlook_draft`); the
+draft is never sent by Scribble. The extension never clicks page controls,
+fills or submits forms, enters credentials, uploads, downloads, purchases,
+posts, or changes page content - navigation and reading only. Browser settings
+pages, extension galleries, and some protected viewers block page-text
+extraction; those tabs are shared as address-only.
 
-Messages go through a per-user native bridge to the same Scribble connection and
-model configured in Office. The extension never receives the API key, Gemini
-token, or MCP headers. Page content is always labelled as untrusted data. MCP is
-off in browser chat by default. To use a web-search MCP, list its exact tool name
-under that server's **Edge/Chrome tool allowlist** in Scribble Settings and tick the
-read-only approval. The browser uses at most one approved MCP server and one
-tool call per request; never approve a tool that writes or takes actions.
+The **Settings** button in the panel opens the same Scribble Settings window as
+the Office add-ins (it appears on your desktop). Messages go through a per-user
+native bridge to the same Scribble connection and model configured there. The
+extension never receives the API key, Gemini token, or MCP headers. Page
+content is always labelled as untrusted data. MCP stays off in browser chat by
+default: to use a web-search MCP, list its exact tool name under that server's
+**Edge/Chrome tool allowlist** in Scribble Settings and tick the read-only
+approval; never approve a tool that writes or takes actions.
 
 To repeat the one-time setup, use **Set up Scribble in Microsoft Edge** or **Set
 up Scribble in Google Chrome** from the Scribble Start menu folder. After a Scribble
@@ -518,10 +524,12 @@ scoped exception, not a general mutation permission.
   outside the model client, and verifies the source plus compiled assembly in CI.
 - Drafts are saved and displayed as unsent Outlook items.
 - CI fails if forbidden Outlook action calls are introduced.
-- The browser host accepts messages only from Scribble's fixed extension identity,
-  validates bounded native-message framing and actual JPEG/PNG/WebP screenshot
-  bytes, and offers no browser-control or Office-write tools. Attached page
-  content and screenshots are explicitly untrusted reference data.
+- The browser host accepts messages only from Scribble's fixed extension
+  identity and validates bounded native-message framing. Browser tools are
+  limited to navigating and reading the user's own visible tab (http/https
+  only, executed by the extension) and opening one unsent Outlook draft when
+  the user's own prompt asks for one. Page content and tool results are
+  explicitly untrusted reference data.
 
 These controls let model output select read-only context and, after explicit
 local authorization, create one unsent draft. They prevent it from reaching an
@@ -543,10 +551,11 @@ Every chat request initially sends the configured endpoint:
 - the editable writing profile only when drafting is locally authorized and the
   profile is enabled.
 
-A browser request instead sends only the latest prompt, up to 12 recent chat
-turns, and the current-tab selection, page text, and visible screenshot that the
-user explicitly attached. It never sends browser history, cookies, other tabs,
-or pages in the background.
+A browser request instead sends the latest prompt, up to 12 recent chat
+turns, and the active tab's title, address, selection, and readable text,
+captured automatically at send time - plus, during a browsing request, the
+bounded text of pages the model navigated to in that same visible tab. It never
+sends browser history, cookies, other tabs, or pages read in the background.
 
 The model may then request:
 

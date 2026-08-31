@@ -38,15 +38,22 @@ After replacing extension files with a newer version, return to the browser's Ex
 
 ## Using page context
 
-Opening the side panel does not read the page. Use one of these explicit actions:
+The current tab's title, address, selection (up to 16,000 characters), and
+readable text (up to 48,000 characters) are captured automatically when you
+press **Send** - there is nothing to attach. The panel header shows which tab
+is being shared; protected pages (browser settings, extension galleries, some
+viewers) are shared as address-only.
 
-- **Attach selection** reads up to 16,000 characters currently selected in the active page.
-- **Attach page** reads up to 48,000 characters of visible page text.
-- **Attach visible screenshot** captures only the currently visible browser viewport, compressed to no more than 5 MB.
-- **Clear context** removes all attached page data from the side panel.
-- The page and selection context menus attach the corresponding text and open the side panel.
+Scribble can also browse for you. When you ask it to look something up, the
+model may navigate this same visible tab to http/https pages and read them,
+across up to eight bounded tool rounds per request. It cannot click page
+controls, fill or submit forms, sign in, purchase, download, or upload. When
+your own message asks for an email draft, Scribble can open one unsent Outlook
+draft window for your review; it can never send it.
 
-Attached context is included with chat requests only after the user presses **Send**, and remains attached until **Clear context** is selected. The extension treats page and model text as untrusted plain text and never renders either as HTML.
+The **Settings** button in the panel opens the shared Scribble Settings window
+on your desktop - the same one the Office add-ins use. The extension treats
+page and model text as untrusted plain text and never renders either as HTML.
 
 MCP tools are unavailable here by default. To use a read-only web-search tool,
 open Scribble Settings in an Office app, enter that tool's exact MCP name in the
@@ -56,20 +63,21 @@ approve an MCP tool that writes data or takes actions.
 
 ## Permissions
 
-- `activeTab`: temporary access to the tab where the user invoked Scribble; there is no permanent access to every website.
-- `scripting`: reads selection or page text only after an attach button or Scribble context-menu action.
-- `contextMenus`: provides “Ask Scribble about this page” and “Ask Scribble about this selection.”
+- `tabs` + `http://*/*`, `https://*/*` host permissions: read the active tab's
+  title/URL/text and navigate that same visible tab when the model browses for
+  you. Other tabs and background pages are never read.
+- `activeTab`, `scripting`: read the page text of the tab you are on.
+- `contextMenus`: provides “Ask Scribble about this page.”
 - `nativeMessaging`: talks to the locally installed `com.scribble.browser` bridge.
 - `sidePanel`: hosts the Scribble conversation beside the current page.
 
-There are no host permissions, no `<all_urls>` access, no content scripts, no remote scripts, and no background page collection.
+There are no content scripts, no remote scripts, and no background page collection.
 
 ## Troubleshooting
 
 - **Browser support is not installed:** rerun Scribble Setup with browser support enabled, then restart the browser.
 - **The extension is not authorized:** the extension and Scribble bridge are from different builds, or the native-host manifest does not contain the stable origin above. Reinstall matching versions.
 - **No model is configured:** open Scribble Settings from an Office app and select/configure a model.
-- **The page cannot be read:** browser settings pages, extension galleries, PDF viewers, and some protected pages block injected scripts. Try a regular webpage or attach a visible screenshot.
-- **A new tab cannot be read while the side panel stays open:** click the Scribble toolbar button on that tab to grant temporary `activeTab` access, then attach it.
+- **The page cannot be read:** browser settings pages, extension galleries, PDF viewers, and some protected pages block injected scripts; those tabs are shared as address-only. Try a regular webpage.
 
 For diagnostics, open the extension entry on `edge://extensions` or `chrome://extensions` and inspect the service worker or side-panel developer tools.

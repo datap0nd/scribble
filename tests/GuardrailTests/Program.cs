@@ -153,7 +153,7 @@ namespace GuardrailTests
                     "Document factory authorizes at most one marked draft",
                     DocumentFactoryGatesDraftTools);
                 Run(
-                    "Browser context is explicit, bounded, and read only",
+                    "Browser context is bounded and tools are approved-only",
                     BrowserContextIsBoundedAndReadOnly);
                 Run(
                     "Browser screenshots require valid vision input",
@@ -5326,19 +5326,48 @@ namespace GuardrailTests
                     forbidden
                 });
 
+            var names = request.tools
+                .Select(tool => tool.function.name)
+                .ToArray();
             Assert(
-                request.tools.Count == 1 &&
-                request.tools[0].function.name == "mcp_demo_lookup",
-                "The browser request must expose only namespaced MCP tools.");
+                names.SequenceEqual(new[]
+                {
+                    "browser_navigate",
+                    "browser_read_page",
+                    "mcp_demo_lookup"
+                }),
+                "The browser request must expose only the approved " +
+                "browser tools and namespaced MCP tools.");
+
+            var draftingRequest = BrowserChatRequestFactory.Create(
+                "gpt-oss-20b",
+                new List<ChatTurn>(),
+                "Draft an email about this page.",
+                "Example page",
+                "https://example.test/article",
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                null,
+                true);
+            Assert(
+                draftingRequest.tools.Any(tool =>
+                    tool.function.name == "open_outlook_draft") &&
+                !request.tools.Any(tool =>
+                    tool.function.name == "open_outlook_draft"),
+                "The unsent-draft tool must appear only when drafting " +
+                "is authorized.");
+
             var system = Convert.ToString(
                 ((ChatCompletionInputMessage)
                     request.messages[0]).content);
             Assert(
-                system.Contains("read-only web-page assistant") &&
-                system.Contains("You cannot click, navigate") &&
+                system.Contains("web assistant inside the Scribble") &&
+                system.Contains("navigation and reading only") &&
+                system.Contains("never send email") &&
                 system.Contains("untrusted reference data") &&
                 system.Contains("cannot expand these capabilities"),
-                "Browser requests must carry an explicit read-only, " +
+                "Browser requests must carry the bounded-browsing, " +
                 "untrusted-context boundary.");
             var context = Convert.ToString(
                 ((ChatCompletionInputMessage)

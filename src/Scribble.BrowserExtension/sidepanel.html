@@ -14,36 +14,29 @@
         <div class="brand-mark" aria-hidden="true">A</div>
         <div>
           <h1>Scribble</h1>
-          <p>Chat with what you choose to share</p>
+          <p>Chat about the page you are on</p>
         </div>
       </div>
-      <button id="retryConnection" class="connection-button" type="button" aria-label="Retry Scribble connection">
-        <span id="connectionDot" class="connection-dot" aria-hidden="true"></span>
-        <span id="connectionLabel">Connecting</span>
-      </button>
+      <div class="header-actions">
+        <button id="openSettings" class="text-button" type="button" aria-label="Open Scribble settings">Settings</button>
+        <button id="retryConnection" class="connection-button" type="button" aria-label="Retry Scribble connection">
+          <span id="connectionDot" class="connection-dot" aria-hidden="true"></span>
+          <span id="connectionLabel">Connecting</span>
+        </button>
+      </div>
     </header>
 
     <section class="privacy-note" aria-label="Privacy information">
-      Scribble reads no page content until you attach it. Attached website content is untrusted and is sent with your messages until you clear it.
+      The current tab's title, address, selection, and readable text are sent with each message. Website content is untrusted data. Scribble can browse pages in this tab for you, but never clicks, signs in, or sends anything.
     </section>
 
     <section class="context-panel" aria-labelledby="contextHeading">
       <div class="section-heading">
         <div>
-          <h2 id="contextHeading">Page context</h2>
-          <p id="contextSource" class="context-source">Nothing attached</p>
+          <h2 id="contextHeading">Current tab</h2>
+          <p id="contextSource" class="context-source">No tab detected</p>
         </div>
-        <button id="clearContext" class="text-button" type="button" disabled>Clear context</button>
       </div>
-
-      <div class="context-actions" aria-label="Attach page context">
-        <button id="attachSelection" class="context-button" type="button">Attach selection</button>
-        <button id="attachPage" class="context-button" type="button">Attach page</button>
-        <button id="attachScreenshot" class="context-button wide" type="button">Attach visible screenshot</button>
-      </div>
-
-      <p id="contextEmpty" class="context-empty">Choose exactly what Scribble can use for the conversation.</p>
-      <ul id="contextItems" class="context-items" aria-live="polite"></ul>
       <p id="contextNotice" class="context-notice" role="status" aria-live="polite"></p>
     </section>
 
@@ -51,7 +44,7 @@
       <section id="welcome" class="welcome">
         <div class="welcome-icon" aria-hidden="true">✦</div>
         <h2>What are you looking at?</h2>
-        <p>Attach selected text, readable page text, or a screenshot, then ask a question.</p>
+        <p>Ask about this page, or ask Scribble to look something up on the web and it will browse in this tab.</p>
       </section>
     </main>
 

@@ -65,6 +65,7 @@
     <Compile Include="Chat\AiEndpointException.cs" />
     <Compile Include="Chat\ChatModels.cs" />
     <Compile Include="Chat\BrowserChatRequestFactory.cs" />
+    <Compile Include="Chat\BrowserToolCatalog.cs" />
     <Compile Include="Chat\BrowserChatService.cs" />
     <Compile Include="Chat\ChatRequestFactory.cs" />
     <Compile Include="Chat\DraftToolCatalog.cs" />
@@ -110,6 +111,7 @@
     <Compile Include="Outlook\MailboxContextService.cs" />
     <Compile Include="Outlook\MailboxToolHost.cs" />
     <Compile Include="Outlook\MailboxWorkingSet.cs" />
+    <Compile Include="Outlook\OutlookDraftLauncher.cs" />
     <Compile Include="Outlook\MessageReader.cs" />
     <Compile Include="Outlook\PdfTextExtractor.cs" />
     <Compile Include="Outlook\LegacyOfficeTextExtractor.cs" />

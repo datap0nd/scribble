@@ -186,4 +186,44 @@ namespace Scribble.Chat
 
         public IReadOnlyList<VisionImagePayload> VisionImages { get; }
     }
+
+    // One completed browser tool round replayed by the extension:
+    // the assistant turn that requested tools, and the bounded
+    // results the panel and host produced for it.
+    public sealed class BrowserExchangeTurn
+    {
+        public string AssistantContent { get; set; }
+
+        public List<ChatToolCall> ToolCalls { get; set; }
+
+        public List<BrowserExchangeResult> Results { get; set; }
+    }
+
+    public sealed class BrowserExchangeResult
+    {
+        public string Id { get; set; }
+
+        public string Content { get; set; }
+    }
+
+    // A tool call the extension must execute (or display) before
+    // the conversation can continue.
+    public sealed class BrowserToolRequest
+    {
+        public BrowserToolRequest(
+            string id,
+            string name,
+            string arguments)
+        {
+            Id = id ?? string.Empty;
+            Name = name ?? string.Empty;
+            Arguments = arguments ?? string.Empty;
+        }
+
+        public string Id { get; }
+
+        public string Name { get; }
+
+        public string Arguments { get; }
+    }
 }
