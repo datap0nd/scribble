@@ -25,6 +25,12 @@ context but can never send email, save a file, or delete anything.
   browse http/https pages in that same visible tab to complete a request. It
   can also open an unsent Outlook draft when you ask for one. It never clicks,
   fills forms, signs in, purchases, downloads, uploads, or sends anything.
+- **The web from Office**: the Excel, PowerPoint, and Word panes can fetch
+  http/https pages read-only (`fetch_web_page`) - bounded text and links, no
+  cookies, no sign-ins, no forms - so "get the top 5 iPhone prices from
+  amazon.ae and chart them" works straight into a Scribble Draft sheet. The
+  Outlook pane deliberately has no web access: mailbox text plus an
+  attacker-chosen URL would be a data-exfiltration channel.
 - **Connected**: from any document pane, "email this to ..." opens an
   unsent Outlook draft (optionally attaching the saved file); "put this in
   PowerPoint" / "put this in Excel" / "put this in Word" drafts into the

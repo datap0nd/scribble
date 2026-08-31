@@ -5130,7 +5130,8 @@ namespace GuardrailTests
                 unauthorizedNames.SequenceEqual(new[]
                 {
                     "list_worksheets",
-                    "read_cells"
+                    "read_cells",
+                    "fetch_web_page"
                 }),
                 "Unauthorized document requests must expose read tools only.");
             var unauthorizedSystem = Convert.ToString(

@@ -66,6 +66,7 @@
     <Compile Include="Chat\ChatModels.cs" />
     <Compile Include="Chat\BrowserChatRequestFactory.cs" />
     <Compile Include="Chat\BrowserToolCatalog.cs" />
+    <Compile Include="Chat\WebReadTool.cs" />
     <Compile Include="Chat\BrowserChatService.cs" />
     <Compile Include="Chat\ChatRequestFactory.cs" />
     <Compile Include="Chat\DraftToolCatalog.cs" />

@@ -75,7 +75,7 @@ namespace Scribble.Chat
     // anywhere in this process, and it can never send email.
     public sealed class BrowserChatService : IDisposable
     {
-        public const int MaxBrowserToolRounds = 8;
+        public const int MaxBrowserToolRounds = 12;
         public const int MaxBrowserToolCallsPerRound = 4;
 
         private readonly AppSettings _settings;
@@ -133,6 +133,7 @@ namespace Scribble.Chat
             string url,
             string selection,
             string pageText,
+            string links,
             string screenshotDataUrl,
             IReadOnlyList<BrowserExchangeTurn> exchange,
             CancellationToken cancellationToken)
@@ -200,7 +201,8 @@ namespace Scribble.Chat
                 safeScreenshot,
                 definitions,
                 allowOutlookDraft,
-                exchange);
+                exchange,
+                links);
 
             var roundsUsed = CountExchangeTurns(exchange);
             var draftOpened = false;

@@ -27,6 +27,8 @@ namespace Scribble.BrowserHost
 
         public string pageText { get; set; }
 
+        public string links { get; set; }
+
         public string screenshotDataUrl { get; set; }
     }
 
@@ -250,6 +252,7 @@ namespace Scribble.BrowserHost
                             context.url,
                             context.selection,
                             context.pageText,
+                            context.links,
                             context.screenshotDataUrl,
                             NormalizeExchange(request.exchange),
                             cancellation.Token)

@@ -65,9 +65,13 @@ namespace Scribble.Chat
                         description =
                             "Navigate the user's active browser tab to an http or " +
                             "https URL and return the loaded page's readable text, " +
-                            "title, and final URL. The navigation is visible to the " +
-                            "user in their own tab. Use it to look information up on " +
-                            "the web for the user's own request, one page at a time. " +
+                            "title, final URL, and a bounded list of the page's " +
+                            "links. The navigation is visible to the user in their " +
+                            "own tab. For a multi-step task, work one page at a " +
+                            "time: open the site's own search-results URL first " +
+                            "(for example /s?k=your+terms on Amazon), then call " +
+                            "this tool again with an exact product or article URL " +
+                            "picked from the returned <links> list. " +
                             "It cannot click, fill forms, sign in, purchase, " +
                             "download, or upload.",
                         parameters = new Dictionary<string, object>
@@ -102,8 +106,8 @@ namespace Scribble.Chat
                         name = ReadPage,
                         description =
                             "Re-read the active browser tab's current readable text, " +
-                            "title, and URL. Use it when the page has changed since " +
-                            "the attached context was captured.",
+                            "title, URL, and link list. Use it when the page has " +
+                            "changed since the attached context was captured.",
                         parameters = new Dictionary<string, object>
                         {
                             { "type", "object" },

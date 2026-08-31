@@ -1467,6 +1467,15 @@ namespace Scribble.UI
                             () => mcpHost.Execute(toolCall),
                             cancellationToken);
                     }
+                    else if (WebReadTool.IsWebReadTool(name))
+                    {
+                        // Network reads run off the UI thread; the
+                        // tool bounds the result and marks it
+                        // untrusted.
+                        result = await Task.Run(
+                            () => WebReadTool.Execute(toolCall),
+                            cancellationToken);
+                    }
                     else if (workbookTools != null)
                     {
                         result = workbookTools.Execute(toolCall);

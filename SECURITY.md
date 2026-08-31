@@ -172,10 +172,18 @@ unless the user enters exact tool names and affirms that each is read-only.
     user separately allowlisted and affirmed as read-only. Tool use is bounded
     to eight rounds and four calls per round per request. It rejects every
     other requested tool and
-    labels page, screenshot, and MCP results as untrusted data. Its only
+    labels page, screenshot, and MCP results as untrusted data. Every page
+    read returns a bounded link list so multi-step navigation follows exact
+    URLs instead of guessing. Its only
     Outlook capability is `OutlookDraftLauncher`, which can display an unsent
     draft and nothing else - no send, read, delete, or mailbox access - and it
     has no document host object and no page-control API.
+21a. The Excel, PowerPoint, and Word panes expose `fetch_web_page`: one
+    bounded read-only HTTP GET per call (http/https only, no cookies, no
+    credentials, 3 MB / 48,000-character caps, results marked untrusted).
+    The Outlook mailbox pane deliberately does not get this tool, so
+    attacker-authored email text can never choose a URL sink for mailbox
+    data.
 22. Model and webpage output is never parsed as HTML or evaluated as
     script. Assistant replies pass through a bounded local formatter that
     builds paragraph, list, table, bold, and code DOM nodes itself and
