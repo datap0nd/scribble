@@ -333,7 +333,7 @@ async function sendChatMessage() {
   stopRequested = false;
   renderComposerState();
   showPal();
-  setActivity("Scribble is thinking…");
+  setWorkStatus("Reading the current tab…");
 
   const exchange = [];
 
@@ -344,6 +344,9 @@ async function sendChatMessage() {
       }
 
       const context = await capturePageContext();
+      setWorkStatus(turn === 0
+        ? `Asking ${connection.model || "the model"}…`
+        : `Thinking about what it found (step ${turn + 1})…`);
       const request = {
         type: "chat",
         requestId: createRequestId(),
@@ -400,6 +403,7 @@ async function sendChatMessage() {
 
       for (const toolRequest of toolRequests) {
         if (results.some((result) => result.id === toolRequest?.id)) {
+          setWorkStatus(describeHostAction(toolRequest?.name));
           continue;
         }
 
@@ -427,7 +431,6 @@ async function sendChatMessage() {
         })),
         results
       });
-      setActivity("Scribble is thinking…");
     }
   } catch (error) {
     const description = error instanceof NativeResponseError
@@ -460,6 +463,7 @@ async function executeBrowserTool(toolRequest) {
     }
 
     if (name === "browser_read_page") {
+      setWorkStatus("Re-reading the current page…");
       return { id, content: serializePageResult(await capturePageContext()) };
     }
 
@@ -497,12 +501,12 @@ async function navigateAndRead(toolRequest) {
   }
 
   const tab = await getActiveTab();
-  setActivity(`Scribble is opening ${boundText(parsed.hostname, 200)}…`);
+  setWorkStatus(`Opening ${boundText(parsed.hostname, 200)}…`);
   await chrome.tabs.update(tab.id, { url: parsed.href });
   await waitForTabComplete(tab.id);
   await delay(NAVIGATION_SETTLE_MS);
   await renderCurrentTab();
-  setActivity("Scribble is reading the page…");
+  setWorkStatus(`Reading ${boundText(parsed.hostname, 200)}…`);
   return serializePageResult(await capturePageContext());
 }
 
@@ -577,6 +581,7 @@ let palTimer = null;
 let palFrame = 0;
 let palCanvas = null;
 let typingRow = null;
+let typingStatus = null;
 const PAL_SCALE = 4;
 const palColors = {
   B: "#5c8fff", D: "#3f6cd1", W: "#ffffff", K: "#22242a",
@@ -655,6 +660,9 @@ function showPal() {
     palCanvas.width = 13 * PAL_SCALE;
     palCanvas.height = 12 * PAL_SCALE;
     typingRow.append(palCanvas);
+    typingStatus = document.createElement("span");
+    typingStatus.className = "typing-status";
+    typingRow.append(typingStatus);
     const dots = document.createElement("div");
     dots.className = "dots";
     for (let i = 0; i < 3; i++) {
@@ -662,6 +670,7 @@ function showPal() {
     }
     typingRow.append(dots);
   }
+  typingStatus.textContent = "";
   elements.messages.append(typingRow);
   elements.messages.scrollTop = elements.messages.scrollHeight;
   if (!palTimer) {
@@ -672,6 +681,29 @@ function showPal() {
       drawPal(palFrame);
     }, 260);
   }
+}
+
+// One live line beside the pal saying exactly what Scribble is
+// doing right now; mirrored in the footer.
+function setWorkStatus(text) {
+  if (typingStatus) {
+    typingStatus.textContent = text;
+  }
+  setActivity(text);
+  elements.messages.scrollTop = elements.messages.scrollHeight;
+}
+
+function describeHostAction(name) {
+  if (name === "open_outlook_draft") {
+    return "Opened an unsent Outlook draft for your review";
+  }
+  if (name === "open_excel_table") {
+    return "Opened an unsaved Excel workbook with the table";
+  }
+  if (typeof name === "string" && name.startsWith("mcp_")) {
+    return `Ran ${name}`;
+  }
+  return `Ran ${name || "a tool"}`;
 }
 
 function hidePal() {

@@ -504,6 +504,16 @@ p {
   50% { transform: translateY(-2px); }
 }
 
+.typing-status {
+  padding-bottom: 5px;
+  color: var(--muted);
+  font-size: 11px;
+  overflow: hidden;
+  max-width: 210px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .typing .dots {
   display: flex;
   gap: 4px;
