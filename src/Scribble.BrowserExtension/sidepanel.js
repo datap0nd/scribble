@@ -18,6 +18,7 @@ const NAVIGATION_SETTLE_MS = 900;
 
 const elements = {
   retryConnection: document.getElementById("retryConnection"),
+  clearChat: document.getElementById("clearChat"),
   openSettings: document.getElementById("openSettings"),
   connectionDot: document.getElementById("connectionDot"),
   connectionLabel: document.getElementById("connectionLabel"),
@@ -48,6 +49,10 @@ let connection = {
 
 elements.retryConnection.addEventListener("click", () => {
   void pingNativeHost();
+});
+
+elements.clearChat.addEventListener("click", () => {
+  clearChat();
 });
 
 elements.openSettings.addEventListener("click", () => {
@@ -140,6 +145,22 @@ async function pingNativeHost() {
     renderConnectionDetails();
     renderComposerState();
   }
+}
+
+function clearChat() {
+  if (isSending) {
+    return;
+  }
+
+  conversationHistory = [];
+  for (const article of Array.from(
+    elements.messages.querySelectorAll(".message"))) {
+    article.remove();
+  }
+  elements.welcome.hidden = false;
+  setActivity("Conversation cleared. The current tab is still shared with your next message.");
+  renderComposerState();
+  elements.prompt.focus();
 }
 
 async function openSettings() {
@@ -718,6 +739,8 @@ function renderComposerState() {
     || !connection.configured
     || !elements.prompt.value.trim();
   elements.send.textContent = isSending ? "Sending…" : "Send";
+  elements.clearChat.disabled = isSending ||
+    elements.messages.querySelector(".message") === null;
 }
 
 function updateConnectionFromResponse(response) {
