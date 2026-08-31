@@ -35,8 +35,10 @@ is being shared; protected pages (browser settings, extension galleries, some
 viewers) are shared as address-only.
 
 Scribble can also browse for you. When you ask it to look something up, the
-model may navigate this same visible tab to http/https pages and read them,
-across up to twelve bounded tool rounds per request. It can click one
+model opens http/https pages in up to five of its own background work tabs
+(numbered 1-5, so it can compare sites side by side) and reads them, across up
+to twelve bounded tool rounds per request. Your current tab is never navigated
+away, and **Clear chat** closes Scribble's work tabs. It can click one
 benign, visible control at a time to get past interstitials (cookie banners,
 location choosers, continue); a hard blocklist refuses buy/checkout/sign-in/
 register clicks and credential or payment forms, and it cannot type into

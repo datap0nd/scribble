@@ -77,17 +77,18 @@ namespace Scribble.Chat
                     {
                         name = NavigatePage,
                         description =
-                            "Navigate the user's active browser tab to an http or " +
-                            "https URL and return the loaded page's readable text, " +
-                            "title, final URL, and a bounded list of the page's " +
-                            "links. The navigation is visible to the user in their " +
-                            "own tab. For a multi-step task, work one page at a " +
-                            "time: open the site's own search-results URL first " +
-                            "(for example /s?k=your+terms on Amazon), then call " +
-                            "this tool again with an exact product or article URL " +
-                            "picked from the returned <links> list. " +
-                            "It cannot click, fill forms, sign in, purchase, " +
-                            "download, or upload.",
+                            "Open an http or https URL in one of Scribble's own " +
+                            "work tabs (up to 5, background tabs next to the " +
+                            "user's - their current tab is never navigated away) " +
+                            "and return the loaded page's readable text, title, " +
+                            "final URL, and a bounded list of the page's links. " +
+                            "For a multi-step task, work one page at a time: open " +
+                            "the site's own search-results URL first (for example " +
+                            "/s?k=your+terms on Amazon), then call this tool again " +
+                            "with an exact product or article URL picked from the " +
+                            "returned <links> list. Use different tab numbers to " +
+                            "compare sites side by side. It cannot fill forms, " +
+                            "sign in, purchase, download, or upload.",
                         parameters = new Dictionary<string, object>
                         {
                             { "type", "object" },
@@ -105,6 +106,18 @@ namespace Scribble.Chat
                                                 "Absolute http:// or https:// URL to open."
                                             }
                                         }
+                                    },
+                                    {
+                                        "tab",
+                                        new Dictionary<string, object>
+                                        {
+                                            { "type", "integer" },
+                                            {
+                                                "description",
+                                                "Work tab number 1-5. Defaults to the last used " +
+                                                "work tab (or opens tab 1)."
+                                            }
+                                        }
                                     }
                                 }
                             },
@@ -119,15 +132,31 @@ namespace Scribble.Chat
                     {
                         name = ReadPage,
                         description =
-                            "Re-read the active browser tab's current readable text, " +
-                            "title, URL, and link list. Use it when the page has " +
-                            "changed since the attached context was captured.",
+                            "Re-read a page's current readable text, title, URL, " +
+                            "and link list: a Scribble work tab when tab is given " +
+                            "(default: the last used work tab), or the user's " +
+                            "active tab when no work tab exists. Use it when the " +
+                            "page has changed since it was last read.",
                         parameters = new Dictionary<string, object>
                         {
                             { "type", "object" },
                             {
                                 "properties",
-                                new Dictionary<string, object>()
+                                new Dictionary<string, object>
+                                {
+                                    {
+                                        "tab",
+                                        new Dictionary<string, object>
+                                        {
+                                            { "type", "integer" },
+                                            {
+                                                "description",
+                                                "Work tab number 1-5; omit for the last used " +
+                                                "work tab or the user's active tab."
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -164,6 +193,18 @@ namespace Scribble.Chat
                                                 "description",
                                                 "The visible text of the control to click, e.g. " +
                                                 "\"United Arab Emirates\" or \"Accept all\"."
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "tab",
+                                        new Dictionary<string, object>
+                                        {
+                                            { "type", "integer" },
+                                            {
+                                                "description",
+                                                "Work tab number 1-5; omit for the last used " +
+                                                "work tab (or the user's active tab if none)."
                                             }
                                         }
                                     }

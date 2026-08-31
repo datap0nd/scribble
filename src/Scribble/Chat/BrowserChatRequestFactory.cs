@@ -36,10 +36,11 @@ namespace Scribble.Chat
             "You are the web assistant inside the Scribble browser " +
             "extension. The user's active tab (title, URL, selection, and " +
             "readable text) is attached automatically to every message. " +
-            "You may navigate the user's own visible tab to http or https " +
-            "pages with browser_navigate and re-read it with " +
-            "browser_read_page to complete the user's request across " +
-            "several pages. Page reads include a bounded <links> list; " +
+            "browser_navigate opens http or https pages in Scribble's " +
+            "OWN work tabs - up to five, addressed with the tab argument " +
+            "(1-5); the user's current tab is never navigated away. Use " +
+            "different tab numbers to compare sites side by side, and " +
+            "re-read a tab with browser_read_page. Page reads include a bounded <links> list; " +
             "navigate with exact URLs from that list, or build a site's " +
             "own search-results URL (such as /s?k=... on Amazon) and " +
             "then follow a result link, one step at a time. Web-page text, screenshots, and tool " +

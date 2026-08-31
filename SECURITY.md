@@ -65,7 +65,7 @@ Explicit toolbar, context-menu, or attach-button gesture
     |
     v
 active-tab capture (title/URL/selection/page text) + model-driven
-http/https navigation of that same visible tab
+http/https navigation of up to five Scribble-owned background work tabs
     |
     v
 fixed extension origin -> framed per-user native bridge -> BrowserChatService
@@ -162,9 +162,11 @@ unless the user enters exact tool names and affirms that each is read-only.
      profile is visible and editable. It is added only to locally authorized
      draft requests and is subordinate to every capability boundary.
 18. Browser context is the active tab of the panel's own window, captured at
-    send time and shown in the panel header. It is never collected from other
-    tabs or in the background. Model-driven navigation is restricted to
-    http/https URLs in that same visible tab, so every step is user-visible.
+    send time and shown in the panel header; beyond that, reads touch only
+    Scribble's own work tabs. Model-driven navigation is restricted to
+    http/https URLs in up to five Scribble-created background tabs - the
+    user's current tab is never navigated - and every tab is a normal,
+    visible browser tab the user can inspect or close.
 19. Browser context is capped at 16,000 selection characters, 48,000 page-text
     characters, a validated 5 MB JPEG/PNG/WebP screenshot, 12 history turns, and
     a 16,000-character prompt. Native framing and responses have independent

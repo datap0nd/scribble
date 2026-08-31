@@ -811,8 +811,9 @@ if ($programOrigins.Count -ne 1 -or $programOrigins[0] -ne $expectedOrigin) {
 
 # No extension file may fetch executable content, inject HTML, or grow
 # a second browser capability surface. The panel reads the active tab
-# and may navigate it (chrome.tabs.update to http/https only); every
-# other tab, window, and profile surface stays out of reach.
+# and drives up to five of its OWN background work tabs (create/update/
+# remove, http/https only) - the user's current tab is never navigated;
+# every other tab, window, and profile surface stays out of reach.
 $browserExecutableFiles = Get-ChildItem $browserExtensionRoot -Recurse -File |
     Where-Object { $_.Extension -in @(".js", ".html", ".css") }
 $dangerousBrowserPatterns = @(
@@ -822,7 +823,7 @@ $dangerousBrowserPatterns = @(
     @{ Pattern = '\b(?:innerHTML|outerHTML|insertAdjacentHTML|document\.write)\b'; Name = "HTML injection" },
     @{ Pattern = 'createElement\s*\(\s*["'']script["'']'; Name = "dynamic script element" },
     @{ Pattern = 'chrome\.(?:bookmarks|cookies|debugger|downloads|history|management|webRequest)\b'; Name = "unapproved browser API" },
-    @{ Pattern = 'chrome\.tabs\.(?:create|discard|duplicate|executeScript|goBack|goForward|group|highlight|move|reload|remove|ungroup)\b'; Name = "tab mutation" },
+    @{ Pattern = 'chrome\.tabs\.(?:discard|duplicate|executeScript|goBack|goForward|group|highlight|move|reload|ungroup)\b'; Name = "tab mutation" },
     @{ Pattern = 'chrome\.scripting\.(?:insertCSS|registerContentScripts|removeCSS|unregisterContentScripts|updateContentScripts)\b'; Name = "page mutation" },
     @{ Pattern = 'chrome\.windows\.(?:create|remove|update)\b|\bwindow\.open\s*\('; Name = "window mutation" },
     @{ Pattern = '@import\s+url|url\s*\(\s*["'']?https?:'; Name = "remote stylesheet" }
@@ -1095,6 +1096,8 @@ if (-not $sidePanelSource.Contains(
     throw "Side-panel navigation must stay restricted to http and https URLs."
 }
 foreach ($requiredClickBoundary in @(
+    "MAX_WORK_TABS = 5",
+    "active: false",
     "FORBIDDEN_CLICK",
     "add to (?:cart|basket|bag)",
     'input[type="password"]',

@@ -165,13 +165,14 @@ function clearChat() {
     return;
   }
 
+  void closeWorkTabs();
   conversationHistory = [];
   for (const article of Array.from(
     elements.messages.querySelectorAll(".message"))) {
     article.remove();
   }
   elements.welcome.hidden = false;
-  setActivity("Conversation cleared. The current tab is still shared with your next message.");
+  setActivity("Conversation cleared and Scribble's work tabs closed. The current tab is still shared with your next message.");
   renderComposerState();
   elements.prompt.focus();
 }
@@ -256,6 +257,10 @@ async function capturePageContext() {
     return emptyContext();
   }
 
+  return captureFromTab(tab);
+}
+
+async function captureFromTab(tab) {
   const context = {
     title: boundText(tab.title, MAX_TITLE_CHARS),
     url: boundText(tab.url, MAX_URL_CHARS),
@@ -457,6 +462,75 @@ async function sendChatMessage() {
   }
 }
 
+// Scribble browses in its OWN tabs so the user's current tab is
+// never navigated away. Up to five numbered work tabs; they open in
+// the background beside the panel's window and are closed by Clear
+// chat.
+const MAX_WORK_TABS = 5;
+let workTabIds = [null, null, null, null, null];
+let lastWorkSlot = 0;
+
+function parseTabSlot(value) {
+  const slot = Number.parseInt(value, 10);
+  return Number.isInteger(slot) && slot >= 1 ? slot : 0;
+}
+
+async function aliveWorkTab(slot) {
+  const tabId = workTabIds[slot - 1];
+  if (!Number.isInteger(tabId)) {
+    return null;
+  }
+  try {
+    return await chrome.tabs.get(tabId);
+  } catch {
+    workTabIds[slot - 1] = null;
+    return null;
+  }
+}
+
+// Returns the target for a read/click: the requested work tab, else
+// the last used work tab, else the user's active tab (reads and
+// benign clicks there are fine; navigation never is).
+async function resolveToolTab(slotRaw) {
+  const requested = parseTabSlot(slotRaw);
+  if (requested > MAX_WORK_TABS) {
+    throw new Error(`Scribble keeps at most ${MAX_WORK_TABS} work tabs (1-${MAX_WORK_TABS}).`);
+  }
+  if (requested >= 1) {
+    const tab = await aliveWorkTab(requested);
+    if (!tab) {
+      throw new Error(`Work tab ${requested} is not open. Navigate in it first.`);
+    }
+    lastWorkSlot = requested;
+    return { tab, slot: requested };
+  }
+  if (lastWorkSlot >= 1) {
+    const tab = await aliveWorkTab(lastWorkSlot);
+    if (tab) {
+      return { tab, slot: lastWorkSlot };
+    }
+  }
+  return { tab: await getActiveTab(), slot: 0 };
+}
+
+async function closeWorkTabs() {
+  for (const tabId of workTabIds) {
+    if (Number.isInteger(tabId)) {
+      try {
+        await chrome.tabs.remove(tabId);
+      } catch {
+        // Already closed by the user.
+      }
+    }
+  }
+  workTabIds = [null, null, null, null, null];
+  lastWorkSlot = 0;
+}
+
+function tabLabel(slot) {
+  return slot >= 1 ? `work tab ${slot}` : "the current tab";
+}
+
 async function executeBrowserTool(toolRequest) {
   const id = boundText(toolRequest?.id, 100);
   const name = boundText(toolRequest?.name, 100);
@@ -467,8 +541,21 @@ async function executeBrowserTool(toolRequest) {
     }
 
     if (name === "browser_read_page") {
-      setWorkStatus("Re-reading the current page…");
-      return { id, content: serializePageResult(await capturePageContext()) };
+      let readArgs = {};
+      try {
+        readArgs = JSON.parse(toolRequest?.arguments || "{}") || {};
+      } catch {
+        readArgs = {};
+      }
+      const target = await resolveToolTab(readArgs.tab);
+      setWorkStatus(`Re-reading ${tabLabel(target.slot)}…`);
+      const prefix = target.slot >= 1
+        ? `Work tab ${target.slot} of ${MAX_WORK_TABS}.\n`
+        : "";
+      return {
+        id,
+        content: prefix + serializePageResult(await captureFromTab(target.tab))
+      };
     }
 
     if (name === "browser_click") {
@@ -512,14 +599,45 @@ async function navigateAndRead(toolRequest) {
     throw new Error("Only http and https pages can be opened.");
   }
 
-  const tab = await getActiveTab();
-  setWorkStatus(`Opening ${boundText(parsed.hostname, 200)}…`);
-  await chrome.tabs.update(tab.id, { url: parsed.href });
-  await waitForTabComplete(tab.id);
+  let parsedArgs = {};
+  try {
+    parsedArgs = JSON.parse(toolRequest?.arguments || "{}") || {};
+  } catch {
+    parsedArgs = {};
+  }
+  let slot = parseTabSlot(parsedArgs.tab);
+  if (slot > MAX_WORK_TABS) {
+    throw new Error(`Scribble keeps at most ${MAX_WORK_TABS} work tabs (1-${MAX_WORK_TABS}).`);
+  }
+  if (slot < 1) {
+    slot = lastWorkSlot >= 1 ? lastWorkSlot : 1;
+  }
+
+  setWorkStatus(`Opening ${boundText(parsed.hostname, 200)} in work tab ${slot}…`);
+  let tabId;
+  const existing = await aliveWorkTab(slot);
+  if (existing) {
+    tabId = existing.id;
+    await chrome.tabs.update(tabId, { url: parsed.href });
+  } else {
+    // Background tab: the user's focused tab never changes.
+    const createProperties = { url: parsed.href, active: false };
+    if (Number.isInteger(panelWindowId)) {
+      createProperties.windowId = panelWindowId;
+    }
+    const created = await chrome.tabs.create(createProperties);
+    tabId = created.id;
+    workTabIds[slot - 1] = tabId;
+  }
+  lastWorkSlot = slot;
+  await waitForTabComplete(tabId);
   await delay(NAVIGATION_SETTLE_MS);
-  await renderCurrentTab();
-  setWorkStatus(`Reading ${boundText(parsed.hostname, 200)}…`);
-  return serializePageResult(await capturePageContext());
+  setWorkStatus(`Reading ${boundText(parsed.hostname, 200)} (work tab ${slot})…`);
+  const tab = await chrome.tabs.get(tabId);
+  return (
+    `Work tab ${slot} of ${MAX_WORK_TABS}.\n` +
+    serializePageResult(await captureFromTab(tab))
+  );
 }
 
 // Benign-interstitial clicks only. This blocklist is the hard
@@ -550,12 +668,19 @@ async function clickAndRead(toolRequest) {
     );
   }
 
-  const tab = await getActiveTab();
+  let clickArgs = {};
+  try {
+    clickArgs = JSON.parse(toolRequest?.arguments || "{}") || {};
+  } catch {
+    clickArgs = {};
+  }
+  const target = await resolveToolTab(clickArgs.tab);
+  const tab = target.tab;
   if (!isReadableUrl(tab.url)) {
     throw new Error("This page cannot be scripted, so nothing can be clicked.");
   }
 
-  setWorkStatus(`Clicking "${clickText}"…`);
+  setWorkStatus(`Clicking "${clickText}" in ${tabLabel(target.slot)}…`);
   const results = await chrome.scripting.executeScript({
     target: { tabId: tab.id },
     func: (wanted, forbiddenSource) => {
@@ -617,11 +742,15 @@ async function clickAndRead(toolRequest) {
     delay(2_000)
   ]);
   await delay(NAVIGATION_SETTLE_MS);
-  await renderCurrentTab();
-  setWorkStatus("Reading the page after the click…");
+  setWorkStatus(`Reading ${tabLabel(target.slot)} after the click…`);
+  const refreshed = await chrome.tabs.get(tab.id);
+  const prefix = target.slot >= 1
+    ? `Work tab ${target.slot} of ${MAX_WORK_TABS}.\n`
+    : "";
   return (
+    prefix +
     `Clicked "${boundText(outcome.clicked, 200)}".\n` +
-    serializePageResult(await capturePageContext())
+    serializePageResult(await captureFromTab(refreshed))
   );
 }
 

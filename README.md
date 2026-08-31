@@ -22,7 +22,8 @@ context but can never send email, save a file, or delete anything.
   never saves.
 - **Chrome**: chat about the tab you are on - its title, address,
   selection, and readable text are attached automatically - and let Scribble
-  browse http/https pages in that same visible tab to complete a request. When
+  browse http/https pages in up to five of its own background work tabs;
+  your current tab is never navigated away. When
   you ask, it opens an unsent Outlook draft or a new unsaved Excel workbook
   with a table and chart built from what it found. A Stop button halts a
   running chain of steps, and it asks you a clickable clarifying question
@@ -270,9 +271,11 @@ tab is being shared; the selection is capped at 16,000 characters and page text
 at 48,000. A right-click **Ask Scribble about this page** opens the panel too.
 
 Scribble can also browse for you: ask it to look something up and the model
-navigates the same visible tab to http/https pages (`browser_navigate`),
-re-reads them (`browser_read_page`), and works across up to eight bounded tool
-rounds per request. Ask it to email someone and it opens one unsent Outlook
+opens http/https pages in up to five of its own background work tabs
+(`browser_navigate` with a tab number 1-5), re-reads them
+(`browser_read_page`), and compares sites side by side across up to twelve
+bounded tool rounds per request. Your current tab is never navigated away;
+**Clear chat** closes Scribble's work tabs. Ask it to email someone and it opens one unsent Outlook
 draft window for your review (`open_outlook_draft`); ask for Excel and it
 opens one unsaved workbook (`open_excel_table`). Neither is ever sent or
 saved by Scribble. When an interstitial blocks reading - a cookie banner, a
