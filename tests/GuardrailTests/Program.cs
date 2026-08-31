@@ -5215,7 +5215,11 @@ namespace GuardrailTests
             Assert(
                 wordUnauthorized.tools
                     .Select(tool => tool.function.name)
-                    .SequenceEqual(new[] { "read_document" }),
+                    .SequenceEqual(new[]
+                    {
+                        "read_document",
+                        "fetch_web_page"
+                    }),
                 "Unauthorized Word requests must expose read tools only.");
 
             var excelAuthorized = DocumentChatRequestFactory.Create(
