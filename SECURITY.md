@@ -176,8 +176,11 @@ unless the user enters exact tool names and affirms that each is read-only.
     Outlook capability is `OutlookDraftLauncher`, which can display an unsent
     draft and nothing else - no send, read, delete, or mailbox access - and it
     has no document host object and no page-control API.
-22. Model and webpage output is inserted using DOM `textContent`; it is never
-    parsed as HTML or evaluated as script.
+22. Model and webpage output is never parsed as HTML or evaluated as
+    script. Assistant replies pass through a bounded local formatter that
+    builds paragraph, list, table, bold, and code DOM nodes itself and
+    inserts every piece of text with `textContent`; user and page text is
+    inserted as literal `textContent` directly.
 
 The system prompt reinforces these limits, but no security property depends on
 the model obeying it.

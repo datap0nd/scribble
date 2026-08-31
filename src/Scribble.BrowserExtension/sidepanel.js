@@ -513,12 +513,200 @@ function appendMessage(role, content) {
 
   const body = document.createElement("div");
   body.className = "message-body";
-  // Never interpret model or webpage text as HTML.
-  body.textContent = String(content || "");
+  if (role === "assistant") {
+    // Bounded local formatting (tables, bold, lists, code), built
+    // only from DOM nodes and text - model output is never parsed
+    // or evaluated as HTML.
+    renderAssistantContent(body, String(content || ""));
+  } else {
+    // Never interpret model or webpage text as HTML.
+    body.textContent = String(content || "");
+  }
 
   article.append(label, body);
   elements.messages.append(article);
   elements.messages.scrollTop = elements.messages.scrollHeight;
+}
+
+function renderAssistantContent(container, content) {
+  const lines = content.replace(/\r\n?/g, "\n").split("\n");
+  let index = 0;
+  let listElement = null;
+
+  const closeList = () => {
+    listElement = null;
+  };
+
+  while (index < lines.length) {
+    const line = lines[index];
+
+    if (/^```/.test(line.trim())) {
+      closeList();
+      const codeLines = [];
+      index++;
+      while (index < lines.length && !/^```/.test(lines[index].trim())) {
+        codeLines.push(lines[index]);
+        index++;
+      }
+      index++;
+      const pre = document.createElement("pre");
+      pre.textContent = codeLines.join("\n");
+      container.append(pre);
+      continue;
+    }
+
+    if (isTableRow(line) && index + 1 < lines.length && isTableSeparator(lines[index + 1])) {
+      closeList();
+      const headerCells = splitTableRow(line);
+      const table = document.createElement("table");
+      const thead = document.createElement("thead");
+      const headRow = document.createElement("tr");
+      for (const cell of headerCells) {
+        const th = document.createElement("th");
+        appendInlineText(th, cell);
+        headRow.append(th);
+      }
+      thead.append(headRow);
+      table.append(thead);
+
+      const tbody = document.createElement("tbody");
+      index += 2;
+      while (index < lines.length && isTableRow(lines[index])) {
+        const row = document.createElement("tr");
+        const cells = splitTableRow(lines[index]);
+        for (let cellIndex = 0; cellIndex < headerCells.length; cellIndex++) {
+          const td = document.createElement("td");
+          appendInlineText(td, cells[cellIndex] ?? "");
+          row.append(td);
+        }
+        tbody.append(row);
+        index++;
+      }
+      table.append(tbody);
+
+      // A wide table scrolls inside the bubble instead of
+      // stretching the panel.
+      const scroller = document.createElement("div");
+      scroller.className = "table-scroll";
+      scroller.append(table);
+      container.append(scroller);
+      continue;
+    }
+
+    const heading = /^(#{1,4})\s+(.*)$/.exec(line);
+    if (heading) {
+      closeList();
+      const paragraph = document.createElement("p");
+      paragraph.className = `md-heading md-heading-${heading[1].length}`;
+      appendInlineText(paragraph, heading[2]);
+      container.append(paragraph);
+      index++;
+      continue;
+    }
+
+    const bullet = /^\s*[*-]\s+(.*)$/.exec(line);
+    const numbered = /^\s*\d{1,3}[.)]\s+(.*)$/.exec(line);
+    if (bullet || numbered) {
+      const kind = bullet ? "ul" : "ol";
+      if (!listElement || listElement.tagName.toLowerCase() !== kind) {
+        listElement = document.createElement(kind);
+        container.append(listElement);
+      }
+      const item = document.createElement("li");
+      appendInlineText(item, (bullet || numbered)[1]);
+      listElement.append(item);
+      index++;
+      continue;
+    }
+
+    if (line.trim() === "") {
+      closeList();
+      index++;
+      continue;
+    }
+
+    closeList();
+    const paragraph = document.createElement("p");
+    appendInlineText(paragraph, line);
+    container.append(paragraph);
+    index++;
+  }
+}
+
+function appendInlineText(parent, text) {
+  const value = String(text || "");
+  let index = 0;
+  let buffer = "";
+
+  const flush = () => {
+    if (buffer) {
+      parent.append(document.createTextNode(buffer));
+      buffer = "";
+    }
+  };
+
+  const isAlphanumeric = (character) =>
+    typeof character === "string" && /[\p{L}\p{N}]/u.test(character);
+
+  while (index < value.length) {
+    const rest = value.slice(index);
+    const strongMarker = /^(\*\*\*|\*\*|__)(?=\S)/.exec(rest);
+    if (strongMarker) {
+      const marker = strongMarker[1];
+      const close = value.indexOf(marker, index + marker.length);
+      if (close > index + marker.length) {
+        flush();
+        const strong = document.createElement("strong");
+        strong.textContent = value.slice(index + marker.length, close);
+        parent.append(strong);
+        index = close + marker.length;
+        continue;
+      }
+    }
+
+    if (rest.startsWith("`")) {
+      const close = value.indexOf("`", index + 1);
+      if (close > index + 1) {
+        flush();
+        const code = document.createElement("code");
+        code.textContent = value.slice(index + 1, close);
+        parent.append(code);
+        index = close + 1;
+        continue;
+      }
+    }
+
+    const character = value[index];
+    if (character === "*" &&
+        !(isAlphanumeric(value[index - 1]) && isAlphanumeric(value[index + 1]))) {
+      index++;
+      continue;
+    }
+
+    buffer += character;
+    index++;
+  }
+
+  flush();
+}
+
+function isTableRow(line) {
+  const trimmed = String(line || "").trim();
+  return trimmed.startsWith("|") && trimmed.endsWith("|") && trimmed.length > 2;
+}
+
+function isTableSeparator(line) {
+  const trimmed = String(line || "").trim();
+  return /^\|(?:\s*:?-+:?\s*\|)+$/.test(trimmed);
+}
+
+function splitTableRow(line) {
+  return String(line || "")
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map((cell) => cell.trim());
 }
 
 function renderComposerState() {

@@ -322,6 +322,90 @@ p {
   white-space: pre-wrap;
 }
 
+/* Assistant bubbles hold structured content (paragraphs, lists,
+   tables); user and error bubbles stay literal pre-wrap text. */
+.message.assistant .message-body {
+  white-space: normal;
+}
+
+.message.assistant .message-body > p {
+  margin: 0 0 8px;
+}
+
+.message.assistant .message-body > :last-child {
+  margin-bottom: 0;
+}
+
+.message.assistant .message-body p.md-heading {
+  margin: 10px 0 6px;
+  font-weight: 700;
+}
+
+.message.assistant .message-body p.md-heading-1 {
+  font-size: 15px;
+}
+
+.message.assistant .message-body p.md-heading-2 {
+  font-size: 14px;
+}
+
+.message.assistant .message-body ul,
+.message.assistant .message-body ol {
+  margin: 0 0 8px;
+  padding-left: 20px;
+}
+
+.message.assistant .message-body li {
+  margin: 2px 0;
+}
+
+.message.assistant .message-body pre {
+  overflow-x: auto;
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--muted) 8%, var(--surface));
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 11px;
+  white-space: pre;
+}
+
+.message.assistant .message-body code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--muted) 12%, var(--surface));
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 11px;
+}
+
+.message.assistant .message-body .table-scroll {
+  overflow-x: auto;
+  margin: 0 0 8px;
+}
+
+.message.assistant .message-body table {
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.message.assistant .message-body th,
+.message.assistant .message-body td {
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.message.assistant .message-body th {
+  background: color-mix(in srgb, var(--muted) 10%, var(--surface));
+  font-weight: 700;
+}
+
+.message.assistant .message-body tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--muted) 5%, var(--surface));
+}
+
 .message.user .message-role {
   text-align: right;
 }
