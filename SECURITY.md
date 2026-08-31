@@ -78,9 +78,14 @@ The extension holds http/https host permissions so the panel can read and
 navigate the user's own visible tab without a per-click gesture. It has no
 content scripts, remote code, browsing-history, cookie, download, debugger, or
 browser-management access, and it never reads other tabs or pages in the
-background. It cannot click page controls, fill or submit forms, enter
-credentials, upload, download, purchase, post, message, or mutate a page -
-navigation and reading only, http/https only. The native host accepts only the
+background. Its only page interaction beyond reading is `browser_click`:
+one visible, benign control at a time (consent banners, location/language
+choosers, continue), with a hard blocklist refusing buy/checkout/sign-in/
+register/subscribe clicks and any control inside a credential or payment
+form; it cannot type into fields, fill or submit forms, enter credentials,
+upload, download, purchase, post, message, or otherwise mutate a page -
+http/https only. `ask_user` pauses at the panel to ask the person one
+clarifying question with clickable options. The native host accepts only the
 fixed public extension identity; its write-shaped capabilities are opening
 one unsent Outlook draft and one new unsaved Excel workbook per request -
 both visible, both left for the user to review, and neither able to send

@@ -12,6 +12,8 @@ namespace Scribble.Chat
     {
         public const string NavigatePage = "browser_navigate";
         public const string ReadPage = "browser_read_page";
+        public const string ClickControl = "browser_click";
+        public const string AskUser = "ask_user";
         public const string OpenOutlookDraft = "open_outlook_draft";
         public const string OpenExcelTable = "open_excel_table";
 
@@ -20,11 +22,14 @@ namespace Scribble.Chat
             {
                 NavigatePage,
                 ReadPage,
+                ClickControl,
+                AskUser,
                 OpenOutlookDraft,
                 OpenExcelTable
             };
 
-        // Tools the extension itself must execute with chrome APIs.
+        // Tools the extension itself must execute with chrome APIs
+        // (or, for ask_user, by waiting on the person at the panel).
         public static bool IsBrowserExecuted(string name)
         {
             return string.Equals(
@@ -34,6 +39,14 @@ namespace Scribble.Chat
                 string.Equals(
                     name,
                     ReadPage,
+                    StringComparison.Ordinal) ||
+                string.Equals(
+                    name,
+                    ClickControl,
+                    StringComparison.Ordinal) ||
+                string.Equals(
+                    name,
+                    AskUser,
                     StringComparison.Ordinal);
         }
 
@@ -116,6 +129,102 @@ namespace Scribble.Chat
                                 "properties",
                                 new Dictionary<string, object>()
                             }
+                        }
+                    }
+                },
+                new ChatToolDefinition
+                {
+                    type = "function",
+                    function = new ChatToolFunctionDefinition
+                    {
+                        name = ClickControl,
+                        description =
+                            "Click one visible button or link on the current page by " +
+                            "its exact visible text, then return the page as it looks " +
+                            "after the click. Use it only to get past benign " +
+                            "interstitials that block reading: cookie or consent " +
+                            "banners, location/country/language choosers (pick the " +
+                            "option matching the user's request), continue/accept/" +
+                            "close. Clicks that buy, pay, check out, add to cart, " +
+                            "sign in, register, subscribe, or delete are refused, and " +
+                            "typing into fields is impossible.",
+                        parameters = new Dictionary<string, object>
+                        {
+                            { "type", "object" },
+                            {
+                                "properties",
+                                new Dictionary<string, object>
+                                {
+                                    {
+                                        "text",
+                                        new Dictionary<string, object>
+                                        {
+                                            { "type", "string" },
+                                            {
+                                                "description",
+                                                "The visible text of the control to click, e.g. " +
+                                                "\"United Arab Emirates\" or \"Accept all\"."
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            { "required", new[] { "text" } }
+                        }
+                    }
+                },
+                new ChatToolDefinition
+                {
+                    type = "function",
+                    function = new ChatToolFunctionDefinition
+                    {
+                        name = AskUser,
+                        description =
+                            "Ask the user one short clarifying question and wait for " +
+                            "their answer. Provide 2-6 short options they can click; " +
+                            "they may also type a different answer. Use it BEFORE " +
+                            "doing many steps when something important is ambiguous - " +
+                            "location or country, which recipient, budget, scope, " +
+                            "which product variant. Ask one question at a time.",
+                        parameters = new Dictionary<string, object>
+                        {
+                            { "type", "object" },
+                            {
+                                "properties",
+                                new Dictionary<string, object>
+                                {
+                                    {
+                                        "question",
+                                        new Dictionary<string, object>
+                                        {
+                                            { "type", "string" },
+                                            {
+                                                "description",
+                                                "The question to show the user, one sentence."
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "options",
+                                        new Dictionary<string, object>
+                                        {
+                                            { "type", "array" },
+                                            {
+                                                "items",
+                                                new Dictionary<string, object>
+                                                {
+                                                    { "type", "string" }
+                                                }
+                                            },
+                                            {
+                                                "description",
+                                                "2-6 short clickable answers, most likely first."
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            { "required", new[] { "question" } }
                         }
                     }
                 }

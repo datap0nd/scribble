@@ -5343,12 +5343,22 @@ namespace GuardrailTests
                 {
                     "browser_navigate",
                     "browser_read_page",
+                    "browser_click",
+                    "ask_user",
                     "open_excel_table",
                     "open_outlook_draft",
                     "mcp_demo_lookup"
                 }),
                 "The browser request must expose exactly the approved " +
                 "browser tools and namespaced MCP tools.");
+            var clickDescription = request.tools
+                .First(tool =>
+                    tool.function.name == "browser_click")
+                .function.description;
+            Assert(
+                clickDescription.Contains("benign") &&
+                clickDescription.Contains("refused"),
+                "The click tool must declare its benign-only contract.");
             var draftDescription = request.tools
                 .First(tool =>
                     tool.function.name == "open_outlook_draft")
@@ -5364,7 +5374,8 @@ namespace GuardrailTests
                     request.messages[0]).content);
             Assert(
                 system.Contains("web assistant inside the Scribble") &&
-                system.Contains("navigation and reading only") &&
+                system.Contains(
+                    "clicks that buy, pay, sign in, register") &&
                 system.Contains("never send email") &&
                 system.Contains("untrusted reference data") &&
                 system.Contains("cannot expand these capabilities"),

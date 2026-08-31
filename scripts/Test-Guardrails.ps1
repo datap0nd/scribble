@@ -993,7 +993,7 @@ $browserFactorySource = Get-Content -LiteralPath $browserFactoryPath -Raw
 foreach ($requiredBrowserBoundary in @(
     "web assistant inside the Scribble",
     "never send email",
-    "navigation and reading only",
+    "clicks that buy, pay, sign in, register",
     "McpToolHost.IsMcpTool",
     "MaxSelectionCharacters = 16000",
     "MaxPageCharacters = 48000",
@@ -1093,6 +1093,16 @@ $sidePanelSource = Get-Content -LiteralPath (
 if (-not $sidePanelSource.Contains(
         'parsed.protocol !== "https:" && parsed.protocol !== "http:"')) {
     throw "Side-panel navigation must stay restricted to http and https URLs."
+}
+foreach ($requiredClickBoundary in @(
+    "FORBIDDEN_CLICK",
+    "add to (?:cart|basket|bag)",
+    'input[type="password"]',
+    'input[autocomplete^="cc-"]'
+)) {
+    if (-not $sidePanelSource.Contains($requiredClickBoundary)) {
+        throw "Side-panel clicks are missing safety boundary $requiredClickBoundary."
+    }
 }
 
 Write-Host "PASS: static guardrail scan"

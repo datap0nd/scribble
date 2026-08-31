@@ -36,8 +36,13 @@ viewers) are shared as address-only.
 
 Scribble can also browse for you. When you ask it to look something up, the
 model may navigate this same visible tab to http/https pages and read them,
-across up to twelve bounded tool rounds per request. It cannot click page
-controls, fill or submit forms, sign in, purchase, download, or upload. When
+across up to twelve bounded tool rounds per request. It can click one
+benign, visible control at a time to get past interstitials (cookie banners,
+location choosers, continue); a hard blocklist refuses buy/checkout/sign-in/
+register clicks and credential or payment forms, and it cannot type into
+fields, fill or submit forms, sign in, purchase, download, or upload. When
+something important is ambiguous, it asks you one clarifying question with
+clickable options and waits. When
 you ask Scribble to email someone, it opens one unsent Outlook draft window
 for your review; ask for Excel and it opens one unsaved workbook. It can never
 send or save either.

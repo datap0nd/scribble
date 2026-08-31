@@ -536,6 +536,71 @@ p {
   50% { opacity: 1; }
 }
 
+.ask-card .ask-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.ask-option {
+  padding: 5px 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border));
+  border-radius: 14px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.ask-option:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.ask-option:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.ask-option.chosen {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #ffffff;
+  opacity: 1;
+}
+
+.ask-custom {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.ask-custom input {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: inherit;
+  font-size: 12px;
+}
+
+.ask-custom button {
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.ask-custom button:disabled,
+.ask-custom input:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
 .send-button.stop {
   border-color: color-mix(in srgb, var(--danger) 45%, var(--border));
   background: color-mix(in srgb, var(--danger) 12%, var(--surface));

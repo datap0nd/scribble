@@ -39,6 +39,7 @@ const elements = {
 let conversationHistory = [];
 let isSending = false;
 let stopRequested = false;
+let activeAskFinish = null;
 let isPinging = false;
 let isOpeningSettings = false;
 let panelWindowId = null;
@@ -82,6 +83,9 @@ elements.composer.addEventListener("submit", (event) => {
     stopRequested = true;
     elements.send.disabled = true;
     setActivity("Stopping after the current step…");
+    if (activeAskFinish) {
+      activeAskFinish("[STOPPED] The user stopped the request instead of answering.");
+    }
     return;
   }
   void sendChatMessage();
@@ -467,6 +471,14 @@ async function executeBrowserTool(toolRequest) {
       return { id, content: serializePageResult(await capturePageContext()) };
     }
 
+    if (name === "browser_click") {
+      return { id, content: await clickAndRead(toolRequest) };
+    }
+
+    if (name === "ask_user") {
+      return { id, content: await askUser(toolRequest) };
+    }
+
     return {
       id,
       content: "[BROWSER_TOOL_NOT_ALLOWED] The extension does not execute this tool."
@@ -508,6 +520,211 @@ async function navigateAndRead(toolRequest) {
   await renderCurrentTab();
   setWorkStatus(`Reading ${boundText(parsed.hostname, 200)}…`);
   return serializePageResult(await capturePageContext());
+}
+
+// Benign-interstitial clicks only. This blocklist is the hard
+// backstop behind the tool description: nothing that spends money,
+// signs in, or submits personal data can be clicked, and there is
+// no way to type into a field at all.
+const FORBIDDEN_CLICK =
+  /\b(buy|purchase|checkout|check out|pay|payment|order|add to (?:cart|basket|bag)|sign ?in|log ?in|sign ?up|register|subscribe|unsubscribe|delete|confirm (?:purchase|order|payment)|place order|apply|submit application|send)\b/i;
+
+async function clickAndRead(toolRequest) {
+  let clickText = "";
+  try {
+    const parsedArguments = JSON.parse(toolRequest?.arguments || "{}");
+    clickText = typeof parsedArguments?.text === "string"
+      ? parsedArguments.text.replace(/\s+/g, " ").trim().slice(0, 80)
+      : "";
+  } catch {
+    throw new Error("The click arguments were not valid JSON.");
+  }
+
+  if (!clickText) {
+    throw new Error("A visible control text is required.");
+  }
+
+  if (FORBIDDEN_CLICK.test(clickText)) {
+    throw new Error(
+      `Clicking "${clickText}" is refused: buying, signing in, registering, and similar actions are never allowed.`
+    );
+  }
+
+  const tab = await getActiveTab();
+  if (!isReadableUrl(tab.url)) {
+    throw new Error("This page cannot be scripted, so nothing can be clicked.");
+  }
+
+  setWorkStatus(`Clicking "${clickText}"…`);
+  const results = await chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    func: (wanted, forbiddenSource) => {
+      const forbidden = new RegExp(forbiddenSource, "i");
+      const normalize = (value) =>
+        String(value || "").replace(/\s+/g, " ").trim();
+      const wantedLower = normalize(wanted).toLowerCase();
+      const candidates = [];
+      const selector =
+        'button, a, [role="button"], [role="option"], [role="menuitem"], ' +
+        '[role="radio"], [role="tab"], input[type="button"], input[type="submit"], label';
+      for (const el of document.querySelectorAll(selector)) {
+        const rect = el.getBoundingClientRect();
+        if (rect.width < 1 || rect.height < 1) {
+          continue;
+        }
+        const text = normalize(
+          el.innerText || el.value || el.getAttribute("aria-label")
+        );
+        if (!text || text.length > 200) {
+          continue;
+        }
+        const textLower = text.toLowerCase();
+        if (textLower === wantedLower) {
+          candidates.push({ el, text, rank: 0 });
+        } else if (textLower.startsWith(wantedLower)) {
+          candidates.push({ el, text, rank: 1 });
+        } else if (textLower.includes(wantedLower)) {
+          candidates.push({ el, text, rank: 2 });
+        }
+      }
+      candidates.sort((a, b) =>
+        a.rank - b.rank || a.text.length - b.text.length);
+      const match = candidates[0];
+      if (!match) {
+        return { error: "No visible control with that text was found." };
+      }
+      if (forbidden.test(match.text)) {
+        return { error: `The matched control "${match.text}" is a blocked action.` };
+      }
+      const form = match.el.closest ? match.el.closest("form") : null;
+      if (form && (form.querySelector('input[type="password"]') ||
+          form.querySelector('input[autocomplete^="cc-"]'))) {
+        return { error: "That control submits a credential or payment form and is blocked." };
+      }
+      match.el.click();
+      return { clicked: match.text };
+    },
+    args: [clickText, FORBIDDEN_CLICK.source]
+  });
+
+  const outcome = results?.[0]?.result;
+  if (!outcome || outcome.error) {
+    throw new Error(outcome?.error || "The click did not run.");
+  }
+
+  await Promise.race([
+    waitForTabComplete(tab.id).catch(() => {}),
+    delay(2_000)
+  ]);
+  await delay(NAVIGATION_SETTLE_MS);
+  await renderCurrentTab();
+  setWorkStatus("Reading the page after the click…");
+  return (
+    `Clicked "${boundText(outcome.clicked, 200)}".\n` +
+    serializePageResult(await capturePageContext())
+  );
+}
+
+function askUser(toolRequest) {
+  let question = "";
+  let options = [];
+  try {
+    const parsedArguments = JSON.parse(toolRequest?.arguments || "{}");
+    question = typeof parsedArguments?.question === "string"
+      ? parsedArguments.question.trim().slice(0, 300)
+      : "";
+    options = Array.isArray(parsedArguments?.options)
+      ? parsedArguments.options
+          .map((option) => String(option || "").trim().slice(0, 80))
+          .filter((option) => option.length > 0)
+          .slice(0, 6)
+      : [];
+  } catch {
+    return Promise.resolve("[ASK_FAILED] The question arguments were not valid JSON.");
+  }
+
+  if (!question) {
+    return Promise.resolve("[ASK_FAILED] A question is required.");
+  }
+
+  return new Promise((resolve) => {
+    const card = document.createElement("article");
+    card.className = "message assistant";
+    const label = document.createElement("p");
+    label.className = "message-role";
+    label.textContent = "Scribble asks";
+    const body = document.createElement("div");
+    body.className = "message-body ask-card";
+    const questionLine = document.createElement("p");
+    questionLine.textContent = question;
+    body.append(questionLine);
+
+    const choices = document.createElement("div");
+    choices.className = "ask-choices";
+    const custom = document.createElement("div");
+    custom.className = "ask-custom";
+    const input = document.createElement("input");
+    input.type = "text";
+    input.maxLength = 200;
+    input.placeholder = "Or type another answer…";
+    const submit = document.createElement("button");
+    submit.type = "button";
+    submit.textContent = "Answer";
+
+    const finish = (answer) => {
+      if (activeAskFinish !== finish) {
+        return;
+      }
+      activeAskFinish = null;
+      choices.querySelectorAll("button").forEach((choiceButton) => {
+        choiceButton.disabled = true;
+        if (choiceButton.textContent === answer) {
+          choiceButton.classList.add("chosen");
+        }
+      });
+      input.disabled = true;
+      submit.disabled = true;
+      setWorkStatus("Continuing with your answer…");
+      resolve(answer.startsWith("[STOPPED]")
+        ? answer
+        : `The user answered: "${boundText(answer, 200)}"`);
+    };
+    activeAskFinish = finish;
+
+    for (const option of options) {
+      const choiceButton = document.createElement("button");
+      choiceButton.type = "button";
+      choiceButton.className = "ask-option";
+      choiceButton.textContent = option;
+      choiceButton.addEventListener("click", () => finish(option));
+      choices.append(choiceButton);
+    }
+    body.append(choices);
+
+    submit.addEventListener("click", () => {
+      const value = input.value.replace(/\s+/g, " ").trim();
+      if (value) {
+        finish(value);
+      }
+    });
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.isComposing) {
+        event.preventDefault();
+        submit.click();
+      }
+    });
+    custom.append(input, submit);
+    body.append(custom);
+
+    card.append(label, body);
+    elements.messages.append(card);
+    if (typingRow && typingRow.parentElement) {
+      elements.messages.append(typingRow);
+    }
+    elements.messages.scrollTop = elements.messages.scrollHeight;
+    setWorkStatus("Waiting for your answer…");
+    input.focus();
+  });
 }
 
 function waitForTabComplete(tabId) {

@@ -25,8 +25,11 @@ context but can never send email, save a file, or delete anything.
   browse http/https pages in that same visible tab to complete a request. When
   you ask, it opens an unsent Outlook draft or a new unsaved Excel workbook
   with a table and chart built from what it found. A Stop button halts a
-  running chain of steps. It never clicks,
-  fills forms, signs in, purchases, downloads, uploads, or sends anything.
+  running chain of steps, and it asks you a clickable clarifying question
+  when something important is ambiguous. It can click one benign, visible
+  control at a time (cookie banners, location choosers, continue) - never
+  anything that buys, signs in, or pays - and it never types into fields,
+  fills forms, downloads, uploads, or sends anything.
 - **The web from Office**: the Excel, PowerPoint, and Word panes can fetch
   http/https pages read-only (`fetch_web_page`) - bounded text and links, no
   cookies, no sign-ins, no forms - so "get the top 5 iPhone prices from
@@ -272,9 +275,14 @@ re-reads them (`browser_read_page`), and works across up to eight bounded tool
 rounds per request. Ask it to email someone and it opens one unsent Outlook
 draft window for your review (`open_outlook_draft`); ask for Excel and it
 opens one unsaved workbook (`open_excel_table`). Neither is ever sent or
-saved by Scribble. The extension never clicks page controls,
-fills or submits forms, enters credentials, uploads, downloads, purchases,
-posts, or changes page content - navigation and reading only. Browser settings
+saved by Scribble. When an interstitial blocks reading - a cookie banner, a
+country or language chooser - Scribble can click that one visible control
+(`browser_click`); a hard blocklist refuses anything that buys, checks out,
+signs in, registers, subscribes, or submits a credential or payment form, and
+typing into fields is impossible. When your request is ambiguous (location,
+recipient, budget), it asks you one clarifying question with clickable
+options (`ask_user`) and waits for your answer. It never fills or submits
+forms, enters credentials, uploads, downloads, purchases, or posts. Browser settings
 pages, extension galleries, and some protected viewers block page-text
 extraction; those tabs are shared as address-only.
 
