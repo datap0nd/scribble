@@ -5343,51 +5343,21 @@ namespace GuardrailTests
                 {
                     "browser_navigate",
                     "browser_read_page",
+                    "open_excel_table",
+                    "open_outlook_draft",
                     "mcp_demo_lookup"
                 }),
-                "The browser request must expose only the approved " +
+                "The browser request must expose exactly the approved " +
                 "browser tools and namespaced MCP tools.");
-
-            var draftingRequest = BrowserChatRequestFactory.Create(
-                "gpt-oss-20b",
-                new List<ChatTurn>(),
-                "Draft an email about this page.",
-                "Example page",
-                "https://example.test/article",
-                string.Empty,
-                string.Empty,
-                string.Empty,
-                null,
-                true);
+            var draftDescription = request.tools
+                .First(tool =>
+                    tool.function.name == "open_outlook_draft")
+                .function.description;
             Assert(
-                draftingRequest.tools.Any(tool =>
-                    tool.function.name == "open_outlook_draft") &&
-                !request.tools.Any(tool =>
-                    tool.function.name == "open_outlook_draft"),
-                "The unsent-draft tool must appear only when drafting " +
-                "is authorized.");
-
-            var excelRequest = BrowserChatRequestFactory.Create(
-                "gpt-oss-20b",
-                new List<ChatTurn>(),
-                "Put the prices in an excel table.",
-                "Example page",
-                "https://example.test/article",
-                string.Empty,
-                string.Empty,
-                string.Empty,
-                null,
-                false,
-                null,
-                null,
-                true);
-            Assert(
-                excelRequest.tools.Any(tool =>
-                    tool.function.name == "open_excel_table") &&
-                !request.tools.Any(tool =>
-                    tool.function.name == "open_excel_table"),
-                "The unsaved-workbook tool must appear only when the " +
-                "user asked for Excel.");
+                draftDescription.Contains("never sent by this tool") &&
+                draftDescription.Contains("one draft per"),
+                "The unsent-draft tool must state that sending is " +
+                "impossible and drafts are once per request.");
 
             var system = Convert.ToString(
                 ((ChatCompletionInputMessage)

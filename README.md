@@ -269,9 +269,10 @@ at 48,000. A right-click **Ask Scribble about this page** opens the panel too.
 Scribble can also browse for you: ask it to look something up and the model
 navigates the same visible tab to http/https pages (`browser_navigate`),
 re-reads them (`browser_read_page`), and works across up to eight bounded tool
-rounds per request. When your own message asks for an email draft, it can open
-one unsent Outlook draft window for your review (`open_outlook_draft`); the
-draft is never sent by Scribble. The extension never clicks page controls,
+rounds per request. Ask it to email someone and it opens one unsent Outlook
+draft window for your review (`open_outlook_draft`); ask for Excel and it
+opens one unsaved workbook (`open_excel_table`). Neither is ever sent or
+saved by Scribble. The extension never clicks page controls,
 fills or submits forms, enters credentials, uploads, downloads, purchases,
 posts, or changes page content - navigation and reading only. Browser settings
 pages, extension galleries, and some protected viewers block page-text
@@ -535,7 +536,8 @@ scoped exception, not a general mutation permission.
   identity and validates bounded native-message framing. Browser tools are
   limited to navigating and reading the user's own visible tab (http/https
   only, executed by the extension) and opening one unsent Outlook draft when
-  the user's own prompt asks for one. Page content and tool results are
+  the user asks for one (once per request, always unsent/unsaved). Page
+  content and tool results are
   explicitly untrusted reference data.
 
 These controls let model output select read-only context and, after explicit

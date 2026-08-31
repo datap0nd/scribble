@@ -81,9 +81,10 @@ browser-management access, and it never reads other tabs or pages in the
 background. It cannot click page controls, fill or submit forms, enter
 credentials, upload, download, purchase, post, message, or mutate a page -
 navigation and reading only, http/https only. The native host accepts only the
-fixed public extension identity; its only write-shaped capability is opening
-one unsent Outlook draft, exposed solely when the user's own latest prompt
-asks for a draft, and it can never send. MCP is disabled in browser chat
+fixed public extension identity; its write-shaped capabilities are opening
+one unsent Outlook draft and one new unsaved Excel workbook per request -
+both visible, both left for the user to review, and neither able to send
+or save anything. MCP is disabled in browser chat
 unless the user enters exact tool names and affirms that each is read-only.
 
 ## Enforced invariants
@@ -167,8 +168,8 @@ unless the user enters exact tool names and affirms that each is read-only.
     independently requires that exact origin argument, uses strict binary
     stdin/stdout framing, and returns no settings secrets or stack traces.
 21. `BrowserChatService` exposes the fixed browser tools (navigate, read
-    page, and - only when the user's own prompt asks for a draft - one unsent
-    Outlook draft per request) plus exact, case-sensitive MCP tool names the
+    page, one unsent Outlook draft per request, and one unsaved Excel
+    workbook per request) plus exact, case-sensitive MCP tool names the
     user separately allowlisted and affirmed as read-only. Tool use is bounded
     to eight rounds and four calls per round per request. It rejects every
     other requested tool and

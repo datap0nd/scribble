@@ -70,7 +70,8 @@ namespace Scribble.Chat
     // Runs the browser host's model loop. The extension executes
     // navigation and page reads in the user's own visible tab and
     // replays the results; the host executes user-configured MCP
-    // tools and the prompt-gated unsent-Outlook-draft tool. No
+    // tools, the unsent-Outlook-draft tool, and the
+    // unsaved-workbook tool (each once per request). No
     // click, form, credential, or page-mutation capability exists
     // anywhere in this process, and it can never send email.
     public sealed class BrowserChatService : IDisposable
@@ -175,23 +176,17 @@ namespace Scribble.Chat
                 safeScreenshot.Length > 0 &&
                 ModelCatalog.IsVisionCapable(activeModel);
 
-            // The unsent-draft tool is exposed only when the user's
-            // own latest prompt asks for a draft, and only until one
-            // draft has been opened in this request.
-            var allowOutlookDraft =
-                DraftIntentPolicy.AllowsCreate(safePrompt) &&
-                !ExchangeContainsCall(
-                    exchange,
-                    BrowserToolCatalog.OpenOutlookDraft);
-
-            // The unsaved-workbook tool follows the same pattern:
-            // exposed only when the user's own prompt mentions
-            // Excel, once per request.
-            var allowExcelTable =
-                MentionsExcel(safePrompt) &&
-                !ExchangeContainsCall(
-                    exchange,
-                    BrowserToolCatalog.OpenExcelTable);
+            // The unsent-draft and unsaved-workbook tools are
+            // always exposed (owner's direction: never refuse an
+            // action the user asked for). Their outputs stay safe
+            // by construction - an unsent draft window and a new
+            // unsaved workbook, each at most once per request.
+            var allowOutlookDraft = !ExchangeContainsCall(
+                exchange,
+                BrowserToolCatalog.OpenOutlookDraft);
+            var allowExcelTable = !ExchangeContainsCall(
+                exchange,
+                BrowserToolCatalog.OpenExcelTable);
 
             IReadOnlyList<ChatToolDefinition> definitions = null;
             if (_mcpTools.HasServers)
@@ -211,10 +206,8 @@ namespace Scribble.Chat
                 pageText,
                 safeScreenshot,
                 definitions,
-                allowOutlookDraft,
                 exchange,
-                links,
-                allowExcelTable);
+                links);
 
             var roundsUsed = CountExchangeTurns(exchange);
             var draftOpened = false;
@@ -413,18 +406,6 @@ namespace Scribble.Chat
             return false;
         }
 
-        private static bool MentionsExcel(string prompt)
-        {
-            var value = (prompt ?? string.Empty)
-                .ToLowerInvariant();
-            return value.Contains("excel") ||
-                value.Contains("spreadsheet") ||
-                value.Contains("workbook") ||
-                value.Contains("sheet") ||
-                value.Contains("table") ||
-                value.Contains("chart");
-        }
-
         private static MailboxToolResult ExecuteExcelTable(
             ChatToolCall call,
             bool allowed)
@@ -433,7 +414,7 @@ namespace Scribble.Chat
             {
                 return new MailboxToolResult(
                     call.id,
-                    "[EXCEL_TABLE_NOT_AUTHORIZED] The unsaved-workbook tool is available only when the user's own latest message asks for Excel, and at most once per request.",
+                    "[EXCEL_TABLE_NOT_AUTHORIZED] One unsaved workbook was already opened for this request; tell the user instead of opening another.",
                     "EXCEL_TABLE_NOT_AUTHORIZED");
             }
 
@@ -518,7 +499,7 @@ namespace Scribble.Chat
             {
                 return new MailboxToolResult(
                     call.id,
-                    "[DRAFT_NOT_AUTHORIZED] The unsent-draft tool is available only when the user's own latest message asks for a draft, and at most once per request.",
+                    "[DRAFT_NOT_AUTHORIZED] One unsent draft was already opened for this request; tell the user instead of opening another.",
                     "DRAFT_NOT_AUTHORIZED");
             }
 

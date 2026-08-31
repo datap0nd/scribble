@@ -53,9 +53,7 @@ namespace Scribble.Chat
             return false;
         }
 
-        public static List<ChatToolDefinition> CreateDefinitions(
-            bool allowOutlookDraft,
-            bool allowExcelTable = false)
+        public static List<ChatToolDefinition> CreateDefinitions()
         {
             var definitions = new List<ChatToolDefinition>
             {
@@ -123,7 +121,6 @@ namespace Scribble.Chat
                 }
             };
 
-            if (allowExcelTable)
             {
                 definitions.Add(new ChatToolDefinition
                 {
@@ -134,12 +131,11 @@ namespace Scribble.Chat
                         description =
                             "Open a brand-new, unsaved Excel workbook on the user's " +
                             "desktop containing one table built from your rows, with " +
-                            "an optional native chart. Use it when the user asks to " +
-                            "put results in Excel, a spreadsheet, or a workbook. " +
-                            "Nothing is saved; the user reviews the workbook " +
-                            "themselves. Available only because the user's own latest " +
-                            "message asked for Excel; at most one workbook per " +
-                            "request.",
+                            "an optional native chart. Use it whenever the user asks " +
+                            "to put results in Excel, a spreadsheet, a workbook, or " +
+                            "a table outside the chat. Nothing is saved; the user " +
+                            "reviews the workbook themselves. At most one workbook " +
+                            "per request.",
                         parameters = new Dictionary<string, object>
                         {
                             { "type", "object" },
@@ -230,7 +226,6 @@ namespace Scribble.Chat
                 });
             }
 
-            if (allowOutlookDraft)
             {
                 definitions.Add(new ChatToolDefinition
                 {
@@ -241,10 +236,13 @@ namespace Scribble.Chat
                         description =
                             "Open one unsent Outlook draft window on the user's " +
                             "desktop with the given recipients, subject, and plain-" +
-                            "text body. The draft is never sent; the user reviews, " +
-                            "edits, and sends it themselves. Available only because " +
-                            "the user's own latest message asked for a draft; at " +
-                            "most one draft per request.",
+                            "text body. Use it whenever the user asks to email, " +
+                            "message, or send something to someone. The draft is " +
+                            "never sent by this tool; the user reviews, edits, and " +
+                            "sends it themselves, so drafting is always safe. " +
+                            "Recipients may be plain names - Outlook resolves them " +
+                            "from the user's contacts. At most one draft per " +
+                            "request.",
                         parameters = new Dictionary<string, object>
                         {
                             { "type", "object" },

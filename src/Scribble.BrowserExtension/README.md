@@ -36,10 +36,11 @@ viewers) are shared as address-only.
 
 Scribble can also browse for you. When you ask it to look something up, the
 model may navigate this same visible tab to http/https pages and read them,
-across up to eight bounded tool rounds per request. It cannot click page
+across up to twelve bounded tool rounds per request. It cannot click page
 controls, fill or submit forms, sign in, purchase, download, or upload. When
-your own message asks for an email draft, Scribble can open one unsent Outlook
-draft window for your review; it can never send it.
+you ask Scribble to email someone, it opens one unsent Outlook draft window
+for your review; ask for Excel and it opens one unsaved workbook. It can never
+send or save either.
 
 The **Settings** button in the panel opens the shared Scribble Settings window
 on your desktop - the same one the Office add-ins use. The extension treats

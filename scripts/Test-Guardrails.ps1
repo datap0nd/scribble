@@ -1031,7 +1031,7 @@ foreach ($requiredBrowserServiceBoundary in @(
     "BROWSER_TOOL_NOT_ALLOWED",
     "MaxBrowserToolRounds = 12",
     "MaxBrowserToolCallsPerRound = 4",
-    "DraftIntentPolicy.AllowsCreate"
+    "ExchangeContainsCall"
 )) {
     if (-not $browserServiceSource.Contains($requiredBrowserServiceBoundary)) {
         throw "Browser chat service is missing boundary $requiredBrowserServiceBoundary."
