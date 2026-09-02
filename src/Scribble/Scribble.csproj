@@ -76,6 +76,9 @@
     <Compile Include="Chat\OpenAiCompatibleClient.cs" />
     <Compile Include="Chat\PromptHelperTool.cs" />
     <Compile Include="Chat\ToneProfileRequestFactory.cs" />
+    <Compile Include="Chat\TopicIndex.cs" />
+    <Compile Include="Chat\TopicToolCatalog.cs" />
+    <Compile Include="Chat\TopicToolHost.cs" />
     <Compile Include="Chat\SuggestQuestionsRequestFactory.cs" />
     <Compile Include="Chat\GeminiCodeAssistGateway.cs" />
     <Compile Include="Chat\WorkbookToolCatalog.cs" />
@@ -105,6 +108,7 @@
     <Compile Include="Configuration\ModelRouting.cs" />
     <Compile Include="Configuration\ModelSelectionPolicy.cs" />
     <Compile Include="Configuration\SettingsStore.cs" />
+    <Compile Include="Configuration\TopicConfig.cs" />
     <Compile Include="Interop\OfficeInterfaces.cs" />
     <Compile Include="Outlook\EmailAttachmentReader.cs" />
     <Compile Include="Outlook\DraftService.cs" />

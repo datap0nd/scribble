@@ -396,6 +396,13 @@ namespace Scribble.UI
                             Convert.ToString(modelValue) ??
                             string.Empty);
                         break;
+                    case "setTopic":
+                        object topicValue;
+                        message.TryGetValue("topicId", out topicValue);
+                        HandleSetTopic(
+                            Convert.ToString(topicValue) ??
+                            string.Empty);
+                        break;
                     case "suggestAnswers":
                         object answersValue;
                         message.TryGetValue(
@@ -432,6 +439,7 @@ namespace Scribble.UI
         {
             _webReady = true;
             RefreshModelPicker();
+            PushTopicsToWeb(false);
             PostToWeb(new Dictionary<string, object>
             {
                 { "type", "scope" },
@@ -1746,6 +1754,8 @@ namespace Scribble.UI
             string prompt,
             LocalSearchCommand command)
         {
+            _memory.TopicLocked = true;
+            PushTopicLock(false);
             AppendUserTurn(prompt);
             switch (command.Kind)
             {
@@ -1894,6 +1904,21 @@ namespace Scribble.UI
                 }
             }
 
+            TopicConfig activeTopic;
+            string topicError;
+            if (!TryResolveActiveTopic(
+                    out activeTopic,
+                    out topicError))
+            {
+                SetStatus(topicError, true);
+                PostToWeb(new Dictionary<string, object>
+                {
+                    { "type", "restorePrompt" },
+                    { "text", prompt }
+                });
+                return;
+            }
+
             var requestSelectedMessage = _selectedMessage;
             var requestWorkingMessages =
                 new List<MessageSnapshot>(_workingMessages);
@@ -1941,6 +1966,9 @@ namespace Scribble.UI
                 _settings.Model,
                 draftAuthorization.CanCreate ||
                 draftAuthorization.CanUpdate);
+            _memory.TopicLocked = true;
+            PushTopicLock(false);
+            var turnId = Guid.NewGuid().ToString("N");
             AppendUserTurn(prompt);
             SetBusy(true);
             _requestStartedAt = DateTime.UtcNow;
@@ -1958,6 +1986,9 @@ namespace Scribble.UI
                     prompt,
                     draftAuthorization,
                     crossAppAuthorization,
+                    activeTopic,
+                    _memory.ChatId,
+                    turnId,
                     cancellation.Token);
                 if (generation != _requestGeneration)
                 {
@@ -2083,6 +2114,9 @@ namespace Scribble.UI
             string prompt,
             OneShotDraftAuthorization draftAuthorization,
             OneShotDraftAuthorization crossAppAuthorization,
+            TopicConfig activeTopic,
+            string chatId,
+            string turnId,
             CancellationToken cancellationToken)
         {
             var activeDraft = draftAuthorization.CanUpdate
@@ -2146,7 +2180,8 @@ namespace Scribble.UI
                     : null,
                 _settings.ToneStrength,
                 _settings.DraftRules,
-                mcpTools);
+                mcpTools,
+                activeTopic);
             var exposedNames = new List<string>();
             foreach (var tool in request.tools)
             {
@@ -2160,6 +2195,13 @@ namespace Scribble.UI
                 _outlookApplication,
                 selectedMessage,
                 workingMessages);
+            var topicTools = activeTopic == null
+                ? null
+                : new TopicToolHost(
+                    activeTopic,
+                    chatId,
+                    turnId,
+                    false);
             if (VisionImagePrefetch.TryInject(
                     request,
                     activeModel,
@@ -2302,6 +2344,16 @@ namespace Scribble.UI
                                 : mailboxTools.Execute(toolCall),
                             cancellationToken);
                     }
+                    else if (TopicToolCatalog.IsTopicTool(
+                                 toolCall?.function?.name) &&
+                             topicTools != null)
+                    {
+                        result = await Task.Run(
+                            () => topicTools.Execute(
+                                toolCall,
+                                cancellationToken),
+                            cancellationToken);
+                    }
                     else
                     {
                         result = mailboxTools.Execute(toolCall);
@@ -2369,6 +2421,10 @@ namespace Scribble.UI
             _transcriptEvents.Clear();
             _lastAssistantText = string.Empty;
             _memory.LastAnswer = string.Empty;
+            _memory.ChatId = Guid.NewGuid().ToString("N");
+            _memory.ActiveTopicId = string.Empty;
+            _memory.ActiveTopicRoot = string.Empty;
+            _memory.TopicLocked = false;
             _draftTools?.Dispose();
             _draftTools = _outlookApplication == null
                 ? null
@@ -2384,6 +2440,7 @@ namespace Scribble.UI
                 { "type", "clear" }
             });
             PushContextToWeb();
+            PushTopicsToWeb(false);
             SetScopeUnavailable(
                 "No context - drag emails here, or use Add email " +
                 "or /search");
@@ -2420,6 +2477,116 @@ namespace Scribble.UI
             }
         }
 
+        private void HandleSetTopic(string topicId)
+        {
+            if (_busy || _memory.TopicLocked)
+            {
+                return;
+            }
+
+            var bounded = TextBoundary.SingleLine(topicId, 40);
+            var topic = _settings.Topics.Find(entry =>
+                string.Equals(
+                    entry.Id,
+                    bounded,
+                    StringComparison.OrdinalIgnoreCase));
+            if (bounded.Length > 0 && topic == null)
+            {
+                SetStatus("The selected Topic is unavailable", true);
+                PushTopicsToWeb(false);
+                return;
+            }
+
+            _memory.ActiveTopicId = topic?.Id ?? string.Empty;
+            _memory.ActiveTopicRoot = topic?.FolderPath ?? string.Empty;
+            PushTopicsToWeb(false);
+            SetStatus(
+                topic == null
+                    ? "Topic: None"
+                    : "Topic: " + topic.Name,
+                false);
+        }
+
+        private bool TryResolveActiveTopic(
+            out TopicConfig topic,
+            out string error)
+        {
+            topic = null;
+            error = string.Empty;
+            if (_memory.ActiveTopicId.Length == 0)
+            {
+                return true;
+            }
+
+            var latest = _settingsStore.Load();
+            _settings.Topics = latest.Topics;
+            topic = latest.Topics.Find(entry => string.Equals(
+                entry.Id,
+                _memory.ActiveTopicId,
+                StringComparison.OrdinalIgnoreCase));
+            if (topic == null || !string.Equals(
+                    topic.FolderPath,
+                    _memory.ActiveTopicRoot,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                topic = null;
+                error =
+                    "The active Topic was removed or its folder changed. Clear chat before continuing.";
+                PushTopicsToWeb(true);
+                return false;
+            }
+
+            string resolvedRoot;
+            string validationError;
+            if (!TopicConfig.TryValidateLocalFolder(
+                    topic.FolderPath,
+                    out resolvedRoot,
+                    out validationError))
+            {
+                error = "The active Topic is unavailable: " +
+                    validationError;
+                PushTopicsToWeb(false);
+                return false;
+            }
+
+            PushTopicsToWeb(false);
+
+            return true;
+        }
+
+        private void PushTopicsToWeb(bool unavailable)
+        {
+            var items = new List<object>();
+            foreach (var topic in _settings.Topics)
+            {
+                items.Add(new Dictionary<string, object>
+                {
+                    { "id", topic.Id },
+                    { "name", topic.Name },
+                    { "available", Directory.Exists(topic.FolderPath) }
+                });
+            }
+
+            PostToWeb(new Dictionary<string, object>
+            {
+                { "type", "topics" },
+                { "items", items },
+                { "current", _memory.ActiveTopicId },
+                { "unavailable", unavailable }
+            });
+            PushTopicLock(unavailable);
+        }
+
+        private void PushTopicLock(bool unavailable)
+        {
+            PostToWeb(new Dictionary<string, object>
+            {
+                { "type", "topicLock" },
+                { "locked", _memory.TopicLocked },
+                { "unavailable", unavailable }
+            });
+        }
+
         private void OpenSettings()
         {
             if (_busy)
@@ -2446,6 +2613,18 @@ namespace Scribble.UI
                     _mcpTools = new McpToolHost(
                         _settings.McpServers);
                     RefreshModelPicker();
+                    PushTopicsToWeb(
+                        _memory.TopicLocked &&
+                        _memory.ActiveTopicId.Length > 0 &&
+                        !_settings.Topics.Exists(topic =>
+                            string.Equals(
+                                topic.Id,
+                                _memory.ActiveTopicId,
+                                StringComparison.OrdinalIgnoreCase) &&
+                            string.Equals(
+                                topic.FolderPath,
+                                _memory.ActiveTopicRoot,
+                                StringComparison.OrdinalIgnoreCase)));
                     SetStatus(
                         "Settings saved - " + _settings.Model,
                         false);

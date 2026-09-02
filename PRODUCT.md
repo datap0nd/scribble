@@ -62,6 +62,9 @@ locally linked item. The dedicated host exposes no send operation.
 ## Capabilities and Constraints
 
 - Search and read bounded context from the primary Inbox and Sent Items.
+- Configure up to twenty named local Topics, explicitly select one per chat,
+  and search and read only bounded relevant excerpts from its recursively
+  indexed document folder.
 - Handle `/search person or topic` locally, retain only the newest ten metadata
   matches, show them as distinct collapsible context cards, and allow another
   `/search` to replace that set before an LLM call.
@@ -97,6 +100,9 @@ locally linked item. The dedicated host exposes no send operation.
 - Permit HTTP and HTTPS endpoint URLs without a separate opt-in control.
 - Warn clearly for non-loopback HTTP that the API key and mailbox context will
   travel without transport encryption; recommend HTTPS outside the computer.
+- Keep Topic indexes under the current user's LocalAppData, never modify source
+  folders, never expose absolute paths to the model, and disclose that selected
+  excerpts travel to the configured model endpoint.
 - Target both 32-bit and 64-bit Office from one installer when practical.
 - A production installer should be code-signed. Signing credentials are not
   included in the repository.

@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
@@ -228,6 +229,9 @@ namespace GuardrailTests
                 Run(
                     "External context is explicit and bounded",
                     ExternalContextIsBounded);
+                Run(
+                    "Local Topics are explicit, bounded, and isolated",
+                    LocalTopicsAreExplicitBoundedAndIsolated);
                 Run(
                     "Writing profile analysis is consent-bound and editable",
                     ToneProfileIsBounded);
@@ -3435,6 +3439,266 @@ namespace GuardrailTests
                 SuggestQuestionsRequestFactory.Parse(
                     null).Count == 0,
                 "Empty model output must parse to no questions.");
+        }
+
+        private static void LocalTopicsAreExplicitBoundedAndIsolated()
+        {
+            var root = Path.Combine(
+                Path.GetTempPath(),
+                "ScribbleTopicTest-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(root);
+            var topic = new TopicConfig
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                Name = "Launch notes",
+                FolderPath = root
+            };
+            try
+            {
+                string normalizedFolder;
+                string folderError;
+                Assert(
+                    !TopicConfig.TryValidateLocalFolder(
+                        "relative-folder",
+                        out normalizedFolder,
+                        out folderError) &&
+                    !TopicConfig.TryValidateLocalFolder(
+                        "\\\\server\\share",
+                        out normalizedFolder,
+                        out folderError),
+                    "Topics must reject relative and network roots.");
+
+                File.WriteAllText(
+                    Path.Combine(root, "brief.txt"),
+                    "Project lighthouse launches on Tuesday. " +
+                    "The approved owner is Morgan.");
+                File.WriteAllText(
+                    Path.Combine(root, "lighthouse-plan.txt"),
+                    "Filename phrase ranking fixture.");
+                File.WriteAllBytes(
+                    Path.Combine(root, "ignored.png"),
+                    new byte[] { 0x89, 0x50, 0x4e, 0x47 });
+
+                var index = new TopicIndex();
+                var first = index.Refresh(
+                    topic,
+                    true,
+                    CancellationToken.None);
+                var fresh = index.Refresh(
+                    topic,
+                    false,
+                    CancellationToken.None);
+                Assert(
+                    first.IndexedFiles == 2 &&
+                    first.SkippedFiles == 1 &&
+                    fresh.ReusedFreshIndex,
+                    "Topic indexing did not enforce supported-file or freshness boundaries.");
+
+                var withoutTopic = ChatRequestFactory.Create(
+                    "model",
+                    null,
+                    new ChatTurn[0],
+                    "summarize");
+                var withTopic = ChatRequestFactory.Create(
+                    "model",
+                    null,
+                    new ChatTurn[0],
+                    "summarize",
+                    activeTopic: topic);
+                var documentWithTopic =
+                    DocumentChatRequestFactory.Create(
+                        "model",
+                        "word",
+                        "Document: test",
+                        new ChatTurn[0],
+                        "summarize",
+                        activeTopic: topic);
+                var documentWithoutTopic =
+                    DocumentChatRequestFactory.Create(
+                        "model",
+                        "word",
+                        "Document: test",
+                        new ChatTurn[0],
+                        "summarize");
+                var browserWithTopic =
+                    BrowserChatRequestFactory.Create(
+                        "model",
+                        new ChatTurn[0],
+                        "summarize",
+                        "Page",
+                        "https://example.test/",
+                        string.Empty,
+                        "page",
+                        string.Empty,
+                        activeTopic: topic);
+                var browserWithoutTopic =
+                    BrowserChatRequestFactory.Create(
+                        "model",
+                        new ChatTurn[0],
+                        "summarize",
+                        "Page",
+                        "https://example.test/",
+                        string.Empty,
+                        "page",
+                        string.Empty);
+                Assert(
+                    !withoutTopic.tools.Any(tool =>
+                        TopicToolCatalog.IsTopicTool(
+                            tool.function.name)) &&
+                    withTopic.tools.Count(tool =>
+                        TopicToolCatalog.IsTopicTool(
+                            tool.function.name)) == 2 &&
+                    documentWithTopic.tools.Count(tool =>
+                        TopicToolCatalog.IsTopicTool(
+                            tool.function.name)) == 2 &&
+                    !documentWithoutTopic.tools.Any(tool =>
+                        TopicToolCatalog.IsTopicTool(
+                            tool.function.name)) &&
+                    browserWithTopic.tools.Count(tool =>
+                        TopicToolCatalog.IsTopicTool(
+                            tool.function.name)) == 2 &&
+                    !browserWithoutTopic.tools.Any(tool =>
+                        TopicToolCatalog.IsTopicTool(
+                            tool.function.name)),
+                    "Topic tools must appear only after explicit Topic " +
+                    "selection on every request factory.");
+
+                var chatId = Guid.NewGuid().ToString("N");
+                var turnId = Guid.NewGuid().ToString("N");
+                var host = new TopicToolHost(
+                    topic,
+                    chatId,
+                    turnId,
+                    false);
+                var search = host.Execute(
+                    MailboxCall(
+                        "topic-search",
+                        TopicToolCatalog.SearchTopic,
+                        "{\"query\":\"lighthouse\",\"max_results\":10}"),
+                    CancellationToken.None);
+                var serializer = new JavaScriptSerializer();
+                var searchPayload = serializer.DeserializeObject(
+                    search.Content) as IDictionary<string, object>;
+                var results = searchPayload["results"] as ArrayList;
+                var firstHit = results[0] as
+                    IDictionary<string, object>;
+                var documentHit = results.Cast<object>()
+                    .Select(item => item as
+                        IDictionary<string, object>)
+                    .First(item => string.Equals(
+                        Convert.ToString(item["relative_path"]),
+                        "brief.txt",
+                        StringComparison.OrdinalIgnoreCase));
+                var handle = Convert.ToString(
+                    documentHit["handle"]);
+                Assert(
+                    results.Count == 2 &&
+                    Convert.ToString(firstHit["relative_path"]) ==
+                        "lighthouse-plan.txt" &&
+                    !search.Content.Contains(root) &&
+                    search.Content.Contains("brief.txt"),
+                    "Topic search ranking, path privacy, or indexing failed.");
+
+                var read = host.Execute(
+                    MailboxCall(
+                        "topic-read",
+                        TopicToolCatalog.ReadTopicFiles,
+                        "{\"handles\":[\"" + handle + "\"]}"),
+                    CancellationToken.None);
+                Assert(
+                    read.Content.Contains("approved owner is Morgan") &&
+                    read.Content.Contains("untrusted_topic_data"),
+                    "Topic reads were not bounded untrusted document data.");
+
+                var otherTurn = new TopicToolHost(
+                    topic,
+                    chatId,
+                    Guid.NewGuid().ToString("N"),
+                    false);
+                var rejected = otherTurn.Execute(
+                    MailboxCall(
+                        "topic-cross-turn",
+                        TopicToolCatalog.ReadTopicFiles,
+                        "{\"handles\":[\"" + handle + "\"]}"),
+                    CancellationToken.None);
+                var repeated = host.Execute(
+                    MailboxCall(
+                        "topic-repeat",
+                        TopicToolCatalog.SearchTopic,
+                        "{\"query\":\"Morgan\"}"),
+                    CancellationToken.None);
+                Assert(
+                    rejected.Content.Contains("TOPIC_HANDLE_UNKNOWN") &&
+                    repeated.Content.Contains(
+                        "TOPIC_SEARCH_LIMIT_REACHED"),
+                    "Topic handles or searches escaped their request scope.");
+
+                var browserTurn = Guid.NewGuid().ToString("N");
+                var persistent = new TopicToolHost(
+                    topic,
+                    chatId,
+                    browserTurn,
+                    true);
+                var persistentSearch = persistent.Execute(
+                    MailboxCall(
+                        "persistent-search",
+                        TopicToolCatalog.SearchTopic,
+                        "{\"query\":\"Morgan\"}"),
+                    CancellationToken.None);
+                var persistentPayload = serializer.DeserializeObject(
+                    persistentSearch.Content) as
+                        IDictionary<string, object>;
+                var persistentResults = persistentPayload["results"] as
+                    ArrayList;
+                var persistentHit = persistentResults[0] as
+                    IDictionary<string, object>;
+                var persistentHandle = Convert.ToString(
+                    persistentHit["handle"]);
+                var resumed = new TopicToolHost(
+                    topic,
+                    chatId,
+                    browserTurn,
+                    true);
+                var resumedRead = resumed.Execute(
+                    MailboxCall(
+                        "persistent-read",
+                        TopicToolCatalog.ReadTopicFiles,
+                        "{\"handles\":[\"" + persistentHandle + "\"]}"),
+                    CancellationToken.None);
+                var wrongChat = new TopicToolHost(
+                    topic,
+                    Guid.NewGuid().ToString("N"),
+                    browserTurn,
+                    true);
+                var wrongChatRead = wrongChat.Execute(
+                    MailboxCall(
+                        "persistent-wrong-chat",
+                        TopicToolCatalog.ReadTopicFiles,
+                        "{\"handles\":[\"" + persistentHandle + "\"]}"),
+                    CancellationToken.None);
+                Assert(
+                    resumedRead.Content.Contains("Morgan") &&
+                    wrongChatRead.Content.Contains(
+                        "TOPIC_HANDLE_UNKNOWN"),
+                    "Chrome Topic handles were not persisted and isolated " +
+                    "by chat, turn, and Topic.");
+                resumed.CompleteSession();
+            }
+            finally
+            {
+                try
+                {
+                    new TopicIndex().DeleteCache(topic.Id);
+                }
+                catch
+                {
+                }
+
+                if (Directory.Exists(root))
+                {
+                    Directory.Delete(root, true);
+                }
+            }
         }
 
         private static void PromptHelperIsSharedAndMandatory()

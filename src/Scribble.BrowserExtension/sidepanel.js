@@ -10,6 +10,7 @@ const MAX_TITLE_CHARS = 512;
 const MAX_URL_CHARS = 4_096;
 const MAX_TOOL_TURNS = 12;
 const MAX_TOOL_RESULT_CHARS = 60_000;
+const MAX_HOST_TOOL_RESULT_CHARS = 728_192;
 const MAX_LINK_COUNT = 100;
 const MAX_LINKS_CHARS = 12_000;
 const PING_TIMEOUT_MS = 10_000;
@@ -22,6 +23,7 @@ const elements = {
   retryConnection: document.getElementById("retryConnection"),
   clearChat: document.getElementById("clearChat"),
   openSettings: document.getElementById("openSettings"),
+  topicSelect: document.getElementById("topicSelect"),
   connectionDot: document.getElementById("connectionDot"),
   connectionLabel: document.getElementById("connectionLabel"),
   contextSource: document.getElementById("contextSource"),
@@ -43,6 +45,11 @@ let activeAskFinish = null;
 let isPinging = false;
 let isOpeningSettings = false;
 let panelWindowId = null;
+let chatId = createRequestId();
+let topicLocked = false;
+let topicUnavailable = false;
+let activeTopic = null;
+let availableTopics = [];
 let connection = {
   connected: false,
   configured: false,
@@ -61,6 +68,17 @@ elements.clearChat.addEventListener("click", () => {
 
 elements.openSettings.addEventListener("click", () => {
   void openSettings();
+});
+
+elements.topicSelect.addEventListener("change", () => {
+  if (topicLocked || isSending) {
+    renderTopics();
+    return;
+  }
+  activeTopic = availableTopics.find(
+    (topic) => topic.id === elements.topicSelect.value) || null;
+  topicUnavailable = false;
+  renderTopics();
 });
 
 elements.prompt.addEventListener("input", () => {
@@ -166,6 +184,14 @@ function clearChat() {
   }
 
   void closeWorkTabs();
+  void sendNativeMessage(
+    { type: "clearSession", chatId },
+    PING_TIMEOUT_MS
+  ).catch(() => {});
+  chatId = createRequestId();
+  activeTopic = null;
+  topicLocked = false;
+  topicUnavailable = false;
   conversationHistory = [];
   for (const article of Array.from(
     elements.messages.querySelectorAll(".message"))) {
@@ -174,6 +200,7 @@ function clearChat() {
   elements.welcome.hidden = false;
   setActivity("Conversation cleared and Scribble's work tabs closed. The current tab is still shared with your next message.");
   renderComposerState();
+  renderTopics();
   elements.prompt.focus();
 }
 
@@ -337,6 +364,8 @@ async function sendChatMessage() {
   }
 
   appendMessage("user", prompt);
+  topicLocked = true;
+  const turnId = createRequestId();
   elements.prompt.value = "";
   isSending = true;
   stopRequested = false;
@@ -365,7 +394,11 @@ async function sendChatMessage() {
           content: boundText(historyTurn.content, MAX_HISTORY_CONTENT_CHARS)
         })),
         context,
-        exchange
+        exchange,
+        chatId,
+        turnId,
+        topicId: activeTopic?.id || "",
+        topicBinding: activeTopic?.binding || ""
       };
 
       const response = await sendNativeMessage(request, CHAT_TIMEOUT_MS);
@@ -406,7 +439,9 @@ async function sendChatMessage() {
             .filter((result) => result && typeof result.id === "string")
             .map((result) => ({
               id: result.id,
-              content: boundText(result.content, MAX_TOOL_RESULT_CHARS)
+              content: boundText(
+                result.content,
+                MAX_HOST_TOOL_RESULT_CHARS)
             }))
         : [];
 
@@ -442,6 +477,10 @@ async function sendChatMessage() {
       });
     }
   } catch (error) {
+    void sendNativeMessage(
+      { type: "clearSession", chatId },
+      PING_TIMEOUT_MS
+    ).catch(() => {});
     const description = error instanceof NativeResponseError
       ? error.message
       : describeNativeMessagingError(error);
@@ -1310,11 +1349,14 @@ function renderComposerState() {
     : (isOpeningSettings
       || !connection.connected
       || !connection.configured
+      || topicUnavailable
       || !elements.prompt.value.trim());
   elements.send.textContent = isSending ? "Stop" : "Send";
   elements.send.classList.toggle("stop", isSending);
   elements.clearChat.disabled = isSending ||
     elements.messages.querySelector(".message") === null;
+  elements.topicSelect.disabled = isSending || topicLocked ||
+    topicUnavailable;
 }
 
 function updateConnectionFromResponse(response) {
@@ -1329,6 +1371,32 @@ function updateConnectionFromResponse(response) {
   connection.model = boundText(response.model, 200);
   connection.supportsVision = response.supportsVision === true;
   connection.version = boundText(response.version, 100);
+  availableTopics = Array.isArray(response.topics)
+    ? response.topics
+        .filter((topic) => topic && typeof topic.id === "string" &&
+          typeof topic.name === "string")
+        .slice(0, 20)
+        .map((topic) => ({
+          id: boundText(topic.id, 40),
+          name: boundText(topic.name, 80),
+          binding: boundText(topic.binding, 100),
+          available: topic.available === true
+        }))
+    : [];
+  if (activeTopic) {
+    const current = availableTopics.find(
+      (topic) => topic.id === activeTopic.id);
+    if (!current || current.binding !== activeTopic.binding) {
+      topicUnavailable = topicLocked;
+      if (!topicLocked) {
+        activeTopic = null;
+      }
+    } else {
+      activeTopic = current;
+      topicUnavailable = topicLocked && !current.available;
+    }
+  }
+  renderTopics();
 
   if (connection.configured) {
     setConnectionView("connected", "Connected");
@@ -1336,6 +1404,32 @@ function updateConnectionFromResponse(response) {
     setConnectionView("warning", "Setup needed");
   }
   renderConnectionDetails();
+}
+
+function renderTopics() {
+  while (elements.topicSelect.firstChild) {
+    elements.topicSelect.firstChild.remove();
+  }
+  const none = document.createElement("option");
+  none.value = "";
+  none.textContent = "None";
+  elements.topicSelect.append(none);
+  for (const topic of availableTopics) {
+    const option = document.createElement("option");
+    option.value = topic.id;
+    option.textContent = topic.name +
+      (topic.available ? "" : " (folder unavailable)");
+    elements.topicSelect.append(option);
+  }
+  if (topicUnavailable && activeTopic) {
+    const unavailable = document.createElement("option");
+    unavailable.value = activeTopic.id;
+    unavailable.textContent = "Topic unavailable - clear chat";
+    elements.topicSelect.append(unavailable);
+  }
+  elements.topicSelect.value = activeTopic?.id || "";
+  elements.topicSelect.disabled = isSending || topicLocked ||
+    topicUnavailable;
 }
 
 function setConnectionView(state, label) {

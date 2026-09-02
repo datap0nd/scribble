@@ -2,7 +2,7 @@
 
 ## Security objective
 
-Untrusted email, document, webpage, screenshot, MCP, user-prompt, conversation,
+Untrusted email, document, local Topic, webpage, screenshot, MCP, user-prompt, conversation,
 and model content must never expand the locally available capabilities or reach
 an Outlook send or source-message mutation capability. Model
 tool calls may select bounded read-only mailbox context. The only mutation this
@@ -201,6 +201,20 @@ unless the user enters exact tool names and affirms that each is read-only.
     structural preflight forces this tool for a narrow set of obviously vague
     prompts. Mixed `ask_user` plus action-tool rounds are rejected without
     running any of the requested actions; Stop cancels a pending question.
+21c. A local Topic is inert until the user selects it for a new chat. The
+    selection locks after the first message. `search_topic` may run once per
+    request and returns at most ten opaque handles; `read_topic_files` accepts
+    only handles bound to that Topic, chat, and request and reads at most three
+    documents / 120,000 characters.
+21d. Topic roots must be existing non-network local folders. Recursive indexing
+    skips hidden, system, and reparse-point files and directories, canonicalizes
+    and revalidates containment before extraction, and never accepts a path from
+    the model. Absolute paths and cached text are excluded from model output and
+    logs.
+21e. Topic indexes are bounded plaintext atomic caches under the current user's
+    LocalAppData. Removing or repointing a Topic removes only its cache; source
+    repositories are read-only. Relevant excerpts are transmitted to the
+    configured model with the same untrusted-data treatment as attached files.
 22. Model and webpage output is never parsed as HTML or evaluated as
     script. Assistant replies pass through a bounded local formatter that
     builds paragraph, list, table, bold, and code DOM nodes itself and

@@ -1,5 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Scribble.Configuration;
@@ -8,6 +12,17 @@ using Scribble.Security;
 
 namespace Scribble.Chat
 {
+    public sealed class BrowserTopicInfo
+    {
+        public string Id { get; set; }
+
+        public string Name { get; set; }
+
+        public string Binding { get; set; }
+
+        public bool Available { get; set; }
+    }
+
     public sealed class BrowserChatResult
     {
         public BrowserChatResult(
@@ -92,6 +107,7 @@ namespace Scribble.Chat
         {
             _settings = settings ?? new AppSettings();
             _settings.ApplyLimits();
+            TopicToolHost.CleanupExpiredPersistentSessions();
             _client = new OpenAiCompatibleClient();
             _mcpTools = new McpToolHost(
                 _settings.McpServers,
@@ -127,6 +143,21 @@ namespace Scribble.Chat
             }
         }
 
+        public IReadOnlyList<BrowserTopicInfo> Topics
+        {
+            get
+            {
+                return _settings.Topics.Select(topic =>
+                    new BrowserTopicInfo
+                    {
+                        Id = topic.Id,
+                        Name = topic.Name,
+                        Binding = TopicBinding(topic),
+                        Available = Directory.Exists(topic.FolderPath)
+                    }).ToArray();
+            }
+        }
+
         public async Task<BrowserChatResult> CompleteAsync(
             IReadOnlyList<ChatTurn> history,
             string prompt,
@@ -137,6 +168,10 @@ namespace Scribble.Chat
             string links,
             string screenshotDataUrl,
             IReadOnlyList<BrowserExchangeTurn> exchange,
+            string chatId,
+            string turnId,
+            string topicId,
+            string topicBinding,
             CancellationToken cancellationToken)
         {
             if (!IsConfigured)
@@ -175,6 +210,17 @@ namespace Scribble.Chat
             var screenshotUsed =
                 safeScreenshot.Length > 0 &&
                 ModelCatalog.IsVisionCapable(activeModel);
+            var activeTopic = ResolveTopic(topicId, topicBinding);
+            var topicTools = activeTopic == null
+                ? null
+                : new TopicToolHost(
+                    activeTopic,
+                    chatId,
+                    turnId,
+                    true);
+
+            try
+            {
 
             // The unsent-draft and unsaved-workbook tools are
             // always exposed (owner's direction: never refuse an
@@ -207,7 +253,8 @@ namespace Scribble.Chat
                 safeScreenshot,
                 definitions,
                 exchange,
-                links);
+                links,
+                activeTopic);
 
             var roundsUsed = CountExchangeTurns(exchange);
             var draftOpened = false;
@@ -229,6 +276,7 @@ namespace Scribble.Chat
                             "The model stopped without returning text.");
                     }
 
+                    topicTools?.CompleteSession();
                     return new BrowserChatResult(
                         response.content,
                         activeModel,
@@ -327,6 +375,18 @@ namespace Scribble.Chat
                         continue;
                     }
 
+                    if (TopicToolCatalog.IsTopicTool(name) &&
+                        topicTools != null)
+                    {
+                        hostResults.Add(await Task.Run(
+                            () => topicTools.Execute(
+                                call,
+                                cancellationToken),
+                            cancellationToken)
+                            .ConfigureAwait(false));
+                        continue;
+                    }
+
                     hostResults.Add(new MailboxToolResult(
                         call.id,
                         "[BROWSER_TOOL_NOT_ALLOWED] This host does not expose the requested tool.",
@@ -362,6 +422,74 @@ namespace Scribble.Chat
                     hostResults,
                     activeModel);
             }
+            }
+            catch
+            {
+                topicTools?.CompleteSession();
+                throw;
+            }
+        }
+
+        public static string TopicBinding(TopicConfig topic)
+        {
+            if (topic == null)
+            {
+                return string.Empty;
+            }
+
+            using (var sha = SHA256.Create())
+            {
+                var bytes = sha.ComputeHash(Encoding.UTF8.GetBytes(
+                    (topic.Id ?? string.Empty).ToUpperInvariant() +
+                    "\n" +
+                    (topic.FolderPath ?? string.Empty)
+                        .ToUpperInvariant()));
+                return Convert.ToBase64String(bytes)
+                    .TrimEnd('=')
+                    .Replace('+', '-')
+                    .Replace('/', '_');
+            }
+        }
+
+        private TopicConfig ResolveTopic(
+            string topicId,
+            string binding)
+        {
+            var bounded = TextBoundary.SingleLine(topicId, 40);
+            if (bounded.Length == 0)
+            {
+                return null;
+            }
+
+            var topic = _settings.Topics.Find(entry =>
+                string.Equals(
+                    entry.Id,
+                    bounded,
+                    StringComparison.OrdinalIgnoreCase));
+            if (topic == null || !string.Equals(
+                    TopicBinding(topic),
+                    TextBoundary.SingleLine(binding, 100),
+                    StringComparison.Ordinal))
+            {
+                throw new AiEndpointException(
+                    "TOPIC_CHANGED",
+                    "The active Topic was removed or its folder changed. Clear chat before continuing.");
+            }
+
+            string resolvedRoot;
+            string validationError;
+            if (!TopicConfig.TryValidateLocalFolder(
+                    topic.FolderPath,
+                    out resolvedRoot,
+                    out validationError))
+            {
+                throw new AiEndpointException(
+                    "TOPIC_UNAVAILABLE",
+                    "The active Topic is unavailable: " +
+                    validationError);
+            }
+
+            return topic;
         }
 
         private static List<ChatToolCall> NormalizeCalls(

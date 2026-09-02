@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Scribble.Chat;
 
@@ -21,6 +22,17 @@ namespace Scribble.Utilities
 
             public string LastAnswer { get; set; } =
                 string.Empty;
+
+            public string ChatId { get; set; } =
+                Guid.NewGuid().ToString("N");
+
+            public string ActiveTopicId { get; set; } =
+                string.Empty;
+
+            public string ActiveTopicRoot { get; set; } =
+                string.Empty;
+
+            public bool TopicLocked { get; set; }
         }
 
         private static readonly object Gate = new object();

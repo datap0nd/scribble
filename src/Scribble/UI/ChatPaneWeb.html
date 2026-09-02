@@ -69,6 +69,28 @@
     white-space: nowrap;
   }
   nav button:hover { background: var(--card); color: var(--text); }
+  #topicBar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    font-size: 11.5px;
+    color: var(--dim);
+  }
+  #topic {
+    flex: 1;
+    min-width: 0;
+    background: var(--card);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 4px 7px;
+    font: inherit;
+  }
+  #topic:disabled { opacity: 0.65; }
 
   #tray {
     display: none;
@@ -568,6 +590,11 @@
   </nav>
 </header>
 
+<div id="topicBar">
+  <label for="topic">Topic</label>
+  <select id="topic" title="Local Topic for this chat"></select>
+</div>
+
 <main id="chat"></main>
 
 <footer>
@@ -601,12 +628,14 @@
   var statusEl = document.getElementById("status");
   var draftEl = document.getElementById("draft");
   var modelEl = document.getElementById("model");
+  var topicEl = document.getElementById("topic");
   var visionBadge = document.getElementById("visionBadge");
   var tray = document.getElementById("tray");
   var typing = null;
   var busy = false;
   var modelVision = {};
   var hostMode = "outlook";
+  var topicLocked = false;
 
   function post(type, data) {
     if (!api) { return; }
@@ -1076,6 +1105,7 @@
     btnSend.title = value ? "Stop" : "Send";
     btnSend.classList.toggle("stop", value);
     modelEl.disabled = value;
+    topicEl.disabled = value || topicLocked;
     if (value) {
       ensureTyping();
       typing.classList.add("on");
@@ -1108,6 +1138,36 @@
     }
     if (current) { modelEl.value = current; }
     updateVisionBadge();
+  }
+
+  function setTopics(items, current, unavailable) {
+    while (topicEl.firstChild) { topicEl.removeChild(topicEl.firstChild); }
+    var none = document.createElement("option");
+    none.value = "";
+    none.textContent = "None";
+    topicEl.appendChild(none);
+    for (var i = 0; i < (items || []).length; i++) {
+      var item = items[i] || {};
+      if (!item.id || !item.name) { continue; }
+      var option = document.createElement("option");
+      option.value = item.id;
+      option.textContent = item.name + (item.available === false
+        ? " (folder unavailable)" : "");
+      topicEl.appendChild(option);
+    }
+    if (unavailable && current) {
+      var missing = document.createElement("option");
+      missing.value = current;
+      missing.textContent = "Topic unavailable - clear chat";
+      topicEl.appendChild(missing);
+    }
+    topicEl.value = current || "";
+    topicEl.disabled = busy || topicLocked || !!unavailable;
+  }
+
+  function setTopicLock(locked, unavailable) {
+    topicLocked = !!locked;
+    topicEl.disabled = busy || topicLocked || !!unavailable;
   }
 
   function updateVisionBadge() {
@@ -1420,6 +1480,10 @@
         draftEl.classList.toggle("linked", !!m.linked);
         break;
       case "models": setModels(m.items, m.current); break;
+      case "topics": setTopics(
+        m.items, m.current, m.unavailable); break;
+      case "topicLock": setTopicLock(
+        m.locked, m.unavailable); break;
       case "context": setContext(m.items); break;
       case "restorePrompt":
         input.value = m.text || "";
@@ -1457,6 +1521,9 @@
   modelEl.addEventListener("change", function () {
     updateVisionBadge();
     post("setModel", { model: modelEl.value });
+  });
+  topicEl.addEventListener("change", function () {
+    post("setTopic", { topicId: topicEl.value });
   });
   document.getElementById("btnClearChat")
     .addEventListener("click", function () { post("newChat"); });

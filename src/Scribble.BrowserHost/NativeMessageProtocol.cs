@@ -70,6 +70,25 @@ namespace Scribble.BrowserHost
         public BrowserPageContext context { get; set; }
 
         public List<BrowserNativeExchangeTurn> exchange { get; set; }
+
+        public string chatId { get; set; }
+
+        public string turnId { get; set; }
+
+        public string topicId { get; set; }
+
+        public string topicBinding { get; set; }
+    }
+
+    internal sealed class BrowserNativeTopic
+    {
+        public string id { get; set; }
+
+        public string name { get; set; }
+
+        public string binding { get; set; }
+
+        public bool available { get; set; }
     }
 
     internal sealed class BrowserNativeResponse
@@ -89,6 +108,8 @@ namespace Scribble.BrowserHost
         public bool supportsVision { get; set; }
 
         public string version { get; set; }
+
+        public List<BrowserNativeTopic> topics { get; set; }
 
         // When set, the panel must execute these browser tool calls
         // (navigation, page reads) and continue the chat with an
@@ -218,6 +239,21 @@ namespace Scribble.BrowserHost
                         false);
                 }
 
+                if (string.Equals(
+                    request.type,
+                    "clearSession",
+                    StringComparison.Ordinal))
+                {
+                    TopicToolHost.ClearPersistentChat(
+                        request.chatId);
+                    return Success(
+                        service,
+                        requestId,
+                        string.Empty,
+                        service.Model,
+                        false);
+                }
+
                 if (!string.Equals(
                     request.type,
                     "chat",
@@ -226,7 +262,7 @@ namespace Scribble.BrowserHost
                     return Error(
                         requestId,
                         "REQUEST_TYPE_NOT_ALLOWED",
-                        "Only ping, chat, and openSettings requests are allowed.",
+                        "Only ping, chat, clearSession, and openSettings requests are allowed.",
                         service);
                 }
 
@@ -255,6 +291,10 @@ namespace Scribble.BrowserHost
                             context.links,
                             context.screenshotDataUrl,
                             NormalizeExchange(request.exchange),
+                            request.chatId,
+                            request.turnId,
+                            request.topicId,
+                            request.topicBinding,
                             cancellation.Token)
                         .GetAwaiter()
                         .GetResult();
@@ -485,16 +525,33 @@ namespace Scribble.BrowserHost
                 new List<BrowserNativeToolResult>();
             foreach (var hostResult in result.HostResults)
             {
+                var contentLimit = 120000;
+                foreach (var pendingCall in result.PendingCalls)
+                {
+                    if (string.Equals(
+                            pendingCall.id,
+                            hostResult.Id,
+                            StringComparison.Ordinal) &&
+                        TopicToolCatalog.IsTopicTool(
+                            pendingCall.function.name))
+                    {
+                        contentLimit = TopicToolHost
+                            .MaxSerializedResultCharacters;
+                        break;
+                    }
+                }
+
                 response.hostResults.Add(
                     new BrowserNativeToolResult
                     {
                         id = hostResult.Id,
-                        // Bounded well below MaxResponseBytes so a
-                        // large MCP result cannot make the framed
-                        // response undeliverable.
+                        // Topic document text has a fixed semantic
+                        // 120k limit but may be larger on the wire
+                        // after JSON escaping. Every other host tool
+                        // stays at the established 120k boundary.
                         content = TextBoundary.PlainText(
                             hostResult.Content,
-                            120000)
+                            contentLimit)
                     });
             }
 
@@ -557,7 +614,8 @@ namespace Scribble.BrowserHost
                 configured = service != null && service.IsConfigured,
                 supportsVision = service != null &&
                     service.SupportsVision,
-                version = VersionText()
+                version = VersionText(),
+                topics = BuildTopics(service)
             };
         }
 
@@ -579,8 +637,34 @@ namespace Scribble.BrowserHost
                 configured = service != null && service.IsConfigured,
                 supportsVision = service != null &&
                     service.SupportsVision,
-                version = VersionText()
+                version = VersionText(),
+                topics = BuildTopics(service)
             };
+        }
+
+        private static List<BrowserNativeTopic> BuildTopics(
+            BrowserChatService service)
+        {
+            var result = new List<BrowserNativeTopic>();
+            if (service == null)
+            {
+                return result;
+            }
+
+            foreach (var topic in service.Topics)
+            {
+                result.Add(new BrowserNativeTopic
+                {
+                    id = TextBoundary.SingleLine(topic.Id, 40),
+                    name = TextBoundary.SingleLine(topic.Name, 80),
+                    binding = TextBoundary.SingleLine(
+                        topic.Binding,
+                        100),
+                    available = topic.Available
+                });
+            }
+
+            return result;
         }
 
         private static string VersionText()

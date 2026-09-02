@@ -34,7 +34,8 @@ body {
 }
 
 button,
-textarea {
+textarea,
+select {
   font: inherit;
 }
 
@@ -50,7 +51,7 @@ textarea:focus-visible {
 
 .app-shell {
   display: grid;
-  grid-template-rows: auto auto auto minmax(160px, 1fr) auto auto;
+  grid-template-rows: auto auto auto auto minmax(160px, 1fr) auto auto;
   min-height: 100vh;
 }
 
@@ -552,6 +553,27 @@ p {
   cursor: pointer;
   font-size: 12px;
   text-align: left;
+}
+
+.topic-panel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.topic-panel select {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-subtle);
+  color: var(--text);
 }
 
 .ask-option-label {

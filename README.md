@@ -252,8 +252,8 @@ remain in memory until cleared or Outlook closes. `/search clear` removes the
 email working set but retains external files. **Clear** removes all context, and
 **New** starts a new conversation with no retained context.
 
-Settings is organized into four tabs: **Connection** (endpoint, API key,
-model discovery, compatibility test, updates), **MCP**, **Writing style**, and
+Settings includes **Connection** (endpoint, API key,
+model discovery, compatibility test, updates), **MCP**, **Topics**, **Writing soul**, **Limits**, and
 **Support** (describe a
 problem and Scribble opens a pre-filled, unsent report email to the creator
 with the recent diagnostic log — timestamps, operations, and error codes
@@ -268,6 +268,24 @@ how strongly drafts follow your voice, and **hard draft rules** (one per
 line) are followed exactly in every draft. Soul, strength, and rules apply
 only to draft creation and revision, and only to wording, greeting,
 cadence, and sign-off. They cannot alter any capability or security rule.
+
+### Local Topics
+
+The **Topics** tab lets you configure up to twenty named local document
+repositories. Choose a local or locally synced folder, add the Topic, and save.
+Scribble recursively indexes readable text, PDF, Word, PowerPoint, Excel,
+OpenDocument, and saved-email files. Images, links and junctions, hidden or
+system items, network drives, oversized files, and unsupported formats are
+skipped. The bounded plaintext index stays under
+`%LOCALAPPDATA%\Scribble\topics`; the source folder is never changed.
+
+Every Outlook, Word, Excel, PowerPoint, and Chrome chat shows a **Topic**
+selector. It starts at **None** and never guesses. After the first message the
+selection is locked until **Clear chat**, preventing one conversation from
+mixing repositories. When selected, the model may perform one local full-text
+search and read up to three returned documents. Only bounded excerpts and
+relative paths are sent to the configured model endpoint; the absolute folder
+path is never included.
 
 ## Chrome
 

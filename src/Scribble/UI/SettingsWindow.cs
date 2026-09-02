@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.IO;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using Scribble.Chat;
 using Scribble.Configuration;
@@ -69,6 +71,20 @@ namespace Scribble.UI
         private readonly Label _mcpStatus = new Label();
         private readonly List<McpServerConfig> _mcpServers =
             new List<McpServerConfig>();
+        private readonly ListBox _topicList = new ListBox();
+        private readonly TextBox _topicName = new TextBox();
+        private readonly TextBox _topicFolder = new TextBox();
+        private readonly Button _topicBrowse =
+            MakeButton("Browse...", false, 96);
+        private readonly Button _topicSave =
+            MakeButton("Add / update Topic", false, 150);
+        private readonly Button _topicRemove =
+            MakeButton("Remove selected", false, 140);
+        private readonly Button _topicRefresh =
+            MakeButton("Refresh index", false, 120);
+        private readonly Label _topicStatus = new Label();
+        private readonly List<TopicConfig> _topics =
+            new List<TopicConfig>();
         private readonly Button _save =
             MakeButton("Save", true, 96);
         private readonly OpenAiCompatibleClient _client =
@@ -79,6 +95,7 @@ namespace Scribble.UI
         private CancellationTokenSource _modelRefreshCancellation;
         private CancellationTokenSource _toneCancellation;
         private CancellationTokenSource _updateCancellation;
+        private CancellationTokenSource _topicCancellation;
         private bool _checking;
         private bool _analyzingTone;
         private bool _refreshingModels;
@@ -141,6 +158,7 @@ namespace Scribble.UI
                 tabs.TabPages.Add(BuildGeminiPage());
             }
             tabs.TabPages.Add(BuildMcpPage());
+            tabs.TabPages.Add(BuildTopicsPage());
             tabs.TabPages.Add(BuildWritingStylePage());
             tabs.TabPages.Add(BuildLimitsPage());
             tabs.TabPages.Add(BuildSupportPage());
@@ -211,7 +229,17 @@ namespace Scribble.UI
                 }
             }
 
+            foreach (var topic in current?.Topics ??
+                new List<TopicConfig>())
+            {
+                if (topic != null)
+                {
+                    _topics.Add(topic.Sanitized());
+                }
+            }
+
             RefreshMcpList();
+            RefreshTopicList();
             UpdateToneStrengthLabel();
             UpdateModelGuidance();
             UpdateTransportWarning();
@@ -227,10 +255,12 @@ namespace Scribble.UI
             _modelRefreshCancellation?.Cancel();
             _toneCancellation?.Cancel();
             _updateCancellation?.Cancel();
+            _topicCancellation?.Cancel();
             _checkCancellation?.Dispose();
             _modelRefreshCancellation?.Dispose();
             _toneCancellation?.Dispose();
             _updateCancellation?.Dispose();
+            _topicCancellation?.Dispose();
             _client.Dispose();
             base.OnFormClosed(eventArgs);
         }
@@ -847,6 +877,318 @@ namespace Scribble.UI
             layout.Controls.Add(_mcpStatus, 0, 15);
             page.Controls.Add(layout);
             return page;
+        }
+
+        private TabPage BuildTopicsPage()
+        {
+            var page = new TabPage("Topics")
+            {
+                AutoScroll = true
+            };
+            var layout = new TableLayoutPanel
+            {
+                AutoScroll = true,
+                Dock = DockStyle.Fill,
+                ColumnCount = 1,
+                RowCount = 10,
+                Padding = new Padding(18, 16, 18, 12)
+            };
+            layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            for (var row = 2; row < 10; row++)
+            {
+                layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            }
+
+            var intro = SupportingText(
+                "Topics are local document repositories that you " +
+                "explicitly select for a chat. Scribble keeps a " +
+                "plain-text search index in your Windows LocalAppData. " +
+                "When a Topic is active, only bounded relevant excerpts " +
+                "are sent to your configured model endpoint. Source " +
+                "folders are never changed.");
+            intro.ForeColor = SystemColors.ControlText;
+            layout.Controls.Add(intro, 0, 0);
+
+            _topicList.Dock = DockStyle.Fill;
+            _topicList.MinimumSize = new Size(0, 120);
+            _topicList.AccessibleName = "Configured Topics";
+            _topicList.SelectedIndexChanged += TopicSelectionChanged;
+            layout.Controls.Add(_topicList, 0, 1);
+
+            layout.Controls.Add(FieldLabel("Topic name"), 0, 2);
+            _topicName.Dock = DockStyle.Fill;
+            _topicName.MaxLength = 80;
+            _topicName.AccessibleName = "Topic name";
+            layout.Controls.Add(_topicName, 0, 3);
+
+            layout.Controls.Add(FieldLabel("Local folder"), 0, 4);
+            var folderRow = new TableLayoutPanel
+            {
+                AutoSize = true,
+                Dock = DockStyle.Fill,
+                ColumnCount = 2,
+                Margin = new Padding(0)
+            };
+            folderRow.ColumnStyles.Add(
+                new ColumnStyle(SizeType.Percent, 100));
+            folderRow.ColumnStyles.Add(
+                new ColumnStyle(SizeType.AutoSize));
+            _topicFolder.Dock = DockStyle.Fill;
+            _topicFolder.MaxLength = 1000;
+            _topicFolder.AccessibleName = "Topic local folder";
+            _topicBrowse.Margin = new Padding(8, 0, 0, 0);
+            _topicBrowse.Click += TopicBrowseClick;
+            folderRow.Controls.Add(_topicFolder, 0, 0);
+            folderRow.Controls.Add(_topicBrowse, 1, 0);
+            layout.Controls.Add(folderRow, 0, 5);
+
+            var editButtons = new FlowLayoutPanel
+            {
+                AutoSize = true,
+                FlowDirection = FlowDirection.LeftToRight,
+                Margin = new Padding(0),
+                Padding = new Padding(0, 8, 0, 0)
+            };
+            _topicSave.Click += TopicSaveClick;
+            _topicRemove.Click += TopicRemoveClick;
+            editButtons.Controls.Add(_topicSave);
+            editButtons.Controls.Add(_topicRemove);
+            layout.Controls.Add(editButtons, 0, 6);
+
+            _topicRefresh.Click += TopicRefreshClick;
+            _topicRefresh.Margin = new Padding(0, 8, 0, 0);
+            layout.Controls.Add(_topicRefresh, 0, 7);
+
+            ConfigureSupportingLabel(_topicStatus);
+            _topicStatus.Text =
+                "Up to " + TopicConfig.MaxTopics +
+                " Topics. Indexes refresh when used and include up to " +
+                TopicIndex.MaxIndexedFiles +
+                " readable files per Topic.";
+            layout.Controls.Add(_topicStatus, 0, 8);
+            page.Controls.Add(layout);
+            return page;
+        }
+
+        private void RefreshTopicList()
+        {
+            _topicList.Items.Clear();
+            foreach (var topic in _topics)
+            {
+                _topicList.Items.Add(topic.Name + "  -  " +
+                    TextBoundary.SingleLine(topic.FolderPath, 90));
+            }
+        }
+
+        private void TopicSelectionChanged(
+            object sender,
+            EventArgs eventArgs)
+        {
+            var index = _topicList.SelectedIndex;
+            if (index < 0 || index >= _topics.Count)
+            {
+                return;
+            }
+
+            _topicName.Text = _topics[index].Name;
+            _topicFolder.Text = _topics[index].FolderPath;
+            var status = new TopicIndex().GetStatus(_topics[index]);
+            if (status == null)
+            {
+                _topicStatus.Text =
+                    "Not indexed yet. Refresh now, or Scribble will " +
+                    "index this Topic when it is first used.";
+            }
+            else if (!status.FolderAvailable)
+            {
+                _topicStatus.Text =
+                    "Folder unavailable. The previous complete index " +
+                    "is retained but cannot be used until the folder returns.";
+            }
+            else if (!status.MatchesConfiguredRoot)
+            {
+                _topicStatus.Text =
+                    "Folder changed. Refresh to build a new index.";
+            }
+            else
+            {
+                _topicStatus.Text =
+                    "Index: " + status.IndexedFiles + " readable, " +
+                    status.SkippedFiles + " skipped, " +
+                    status.FailedFiles + " failed. Refreshed " +
+                    status.RefreshedUtc.ToLocalTime().ToString("g") + ".";
+            }
+        }
+
+        private void TopicBrowseClick(
+            object sender,
+            EventArgs eventArgs)
+        {
+            using (var dialog = new FolderBrowserDialog
+            {
+                Description = "Choose the local folder for this Topic",
+                ShowNewFolderButton = false,
+                SelectedPath = Directory.Exists(_topicFolder.Text)
+                    ? _topicFolder.Text
+                    : string.Empty
+            })
+            {
+                if (dialog.ShowDialog(this) == DialogResult.OK)
+                {
+                    _topicFolder.Text = dialog.SelectedPath;
+                }
+            }
+        }
+
+        private void TopicSaveClick(
+            object sender,
+            EventArgs eventArgs)
+        {
+            var name = TextBoundary.SingleLine(
+                _topicName.Text,
+                80).Trim();
+            string folder;
+            string error;
+            if (name.Length == 0)
+            {
+                _topicStatus.Text = "Enter a Topic name.";
+                return;
+            }
+
+            if (!TopicConfig.TryValidateLocalFolder(
+                    _topicFolder.Text,
+                    out folder,
+                    out error))
+            {
+                _topicStatus.Text = error;
+                return;
+            }
+
+            var selected = _topicList.SelectedIndex;
+            var duplicate = _topics.FindIndex(topic =>
+                string.Equals(
+                    topic.Name,
+                    name,
+                    StringComparison.OrdinalIgnoreCase));
+            if (duplicate >= 0 && duplicate != selected)
+            {
+                _topicStatus.Text = "Topic names must be unique.";
+                return;
+            }
+
+            if (selected >= 0 && selected < _topics.Count)
+            {
+                var existing = _topics[selected];
+                _topics[selected] = new TopicConfig
+                {
+                    Id = existing.Id,
+                    Name = name,
+                    FolderPath = folder
+                };
+                _topicStatus.Text =
+                    "Updated " + name + ". Press Save to apply.";
+            }
+            else
+            {
+                if (_topics.Count >= TopicConfig.MaxTopics)
+                {
+                    _topicStatus.Text = "Topic limit reached (" +
+                        TopicConfig.MaxTopics + ").";
+                    return;
+                }
+
+                _topics.Add(new TopicConfig
+                {
+                    Id = Guid.NewGuid().ToString("N"),
+                    Name = name,
+                    FolderPath = folder
+                });
+                _topicStatus.Text =
+                    "Added " + name + ". Press Save to apply.";
+            }
+
+            RefreshTopicList();
+            _topicList.SelectedIndex = _topics.FindIndex(topic =>
+                string.Equals(topic.Name, name,
+                    StringComparison.OrdinalIgnoreCase));
+        }
+
+        private void TopicRemoveClick(
+            object sender,
+            EventArgs eventArgs)
+        {
+            var index = _topicList.SelectedIndex;
+            if (index < 0 || index >= _topics.Count)
+            {
+                _topicStatus.Text = "Select a Topic to remove.";
+                return;
+            }
+
+            var name = _topics[index].Name;
+            _topics.RemoveAt(index);
+            RefreshTopicList();
+            _topicName.Clear();
+            _topicFolder.Clear();
+            _topicStatus.Text =
+                "Removed " + name +
+                ". Its local index is deleted after Save.";
+        }
+
+        private async void TopicRefreshClick(
+            object sender,
+            EventArgs eventArgs)
+        {
+            if (_topicCancellation != null)
+            {
+                _topicCancellation.Cancel();
+                return;
+            }
+
+            var index = _topicList.SelectedIndex;
+            if (index < 0 || index >= _topics.Count)
+            {
+                _topicStatus.Text = "Select a Topic to refresh.";
+                return;
+            }
+
+            var topic = _topics[index].Sanitized();
+            _topicCancellation = new CancellationTokenSource();
+            _topicRefresh.Text = "Cancel refresh";
+            SetCommonControlsEnabled(false);
+            _topicRefresh.Enabled = true;
+            _topicStatus.Text =
+                "Refreshing " + topic.Name + "...";
+            try
+            {
+                var status = await Task.Run(
+                    () => new TopicIndex().Refresh(
+                        topic,
+                        true,
+                        _topicCancellation.Token),
+                    _topicCancellation.Token);
+                _topicStatus.Text =
+                    "Indexed " + status.IndexedFiles +
+                    "; skipped " + status.SkippedFiles +
+                    "; failed " + status.FailedFiles + ".";
+            }
+            catch (OperationCanceledException)
+            {
+                _topicStatus.Text = "Topic refresh cancelled.";
+            }
+            catch (Exception exception)
+            {
+                _topicStatus.Text =
+                    "Topic refresh failed (" +
+                    exception.GetType().Name + ").";
+            }
+            finally
+            {
+                _topicCancellation.Dispose();
+                _topicCancellation = null;
+                _topicRefresh.Text = "Refresh index";
+                SetCommonControlsEnabled(true);
+            }
         }
 
         private void RefreshMcpList()
@@ -1568,6 +1910,9 @@ namespace Scribble.UI
                 McpServers = _mcpServers
                     .Select(server => server.Sanitized())
                     .ToList(),
+                Topics = _topics
+                    .Select(topic => topic.Sanitized())
+                    .ToList(),
                 UseRecommendedLimits = true,
                 LimitContextMultiplier = 1,
                 LimitPromptCharacters = TextBoundary
@@ -2055,6 +2400,14 @@ namespace Scribble.UI
                 (enabled && !_checking);
             _analyzeTone.Enabled = enabled || _analyzingTone;
             _updateButton.Enabled = enabled && !_updating;
+            _topicList.Enabled = enabled;
+            _topicName.Enabled = enabled;
+            _topicFolder.Enabled = enabled;
+            _topicBrowse.Enabled = enabled;
+            _topicSave.Enabled = enabled;
+            _topicRemove.Enabled = enabled;
+            _topicRefresh.Enabled = enabled ||
+                _topicCancellation != null;
             _commonControlsEnabled = enabled;
             UpdateGeminiModeUi();
         }
@@ -2085,7 +2438,8 @@ namespace Scribble.UI
             if (!_checking &&
                 !_refreshingModels &&
                 !_analyzingTone &&
-                !_updating)
+                !_updating &&
+                _topicCancellation == null)
             {
                 return;
             }
@@ -2095,6 +2449,7 @@ namespace Scribble.UI
             _modelRefreshCancellation?.Cancel();
             _toneCancellation?.Cancel();
             _updateCancellation?.Cancel();
+            _topicCancellation?.Cancel();
             _error.Text =
                 "Cancelling the active settings operation. Close again when it finishes.";
         }

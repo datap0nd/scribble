@@ -379,6 +379,13 @@ namespace Scribble.UI
                             Convert.ToString(modelValue) ??
                             string.Empty);
                         break;
+                    case "setTopic":
+                        object topicValue;
+                        message.TryGetValue("topicId", out topicValue);
+                        HandleSetTopic(
+                            Convert.ToString(topicValue) ??
+                            string.Empty);
+                        break;
                     case "askUserAnswer":
                         object promptAnswerValue;
                         message.TryGetValue(
@@ -409,6 +416,7 @@ namespace Scribble.UI
             _webReady = true;
             PostMode();
             RefreshModelPicker();
+            PushTopicsToWeb(false);
             PushContextToWeb();
             ReplayTranscript();
             _promptHelper.RestoreIfPending();
@@ -1192,6 +1200,21 @@ namespace Scribble.UI
                 }
             }
 
+            TopicConfig activeTopic;
+            string topicError;
+            if (!TryResolveActiveTopic(
+                    out activeTopic,
+                    out topicError))
+            {
+                SetStatus(topicError, true);
+                PostToWeb(new Dictionary<string, object>
+                {
+                    { "type", "restorePrompt" },
+                    { "text", prompt }
+                });
+                return;
+            }
+
             var requestExternalContext =
                 new List<ExternalContextDocument>();
             foreach (var entry in _externalContext)
@@ -1221,6 +1244,9 @@ namespace Scribble.UI
                 HostName,
                 _settings.Model,
                 draftAuthorization.CanCreate);
+            _memory.TopicLocked = true;
+            PushTopicLock(false);
+            var turnId = Guid.NewGuid().ToString("N");
             AppendUserTurn(prompt);
             SetBusy(true);
             _requestStartedAt = DateTime.UtcNow;
@@ -1235,6 +1261,9 @@ namespace Scribble.UI
                     requestExternalImages,
                     prompt,
                     draftAuthorization,
+                    activeTopic,
+                    _memory.ChatId,
+                    turnId,
                     cancellation.Token);
                 if (generation != _requestGeneration)
                 {
@@ -1329,6 +1358,9 @@ namespace Scribble.UI
             IReadOnlyList<VisionImagePayload> externalImages,
             string prompt,
             OneShotDraftAuthorization draftAuthorization,
+            TopicConfig activeTopic,
+            string chatId,
+            string turnId,
             CancellationToken cancellationToken)
         {
             var imagesExpected = externalImages.Count > 0;
@@ -1387,7 +1419,15 @@ namespace Scribble.UI
                 prompt,
                 draftAuthorization.CanCreate,
                 externalContext,
-                mcpTools);
+                mcpTools,
+                activeTopic);
+            var topicTools = activeTopic == null
+                ? null
+                : new TopicToolHost(
+                    activeTopic,
+                    chatId,
+                    turnId,
+                    false);
             var exposedNames = new List<string>();
             foreach (var tool in request.tools)
             {
@@ -1510,6 +1550,15 @@ namespace Scribble.UI
                             () => mcpHost.Execute(toolCall),
                             cancellationToken);
                     }
+                    else if (TopicToolCatalog.IsTopicTool(name) &&
+                             topicTools != null)
+                    {
+                        result = await Task.Run(
+                            () => topicTools.Execute(
+                                toolCall,
+                                cancellationToken),
+                            cancellationToken);
+                    }
                     else if (WebReadTool.IsWebReadTool(name))
                     {
                         // Network reads run off the UI thread; the
@@ -1580,6 +1629,10 @@ namespace Scribble.UI
             if (_memory != null)
             {
                 _memory.LastAnswer = string.Empty;
+                _memory.ChatId = Guid.NewGuid().ToString("N");
+                _memory.ActiveTopicId = string.Empty;
+                _memory.ActiveTopicRoot = string.Empty;
+                _memory.TopicLocked = false;
             }
             _draftHost?.Dispose();
             _draftHost = _hostApplication == null
@@ -1592,6 +1645,7 @@ namespace Scribble.UI
                 { "type", "clear" }
             });
             PushContextToWeb();
+            PushTopicsToWeb(false);
             SetStatus("Chat and context cleared", false);
         }
 
@@ -1622,6 +1676,120 @@ namespace Scribble.UI
                 Log.Error("OfficeSwitchModel", exception);
                 SetStatus("The model change was not saved", true);
             }
+        }
+
+        private void HandleSetTopic(string topicId)
+        {
+            if (_busy || _memory == null || _memory.TopicLocked)
+            {
+                return;
+            }
+
+            var bounded = TextBoundary.SingleLine(topicId, 40);
+            var topic = _settings.Topics.Find(entry =>
+                string.Equals(
+                    entry.Id,
+                    bounded,
+                    StringComparison.OrdinalIgnoreCase));
+            if (bounded.Length > 0 && topic == null)
+            {
+                SetStatus("The selected Topic is unavailable", true);
+                PushTopicsToWeb(false);
+                return;
+            }
+
+            _memory.ActiveTopicId = topic?.Id ?? string.Empty;
+            _memory.ActiveTopicRoot = topic?.FolderPath ?? string.Empty;
+            PushTopicsToWeb(false);
+            SetStatus(
+                topic == null
+                    ? "Topic: None"
+                    : "Topic: " + topic.Name,
+                false);
+        }
+
+        private bool TryResolveActiveTopic(
+            out TopicConfig topic,
+            out string error)
+        {
+            topic = null;
+            error = string.Empty;
+            if (_memory == null ||
+                _memory.ActiveTopicId.Length == 0)
+            {
+                return true;
+            }
+
+            var latest = _settingsStore.Load();
+            _settings.Topics = latest.Topics;
+            topic = latest.Topics.Find(entry => string.Equals(
+                entry.Id,
+                _memory.ActiveTopicId,
+                StringComparison.OrdinalIgnoreCase));
+            if (topic == null || !string.Equals(
+                    topic.FolderPath,
+                    _memory.ActiveTopicRoot,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                topic = null;
+                error =
+                    "The active Topic was removed or its folder changed. Clear chat before continuing.";
+                PushTopicsToWeb(true);
+                return false;
+            }
+
+            string resolvedRoot;
+            string validationError;
+            if (!TopicConfig.TryValidateLocalFolder(
+                    topic.FolderPath,
+                    out resolvedRoot,
+                    out validationError))
+            {
+                error = "The active Topic is unavailable: " +
+                    validationError;
+                PushTopicsToWeb(false);
+                return false;
+            }
+
+            PushTopicsToWeb(false);
+
+            return true;
+        }
+
+        private void PushTopicsToWeb(bool unavailable)
+        {
+            var items = new List<object>();
+            foreach (var topic in _settings.Topics)
+            {
+                items.Add(new Dictionary<string, object>
+                {
+                    { "id", topic.Id },
+                    { "name", topic.Name },
+                    { "available", Directory.Exists(topic.FolderPath) }
+                });
+            }
+
+            PostToWeb(new Dictionary<string, object>
+            {
+                { "type", "topics" },
+                { "items", items },
+                {
+                    "current",
+                    _memory?.ActiveTopicId ?? string.Empty
+                },
+                { "unavailable", unavailable }
+            });
+            PushTopicLock(unavailable);
+        }
+
+        private void PushTopicLock(bool unavailable)
+        {
+            PostToWeb(new Dictionary<string, object>
+            {
+                { "type", "topicLock" },
+                { "locked", _memory?.TopicLocked ?? false },
+                { "unavailable", unavailable }
+            });
         }
 
         // Copies the bounded per-request diagnostics record to the
@@ -1672,6 +1840,19 @@ namespace Scribble.UI
                     _mcpTools = new McpToolHost(
                         _settings.McpServers);
                     RefreshModelPicker();
+                    PushTopicsToWeb(
+                        _memory != null &&
+                        _memory.TopicLocked &&
+                        _memory.ActiveTopicId.Length > 0 &&
+                        !_settings.Topics.Exists(topic =>
+                            string.Equals(
+                                topic.Id,
+                                _memory.ActiveTopicId,
+                                StringComparison.OrdinalIgnoreCase) &&
+                            string.Equals(
+                                topic.FolderPath,
+                                _memory.ActiveTopicRoot,
+                                StringComparison.OrdinalIgnoreCase)));
                     SetStatus(
                         "Settings saved - " + _settings.Model,
                         false);

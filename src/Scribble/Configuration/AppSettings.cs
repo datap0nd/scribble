@@ -52,6 +52,11 @@ namespace Scribble.Configuration
         public List<McpServerConfig> McpServers { get; set; } =
             new List<McpServerConfig>();
 
+        // User-approved local document repositories. A Topic is
+        // inert until it is explicitly selected for one chat.
+        public List<TopicConfig> Topics { get; set; } =
+            new List<TopicConfig>();
+
         // Legacy serialized fields retained for settings-file
         // compatibility. The text and loop budgets are no longer
         // user-customized; ApplyLimits always selects the reviewed

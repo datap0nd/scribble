@@ -107,6 +107,7 @@ namespace Scribble.Configuration
                         stored.DiscoveredModels),
                     McpServers = NormalizeMcpServers(
                         stored.McpServers),
+                    Topics = NormalizeTopics(stored.Topics),
                     UseRecommendedLimits = true,
                     LimitContextMultiplier = 1,
                     LimitPromptCharacters = TextBoundary
@@ -159,6 +160,11 @@ namespace Scribble.Configuration
             {
                 throw new ArgumentNullException(nameof(settings));
             }
+
+            var previousTopics = Load().Topics;
+            var topics = ValidateTopics(
+                settings.Topics,
+                previousTopics);
 
             if (settings.Model.Trim().Length == 0)
             {
@@ -254,6 +260,7 @@ namespace Scribble.Configuration
                     settings.DiscoveredModels),
                 McpServers = StoreMcpServers(
                     settings.McpServers),
+                Topics = StoreTopics(topics),
                 UseCustomLimits = false,
                 LimitContextMultiplier = 1,
                 LimitPromptCharacters = TextBoundary
@@ -274,6 +281,8 @@ namespace Scribble.Configuration
                 _settingsPath,
                 _serializer.Serialize(stored),
                 new UTF8Encoding(false));
+
+            DeleteInvalidatedTopicCaches(previousTopics, topics);
         }
 
         private static string Protect(string value)
@@ -383,6 +392,213 @@ namespace Scribble.Configuration
             return result;
         }
 
+        private static List<TopicConfig> NormalizeTopics(
+            IEnumerable<StoredTopic> topics)
+        {
+            return TopicConfig.Normalize(
+                    (topics ?? Enumerable.Empty<StoredTopic>())
+                    .Where(topic => topic != null)
+                    .Select(topic => new TopicConfig
+                    {
+                        Id = topic.Id,
+                        Name = topic.Name,
+                        FolderPath = topic.FolderPath
+                    }))
+                .ToList();
+        }
+
+        private static List<TopicConfig> ValidateTopics(
+            IEnumerable<TopicConfig> topics,
+            IEnumerable<TopicConfig> previousTopics)
+        {
+            var normalized = TopicConfig.Normalize(topics).ToList();
+            var previous = (previousTopics ??
+                    Enumerable.Empty<TopicConfig>())
+                .ToDictionary(
+                    topic => topic.Id,
+                    StringComparer.OrdinalIgnoreCase);
+            var suppliedCount = (topics ??
+                Enumerable.Empty<TopicConfig>())
+                .Count(topic => topic != null);
+            if (suppliedCount > TopicConfig.MaxTopics)
+            {
+                throw new InvalidOperationException(
+                    "Topic limit reached (" +
+                    TopicConfig.MaxTopics + ").");
+            }
+
+            if (normalized.Count != suppliedCount)
+            {
+                throw new InvalidOperationException(
+                    "Each Topic needs a folder and a unique name.");
+            }
+
+            foreach (var topic in normalized)
+            {
+                string folder;
+                string error;
+                if (!TopicConfig.TryValidateLocalFolder(
+                        topic.FolderPath,
+                        out folder,
+                        out error))
+                {
+                    TopicConfig oldTopic;
+                    if (previous.TryGetValue(
+                            topic.Id,
+                            out oldTopic) &&
+                        PathsEqual(
+                            oldTopic.FolderPath,
+                            topic.FolderPath) &&
+                        TryRetainUnavailableLocalFolder(
+                            topic.FolderPath,
+                            out folder))
+                    {
+                        topic.FolderPath = folder;
+                        continue;
+                    }
+
+                    throw new InvalidOperationException(
+                        "Topic '" + topic.Name + "': " + error);
+                }
+
+                topic.FolderPath = folder;
+            }
+
+            return normalized;
+        }
+
+        private static bool PathsEqual(string left, string right)
+        {
+            try
+            {
+                return string.Equals(
+                    NormalizeComparablePath(left),
+                    NormalizeComparablePath(right),
+                    StringComparison.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        // A Topic that was valid when configured remains in settings if its
+        // local/synced folder is temporarily offline. New or changed roots
+        // still pass TryValidateLocalFolder and therefore must exist.
+        private static bool TryRetainUnavailableLocalFolder(
+            string value,
+            out string normalized)
+        {
+            normalized = string.Empty;
+            try
+            {
+                var candidate = (value ?? string.Empty).Trim();
+                var candidateRoot = Path.GetPathRoot(candidate);
+                if (!Path.IsPathRooted(candidate) ||
+                    string.IsNullOrWhiteSpace(candidateRoot) ||
+                    (!candidateRoot.EndsWith(
+                         Path.DirectorySeparatorChar.ToString(),
+                         StringComparison.Ordinal) &&
+                     !candidateRoot.EndsWith(
+                         Path.AltDirectorySeparatorChar.ToString(),
+                         StringComparison.Ordinal)) ||
+                    candidate.StartsWith(
+                        "\\\\",
+                        StringComparison.Ordinal))
+                {
+                    return false;
+                }
+
+                normalized = NormalizeComparablePath(candidate);
+                var root = Path.GetPathRoot(normalized);
+                if (!string.IsNullOrWhiteSpace(root) &&
+                    new DriveInfo(root).DriveType ==
+                        DriveType.Network)
+                {
+                    return false;
+                }
+
+                if (Directory.Exists(normalized))
+                {
+                    var attributes = File.GetAttributes(normalized);
+                    if ((attributes & FileAttributes.ReparsePoint) != 0)
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+            catch
+            {
+                // An unchanged root may be inaccessible, but malformed and
+                // network paths have already been rejected above.
+                return normalized.Length > 0;
+            }
+        }
+
+        private static string NormalizeComparablePath(string value)
+        {
+            var full = Path.GetFullPath(value ?? string.Empty);
+            var root = Path.GetPathRoot(full) ?? string.Empty;
+            return full.Length > root.Length
+                ? full.TrimEnd(
+                    Path.DirectorySeparatorChar,
+                    Path.AltDirectorySeparatorChar)
+                : full;
+        }
+
+        private static List<StoredTopic> StoreTopics(
+            IEnumerable<TopicConfig> topics)
+        {
+            return (topics ?? Enumerable.Empty<TopicConfig>())
+                .Select(topic => new StoredTopic
+                {
+                    Id = topic.Id,
+                    Name = topic.Name,
+                    FolderPath = topic.FolderPath
+                })
+                .ToList();
+        }
+
+        private static void DeleteInvalidatedTopicCaches(
+            IEnumerable<TopicConfig> previous,
+            IEnumerable<TopicConfig> current)
+        {
+            var remaining = (current ??
+                Enumerable.Empty<TopicConfig>())
+                .ToDictionary(
+                    topic => topic.Id,
+                    StringComparer.OrdinalIgnoreCase);
+            var index = new TopicIndex();
+            foreach (var oldTopic in previous ??
+                Enumerable.Empty<TopicConfig>())
+            {
+                TopicConfig retained;
+                if (!remaining.TryGetValue(oldTopic.Id, out retained) ||
+                    !string.Equals(
+                        oldTopic.FolderPath,
+                        retained.FolderPath,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    try
+                    {
+                        var rebuilt = retained == null
+                            ? null
+                            : index.GetStatus(retained);
+                        if (rebuilt == null ||
+                            !rebuilt.MatchesConfiguredRoot)
+                        {
+                            index.DeleteCache(oldTopic.Id);
+                        }
+                    }
+                    catch
+                    {
+                    }
+                }
+            }
+        }
+
         // Settings written before the working-set size became
         // user-adjustable (or hand-edited files) may carry zero or
         // out-of-range values; zero means "use the default".
@@ -441,6 +657,8 @@ namespace Scribble.Configuration
 
             public List<StoredMcpServer> McpServers { get; set; }
 
+            public List<StoredTopic> Topics { get; set; }
+
             public bool UseCustomLimits { get; set; }
 
             public int LimitContextMultiplier { get; set; }
@@ -473,6 +691,15 @@ namespace Scribble.Configuration
             public string BrowserTools { get; set; }
 
             public bool BrowserToolsApproved { get; set; }
+        }
+
+        private sealed class StoredTopic
+        {
+            public string Id { get; set; }
+
+            public string Name { get; set; }
+
+            public string FolderPath { get; set; }
         }
 
         // A headers value that fails to unprotect (copied profile,

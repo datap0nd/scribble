@@ -14,7 +14,16 @@ $forbidden = @(
 
 foreach ($pattern in $forbidden) {
     $matches = $sourceFiles | Select-String -Pattern $pattern |
-        Where-Object { $_.Line -notmatch 'File\.Delete' }
+        Where-Object {
+            $_.Line -notmatch 'File\.Delete' -and
+            -not (
+                ($_.Path -like '*\Chat\TopicIndex.cs' -or
+                 $_.Path -like '*\Chat\TopicToolHost.cs') -and
+                ($_.Line -match 'File\.Move' -or
+                 $_.Line.Trim() -eq
+                    'Directory.Delete(directory, true);')
+            )
+        }
     if ($matches) {
         $matches | ForEach-Object {
             Write-Error "Forbidden Outlook capability: $($_.Path):$($_.LineNumber)"
@@ -1106,6 +1115,66 @@ foreach ($requiredClickBoundary in @(
     if (-not $sidePanelSource.Contains($requiredClickBoundary)) {
         throw "Side-panel clicks are missing safety boundary $requiredClickBoundary."
     }
+}
+
+# Local Topics are explicit read-only repositories. The model can
+# search and read bounded handles, but it never receives an absolute
+# path or a file-system mutation capability.
+$topicConfigSource = Get-Content (
+    Join-Path $sourceRoot "Configuration\TopicConfig.cs") -Raw
+$topicIndexSource = Get-Content (
+    Join-Path $sourceRoot "Chat\TopicIndex.cs") -Raw
+$topicCatalogSource = Get-Content (
+    Join-Path $sourceRoot "Chat\TopicToolCatalog.cs") -Raw
+$topicHostSource = Get-Content (
+    Join-Path $sourceRoot "Chat\TopicToolHost.cs") -Raw
+$topicToolNames = @(
+    [regex]::Matches(
+        $topicCatalogSource,
+        'public const string \w+ = "([^"]+)";'
+    ) | ForEach-Object { $_.Groups[1].Value }
+) | Sort-Object
+if (Compare-Object $topicToolNames @(
+        "read_topic_files",
+        "search_topic"
+    )) {
+    throw "Topic tool catalog contains an unexpected capability."
+}
+foreach ($requiredTopicBoundary in @(
+    "MaxTopics = 20",
+    "MaxIndexedFiles = 2000",
+    "MaxFileBytes = 25 * 1024 * 1024",
+    "MaxCharactersPerFile = 48000",
+    "FreshSeconds = 30",
+    "FileAttributes.ReparsePoint",
+    "SafeContainedPath",
+    "ResolveFinalPath"
+)) {
+    if (-not ($topicConfigSource + $topicIndexSource).Contains(
+            $requiredTopicBoundary)) {
+        throw "Local Topics are missing boundary $requiredTopicBoundary."
+    }
+}
+foreach ($requiredScopeBoundary in @(
+    "ChatId",
+    "TurnId",
+    "TopicId",
+    "SessionMinutes = 15",
+    "LoadedCharacters",
+    "TOPIC_HANDLE_UNKNOWN",
+    "untrusted_topic_data"
+)) {
+    if (-not $topicHostSource.Contains($requiredScopeBoundary)) {
+        throw "Topic handles are missing boundary $requiredScopeBoundary."
+    }
+}
+$chatPaneWebSource = Get-Content (
+    Join-Path $sourceRoot "UI\ChatPaneWeb.html") -Raw
+if (-not $settingsWindowSource.Contains('new TabPage("Topics")') -or
+    -not $chatPaneWebSource.Contains('id="topic"') -or
+    -not $sidePanelSource.Contains('id: boundText(topic.id, 40)') -or
+    -not $factorySource.Contains("BuildTopicBoundary")) {
+    throw "Topic settings, selectors, or request boundaries are incomplete."
 }
 
 Write-Host "PASS: static guardrail scan"

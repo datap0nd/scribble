@@ -169,13 +169,15 @@ namespace Scribble.Chat
             string toolCallId,
             string content,
             string statusText,
-            IReadOnlyList<VisionImagePayload> visionImages = null)
+            IReadOnlyList<VisionImagePayload> visionImages = null,
+            int contentCharacterLimit = 0)
         {
             ToolCallId = toolCallId ?? string.Empty;
             Content = content ?? string.Empty;
             StatusText = statusText ?? string.Empty;
             VisionImages = visionImages ??
                 new VisionImagePayload[0];
+            ContentCharacterLimit = contentCharacterLimit;
         }
 
         public string ToolCallId { get; }
@@ -185,6 +187,8 @@ namespace Scribble.Chat
         public string StatusText { get; }
 
         public IReadOnlyList<VisionImagePayload> VisionImages { get; }
+
+        public int ContentCharacterLimit { get; }
     }
 
     // One completed browser tool round replayed by the extension:
