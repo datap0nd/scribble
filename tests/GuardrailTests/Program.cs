@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
@@ -3579,7 +3578,7 @@ namespace GuardrailTests
                 var serializer = new JavaScriptSerializer();
                 var searchPayload = serializer.DeserializeObject(
                     search.Content) as IDictionary<string, object>;
-                var results = searchPayload["results"] as ArrayList;
+                var results = searchPayload["results"] as object[];
                 var firstHit = results[0] as
                     IDictionary<string, object>;
                 var documentHit = results.Cast<object>()
@@ -3592,7 +3591,7 @@ namespace GuardrailTests
                 var handle = Convert.ToString(
                     documentHit["handle"]);
                 Assert(
-                    results.Count == 2 &&
+                    results.Length == 2 &&
                     Convert.ToString(firstHit["relative_path"]) ==
                         "lighthouse-plan.txt" &&
                     !search.Content.Contains(root) &&
@@ -3649,7 +3648,7 @@ namespace GuardrailTests
                     persistentSearch.Content) as
                         IDictionary<string, object>;
                 var persistentResults = persistentPayload["results"] as
-                    ArrayList;
+                    object[];
                 var persistentHit = persistentResults[0] as
                     IDictionary<string, object>;
                 var persistentHandle = Convert.ToString(
