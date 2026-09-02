@@ -56,6 +56,7 @@
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="UI\ChatPaneWeb.html" />
+    <EmbeddedResource Include="Skills\PublicSkills.json" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AddIn.cs" />
@@ -107,6 +108,8 @@
     <Compile Include="Configuration\ModelCatalog.cs" />
     <Compile Include="Configuration\ModelRouting.cs" />
     <Compile Include="Configuration\ModelSelectionPolicy.cs" />
+    <Compile Include="Configuration\SkillDefinition.cs" />
+    <Compile Include="Configuration\SkillStore.cs" />
     <Compile Include="Configuration\SettingsStore.cs" />
     <Compile Include="Configuration\TopicConfig.cs" />
     <Compile Include="Interop\OfficeInterfaces.cs" />

@@ -421,6 +421,72 @@
     padding: 8px 14px 10px;
     background: var(--bg);
   }
+  #skillsShelf {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    max-height: 108px;
+    overflow-y: auto;
+    margin-bottom: 7px;
+    padding: 7px 8px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+  .skillRow {
+    display: grid;
+    grid-template-columns: 45px minmax(0, 1fr);
+    align-items: start;
+    gap: 6px;
+  }
+  .skillLabel {
+    color: var(--dim);
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    line-height: 24px;
+    text-transform: uppercase;
+  }
+  .skillItems {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    min-width: 0;
+  }
+  .skillButton {
+    max-width: 210px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    background: var(--card);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 3px 9px;
+    font: inherit;
+    font-size: 10.5px;
+    cursor: pointer;
+  }
+  .skillButton.public { border-color: rgba(92, 143, 255, 0.42); }
+  .skillButton.local { border-color: rgba(61, 220, 151, 0.34); }
+  .skillButton:hover:not(:disabled) {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+  .skillButton:disabled { opacity: 0.48; cursor: default; }
+  .skillEmpty {
+    color: var(--dim);
+    font-size: 10.5px;
+    line-height: 24px;
+  }
+  button.skillEmpty {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
   #composerCard {
     display: flex;
     align-items: flex-end;
@@ -598,6 +664,16 @@
 <main id="chat"></main>
 
 <footer>
+  <div id="skillsShelf" aria-label="Public and Local skills">
+    <div class="skillRow">
+      <span class="skillLabel">Public</span>
+      <div id="publicSkills" class="skillItems"></div>
+    </div>
+    <div class="skillRow">
+      <span class="skillLabel">Local</span>
+      <div id="localSkills" class="skillItems"></div>
+    </div>
+  </div>
   <div id="tray"></div>
   <div id="plusMenu" hidden>
     <button id="menuAddEmail">&#9993;&#xFE0E;&nbsp; Add selected emails</button>
@@ -631,6 +707,8 @@
   var topicEl = document.getElementById("topic");
   var visionBadge = document.getElementById("visionBadge");
   var tray = document.getElementById("tray");
+  var publicSkillsEl = document.getElementById("publicSkills");
+  var localSkillsEl = document.getElementById("localSkills");
   var typing = null;
   var busy = false;
   var modelVision = {};
@@ -1106,6 +1184,12 @@
     btnSend.classList.toggle("stop", value);
     modelEl.disabled = value;
     topicEl.disabled = value || topicLocked;
+    var skillButtons = document.querySelectorAll(".skillButton");
+    for (var skillIndex = 0;
+         skillIndex < skillButtons.length;
+         skillIndex++) {
+      skillButtons[skillIndex].disabled = value;
+    }
     if (value) {
       ensureTyping();
       typing.classList.add("on");
@@ -1138,6 +1222,51 @@
     }
     if (current) { modelEl.value = current; }
     updateVisionBadge();
+  }
+
+  function renderSkillGroup(container, items, origin) {
+    while (container.firstChild) {
+      container.removeChild(container.firstChild);
+    }
+    (items || []).forEach(function (item) {
+      if (!item || !item.id || !item.name) { return; }
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "skillButton " + origin;
+      button.textContent = item.name;
+      button.title = item.description ||
+        ("Run " + item.name + " immediately");
+      button.setAttribute(
+        "aria-label",
+        (origin === "public" ? "Public skill: " : "Local skill: ") +
+        item.name);
+      button.disabled = busy;
+      button.addEventListener("click", function () {
+        if (busy) { return; }
+        post("runSkill", { id: item.id, origin: origin });
+      });
+      container.appendChild(button);
+    });
+    if (container.children.length > 0) { return; }
+    if (origin === "local") {
+      var manage = document.createElement("button");
+      manage.type = "button";
+      manage.className = "skillEmpty";
+      manage.textContent = "Create in Settings";
+      manage.addEventListener("click", function () {
+        if (!busy) { post("openSettings"); }
+      });
+      container.appendChild(manage);
+    } else {
+      var empty = el("span", "skillEmpty");
+      empty.textContent = "None packaged for this app";
+      container.appendChild(empty);
+    }
+  }
+
+  function setSkills(publicItems, localItems) {
+    renderSkillGroup(publicSkillsEl, publicItems, "public");
+    renderSkillGroup(localSkillsEl, localItems, "local");
   }
 
   function setTopics(items, current, unavailable) {
@@ -1480,6 +1609,9 @@
         draftEl.classList.toggle("linked", !!m.linked);
         break;
       case "models": setModels(m.items, m.current); break;
+      case "skills":
+        setSkills(m.publicItems, m.localItems);
+        break;
       case "topics": setTopics(
         m.items, m.current, m.unavailable); break;
       case "topicLock": setTopicLock(

@@ -174,6 +174,8 @@ the tool-call probe allows up to 90 seconds.
    hidden where a subject is shown.
    Right-click works inside the pane for the usual copy, paste, and select-all
    actions.
+   Directly above the composer, **Public** and **Local** Skills appear as
+   small run buttons. Clicking one submits its saved prompt immediately.
 2. To choose a bounded group first, enter `/search person or topic`. Scribble
    searches locally and keeps the newest matching Inbox or Sent Items
    emails as the working set (up to the per-request size configured in
@@ -253,7 +255,7 @@ email working set but retains external files. **Clear** removes all context, and
 **New** starts a new conversation with no retained context.
 
 Settings includes **Connection** (endpoint, API key,
-model discovery, compatibility test, updates), **MCP**, **Topics**, **Writing soul**, **Limits**, and
+model discovery, compatibility test, updates), **MCP**, **Topics**, **Skills**, **Writing soul**, **Limits**, and
 **Support** (describe a
 problem and Scribble opens a pre-filled, unsent report email to the creator
 with the recent diagnostic log — timestamps, operations, and error codes
@@ -268,6 +270,28 @@ how strongly drafts follow your voice, and **hard draft rules** (one per
 line) are followed exactly in every draft. Soul, strength, and rules apply
 only to draft creation and revision, and only to wording, greeting,
 cadence, and sign-off. They cannot alter any capability or security rule.
+
+### Public and Local Skills
+
+Skills are manual, immediate-run prompt shortcuts; Scribble does not schedule
+them or run them in the background. **Public** skills are read-only definitions
+packaged with the installed Scribble version. **Local** skills are created and
+edited on the Skills tab for the Office app where Settings was opened. They are
+stored as plain JSON for the current Windows user at
+`%LOCALAPPDATA%\Scribble\skills.json` and are not synced.
+
+Select a Public skill in Settings to preview it or choose **Duplicate to
+Local**. A Local copy can be renamed, edited, removed, and optionally configured
+to start in a fresh chat. Saved prompts remain ordinary text and go through the
+same context limits, tool allowlists, draft-intent checks, cancellation, and
+endpoint configuration as text typed into the composer.
+
+Outlook ships with **Morning unread summary**. It starts a fresh in-memory chat
+and asks for unread primary-Inbox messages received from 5:00 PM yesterday
+through the moment clicked, using the PC's local timezone. The exact timestamps
+are expanded locally. The skill reads at most the Settings > Limits email count,
+reports when more matches were excluded, and never marks a message read. If the
+window is empty it reports: “No unread messages arrived in this window.”
 
 ### Local Topics
 

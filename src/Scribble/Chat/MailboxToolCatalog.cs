@@ -61,6 +61,21 @@ namespace Scribble.Chat
                                         3650)
                                 },
                                 {
+                                    "received_after",
+                                    StringSchema(
+                                        "Optional inclusive ISO-8601 lower timestamp with UTC offset. When supplied, it replaces days_back as the lower bound.")
+                                },
+                                {
+                                    "received_before",
+                                    StringSchema(
+                                        "Optional inclusive ISO-8601 upper timestamp with UTC offset.")
+                                },
+                                {
+                                    "unread_only",
+                                    BooleanSchema(
+                                        "When true, return only messages that are currently unread. Reading through this tool never changes their read state.")
+                                },
+                                {
                                     "max_results",
                                     IntegerSchema(
                                         "Maximum number of result summaries to return.",
@@ -211,6 +226,16 @@ namespace Scribble.Chat
                 { "description", description },
                 { "minimum", minimum },
                 { "maximum", maximum }
+            };
+        }
+
+        private static Dictionary<string, object> BooleanSchema(
+            string description)
+        {
+            return new Dictionary<string, object>
+            {
+                { "type", "boolean" },
+                { "description", description }
             };
         }
     }

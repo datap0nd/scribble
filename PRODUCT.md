@@ -62,6 +62,13 @@ locally linked item. The dedicated host exposes no send operation.
 ## Capabilities and Constraints
 
 - Search and read bounded context from the primary Inbox and Sent Items.
+- Launch saved prompts immediately from a two-part Skills shelf. Public skills
+  are read-only packages shipped with Scribble; Local skills are created per
+  Office app and remain in the current Windows user's LocalAppData.
+- Ship an Outlook-only **Morning unread summary** Public skill. It starts a
+  fresh in-memory chat, searches the primary Inbox from 5:00 PM yesterday
+  through click time in the PC's local timezone, and summarizes no more than
+  the configured email limit without changing read state.
 - Configure up to twenty named local Topics, explicitly select one per chat,
   and search and read only bounded relevant excerpts from its recursively
   indexed document folder.
@@ -78,6 +85,8 @@ locally linked item. The dedicated host exposes no send operation.
 - Bind reply drafts to the exact temporary handle returned for the searched or
   selected source message. Never fall back to the latest mailbox item.
 - Never send, schedule, move, delete, mark, categorize, or modify the source email.
+- Skills are manual prompt shortcuts, not scheduled or background jobs, and
+  cannot expand the tool allowlist or draft authorization rules.
 - Without a working set, expose only `search_mailbox`, `read_messages`, and
   `read_thread`, with one search and ten unique bodies per request. With a
   working set, expose only `read_messages` for those approved handles.

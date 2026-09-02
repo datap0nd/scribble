@@ -217,6 +217,21 @@ Controls use square native geometry. Text fields have fixed single borders; flat
 - **Focus:** Keep the native Windows focus indication. Do not replace it with color-only styling.
 - **Busy State:** Disable the field while waiting, change "Send to AI" to "Cancel," and restore the user's prompt if the request fails, times out, or is discarded.
 
+### Skills Shelf
+
+- **Structure:** Directly above the composer, show two compact, explicitly
+  labeled rows: **Public** and **Local**. Buttons wrap within the pane and the
+  shelf scrolls vertically when many Local skills exist.
+- **Behavior:** A skill button runs immediately and becomes disabled with the
+  rest of the composer while a request is active. Dynamic text is never placed
+  in HTML; names and descriptions enter through inert text nodes.
+- **Origin:** Public uses the action-blue boundary and remains read-only. Local
+  uses a separate green boundary and is managed from Settings. Labels, not
+  color, communicate origin.
+- **Fresh runs:** A skill marked Start fresh clears only in-memory conversation,
+  context, and draft linkage before submission. It never deletes or modifies
+  an existing Outlook draft.
+
 ### Primary Button
 
 - **Shape:** Square, flat, filled action control.
@@ -244,6 +259,9 @@ Controls use square native geometry. Text fields have fixed single borders; flat
 - **Disclosure:** Explain that prompts, recent conversation, and model-requested bounded mailbox context go to the configured endpoint and that the key is encrypted for the current Windows user.
 - **HTTP warning:** Do not require an opt-in checkbox. Accept HTTP by default, but show an adjacent alert whenever a non-loopback endpoint will receive the API key, prompts, and retrieved email context without transport encryption.
 - **Topics:** Show up to twenty named local repositories with folder paths, index status, and manual refresh. Never imply that indexing uploads a whole folder or changes source files.
+- **Skills:** Show read-only Public prompt previews separately from editable
+  Local prompts for the current Office app. Public items offer **Duplicate to
+  Local**; Local items expose name, prompt, Start fresh, add/update, and remove.
 - **Actions:** **Connect & load models** is the primary setup action. **Test selected model** is secondary. Save is primary; Cancel is secondary. Enter activates Save and Escape activates Cancel.
 - **Endpoint Check:** Show progress, allow cancellation, and report the actual diagnostic code. A successful state means authentication, the selected model, and one synthetic read-only tool call passed. The probe must not load or execute against mailbox data.
 - **Errors:** Validation failures appear inline as an accessible alert without closing the modal.

@@ -18,7 +18,8 @@ foreach ($pattern in $forbidden) {
             $_.Line -notmatch 'File\.Delete' -and
             -not (
                 ($_.Path -like '*\Chat\TopicIndex.cs' -or
-                 $_.Path -like '*\Chat\TopicToolHost.cs') -and
+                 $_.Path -like '*\Chat\TopicToolHost.cs' -or
+                 $_.Path -like '*\Configuration\SkillStore.cs') -and
                 ($_.Line -match 'File\.Move' -or
                  $_.Line.Trim() -eq
                     'Directory.Delete(directory, true);')
@@ -39,6 +40,8 @@ $toolHostPath = Join-Path $sourceRoot "Outlook\MailboxToolHost.cs"
 $mailboxContextPath = Join-Path $sourceRoot "Outlook\MailboxContextService.cs"
 $draftToolHostPath = Join-Path $sourceRoot "Outlook\DraftToolHost.cs"
 $chatPanePath = Join-Path $sourceRoot "UI\ChatPane.cs"
+$officeChatPanePath = Join-Path $sourceRoot "UI\OfficeChatPane.cs"
+$chatPaneWebPath = Join-Path $sourceRoot "UI\ChatPaneWeb.html"
 $intentPath = Join-Path $sourceRoot "Security\DraftIntentPolicy.cs"
 $workingSetPath = Join-Path $sourceRoot "Outlook\MailboxWorkingSet.cs"
 $safeModelTextPath = Join-Path $sourceRoot "Security\SafeModelText.cs"
@@ -46,6 +49,9 @@ $toneFactoryPath = Join-Path $sourceRoot "Chat\ToneProfileRequestFactory.cs"
 $externalContextPath = Join-Path $sourceRoot "Chat\ExternalContextDocument.cs"
 $settingsWindowPath = Join-Path $sourceRoot "UI\SettingsWindow.cs"
 $settingsStorePath = Join-Path $sourceRoot "Configuration\SettingsStore.cs"
+$skillStorePath = Join-Path $sourceRoot "Configuration\SkillStore.cs"
+$skillDefinitionPath = Join-Path $sourceRoot "Configuration\SkillDefinition.cs"
+$publicSkillsPath = Join-Path $sourceRoot "Skills\PublicSkills.json"
 $addInPath = Join-Path $sourceRoot "AddIn.cs"
 $catalogSource = Get-Content $catalogPath -Raw
 $draftCatalogSource = Get-Content $draftCatalogPath -Raw
@@ -170,6 +176,82 @@ if (-not $mailboxContextSource.Contains(
     -not $mailboxContextSource.Contains(
         "MailboxWorkingSet.MaxMessages")) {
     throw "The underlying Outlook search service is not capped to the working-set limit."
+}
+
+foreach ($requiredFilterBoundary in @(
+    '"received_after"',
+    '"received_before"',
+    '"unread_only"',
+    'maxResults + 1',
+    '"truncated", truncated'
+)) {
+    if (-not ($catalogSource + $toolHostSource).Contains(
+            $requiredFilterBoundary)) {
+        throw "Bounded unread mailbox search is missing $requiredFilterBoundary."
+    }
+}
+
+if (-not (Test-Path $skillStorePath) -or
+    -not (Test-Path $skillDefinitionPath) -or
+    -not (Test-Path $publicSkillsPath)) {
+    throw "The Local/Public Skills package is incomplete."
+}
+$skillStoreSource = Get-Content $skillStorePath -Raw
+$skillDefinitionSource = Get-Content $skillDefinitionPath -Raw
+$publicSkillsSource = Get-Content $publicSkillsPath -Raw
+foreach ($requiredSkillBoundary in @(
+    'MaxLocalSkillsPerHost = 20',
+    'LocalApplicationData',
+    'skills.json',
+    'File.Replace',
+    'YesterdayFiveToken',
+    'NowToken',
+    'TextBoundary.MaxUserPromptCharacters',
+    'morning-unread-summary',
+    '"StartFresh": true',
+    '"Host": "outlook"'
+)) {
+    if (-not ($skillStoreSource +
+              $skillDefinitionSource +
+              $publicSkillsSource).Contains(
+            $requiredSkillBoundary)) {
+        throw "Skills are missing boundary $requiredSkillBoundary."
+    }
+}
+foreach ($forbiddenSkillCapability in @(
+    '.Send(',
+    'MarkAsRead',
+    'TaskScheduler',
+    'Process.Start'
+)) {
+    if (($skillStoreSource +
+         $skillDefinitionSource +
+         $publicSkillsSource).Contains(
+            $forbiddenSkillCapability)) {
+        throw "Saved Skills gained forbidden capability $forbiddenSkillCapability."
+    }
+}
+$officeChatPaneSource = Get-Content $officeChatPanePath -Raw
+$chatPaneWebSource = Get-Content $chatPaneWebPath -Raw
+foreach ($skillRunnerSource in @(
+    $chatPaneSource,
+    $officeChatPaneSource
+)) {
+    foreach ($requiredRunnerBoundary in @(
+        '_skillStore.Resolve',
+        'HandleNewChat()',
+        'HandleSendMessage(SkillStore.ExpandPrompt(skill.Prompt))'
+    )) {
+        if (-not $skillRunnerSource.Contains($requiredRunnerBoundary)) {
+            throw "A Skills runner bypasses $requiredRunnerBoundary."
+        }
+    }
+}
+if (-not $chatPaneWebSource.Contains(
+        'post("runSkill", { id: item.id, origin: origin })') -or
+    $chatPaneWebSource.Contains(
+        'post("runSkill", { prompt:')) {
+    throw "The Skills shelf must send only origin and id to the host."
 }
 
 if (-not $chatPaneSource.Contains("LocalSearchCommand.Parse(prompt)") -or

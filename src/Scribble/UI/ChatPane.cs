@@ -13,6 +13,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -77,6 +78,7 @@ namespace Scribble.UI
 
         private readonly SettingsStore _settingsStore =
             new SettingsStore();
+        private readonly SkillStore _skillStore = new SkillStore();
         private readonly OpenAiCompatibleClient _client =
             new OpenAiCompatibleClient();
         private readonly JavaScriptSerializer _serializer =
@@ -347,6 +349,19 @@ namespace Scribble.UI
                             Convert.ToString(textValue) ??
                             string.Empty);
                         break;
+                    case "runSkill":
+                        object skillOriginValue;
+                        object skillIdValue;
+                        message.TryGetValue(
+                            "origin",
+                            out skillOriginValue);
+                        message.TryGetValue("id", out skillIdValue);
+                        HandleRunSkill(
+                            Convert.ToString(skillOriginValue) ??
+                            string.Empty,
+                            Convert.ToString(skillIdValue) ??
+                            string.Empty);
+                        break;
                     case "stop":
                         HandleStop();
                         break;
@@ -439,6 +454,7 @@ namespace Scribble.UI
         {
             _webReady = true;
             RefreshModelPicker();
+            PushSkillsToWeb();
             PushTopicsToWeb(false);
             PostToWeb(new Dictionary<string, object>
             {
@@ -683,6 +699,70 @@ namespace Scribble.UI
             {
                 SetStatus("Thinking...", false);
             }
+        }
+
+        private void PushSkillsToWeb()
+        {
+            var publicSkills = _skillStore.LoadPublic()
+                .Where(skill => string.Equals(
+                    skill.Host,
+                    "outlook",
+                    StringComparison.Ordinal))
+                .OrderBy(skill => skill.DisplayOrder)
+                .ThenBy(skill => skill.Name)
+                .Select(BuildSkillButton)
+                .ToArray();
+            var localSkills = _skillStore.LoadLocal()
+                .Where(skill => string.Equals(
+                    skill.Host,
+                    "outlook",
+                    StringComparison.Ordinal))
+                .OrderBy(skill => skill.Name)
+                .Select(BuildSkillButton)
+                .ToArray();
+            PostToWeb(new Dictionary<string, object>
+            {
+                { "type", "skills" },
+                { "publicItems", publicSkills },
+                { "localItems", localSkills }
+            });
+        }
+
+        private static object BuildSkillButton(SkillDefinition skill)
+        {
+            return new Dictionary<string, object>
+            {
+                { "id", skill.Id },
+                { "name", skill.Name },
+                { "description", skill.Description },
+                { "origin", skill.Origin }
+            };
+        }
+
+        private void HandleRunSkill(string origin, string id)
+        {
+            if (_busy)
+            {
+                return;
+            }
+
+            var skill = _skillStore.Resolve(
+                origin,
+                id,
+                "outlook");
+            if (skill == null)
+            {
+                SetStatus("That skill is no longer available", true);
+                PushSkillsToWeb();
+                return;
+            }
+
+            if (skill.StartFresh)
+            {
+                HandleNewChat();
+            }
+
+            HandleSendMessage(SkillStore.ExpandPrompt(skill.Prompt));
         }
 
         private void UpdateDraftState()
@@ -2415,6 +2495,7 @@ namespace Scribble.UI
             }
 
             _history.Clear();
+            _selectedMessage = null;
             _workingMessages.Clear();
             _externalContext.Clear();
             _externalImages.Clear();
@@ -2613,6 +2694,7 @@ namespace Scribble.UI
                     _mcpTools = new McpToolHost(
                         _settings.McpServers);
                     RefreshModelPicker();
+                    PushSkillsToWeb();
                     PushTopicsToWeb(
                         _memory.TopicLocked &&
                         _memory.ActiveTopicId.Length > 0 &&

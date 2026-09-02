@@ -3,7 +3,7 @@
 ## Security objective
 
 Untrusted email, document, local Topic, webpage, screenshot, MCP, user-prompt, conversation,
-and model content must never expand the locally available capabilities or reach
+saved Local skill, packaged Public skill, and model content must never expand the locally available capabilities or reach
 an Outlook send or source-message mutation capability. Model
 tool calls may select bounded read-only mailbox context. The only mutation this
 add-in permits is creating one unsent draft after explicit, request-scoped local
@@ -109,6 +109,11 @@ unless the user enters exact tool names and affirms that each is read-only.
    working-set size. No request can load more unique message bodies than that
    size, including thread reads. Body lengths, calls per round, and tool
    rounds are also capped.
+   Optional inclusive `received_after` and `received_before` filters and the
+   `unread_only` filter narrow results only. They do not add mark-read or any
+   other source-mail mutation. A capped search may inspect one extra matching
+   metadata item solely to report `truncated: true`; it never exposes or reads
+   that extra message body.
 4. Search results receive temporary handles. Read operations accept only handles
    issued within the current request, plus the optional `selected` handle or a
    locally approved email working set (sized by the user in Settings >

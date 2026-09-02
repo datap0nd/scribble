@@ -214,6 +214,15 @@ namespace GuardrailTests
                     EndpointDiagnosticsExposeTransportDetails);
                 Run("Mailbox tools are read only", MailboxToolsAreReadOnly);
                 Run(
+                    "Public and Local skills are bounded and persistent",
+                    SkillsAreBoundedAndPersistent);
+                Run(
+                    "Morning skill timestamps honor local offsets",
+                    SkillTimestampsHonorLocalOffsets);
+                Run(
+                    "Unread mailbox windows are exact and bounded",
+                    UnreadMailboxWindowsAreExactAndBounded);
+                Run(
                     "Local search command is explicit and bounded",
                     LocalSearchCommandIsBounded);
                 Run(
@@ -744,6 +753,307 @@ namespace GuardrailTests
                 names.SequenceEqual(expected),
                 "Unexpected mailbox tools: " +
                 string.Join(", ", names));
+            Assert(
+                json.Contains("\"received_after\"") &&
+                json.Contains("\"received_before\"") &&
+                json.Contains("\"unread_only\"") &&
+                !names.Contains("mark_read") &&
+                !names.Contains("schedule"),
+                "Mailbox time and unread filters widened the capability surface.");
+        }
+
+        private static void SkillsAreBoundedAndPersistent()
+        {
+            var directory = Path.Combine(
+                Path.GetTempPath(),
+                "Scribble-skills-test-" +
+                Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(directory);
+            var path = Path.Combine(directory, "skills.json");
+            try
+            {
+                var store = new SkillStore(path);
+                var packaged = store.LoadPublic();
+                var morning = packaged.Single(skill =>
+                    skill.Id == "morning-unread-summary");
+                Assert(
+                    morning.Origin == "public" &&
+                    morning.Host == "outlook" &&
+                    morning.StartFresh &&
+                    morning.Prompt.Contains(
+                        "{{yesterday_5pm_local_iso}}") &&
+                    morning.Prompt.Contains("unread_only"),
+                    "The packaged morning skill is incomplete.");
+
+                File.WriteAllText(
+                    path,
+                    "{\"SchemaVersion\":1,\"Skills\":[" +
+                    "{\"Id\":\"valid\",\"Name\":\"Valid\"," +
+                    "\"Prompt\":\"Summarize this\",\"Host\":\"word\"}," +
+                    "{\"Id\":\"broken\",\"Prompt\":\"Missing name\"," +
+                    "\"Host\":\"word\"}]}",
+                    Encoding.UTF8);
+                var retained = store.LoadLocal();
+                Assert(
+                    retained.Count == 1 &&
+                    retained[0].Id == "valid" &&
+                    retained[0].Origin == "local",
+                    "One malformed Local skill discarded valid entries.");
+
+                var outlook = new SkillDefinition
+                {
+                    Id = "outlook-local",
+                    Name = "Outlook helper",
+                    Prompt = "Summarize the current context",
+                    Host = "outlook"
+                };
+                var excel = new SkillDefinition
+                {
+                    Id = "excel-local",
+                    Name = "Excel helper",
+                    Prompt = "Explain the selected cells",
+                    Host = "excel"
+                };
+                store.SaveLocal(new[] { outlook, excel });
+                Assert(
+                    store.LoadLocal().Count == 2 &&
+                    store.GetForHost("excel").Count == 1 &&
+                    store.GetForHost("outlook").Count == 2,
+                    "Local skills did not persist or filter by app.");
+
+                var duplicate = SkillStore.DuplicateToLocal(
+                    morning,
+                    new[] { outlook });
+                Assert(
+                    duplicate.Origin == "local" &&
+                    duplicate.Host == "outlook" &&
+                    duplicate.StartFresh &&
+                    duplicate.Id != morning.Id,
+                    "Duplicating Public to Local lost its behavior.");
+
+                var rejectedDuplicateName = false;
+                try
+                {
+                    store.SaveLocal(new[]
+                    {
+                        outlook,
+                        new SkillDefinition
+                        {
+                            Id = "different-id",
+                            Name = "OUTLOOK HELPER",
+                            Prompt = "Another prompt",
+                            Host = "outlook"
+                        }
+                    });
+                }
+                catch (InvalidOperationException)
+                {
+                    rejectedDuplicateName = true;
+                }
+
+                Assert(
+                    rejectedDuplicateName,
+                    "Duplicate Local skill names were accepted.");
+            }
+            finally
+            {
+                if (Directory.Exists(directory))
+                {
+                    Directory.Delete(directory, true);
+                }
+            }
+        }
+
+        private static void SkillTimestampsHonorLocalOffsets()
+        {
+            var fixedZone = TimeZoneInfo.CreateCustomTimeZone(
+                "Scribble fixed test zone",
+                TimeSpan.FromHours(2),
+                "Scribble fixed test zone",
+                "Scribble fixed test zone");
+            var expanded = SkillStore.ExpandPrompt(
+                "From {{yesterday_5pm_local_iso}} to {{now_local_iso}}",
+                new DateTimeOffset(
+                    2026,
+                    9,
+                    2,
+                    8,
+                    30,
+                    0,
+                    TimeSpan.Zero),
+                fixedZone);
+            Assert(
+                expanded ==
+                    "From 2026-09-01T17:00:00+02:00 " +
+                    "to 2026-09-02T10:30:00+02:00",
+                "Fixed-offset skill timestamps were incorrect: " +
+                expanded);
+
+            var daylightStart =
+                TimeZoneInfo.TransitionTime.CreateFixedDateRule(
+                    new DateTime(1, 1, 1, 2, 0, 0),
+                    3,
+                    29);
+            var daylightEnd =
+                TimeZoneInfo.TransitionTime.CreateFixedDateRule(
+                    new DateTime(1, 1, 1, 3, 0, 0),
+                    10,
+                    25);
+            var daylightRule =
+                TimeZoneInfo.AdjustmentRule.CreateAdjustmentRule(
+                    new DateTime(2026, 1, 1),
+                    new DateTime(2026, 12, 31),
+                    TimeSpan.FromHours(1),
+                    daylightStart,
+                    daylightEnd);
+            var daylightZone = TimeZoneInfo.CreateCustomTimeZone(
+                "Scribble daylight test zone",
+                TimeSpan.FromHours(1),
+                "Scribble daylight test zone",
+                "Scribble standard",
+                "Scribble daylight",
+                new[] { daylightRule });
+            var daylightExpanded = SkillStore.ExpandPrompt(
+                "{{yesterday_5pm_local_iso}}|{{now_local_iso}}",
+                new DateTimeOffset(
+                    2026,
+                    3,
+                    29,
+                    2,
+                    30,
+                    0,
+                    TimeSpan.Zero),
+                daylightZone);
+            Assert(
+                daylightExpanded ==
+                    "2026-03-28T17:00:00+01:00|" +
+                    "2026-03-29T04:30:00+02:00",
+                "Daylight-saving offsets were not evaluated per timestamp: " +
+                daylightExpanded);
+        }
+
+        private static void UnreadMailboxWindowsAreExactAndBounded()
+        {
+            var start = DateTime.Now.Date.AddDays(-1).AddHours(17);
+            var end = DateTime.Now;
+            var application = new FakeOutlookApplication();
+            var messages = new[]
+            {
+                new FakeSelectedMailItem(
+                    "after-end", "After end", end.AddMinutes(1), true),
+                new FakeSelectedMailItem(
+                    "newest", "Newest unread", end.AddMinutes(-1), true),
+                new FakeSelectedMailItem(
+                    "second", "Second unread", end.AddMinutes(-2), true),
+                new FakeSelectedMailItem(
+                    "third", "Third unread", end.AddMinutes(-3), true),
+                new FakeSelectedMailItem(
+                    "read", "Already read", end.AddMinutes(-4), false),
+                new FakeSelectedMailItem(
+                    "at-start", "At start", start, true),
+                new FakeSelectedMailItem(
+                    "before-start", "Before start", start.AddTicks(-1), true)
+            };
+            application.Session.RegisterFolder(
+                6,
+                new FakeMailFolder
+                {
+                    Items = new FakeSearchItems(messages)
+                });
+            LimitOverrides.Apply(
+                false,
+                TextBoundary.RecommendedUserPromptCharacters,
+                TextBoundary.RecommendedAssistantCharacters,
+                TextBoundary.RecommendedConversationTurns,
+                TextBoundary.RecommendedToolRounds,
+                TextBoundary.RecommendedToolCallsPerRound,
+                2);
+            try
+            {
+                var offset = TimeZoneInfo.Local.GetUtcOffset(start);
+                var after = new DateTimeOffset(start, offset)
+                    .ToString("O");
+                var before = new DateTimeOffset(
+                    end,
+                    TimeZoneInfo.Local.GetUtcOffset(end)).ToString("O");
+                var arguments = new JavaScriptSerializer().Serialize(
+                    new Dictionary<string, object>
+                    {
+                        { "query", string.Empty },
+                        { "folder", "inbox" },
+                        { "received_after", after },
+                        { "received_before", before },
+                        { "unread_only", true },
+                        { "max_results", 2 }
+                    });
+                var result = new MailboxToolHost(application, null)
+                    .Execute(MailboxCall(
+                        "unread-window",
+                        MailboxToolCatalog.SearchMailbox,
+                        arguments));
+                Assert(
+                    result.Content.Contains("\"result_count\":2") &&
+                    result.Content.Contains("\"truncated\":true") &&
+                    result.Content.Contains("Newest unread") &&
+                    result.Content.Contains("Second unread") &&
+                    !result.Content.Contains("After end") &&
+                    !result.Content.Contains("Already read") &&
+                    !result.Content.Contains("Before start") &&
+                    messages.All(message =>
+                        message.Subject == "Already read"
+                            ? !message.UnRead
+                            : message.UnRead),
+                    "Unread search was not exact, bounded, or read-only: " +
+                    result.Content);
+
+                LimitOverrides.Apply(
+                    false,
+                    TextBoundary.RecommendedUserPromptCharacters,
+                    TextBoundary.RecommendedAssistantCharacters,
+                    TextBoundary.RecommendedConversationTurns,
+                    TextBoundary.RecommendedToolRounds,
+                    TextBoundary.RecommendedToolCallsPerRound,
+                    10);
+                var completeArguments = arguments.Replace(
+                    "\"max_results\":2",
+                    "\"max_results\":10");
+                var complete = new MailboxToolHost(application, null)
+                    .Execute(MailboxCall(
+                        "complete-unread-window",
+                        MailboxToolCatalog.SearchMailbox,
+                        completeArguments));
+                Assert(
+                    complete.Content.Contains("\"result_count\":4") &&
+                    complete.Content.Contains("\"truncated\":false") &&
+                    complete.Content.Contains("At start") &&
+                    complete.Content.Contains("Third unread") &&
+                    !complete.Content.Contains("After end") &&
+                    !complete.Content.Contains("Before start") &&
+                    !complete.Content.Contains("Already read"),
+                    "Inclusive time boundaries were not applied exactly: " +
+                    complete.Content);
+
+                var invalid = new MailboxToolHost(application, null)
+                    .Execute(MailboxCall(
+                        "invalid-unread-window",
+                        MailboxToolCatalog.SearchMailbox,
+                        "{\"query\":\"\",\"folder\":\"inbox\"," +
+                        "\"received_after\":\"2026-09-01T17:00:00\"}"));
+                Assert(
+                    invalid.Content.Contains("MAILBOX_TIME_INVALID"),
+                    "A timestamp without an explicit offset was accepted.");
+            }
+            finally
+            {
+                LimitOverrides.Apply(
+                    false,
+                    TextBoundary.RecommendedUserPromptCharacters,
+                    TextBoundary.RecommendedAssistantCharacters,
+                    TextBoundary.RecommendedConversationTurns,
+                    TextBoundary.RecommendedToolRounds,
+                    TextBoundary.RecommendedToolCallsPerRound,
+                    LimitOverrides.RecommendedWorkingSetMessages);
+            }
         }
 
         private static void LocalSearchCommandIsBounded()
@@ -6492,12 +6802,15 @@ namespace GuardrailTests
     {
         public FakeSelectedMailItem(
             string entryId,
-            string subject)
+            string subject,
+            DateTime? receivedTime = null,
+            bool unread = false)
         {
             EntryID = entryId;
             Subject = subject;
             Parent = new FakeMailFolder();
-            ReceivedTime = DateTime.UtcNow;
+            ReceivedTime = receivedTime ?? DateTime.UtcNow;
+            UnRead = unread;
             Attachments = new FakeOutlookAttachments();
         }
 
@@ -6523,6 +6836,8 @@ namespace GuardrailTests
         public DateTime SentOn { get; } = DateTime.MinValue;
 
         public DateTime CreationTime { get; } = DateTime.MinValue;
+
+        public bool UnRead { get; }
 
         public FakeMailFolder Parent { get; }
 
@@ -6606,6 +6921,47 @@ namespace GuardrailTests
     public sealed class FakeMailFolder
     {
         public string StoreID { get; } = "store";
+
+        public object Items { get; set; }
+    }
+
+    public sealed class FakeSearchItems
+    {
+        private readonly FakeSelectedMailItem[] _items;
+
+        public FakeSearchItems(
+            IEnumerable<FakeSelectedMailItem> items)
+        {
+            _items = (items ??
+                    Enumerable.Empty<FakeSelectedMailItem>())
+                .OrderByDescending(item => item.ReceivedTime)
+                .ToArray();
+        }
+
+        public int Count
+        {
+            get { return _items.Length; }
+        }
+
+        public FakeSelectedMailItem Item(int index)
+        {
+            return _items[index - 1];
+        }
+
+        public FakeSearchItems Restrict(string filter)
+        {
+            return filter != null &&
+                   filter.IndexOf(
+                       "Unread",
+                       StringComparison.OrdinalIgnoreCase) >= 0
+                ? new FakeSearchItems(
+                    _items.Where(item => item.UnRead))
+                : new FakeSearchItems(_items);
+        }
+
+        public void Sort(string property, bool descending)
+        {
+        }
     }
 
     public sealed class FakeOutlookApplication
@@ -6666,6 +7022,25 @@ namespace GuardrailTests
     {
         private readonly Dictionary<string, object> _items =
             new Dictionary<string, object>(StringComparer.Ordinal);
+        private readonly Dictionary<int, object> _folders =
+            new Dictionary<int, object>();
+
+        public void RegisterFolder(int kind, object folder)
+        {
+            _folders[kind] = folder;
+        }
+
+        public object GetDefaultFolder(int kind)
+        {
+            object folder;
+            if (!_folders.TryGetValue(kind, out folder))
+            {
+                throw new InvalidOperationException(
+                    "Unknown fake Outlook folder.");
+            }
+
+            return folder;
+        }
 
         public void Register(
             string entryId,

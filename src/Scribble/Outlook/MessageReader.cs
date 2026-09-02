@@ -277,7 +277,9 @@ namespace Scribble.Outlook
                                 .MaxMessageBodyCharacters)),
                     CaptureAttachmentNames(mail),
                     CountRemoteImages(
-                        SafeString(() => mail.HTMLBody)));
+                        SafeString(() => mail.HTMLBody)),
+                    !isAppointment &&
+                    SafeBoolean(() => mail.UnRead));
             }
             finally
             {
@@ -619,6 +621,18 @@ namespace Scribble.Outlook
             }
 
             return null;
+        }
+
+        private static bool SafeBoolean(Func<object> reader)
+        {
+            try
+            {
+                return Convert.ToBoolean(reader());
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         private static void Release(object value)

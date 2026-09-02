@@ -176,14 +176,49 @@ namespace Scribble.Outlook
                 MailboxWorkingSet.MaxMessages,
                 1,
                 MailboxWorkingSet.MaxMessages);
+            DateTime? receivedAfter;
+            DateTime? receivedBefore;
+            if (!TryGetLocalTimestamp(
+                    arguments,
+                    "received_after",
+                    out receivedAfter) ||
+                !TryGetLocalTimestamp(
+                    arguments,
+                    "received_before",
+                    out receivedBefore))
+            {
+                return Error(
+                    callId,
+                    "MAILBOX_TIME_INVALID",
+                    "Use ISO-8601 mailbox timestamps with an explicit UTC offset.");
+            }
+
+            if (receivedAfter.HasValue &&
+                receivedBefore.HasValue &&
+                receivedAfter.Value > receivedBefore.Value)
+            {
+                return Error(
+                    callId,
+                    "MAILBOX_TIME_RANGE_INVALID",
+                    "received_after must not be later than received_before.");
+            }
+
+            var unreadOnly = GetBoolean(
+                arguments,
+                "unread_only",
+                false);
             var hits = _mailbox.Search(
                 query,
                 folder,
                 daysBack,
-                maxResults);
+                maxResults + 1,
+                receivedAfter,
+                receivedBefore,
+                unreadOnly);
+            var truncated = hits.Count > maxResults;
 
             var results = new List<object>();
-            foreach (var hit in hits)
+            foreach (var hit in hits.Take(maxResults))
             {
                 var handle = Register(hit.Message);
                 results.Add(new Dictionary<string, object>
@@ -198,6 +233,7 @@ namespace Scribble.Outlook
                         hit.Message.ReceivedAt?.ToString("O") ??
                         "unknown"
                     },
+                    { "unread", hit.Message.IsUnread },
                     { "snippet", hit.Snippet }
                 });
             }
@@ -209,7 +245,17 @@ namespace Scribble.Outlook
                     { "untrusted_email_data", true },
                     { "query", query },
                     { "folder", folder },
+                    { "unread_only", unreadOnly },
+                    {
+                        "received_after",
+                        receivedAfter?.ToString("O") ?? string.Empty
+                    },
+                    {
+                        "received_before",
+                        receivedBefore?.ToString("O") ?? string.Empty
+                    },
                     { "result_count", results.Count },
+                    { "truncated", truncated },
                     { "results", results }
                 },
                 "Mailbox search loaded " +
@@ -588,6 +634,62 @@ namespace Scribble.Outlook
             }
 
             return Math.Max(minimum, Math.Min(maximum, parsed));
+        }
+
+        private static bool GetBoolean(
+            IDictionary<string, object> arguments,
+            string key,
+            bool fallback)
+        {
+            object value;
+            bool parsed;
+            return arguments.TryGetValue(key, out value) &&
+                   bool.TryParse(Convert.ToString(value), out parsed)
+                ? parsed
+                : fallback;
+        }
+
+        private static bool TryGetLocalTimestamp(
+            IDictionary<string, object> arguments,
+            string key,
+            out DateTime? value)
+        {
+            value = null;
+            object raw;
+            if (!arguments.TryGetValue(key, out raw) ||
+                string.IsNullOrWhiteSpace(Convert.ToString(raw)))
+            {
+                return true;
+            }
+
+            var text = Convert.ToString(raw).Trim();
+            var hasZulu = text.EndsWith(
+                "Z",
+                StringComparison.OrdinalIgnoreCase);
+            var hasOffset = text.Length >= 6 &&
+                (text[text.Length - 6] == '+' ||
+                 text[text.Length - 6] == '-') &&
+                text[text.Length - 3] == ':';
+            DateTimeOffset parsed;
+            if (!hasZulu && !hasOffset)
+            {
+                return false;
+            }
+
+            if (!DateTimeOffset.TryParse(
+                    text,
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.AllowWhiteSpaces |
+                    DateTimeStyles.RoundtripKind,
+                    out parsed))
+            {
+                return false;
+            }
+
+            value = TimeZoneInfo.ConvertTime(
+                parsed,
+                TimeZoneInfo.Local).DateTime;
+            return true;
         }
 
         private static IEnumerable<string> GetStringList(

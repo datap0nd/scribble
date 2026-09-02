@@ -24,16 +24,22 @@ namespace Scribble.Outlook
             string query,
             string folderScope,
             int daysBack,
-            int maxResults)
+            int maxResults,
+            DateTime? receivedAfter = null,
+            DateTime? receivedBefore = null,
+            bool unreadOnly = false)
         {
             var boundedQuery = TextBoundary.PlainText(query, 240);
             var boundedDays = Math.Max(1, Math.Min(3650, daysBack));
             var boundedResults = Math.Max(
                 1,
                 Math.Min(
-                    MailboxWorkingSet.MaxMessages,
+                    MailboxWorkingSet.MaxMessages + 1,
                     maxResults));
-            var cutoff = DateTime.Now.AddDays(-boundedDays);
+            var cutoff = receivedAfter ??
+                DateTime.Now.AddDays(-boundedDays);
+            var exactTimeRange = receivedAfter.HasValue ||
+                receivedBefore.HasValue;
             var hits = new List<MailboxSearchHit>();
 
             if (folderScope == "inbox" || folderScope == "all")
@@ -43,6 +49,9 @@ namespace Scribble.Outlook
                     "Inbox",
                     boundedQuery,
                     cutoff,
+                    receivedBefore,
+                    exactTimeRange,
+                    unreadOnly,
                     boundedResults,
                     hits);
             }
@@ -54,6 +63,9 @@ namespace Scribble.Outlook
                     "Sent Items",
                     boundedQuery,
                     cutoff,
+                    receivedBefore,
+                    exactTimeRange,
+                    unreadOnly,
                     boundedResults,
                     hits);
             }
@@ -183,6 +195,9 @@ namespace Scribble.Outlook
             string folderName,
             string query,
             DateTime cutoff,
+            DateTime? receivedBefore,
+            bool exactTimeRange,
+            bool unreadOnly,
             int maxResults,
             List<MailboxSearchHit> output)
         {
@@ -201,13 +216,16 @@ namespace Scribble.Outlook
                 dynamic outlookFolder = folder;
                 items = outlookFolder.Items;
 
-                if (query.Length > 0)
+                if (query.Length > 0 || unreadOnly)
                 {
                     try
                     {
                         dynamic outlookItems = items;
-                        searchItems = outlookItems.Restrict(
-                            BuildDaslFilter(query));
+                        searchItems = query.Length > 0
+                            ? outlookItems.Restrict(
+                                BuildDaslFilter(query))
+                            : outlookItems.Restrict(
+                                "[UnRead] = true");
                     }
                     catch
                     {
@@ -217,6 +235,7 @@ namespace Scribble.Outlook
 
                 var collection = searchItems ?? items;
                 dynamic candidates = collection;
+                var sortedNewest = false;
                 try
                 {
                     candidates.Sort(
@@ -224,6 +243,7 @@ namespace Scribble.Outlook
                             ? "[SentOn]"
                             : "[ReceivedTime]",
                         true);
+                    sortedNewest = true;
                 }
                 catch
                 {
@@ -251,14 +271,33 @@ namespace Scribble.Outlook
                         }
 
                         var snapshot = MessageReader.CaptureItem(item);
+                        if (exactTimeRange &&
+                            !snapshot.ReceivedAt.HasValue)
+                        {
+                            continue;
+                        }
+
+                        if (receivedBefore.HasValue &&
+                            snapshot.ReceivedAt.HasValue &&
+                            snapshot.ReceivedAt.Value >
+                                receivedBefore.Value)
+                        {
+                            continue;
+                        }
+
                         if (snapshot.ReceivedAt.HasValue &&
                             snapshot.ReceivedAt.Value < cutoff)
                         {
-                            if (searchItems == null)
+                            if (sortedNewest)
                             {
                                 break;
                             }
 
+                            continue;
+                        }
+
+                        if (unreadOnly && !snapshot.IsUnread)
+                        {
                             continue;
                         }
 

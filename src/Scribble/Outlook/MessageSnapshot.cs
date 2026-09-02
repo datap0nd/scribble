@@ -17,7 +17,8 @@ namespace Scribble.Outlook
             DateTime? receivedAt,
             string body,
             IReadOnlyList<string> attachmentNames = null,
-            int remoteImageCount = 0)
+            int remoteImageCount = 0,
+            bool isUnread = false)
         {
             EntryId = entryId ?? string.Empty;
             StoreId = storeId ?? string.Empty;
@@ -29,6 +30,7 @@ namespace Scribble.Outlook
             AttachmentNames = attachmentNames ??
                 EmptyAttachmentNames;
             RemoteImageCount = Math.Max(0, remoteImageCount);
+            IsUnread = isUnread;
         }
 
         public string EntryId { get; }
@@ -48,6 +50,8 @@ namespace Scribble.Outlook
         public IReadOnlyList<string> AttachmentNames { get; }
 
         public int RemoteImageCount { get; }
+
+        public bool IsUnread { get; }
 
         public bool CanReply
         {

@@ -85,12 +85,38 @@ namespace Scribble.UI
         private readonly Label _topicStatus = new Label();
         private readonly List<TopicConfig> _topics =
             new List<TopicConfig>();
+        private readonly ListBox _publicSkillList = new ListBox();
+        private readonly RichTextBox _publicSkillPrompt =
+            new RichTextBox();
+        private readonly Button _duplicatePublicSkill =
+            MakeButton("Duplicate to Local", false, 150);
+        private readonly ListBox _localSkillList = new ListBox();
+        private readonly TextBox _localSkillName = new TextBox();
+        private readonly RichTextBox _localSkillPrompt =
+            new RichTextBox();
+        private readonly CheckBox _localSkillStartFresh =
+            new CheckBox();
+        private readonly Button _localSkillNew =
+            MakeButton("New skill", false, 100);
+        private readonly Button _localSkillSave =
+            MakeButton("Add / update skill", false, 150);
+        private readonly Button _localSkillRemove =
+            MakeButton("Remove selected", false, 140);
+        private readonly Label _skillStatus = new Label();
+        private readonly List<SkillDefinition> _publicSkills =
+            new List<SkillDefinition>();
+        private readonly List<SkillDefinition> _localSkills =
+            new List<SkillDefinition>();
+        private readonly List<SkillDefinition> _allLocalSkills =
+            new List<SkillDefinition>();
         private readonly Button _save =
             MakeButton("Save", true, 96);
         private readonly OpenAiCompatibleClient _client =
             new OpenAiCompatibleClient();
         private readonly SettingsStore _store;
+        private readonly SkillStore _skillStore = new SkillStore();
         private readonly object _outlookApplication;
+        private readonly string _skillHost;
         private CancellationTokenSource _checkCancellation;
         private CancellationTokenSource _modelRefreshCancellation;
         private CancellationTokenSource _toneCancellation;
@@ -107,7 +133,7 @@ namespace Scribble.UI
         public SettingsWindow(
             SettingsStore store,
             AppSettings current)
-            : this(store, current, null)
+            : this(store, current, null, string.Empty)
         {
         }
 
@@ -115,10 +141,26 @@ namespace Scribble.UI
             SettingsStore store,
             AppSettings current,
             object outlookApplication)
+            : this(
+                store,
+                current,
+                outlookApplication,
+                outlookApplication == null
+                    ? string.Empty
+                    : "outlook")
+        {
+        }
+
+        public SettingsWindow(
+            SettingsStore store,
+            AppSettings current,
+            object outlookApplication,
+            string skillHost)
         {
             _store = store ??
                 throw new ArgumentNullException(nameof(store));
             _outlookApplication = outlookApplication;
+            _skillHost = SkillDefinition.NormalizeHost(skillHost);
 
             Text = "Scribble settings";
             StartPosition = FormStartPosition.CenterParent;
@@ -159,6 +201,10 @@ namespace Scribble.UI
             }
             tabs.TabPages.Add(BuildMcpPage());
             tabs.TabPages.Add(BuildTopicsPage());
+            if (_skillHost.Length > 0)
+            {
+                tabs.TabPages.Add(BuildSkillsPage());
+            }
             tabs.TabPages.Add(BuildWritingStylePage());
             tabs.TabPages.Add(BuildLimitsPage());
             tabs.TabPages.Add(BuildSupportPage());
@@ -238,8 +284,32 @@ namespace Scribble.UI
                 }
             }
 
+            foreach (var skill in _skillStore.LoadPublic())
+            {
+                if (string.Equals(
+                        skill.Host,
+                        _skillHost,
+                        StringComparison.Ordinal))
+                {
+                    _publicSkills.Add(skill);
+                }
+            }
+
+            foreach (var skill in _skillStore.LoadLocal())
+            {
+                _allLocalSkills.Add(skill);
+                if (string.Equals(
+                        skill.Host,
+                        _skillHost,
+                        StringComparison.Ordinal))
+                {
+                    _localSkills.Add(skill);
+                }
+            }
+
             RefreshMcpList();
             RefreshTopicList();
+            RefreshSkillLists();
             UpdateToneStrengthLabel();
             UpdateModelGuidance();
             UpdateTransportWarning();
@@ -357,6 +427,23 @@ namespace Scribble.UI
             _toneProfile.DetectUrls = false;
             _toneProfile.AccessibleName =
                 "Editable email writing profile";
+
+            _publicSkillPrompt.ReadOnly = true;
+            _publicSkillPrompt.DetectUrls = false;
+            _publicSkillPrompt.AccessibleName =
+                "Packaged Public skill prompt";
+            _localSkillName.MaxLength =
+                SkillDefinition.MaxNameCharacters;
+            _localSkillName.AccessibleName = "Local skill name";
+            _localSkillPrompt.MaxLength =
+                TextBoundary.MaxUserPromptCharacters;
+            _localSkillPrompt.DetectUrls = false;
+            _localSkillPrompt.AccessibleName = "Local skill prompt";
+            _localSkillStartFresh.AutoSize = true;
+            _localSkillStartFresh.Text =
+                "Start this skill in a fresh chat";
+            _localSkillStartFresh.AccessibleDescription =
+                "Clears in-memory conversation and context before the prompt runs. Existing Office drafts are not changed.";
         }
 
         private TabPage BuildConnectionPage()
@@ -1331,6 +1418,324 @@ namespace Scribble.UI
             _mcpServers.RemoveAt(index);
             RefreshMcpList();
             _mcpStatus.Text =
+                "Removed " + name + ". Press Save to apply.";
+        }
+
+        private TabPage BuildSkillsPage()
+        {
+            var page = new TabPage("Skills")
+            {
+                AutoScroll = true
+            };
+            var layout = new TableLayoutPanel
+            {
+                AutoScroll = true,
+                Dock = DockStyle.Fill,
+                ColumnCount = 1,
+                RowCount = 14,
+                Padding = new Padding(18, 16, 18, 12)
+            };
+            for (var row = 0; row < 14; row++)
+            {
+                layout.RowStyles.Add(new RowStyle(
+                    row == 1 || row == 6
+                        ? SizeType.Percent
+                        : SizeType.AutoSize,
+                    row == 1 || row == 6 ? 50 : 0));
+            }
+
+            var appName = _skillHost == "powerpoint"
+                ? "PowerPoint"
+                : char.ToUpperInvariant(_skillHost[0]) +
+                  _skillHost.Substring(1);
+            var intro = SupportingText(
+                "Skills are saved prompts that run immediately from " +
+                "the " + appName +
+                " chat pane. Public skills ship with Scribble and " +
+                "stay read-only. Local skills are stored only on " +
+                "this PC in " + _skillStore.LocalPath + ".");
+            intro.ForeColor = SystemColors.ControlText;
+            layout.Controls.Add(intro, 0, 0);
+
+            _publicSkillList.Dock = DockStyle.Fill;
+            _publicSkillList.MinimumSize = new Size(0, 80);
+            _publicSkillList.AccessibleName =
+                "Public skills for " + appName;
+            _publicSkillList.SelectedIndexChanged +=
+                PublicSkillSelectionChanged;
+            layout.Controls.Add(_publicSkillList, 0, 1);
+
+            layout.Controls.Add(
+                FieldLabel("Public prompt preview (read-only)"),
+                0,
+                2);
+            _publicSkillPrompt.Dock = DockStyle.Fill;
+            _publicSkillPrompt.MinimumSize = new Size(0, 64);
+            layout.Controls.Add(_publicSkillPrompt, 0, 3);
+            _duplicatePublicSkill.Click += DuplicatePublicSkillClick;
+            _duplicatePublicSkill.Margin = new Padding(0, 7, 0, 12);
+            layout.Controls.Add(_duplicatePublicSkill, 0, 4);
+
+            layout.Controls.Add(
+                FieldLabel("Local skills for " + appName),
+                0,
+                5);
+            _localSkillList.Dock = DockStyle.Fill;
+            _localSkillList.MinimumSize = new Size(0, 90);
+            _localSkillList.AccessibleName =
+                "Local skills for " + appName;
+            _localSkillList.SelectedIndexChanged +=
+                LocalSkillSelectionChanged;
+            layout.Controls.Add(_localSkillList, 0, 6);
+
+            layout.Controls.Add(FieldLabel("Skill name"), 0, 7);
+            _localSkillName.Dock = DockStyle.Fill;
+            layout.Controls.Add(_localSkillName, 0, 8);
+            layout.Controls.Add(FieldLabel("Prompt"), 0, 9);
+            _localSkillPrompt.Dock = DockStyle.Fill;
+            _localSkillPrompt.MinimumSize = new Size(0, 90);
+            layout.Controls.Add(_localSkillPrompt, 0, 10);
+            layout.Controls.Add(_localSkillStartFresh, 0, 11);
+
+            var editButtons = new FlowLayoutPanel
+            {
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                FlowDirection = FlowDirection.LeftToRight,
+                Margin = new Padding(0),
+                Padding = new Padding(0, 8, 0, 0)
+            };
+            _localSkillNew.Click += LocalSkillNewClick;
+            _localSkillSave.Click += LocalSkillSaveClick;
+            _localSkillRemove.Click += LocalSkillRemoveClick;
+            editButtons.Controls.Add(_localSkillNew);
+            editButtons.Controls.Add(_localSkillSave);
+            editButtons.Controls.Add(_localSkillRemove);
+            layout.Controls.Add(editButtons, 0, 12);
+
+            ConfigureSupportingLabel(_skillStatus);
+            _skillStatus.Text =
+                "Up to " + SkillStore.MaxLocalSkillsPerHost +
+                " Local skills per Office app. Optional time tokens: " +
+                "{{yesterday_5pm_local_iso}} and {{now_local_iso}}. " +
+                "Changes apply after Save.";
+            layout.Controls.Add(_skillStatus, 0, 13);
+            page.Controls.Add(layout);
+            return page;
+        }
+
+        private void RefreshSkillLists()
+        {
+            _publicSkills.Sort((left, right) =>
+            {
+                var order = left.DisplayOrder.CompareTo(
+                    right.DisplayOrder);
+                return order != 0
+                    ? order
+                    : string.Compare(
+                        left.Name,
+                        right.Name,
+                        StringComparison.OrdinalIgnoreCase);
+            });
+            _localSkills.Sort((left, right) => string.Compare(
+                left.Name,
+                right.Name,
+                StringComparison.OrdinalIgnoreCase));
+            _publicSkillList.Items.Clear();
+            foreach (var skill in _publicSkills)
+            {
+                _publicSkillList.Items.Add(skill.Name);
+            }
+
+            _localSkillList.Items.Clear();
+            foreach (var skill in _localSkills)
+            {
+                _localSkillList.Items.Add(skill.Name);
+            }
+
+            _duplicatePublicSkill.Enabled =
+                _publicSkillList.SelectedIndex >= 0;
+        }
+
+        private void PublicSkillSelectionChanged(
+            object sender,
+            EventArgs eventArgs)
+        {
+            var index = _publicSkillList.SelectedIndex;
+            _publicSkillPrompt.Text = index >= 0 &&
+                index < _publicSkills.Count
+                    ? _publicSkills[index].Prompt
+                    : string.Empty;
+            _duplicatePublicSkill.Enabled =
+                _commonControlsEnabled &&
+                index >= 0 &&
+                index < _publicSkills.Count;
+        }
+
+        private void LocalSkillSelectionChanged(
+            object sender,
+            EventArgs eventArgs)
+        {
+            var index = _localSkillList.SelectedIndex;
+            if (index < 0 || index >= _localSkills.Count)
+            {
+                return;
+            }
+
+            var skill = _localSkills[index];
+            _localSkillName.Text = skill.Name;
+            _localSkillPrompt.Text = skill.Prompt;
+            _localSkillStartFresh.Checked = skill.StartFresh;
+        }
+
+        private void DuplicatePublicSkillClick(
+            object sender,
+            EventArgs eventArgs)
+        {
+            var index = _publicSkillList.SelectedIndex;
+            if (index < 0 || index >= _publicSkills.Count)
+            {
+                _skillStatus.Text =
+                    "Select a Public skill to duplicate.";
+                return;
+            }
+
+            if (_localSkills.Count >=
+                SkillStore.MaxLocalSkillsPerHost)
+            {
+                _skillStatus.Text =
+                    "Local skill limit reached (" +
+                    SkillStore.MaxLocalSkillsPerHost + ").";
+                return;
+            }
+
+            var duplicate = SkillStore.DuplicateToLocal(
+                _publicSkills[index],
+                _localSkills);
+            _localSkills.Add(duplicate);
+            RefreshSkillLists();
+            var duplicateIndex = _localSkills.FindIndex(skill =>
+                string.Equals(
+                    skill.Id,
+                    duplicate.Id,
+                    StringComparison.OrdinalIgnoreCase));
+            _localSkillList.SelectedIndex = duplicateIndex;
+            _skillStatus.Text =
+                "Duplicated " + _publicSkills[index].Name +
+                ". Edit it if needed, then press Save.";
+        }
+
+        private void LocalSkillSaveClick(
+            object sender,
+            EventArgs eventArgs)
+        {
+            var name = TextBoundary.SingleLine(
+                _localSkillName.Text,
+                SkillDefinition.MaxNameCharacters);
+            var prompt = TextBoundary.PlainText(
+                _localSkillPrompt.Text,
+                TextBoundary.MaxUserPromptCharacters);
+            if (name.Length == 0 || prompt.Length == 0)
+            {
+                _skillStatus.Text =
+                    "Enter both a skill name and a prompt.";
+                return;
+            }
+
+            var selected = _localSkillList.SelectedIndex;
+            var existingId = selected >= 0 &&
+                selected < _localSkills.Count
+                    ? _localSkills[selected].Id
+                    : string.Empty;
+            if (_localSkills.Any(existingSkill =>
+                    !string.Equals(
+                        existingSkill.Id,
+                        existingId,
+                        StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(
+                        existingSkill.Name,
+                        name,
+                        StringComparison.OrdinalIgnoreCase)))
+            {
+                _skillStatus.Text =
+                    "Local skill names must be unique in this app.";
+                return;
+            }
+
+            if (existingId.Length == 0 &&
+                _localSkills.Count >=
+                    SkillStore.MaxLocalSkillsPerHost)
+            {
+                _skillStatus.Text =
+                    "Local skill limit reached (" +
+                    SkillStore.MaxLocalSkillsPerHost + ").";
+                return;
+            }
+
+            var skill = new SkillDefinition
+            {
+                Id = existingId.Length > 0
+                    ? existingId
+                    : Guid.NewGuid().ToString("N"),
+                Name = name,
+                Prompt = prompt,
+                Host = _skillHost,
+                Origin = "local",
+                StartFresh = _localSkillStartFresh.Checked
+            }.Sanitized("local");
+            if (existingId.Length > 0)
+            {
+                _localSkills[selected] = skill;
+            }
+            else
+            {
+                _localSkills.Add(skill);
+            }
+
+            RefreshSkillLists();
+            var skillIndex = _localSkills.FindIndex(entry =>
+                string.Equals(
+                    entry.Id,
+                    skill.Id,
+                    StringComparison.OrdinalIgnoreCase));
+            _localSkillList.SelectedIndex = skillIndex;
+            _skillStatus.Text =
+                (existingId.Length > 0 ? "Updated " : "Added ") +
+                skill.Name + ". Press Save to apply.";
+        }
+
+        private void LocalSkillNewClick(
+            object sender,
+            EventArgs eventArgs)
+        {
+            _localSkillList.ClearSelected();
+            _localSkillName.Clear();
+            _localSkillPrompt.Clear();
+            _localSkillStartFresh.Checked = false;
+            _localSkillName.Focus();
+            _skillStatus.Text =
+                "Enter a name and prompt, then choose Add / update skill.";
+        }
+
+        private void LocalSkillRemoveClick(
+            object sender,
+            EventArgs eventArgs)
+        {
+            var index = _localSkillList.SelectedIndex;
+            if (index < 0 || index >= _localSkills.Count)
+            {
+                _skillStatus.Text =
+                    "Select a Local skill first.";
+                return;
+            }
+
+            var name = _localSkills[index].Name;
+            _localSkills.RemoveAt(index);
+            RefreshSkillLists();
+            _localSkillName.Clear();
+            _localSkillPrompt.Clear();
+            _localSkillStartFresh.Checked = false;
+            _skillStatus.Text =
                 "Removed " + name + ". Press Save to apply.";
         }
 
@@ -2408,6 +2813,17 @@ namespace Scribble.UI
             _topicRemove.Enabled = enabled;
             _topicRefresh.Enabled = enabled ||
                 _topicCancellation != null;
+            _publicSkillList.Enabled = enabled;
+            _publicSkillPrompt.Enabled = enabled;
+            _duplicatePublicSkill.Enabled = enabled &&
+                _publicSkillList.SelectedIndex >= 0;
+            _localSkillList.Enabled = enabled;
+            _localSkillName.Enabled = enabled;
+            _localSkillPrompt.Enabled = enabled;
+            _localSkillStartFresh.Enabled = enabled;
+            _localSkillNew.Enabled = enabled;
+            _localSkillSave.Enabled = enabled;
+            _localSkillRemove.Enabled = enabled;
             _commonControlsEnabled = enabled;
             UpdateGeminiModeUi();
         }
@@ -2419,6 +2835,17 @@ namespace Scribble.UI
                 _error.Text = string.Empty;
                 var settings = ReadFormSettings();
                 _store.Save(settings);
+                if (_skillHost.Length > 0)
+                {
+                    var combinedSkills = _allLocalSkills
+                        .Where(skill => !string.Equals(
+                            skill.Host,
+                            _skillHost,
+                            StringComparison.Ordinal))
+                        .Concat(_localSkills)
+                        .ToArray();
+                    _skillStore.SaveLocal(combinedSkills);
+                }
                 SavedSettings = settings;
                 DialogResult = DialogResult.OK;
                 Close();
