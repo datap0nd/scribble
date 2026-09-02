@@ -756,17 +756,27 @@ async function clickAndRead(toolRequest) {
 
 function askUser(toolRequest) {
   let question = "";
+  let reason = "";
   let options = [];
   try {
     const parsedArguments = JSON.parse(toolRequest?.arguments || "{}");
     question = typeof parsedArguments?.question === "string"
       ? parsedArguments.question.trim().slice(0, 300)
       : "";
+    reason = typeof parsedArguments?.reason === "string"
+      ? parsedArguments.reason.replace(/\s+/g, " ").trim().slice(0, 180)
+      : "";
     options = Array.isArray(parsedArguments?.options)
       ? parsedArguments.options
-          .map((option) => String(option || "").trim().slice(0, 80))
-          .filter((option) => option.length > 0)
-          .slice(0, 6)
+          .map((option) => typeof option === "string"
+            ? { label: option.trim().slice(0, 80), description: "" }
+            : {
+                label: String(option?.label || "").trim().slice(0, 80),
+                description: String(option?.description || "")
+                  .replace(/\s+/g, " ").trim().slice(0, 140)
+              })
+          .filter((option) => option.label.length > 0)
+          .slice(0, 4)
       : [];
   } catch {
     return Promise.resolve("[ASK_FAILED] The question arguments were not valid JSON.");
@@ -787,6 +797,12 @@ function askUser(toolRequest) {
     const questionLine = document.createElement("p");
     questionLine.textContent = question;
     body.append(questionLine);
+    if (reason) {
+      const reasonLine = document.createElement("p");
+      reasonLine.className = "ask-reason";
+      reasonLine.textContent = reason;
+      body.append(reasonLine);
+    }
 
     const choices = document.createElement("div");
     choices.className = "ask-choices";
@@ -807,7 +823,7 @@ function askUser(toolRequest) {
       activeAskFinish = null;
       choices.querySelectorAll("button").forEach((choiceButton) => {
         choiceButton.disabled = true;
-        if (choiceButton.textContent === answer) {
+        if (choiceButton.dataset.label === answer) {
           choiceButton.classList.add("chosen");
         }
       });
@@ -824,8 +840,18 @@ function askUser(toolRequest) {
       const choiceButton = document.createElement("button");
       choiceButton.type = "button";
       choiceButton.className = "ask-option";
-      choiceButton.textContent = option;
-      choiceButton.addEventListener("click", () => finish(option));
+      choiceButton.dataset.label = option.label;
+      const optionLabel = document.createElement("span");
+      optionLabel.className = "ask-option-label";
+      optionLabel.textContent = option.label;
+      choiceButton.append(optionLabel);
+      if (option.description) {
+        const description = document.createElement("span");
+        description.className = "ask-option-description";
+        description.textContent = option.description;
+        choiceButton.append(description);
+      }
+      choiceButton.addEventListener("click", () => finish(option.label));
       choices.append(choiceButton);
     }
     body.append(choices);

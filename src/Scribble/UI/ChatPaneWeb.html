@@ -203,6 +203,33 @@
     cursor: pointer;
   }
   .qskip:hover { color: var(--text); border-color: var(--dim); }
+  .askopts {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 9px;
+  }
+  .askopt {
+    background: var(--card2);
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    padding: 7px 10px;
+    color: var(--text);
+    cursor: pointer;
+    text-align: left;
+  }
+  .askopt:hover { border-color: var(--accent); }
+  .askopt.sel {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+  }
+  .asklabel { display: block; font-size: 12px; font-weight: 600; }
+  .askdesc {
+    display: block;
+    color: var(--dim);
+    font-size: 10.5px;
+    margin-top: 2px;
+  }
   .tchip.warn {
     background: rgba(245, 196, 81, 0.10);
     border-color: rgba(245, 196, 81, 0.45);
@@ -1162,6 +1189,7 @@
     typing = null;
     palCanvas = null;
     suggestCard = null;
+    askUserCard = null;
     streamBubble = null;
     streamBody = null;
   }
@@ -1193,6 +1221,7 @@
   }
 
   var suggestCard = null;
+  var askUserCard = null;
 
   function showSuggest(questions) {
     if (suggestCard && suggestCard.parentNode === chat) {
@@ -1287,6 +1316,90 @@
     scrollDown();
   }
 
+  function showAskUser(question, reason, options) {
+    if (askUserCard && askUserCard.parentNode === chat) {
+      chat.removeChild(askUserCard);
+    }
+    var card = el("div", "qcard");
+    var title = el("div", "qtitle");
+    title.textContent = "Help Scribble get this right";
+    card.appendChild(title);
+    if (reason) {
+      var hint = el("div", "qhint");
+      hint.textContent = reason;
+      card.appendChild(hint);
+    }
+    var label = el("div", "qlabel");
+    label.textContent = question || "What should Scribble use?";
+    card.appendChild(label);
+
+    var choices = el("div", "askopts");
+    (options || []).slice(0, 4).forEach(function (rawOption) {
+      var option = typeof rawOption === "string"
+        ? { label: rawOption, description: "" }
+        : (rawOption || {});
+      if (!option.label) { return; }
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "askopt";
+      var optionLabel = el("span", "asklabel");
+      optionLabel.textContent = option.label;
+      button.appendChild(optionLabel);
+      if (option.description) {
+        var description = el("span", "askdesc");
+        description.textContent = option.description;
+        button.appendChild(description);
+      }
+      button.addEventListener("click", function () {
+        if (card.classList.contains("done")) { return; }
+        button.classList.add("sel");
+        card.classList.add("done");
+        post("askUserAnswer", { answer: option.label });
+      });
+      choices.appendChild(button);
+    });
+    if (choices.children.length > 0) {
+      card.appendChild(choices);
+    }
+
+    var input = document.createElement("input");
+    input.type = "text";
+    input.className = "qtext";
+    input.maxLength = 240;
+    input.placeholder = "Or type a different answer";
+    card.appendChild(input);
+    var actions = el("div", "qactions");
+    var answer = document.createElement("button");
+    answer.type = "button";
+    answer.className = "qgo";
+    answer.textContent = "Use my answer";
+    function submitCustom() {
+      var value = input.value.replace(/\s+/g, " ").trim();
+      if (!value || card.classList.contains("done")) { return; }
+      card.classList.add("done");
+      post("askUserAnswer", { answer: value });
+    }
+    answer.addEventListener("click", submitCustom);
+    input.addEventListener("keydown", function (event) {
+      if (event.key === "Enter" && !event.isComposing) {
+        event.preventDefault();
+        submitCustom();
+      }
+    });
+    actions.appendChild(answer);
+    card.appendChild(actions);
+    chat.appendChild(card);
+    askUserCard = card;
+    scrollDown();
+    input.focus();
+  }
+
+  function dismissAskUser() {
+    if (askUserCard) {
+      askUserCard.classList.add("done");
+    }
+  }
+
   function handle(m) {
     if (!m || !m.type) { return; }
     switch (m.type) {
@@ -1294,6 +1407,10 @@
       case "assistant": addAssistant(m.text || "", m.bold, m.md); break;
       case "activity": addActivity(m.text || "", m.kind); break;
       case "suggest": showSuggest(m.questions); break;
+      case "askUser":
+        showAskUser(m.question, m.reason, m.options);
+        break;
+      case "dismissAskUser": dismissAskUser(); break;
       case "delta": streamDelta(m.text || ""); break;
       case "deltaEnd": streamEnd(); break;
       case "status": setStatus(m.text, m.error); break;

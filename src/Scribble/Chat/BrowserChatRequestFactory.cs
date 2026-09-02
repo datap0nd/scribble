@@ -55,10 +55,7 @@ namespace Scribble.Chat
             "close - and clicks that buy, pay, sign in, register, " +
             "subscribe, or delete are refused. You cannot type into " +
             "fields, submit credentials, upload, download, purchase, " +
-            "post, or message. When a request is ambiguous in a way " +
-            "that changes the work (location, recipient, budget, scope, " +
-            "product variant), ask one short question with ask_user " +
-            "before doing many steps instead of guessing. " +
+            "post, or message. " +
             "You can never send email or save, delete, " +
             "print, move, rename, protect, or close Office documents. " +
             "You DO have open_outlook_draft (opens one unsent Outlook " +
@@ -111,7 +108,8 @@ namespace Scribble.Chat
                     content = BuildSystemBoundary(
                         tools.Count > 0,
                         model,
-                        safeScreenshot.Length > 0)
+                        safeScreenshot.Length > 0) +
+                        PromptHelperTool.SystemInstruction
                 },
                 new ChatCompletionInputMessage
                 {
@@ -203,12 +201,48 @@ namespace Scribble.Chat
                 messages = messages,
                 stream = false,
                 tools = tools,
-                tool_choice = tools.Count > 0
-                    ? (object)"auto"
-                    : null
+                tool_choice = ShouldForcePromptHelper(
+                    userPrompt,
+                    history,
+                    title,
+                    url,
+                    selection,
+                    pageText,
+                    exchange)
+                        ? PromptHelperTool.CreateRequiredChoice()
+                        : (tools.Count > 0 ? (object)"auto" : null)
             };
             AppendExchangeReplay(request, exchange, model);
             return request;
+        }
+
+        private static bool ShouldForcePromptHelper(
+            string prompt,
+            IReadOnlyList<ChatTurn> history,
+            string title,
+            string url,
+            string selection,
+            string pageText,
+            IReadOnlyList<BrowserExchangeTurn> exchange)
+        {
+            foreach (var turn in exchange ??
+                new BrowserExchangeTurn[0])
+            {
+                if (PromptHelperTool.Contains(turn?.ToolCalls))
+                {
+                    return false;
+                }
+            }
+
+            var hasRelevantContext =
+                !string.IsNullOrWhiteSpace(title) ||
+                !string.IsNullOrWhiteSpace(url) ||
+                !string.IsNullOrWhiteSpace(selection) ||
+                !string.IsNullOrWhiteSpace(pageText) ||
+                (history != null && history.Count > 0);
+            return PromptHelperTool.ShouldRequireClarification(
+                prompt,
+                hasRelevantContext);
         }
 
         // Replays the completed tool rounds the extension already

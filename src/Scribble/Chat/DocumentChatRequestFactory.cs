@@ -71,6 +71,7 @@ namespace Scribble.Chat
             }
 
             tools.Add(WebReadTool.CreateDefinition());
+            tools.Add(PromptHelperTool.CreateDefinition());
 
             if (allowDraftCreate)
             {
@@ -109,7 +110,8 @@ namespace Scribble.Chat
                     content = BuildSystemBoundary(
                         hostKind,
                         allowDraftCreate,
-                        extraTools != null && extraTools.Count > 0)
+                        extraTools != null && extraTools.Count > 0) +
+                        PromptHelperTool.SystemInstruction
                 },
                 new ChatCompletionInputMessage
                 {
@@ -163,7 +165,15 @@ namespace Scribble.Chat
                 messages = messages,
                 stream = false,
                 tools = tools,
-                tool_choice = "auto",
+                tool_choice = PromptHelperTool
+                    .ShouldRequireClarification(
+                        userPrompt,
+                        !string.IsNullOrWhiteSpace(activeContext) ||
+                        (externalContext != null &&
+                         externalContext.Count > 0) ||
+                        (history != null && history.Count > 0))
+                            ? PromptHelperTool.CreateRequiredChoice()
+                            : (object)"auto",
                 max_tokens = allowDraftCreate
                     ? (int?)DraftResponseTokens
                     : null

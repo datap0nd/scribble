@@ -538,19 +538,34 @@ p {
 
 .ask-card .ask-choices {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 6px;
   margin-top: 8px;
 }
 
 .ask-option {
-  padding: 5px 10px;
+  padding: 7px 10px;
   border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border));
-  border-radius: 14px;
+  border-radius: 9px;
   background: var(--accent-soft);
   color: var(--accent);
   cursor: pointer;
   font-size: 12px;
+  text-align: left;
+}
+
+.ask-option-label {
+  display: block;
+  font-weight: 650;
+}
+
+.ask-option-description,
+.ask-reason {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
 }
 
 .ask-option:hover:not(:disabled) {

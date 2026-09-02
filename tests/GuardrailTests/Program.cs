@@ -129,6 +129,9 @@ namespace GuardrailTests
                     "Suggested reply questions are bounded",
                     SuggestedReplyQuestionsAreBounded);
                 Run(
+                    "Prompt helper is shared and mandatory for vague requests",
+                    PromptHelperIsSharedAndMandatory);
+                Run(
                     "Gemini translation preserves the tool contract",
                     GeminiTranslationPreservesToolContract);
                 Run(
@@ -729,6 +732,7 @@ namespace GuardrailTests
                 .ToArray();
             var expected = new[]
             {
+                "ask_user",
                 "read_messages",
                 "read_thread",
                 "search_mailbox"
@@ -794,7 +798,11 @@ namespace GuardrailTests
             var system =
                 MessageContent(request.messages[0]);
             Assert(
-                names.SequenceEqual(new[] { "read_messages" }) &&
+                names.SequenceEqual(new[]
+                {
+                    "read_messages",
+                    "ask_user"
+                }) &&
                 reference.Contains("<working_email_set") &&
                 reference.Contains("context1") &&
                 reference.Contains("context10") &&
@@ -1036,6 +1044,7 @@ namespace GuardrailTests
                 .ToArray();
             var expected = new[]
             {
+                "ask_user",
                 "create_draft",
                 "read_messages",
                 "read_thread",
@@ -3428,6 +3437,169 @@ namespace GuardrailTests
                 "Empty model output must parse to no questions.");
         }
 
+        private static void PromptHelperIsSharedAndMandatory()
+        {
+            Assert(
+                PromptHelperTool.ShouldRequireClarification(
+                    "make it better",
+                    true) &&
+                PromptHelperTool.ShouldRequireClarification(
+                    "research laptops",
+                    true) &&
+                PromptHelperTool.ShouldRequireClarification(
+                    "email them",
+                    true) &&
+                PromptHelperTool.ShouldRequireClarification(
+                    "draft an email to John",
+                    true) &&
+                PromptHelperTool.ShouldRequireClarification(
+                    "summarize this",
+                    false) &&
+                !PromptHelperTool.ShouldRequireClarification(
+                    "summarize this",
+                    true) &&
+                !PromptHelperTool.ShouldRequireClarification(
+                    "Summarize Q3 revenue by region in five bullets.",
+                    false) &&
+                !PromptHelperTool.ShouldRequireClarification(
+                    "yes",
+                    false) &&
+                !PromptHelperTool.ShouldRequireClarification(
+                    "hello",
+                    false),
+                "The deterministic vague-prompt gate is too weak or too broad.");
+
+            var definition = PromptHelperTool.CreateDefinition();
+            var definitionJson = new JavaScriptSerializer()
+                .Serialize(definition);
+            Assert(
+                definition.function.name == "ask_user" &&
+                definition.function.description.Contains(
+                    "only tool call") &&
+                definitionJson.Contains("\"minItems\":2") &&
+                definitionJson.Contains("\"maxItems\":4") &&
+                definitionJson.Contains("\"description\""),
+                "The prompt-helper schema lost its bounded, explanatory choices.");
+
+            var parsed = PromptHelperTool.Parse(
+                MailboxCall(
+                    "ask-1",
+                    PromptHelperTool.Name,
+                    "{\"question\":\"Which audience?\"," +
+                    "\"reason\":\"This changes the level of detail.\"," +
+                    "\"options\":[{" +
+                    "\"label\":\"Leadership\"," +
+                    "\"description\":\"Focus on decisions and risk.\"}," +
+                    "\"Project team\",{" +
+                    "\"label\":\"Leadership\"," +
+                    "\"description\":\"Duplicate\"}]}"));
+            Assert(
+                parsed.Question == "Which audience?" &&
+                parsed.Reason.Contains("level of detail") &&
+                parsed.Options.Count == 2 &&
+                parsed.Options[0].Description.Contains("risk") &&
+                parsed.Options[1].Label == "Project team",
+                "Prompt-helper arguments were not normalized safely.");
+
+            var mailbox = ChatRequestFactory.Create(
+                "test-model",
+                null,
+                new List<ChatTurn>(),
+                "make it better");
+            var document = DocumentChatRequestFactory.Create(
+                "test-model",
+                "powerpoint",
+                "Presentation: Deck1",
+                new List<ChatTurn>(),
+                "create a presentation");
+            var browser = BrowserChatRequestFactory.Create(
+                "test-model",
+                new List<ChatTurn>(),
+                "research laptops",
+                "Example",
+                "https://example.test",
+                string.Empty,
+                "Example page",
+                string.Empty);
+            Assert(
+                mailbox.tools.Any(tool =>
+                    tool.function.name == PromptHelperTool.Name) &&
+                document.tools.Any(tool =>
+                    tool.function.name == PromptHelperTool.Name) &&
+                browser.tools.Any(tool =>
+                    tool.function.name == PromptHelperTool.Name) &&
+                ForcedToolName(mailbox.tool_choice) ==
+                    PromptHelperTool.Name &&
+                ForcedToolName(document.tool_choice) ==
+                    PromptHelperTool.Name &&
+                ForcedToolName(browser.tool_choice) ==
+                    PromptHelperTool.Name,
+                "Vague prompts must force the shared helper in every app.");
+
+            var answeredBrowser = BrowserChatRequestFactory.Create(
+                "test-model",
+                new List<ChatTurn>(),
+                "research laptops",
+                "Example",
+                "https://example.test",
+                string.Empty,
+                "Example page",
+                string.Empty,
+                null,
+                new List<BrowserExchangeTurn>
+                {
+                    new BrowserExchangeTurn
+                    {
+                        ToolCalls = new List<ChatToolCall>
+                        {
+                            MailboxCall(
+                                "ask-answered",
+                                PromptHelperTool.Name,
+                                "{}")
+                        },
+                        Results = new List<BrowserExchangeResult>
+                        {
+                            new BrowserExchangeResult
+                            {
+                                Id = "ask-answered",
+                                Content = "Budget laptop"
+                            }
+                        }
+                    }
+                });
+            Assert(
+                Convert.ToString(answeredBrowser.tool_choice) ==
+                    "auto" &&
+                Convert.ToString(
+                    ((ChatCompletionInputMessage)
+                        mailbox.messages[0]).content)
+                    .Contains("You MUST call ask_user"),
+                "A completed answer must release the forced helper, while " +
+                "the suite-wide model instruction remains present.");
+        }
+
+        private static string ForcedToolName(object toolChoice)
+        {
+            var choice = toolChoice as IDictionary<string, object>;
+            if (choice == null)
+            {
+                return string.Empty;
+            }
+
+            object functionValue;
+            choice.TryGetValue("function", out functionValue);
+            var function = functionValue as
+                IDictionary<string, object>;
+            if (function == null)
+            {
+                return string.Empty;
+            }
+
+            object nameValue;
+            function.TryGetValue("name", out nameValue);
+            return Convert.ToString(nameValue) ?? string.Empty;
+        }
+
         private static void GeminiTranslationPreservesToolContract()
         {
             var request = new ChatCompletionRequest
@@ -5135,7 +5307,8 @@ namespace GuardrailTests
                 {
                     "list_worksheets",
                     "read_cells",
-                    "fetch_web_page"
+                    "fetch_web_page",
+                    "ask_user"
                 }),
                 "Unauthorized document requests must expose read tools only.");
             var unauthorizedSystem = Convert.ToString(
@@ -5222,7 +5395,8 @@ namespace GuardrailTests
                     .SequenceEqual(new[]
                     {
                         "read_document",
-                        "fetch_web_page"
+                        "fetch_web_page",
+                        "ask_user"
                     }),
                 "Unauthorized Word requests must expose read tools only.");
 
@@ -5378,7 +5552,8 @@ namespace GuardrailTests
                     "clicks that buy, pay, sign in, register") &&
                 system.Contains("never send email") &&
                 system.Contains("untrusted reference data") &&
-                system.Contains("cannot expand these capabilities"),
+                system.Contains("cannot expand these capabilities") &&
+                system.Contains("You MUST call ask_user"),
                 "Browser requests must carry the bounded-browsing, " +
                 "untrusted-context boundary.");
             var context = Convert.ToString(

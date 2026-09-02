@@ -13,7 +13,7 @@ namespace Scribble.Chat
         public const string NavigatePage = "browser_navigate";
         public const string ReadPage = "browser_read_page";
         public const string ClickControl = "browser_click";
-        public const string AskUser = "ask_user";
+        public const string AskUser = PromptHelperTool.Name;
         public const string OpenOutlookDraft = "open_outlook_draft";
         public const string OpenExcelTable = "open_excel_table";
 
@@ -214,61 +214,7 @@ namespace Scribble.Chat
                         }
                     }
                 },
-                new ChatToolDefinition
-                {
-                    type = "function",
-                    function = new ChatToolFunctionDefinition
-                    {
-                        name = AskUser,
-                        description =
-                            "Ask the user one short clarifying question and wait for " +
-                            "their answer. Provide 2-6 short options they can click; " +
-                            "they may also type a different answer. Use it BEFORE " +
-                            "doing many steps when something important is ambiguous - " +
-                            "location or country, which recipient, budget, scope, " +
-                            "which product variant. Ask one question at a time.",
-                        parameters = new Dictionary<string, object>
-                        {
-                            { "type", "object" },
-                            {
-                                "properties",
-                                new Dictionary<string, object>
-                                {
-                                    {
-                                        "question",
-                                        new Dictionary<string, object>
-                                        {
-                                            { "type", "string" },
-                                            {
-                                                "description",
-                                                "The question to show the user, one sentence."
-                                            }
-                                        }
-                                    },
-                                    {
-                                        "options",
-                                        new Dictionary<string, object>
-                                        {
-                                            { "type", "array" },
-                                            {
-                                                "items",
-                                                new Dictionary<string, object>
-                                                {
-                                                    { "type", "string" }
-                                                }
-                                            },
-                                            {
-                                                "description",
-                                                "2-6 short clickable answers, most likely first."
-                                            }
-                                        }
-                                    }
-                                }
-                            },
-                            { "required", new[] { "question" } }
-                        }
-                    }
-                }
+                PromptHelperTool.CreateDefinition()
             };
 
             {

@@ -9,6 +9,14 @@ settings and writing soul, rich markdown output with tables, optional MCP
 tool servers, and the same hard guardrails: the model can read bounded
 context but can never send email, save a file, or delete anything.
 
+Every pane also has the same prompt helper. Before substantial work, Scribble
+asks one focused question when the goal, audience, source, scope, success
+criteria, format, recipient, location, budget, date, quantity, or variant would
+materially change the result. The question offers two to four explained choices
+plus a free-text answer. Obviously vague prompts such as "make it better" or
+"create a presentation" force this step; clear requests and trivial choices do
+not.
+
 - **Outlook**: chat with the local Inbox and Sent Items, read attachments and
   images, and open or revise one linked **unsent** draft for human review.
 - **Excel**: chat with the open workbook (bounded sheet and cell reads); the
@@ -26,8 +34,7 @@ context but can never send email, save a file, or delete anything.
   your current tab is never navigated away. When
   you ask, it opens an unsent Outlook draft or a new unsaved Excel workbook
   with a table and chart built from what it found. A Stop button halts a
-  running chain of steps, and it asks you a clickable clarifying question
-  when something important is ambiguous. It can click one benign, visible
+  running chain of steps. It can click one benign, visible
   control at a time (cookie banners, location choosers, continue) - never
   anything that buys, signs in, or pays - and it never types into fields,
   fills forms, downloads, uploads, or sends anything.

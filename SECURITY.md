@@ -94,9 +94,10 @@ unless the user enters exact tool names and affirms that each is read-only.
 
 ## Enforced invariants
 
-1. Without a working set, the model request schema exposes exactly
-   `search_mailbox`, `read_messages`, and `read_thread`. With a locked working
-   set, it exposes only `read_messages` and only accepts its `context1` through
+1. Without a working set, the model request schema exposes the suite-wide
+   read-only `ask_user` prompt helper plus `search_mailbox`, `read_messages`,
+   and `read_thread`. With a locked working set, it exposes `ask_user` and
+   `read_messages`, and only accepts its `context1` through
    `context10` handles. It exposes `create_draft` only when local
    code recognizes drafting intent in the latest user prompt. Once a draft is
    linked, recognized revision intent may expose `update_draft` instead. It
@@ -175,7 +176,7 @@ unless the user enters exact tool names and affirms that each is read-only.
     independently requires that exact origin argument, uses strict binary
     stdin/stdout framing, and returns no settings secrets or stack traces.
 21. `BrowserChatService` exposes the fixed browser tools (navigate, read
-    page, one unsent Outlook draft per request, and one unsaved Excel
+    page, the shared `ask_user` prompt helper, one unsent Outlook draft per request, and one unsaved Excel
     workbook per request) plus exact, case-sensitive MCP tool names the
     user separately allowlisted and affirmed as read-only. Tool use is bounded
     to eight rounds and four calls per round per request. It rejects every
@@ -194,6 +195,12 @@ unless the user enters exact tool names and affirms that each is read-only.
     The Outlook mailbox pane deliberately does not get this tool, so
     attacker-authored email text can never choose a URL sink for mailbox
     data.
+21b. Every Scribble pane exposes the same `ask_user` definition. It pauses the
+    current model loop, renders one bounded question with at most four bounded
+    options plus free text, and resumes only with the user's answer. A local
+    structural preflight forces this tool for a narrow set of obviously vague
+    prompts. Mixed `ask_user` plus action-tool rounds are rejected without
+    running any of the requested actions; Stop cancels a pending question.
 22. Model and webpage output is never parsed as HTML or evaluated as
     script. Assistant replies pass through a bounded local formatter that
     builds paragraph, list, table, bold, and code DOM nodes itself and

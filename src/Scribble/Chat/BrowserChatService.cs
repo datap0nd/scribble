@@ -249,6 +249,28 @@ namespace Scribble.Chat
                         "The model requested too many tools in one round.");
                 }
 
+                if (PromptHelperTool.Contains(toolCalls) &&
+                    toolCalls.Count != 1)
+                {
+                    var rejected = new List<MailboxToolResult>();
+                    foreach (var rejectedCall in toolCalls)
+                    {
+                        rejected.Add(
+                            PromptHelperTool.MixedCallResult(
+                                rejectedCall));
+                    }
+
+                    ChatRequestFactory.AppendToolExchange(
+                        request,
+                        response,
+                        rejected,
+                        activeModel);
+                    request.tool_choice =
+                        PromptHelperTool.CreateRequiredChoice();
+                    roundsUsed++;
+                    continue;
+                }
+
                 roundsUsed++;
                 var needsBrowser = false;
                 foreach (var call in toolCalls)

@@ -74,6 +74,7 @@
     <Compile Include="Chat\LocalSearchCommand.cs" />
     <Compile Include="Chat\MailboxToolCatalog.cs" />
     <Compile Include="Chat\OpenAiCompatibleClient.cs" />
+    <Compile Include="Chat\PromptHelperTool.cs" />
     <Compile Include="Chat\ToneProfileRequestFactory.cs" />
     <Compile Include="Chat\SuggestQuestionsRequestFactory.cs" />
     <Compile Include="Chat\GeminiCodeAssistGateway.cs" />
@@ -131,6 +132,7 @@
     <Compile Include="Security\SafeModelText.cs" />
     <Compile Include="UI\ChatPane.cs" />
     <Compile Include="UI\OfficeChatPane.cs" />
+    <Compile Include="UI\PromptHelperSession.cs" />
     <Compile Include="UI\SettingsWindow.cs" />
     <Compile Include="UI\SubjectDisplay.cs" />
     <Compile Include="UI\TaskPaneRegistry.cs" />

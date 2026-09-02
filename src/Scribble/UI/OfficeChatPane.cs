@@ -95,6 +95,7 @@ namespace Scribble.UI
         private DateTime _requestStartedAt = DateTime.UtcNow;
         private DateTime _statusChangedAt = DateTime.UtcNow;
         private readonly WebView2 _webView = new WebView2();
+        private readonly PromptHelperSession _promptHelper;
 
         private object _hostApplication;
         private string _hostKind = string.Empty;
@@ -113,6 +114,7 @@ namespace Scribble.UI
         public OfficeChatPane()
         {
             LastCreated = this;
+            _promptHelper = new PromptHelperSession(PostToWeb);
             _settings = _settingsStore.Load();
             ContextScale.Apply(
                 GeminiCodeAssistGateway.IsGeminiModel(
@@ -377,6 +379,14 @@ namespace Scribble.UI
                             Convert.ToString(modelValue) ??
                             string.Empty);
                         break;
+                    case "askUserAnswer":
+                        object promptAnswerValue;
+                        message.TryGetValue(
+                            "answer",
+                            out promptAnswerValue);
+                        _promptHelper.HandleAnswer(
+                            promptAnswerValue);
+                        break;
                     case "shareAnswer":
                         HandleShareAnswer();
                         break;
@@ -401,6 +411,7 @@ namespace Scribble.UI
             RefreshModelPicker();
             PushContextToWeb();
             ReplayTranscript();
+            _promptHelper.RestoreIfPending();
         }
 
         private void ReplayTranscript()
@@ -1128,6 +1139,7 @@ namespace Scribble.UI
         private void HandleStop()
         {
             _requestGeneration++;
+            _promptHelper.Cancel();
             try
             {
                 _requestCancellation?.Cancel();
@@ -1440,6 +1452,30 @@ namespace Scribble.UI
                         "The model requested too many tools in one round.");
                 }
 
+                if (PromptHelperTool.Contains(toolCalls) &&
+                    toolCalls.Count != 1)
+                {
+                    var rejected = new List<MailboxToolResult>();
+                    foreach (var rejectedCall in toolCalls)
+                    {
+                        rejected.Add(
+                            PromptHelperTool.MixedCallResult(
+                                rejectedCall));
+                    }
+
+                    ChatRequestFactory.AppendToolExchange(
+                        request,
+                        response,
+                        rejected,
+                        activeModel);
+                    request.tool_choice =
+                        PromptHelperTool.CreateRequiredChoice();
+                    SetStatus(
+                        "Clarification must come before other work",
+                        false);
+                    continue;
+                }
+
                 var results = new List<MailboxToolResult>();
                 foreach (var toolCall in toolCalls)
                 {
@@ -1449,7 +1485,14 @@ namespace Scribble.UI
                         _hostKind,
                         name);
                     MailboxToolResult result;
-                    if (isDraftCall)
+                    if (PromptHelperTool.IsTool(name))
+                    {
+                        result = await _promptHelper.AskAsync(
+                            toolCall,
+                            cancellationToken);
+                        request.tool_choice = "auto";
+                    }
+                    else if (isDraftCall)
                     {
                         result = _draftHost.Execute(
                             toolCall,
