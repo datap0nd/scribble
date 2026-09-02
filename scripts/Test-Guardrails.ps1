@@ -642,10 +642,14 @@ foreach ($requiredAppLimit in @(
         throw "App settings must keep text and loop budgets at the reviewed defaults."
     }
 }
-if (-not $settingsWindowSource.Contains(
+if ($settingsWindowSource.Contains(
         "tabs.TabPages.Add(BuildLimitsPage())") -or
-    -not $settingsWindowSource.Contains("_workingSetSize")) {
-    throw "The Limits tab must expose the user-owned working-set size."
+    $settingsWindowSource.Contains(
+        "tabs.TabPages.Add(BuildMcpPage())")) {
+    throw "MCP and Limits must not be exposed in end-user Settings."
+}
+if (-not $settingsWindowSource.Contains("_workingSetSize")) {
+    throw "The hidden working-set compatibility value was removed."
 }
 foreach ($lockedSetting in @(
     "LimitPromptCharacters = TextBoundary",

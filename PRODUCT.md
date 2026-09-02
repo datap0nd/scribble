@@ -25,8 +25,8 @@ final review.
 
 The add-in provides a native chat sidebar inside Outlook. A local `/search`
 command or Outlook multi-selection creates a reviewable working set bounded by
-the per-request size the user sets in Settings > Limits (default ten
-emails). A normal prompt sends recent in-memory conversation plus optional
+the reviewed per-request size (default ten emails). A normal prompt sends recent
+in-memory conversation plus optional
 selected-message or working-set metadata to a user-configured OpenAI-compatible
 endpoint. The model may request bounded read-only searches and message bodies
 from the primary Inbox and Sent Items, but it can never load more unique

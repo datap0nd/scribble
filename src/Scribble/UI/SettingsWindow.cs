@@ -200,14 +200,12 @@ namespace Scribble.UI
             {
                 tabs.TabPages.Add(BuildGeminiPage());
             }
-            tabs.TabPages.Add(BuildMcpPage());
             tabs.TabPages.Add(BuildTopicsPage());
             if (_skillHost.Length > 0)
             {
                 tabs.TabPages.Add(BuildSkillsPage());
             }
             tabs.TabPages.Add(BuildWritingStylePage());
-            tabs.TabPages.Add(BuildLimitsPage());
             tabs.TabPages.Add(BuildSupportPage());
             root.Controls.Add(tabs, 0, 0);
 

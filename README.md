@@ -5,8 +5,8 @@ A Windows-only AI assistant suite for classic Microsoft Office
 an **Scribble** sidebar to **Outlook, Excel, PowerPoint, Word, and the web**. Every
 pane shares the same chat stack -
 an OpenAI-compatible endpoint, the same
-settings and writing soul, rich markdown output with tables, optional MCP
-tool servers, and the same hard guardrails: the model can read bounded
+settings and writing soul, rich markdown output with tables, and the same hard
+guardrails: the model can read bounded
 context but can never send email, save a file, or delete anything.
 
 Every pane also has the same prompt helper. Before substantial work, Scribble
@@ -180,8 +180,8 @@ the tool-call probe allows up to 90 seconds.
    saved prompt immediately.
 2. To choose a bounded group first, enter `/search person or topic`. Scribble
    searches locally and keeps the newest matching Inbox or Sent Items
-   emails as the working set (up to the per-request size configured in
-   Settings > Limits; the default is ten). No email body is sent during this
+   emails as the working set (up to the reviewed per-request size; the default
+   is ten). No email body is sent during this
    command.
 3. Review the listed subjects and send another `/search` to replace the set if
    it is wrong. Results appear in a collapsible working-set layer as
@@ -261,7 +261,7 @@ email working set but retains external files. **Clear** removes all context, and
 **New** starts a new conversation with no retained context.
 
 Settings includes **Connection** (endpoint, API key,
-model discovery, compatibility test, updates), **MCP**, **Topics**, **Skills**, **Writing soul**, **Limits**, and
+model discovery, compatibility test, updates), **Topics**, **Skills**, **Writing soul**, and
 **Support** (describe a
 problem and Scribble opens a pre-filled, unsent report email to the creator
 with the recent diagnostic log — timestamps, operations, and error codes
@@ -295,7 +295,7 @@ endpoint configuration as text typed into the composer.
 Outlook ships with **Morning unread summary**. It starts a fresh in-memory chat
 and asks for unread primary-Inbox messages received from 5:00 PM yesterday
 through the moment clicked, using the PC's local timezone. The exact timestamps
-are expanded locally. The skill reads at most the Settings > Limits email count,
+are expanded locally. The skill reads at most the reviewed email count,
 reports when more matches were excluded, and never marks a message read. If the
 window is empty it reports: “No unread messages arrived in this window.”
 
@@ -347,11 +347,8 @@ extraction; those tabs are shared as address-only.
 The **Settings** button in the panel opens the same Scribble Settings window as
 the Office add-ins (it appears on your desktop). Messages go through a per-user
 native bridge to the same Scribble connection and model configured there. The
-extension never receives the API key, Gemini token, or MCP headers. Page
-content is always labelled as untrusted data. MCP stays off in browser chat by
-default: to use a web-search MCP, list its exact tool name under that server's
-**Chrome tool allowlist** in Scribble Settings and tick the read-only
-approval; never approve a tool that writes or takes actions.
+extension never receives the API key, Gemini token, or stored integration
+headers. Page content is always labelled as untrusted data.
 
 To repeat the one-time setup, use **Set up Scribble in Google Chrome** from the
 Scribble Start menu folder. After a Scribble update, click **Reload** on
@@ -495,31 +492,11 @@ everything as inert DOM nodes - model output is never parsed as HTML, and
 links never navigate (the URL shows on hover). While the model thinks, a
 small pixel robot types away next to the usual dots.
 
-## MCP tool servers
+## Integration compatibility
 
-Settings has an **MCP** tab where you can register up to eight Model Context
-Protocol servers - local commands (stdio) or HTTP(S) endpoints. Their tools
-appear to the model as `mcp_<server>_<tool>` (40 tools max), every result
-comes back bounded and marked as untrusted data, and slow servers are timed
-out (stdio servers are killed rather than left blocking).
-
-Only you can add a server: nothing in email, document, or model text can
-register one. A server runs with your Windows account's own permissions,
-outside Scribble's guardrails - Scribble itself still cannot send email or save or
-delete documents, but a server you add acts with whatever powers it has.
-Only add servers you trust, and prefer read-only ones.
-
-Browser chat has a separate, default-off boundary. For one server only, you may
-enter up to 20 exact, case-sensitive MCP tool names in its **Chrome tool
-allowlist** and affirm that you verified them as read-only. Only those names can
-be exposed there, with at most one call in one tool round. Adding a server for
-Office does not automatically make any of its tools available to webpage
-content.
-
-HTTP(S) servers can carry per-server request headers (one per line as
-`Name: value`, typically `Authorization: Bearer ...`). Headers are sent only
-to that server's own endpoint, never logged, and stored DPAPI-encrypted like
-the API key.
+The runtime retains its bounded, namespaced integration plumbing so upgrades
+do not break previously saved configurations. Scribble does not expose an MCP
+pane or accept new MCP server configuration through end-user Settings.
 
 ## Request budgets
 
@@ -528,12 +505,10 @@ Qwen baseline: 4,000 prompt characters, 12,000 retained answer characters, 12
 history turns, six tool rounds, and four calls per round. Legacy custom values
 for those budgets are ignored on load and replaced on save.
 
-The number of emails per request is yours: **Settings > Limits > Emails per
-request** sets the working set, search-result, and request-wide body-loading
-size, from 1 to 10,000 (default ten). Scribble's tool-result boundary scales
-with your choice. Be deliberate with large values: hundreds of email bodies can
-reach millions of characters, overflow a small model's context window, and slow
-requests down. These values do not reveal or guarantee the server's actual
+Fresh installs use a reviewed ten-email working set for search results and
+request-wide body loading. Settings does not expose request-budget controls;
+legacy saved working-set values remain clamped and are retained only for upgrade
+compatibility. These boundaries do not reveal or guarantee the server's actual
 context window; attachment-heavy multi-round requests still depend on the
 endpoint's configured limit.
 
