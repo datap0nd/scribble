@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading;
 using Scribble.Security;
 
 namespace Scribble.Outlook
@@ -80,9 +81,29 @@ namespace Scribble.Outlook
         public IReadOnlyList<EmailAttachmentContent> ReadAttachments(
             MessageSnapshot message)
         {
+            return ReadAttachments(message, CancellationToken.None);
+        }
+
+        public IReadOnlyList<EmailAttachmentContent> ReadAttachments(
+            MessageSnapshot message,
+            CancellationToken cancellationToken)
+        {
+            return ReadAttachments(
+                message,
+                cancellationToken,
+                new AttachmentReadBudget());
+        }
+
+        public IReadOnlyList<EmailAttachmentContent> ReadAttachments(
+            MessageSnapshot message,
+            CancellationToken cancellationToken,
+            AttachmentReadBudget sourceBudget)
+        {
             return EmailAttachmentReader.Read(
                 _outlookApplication,
-                message);
+                message,
+                cancellationToken,
+                sourceBudget);
         }
 
         public IReadOnlyList<MessageSnapshot> ReadConversation(

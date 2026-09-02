@@ -220,6 +220,12 @@ unless the user enters exact tool names and affirms that each is read-only.
     LocalAppData. Removing or repointing a Topic removes only its cache; source
     repositories are read-only. Relevant excerpts are transmitted to the
     configured model with the same untrusted-data treatment as attached files.
+21f. User-selected and Outlook attachments are accepted up to 100 MiB each and
+    share a 250 MiB source budget per operation. Source files remain local.
+    Parsers stream or seek through file-backed input, cap decompressed archive
+    parts and PDF streams, reject unsafe image dimensions, and retain the
+    existing 48,000-character per-file, 120,000-character total, and 800 KiB
+    vision-image payload limits. Topic indexing remains capped at 25 MiB.
 22. Model and webpage output is never parsed as HTML or evaluated as
     script. Assistant replies pass through a bounded local formatter that
     builds paragraph, list, table, bold, and code DOM nodes itself and

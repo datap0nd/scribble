@@ -114,6 +114,8 @@
     <Compile Include="Configuration\TopicConfig.cs" />
     <Compile Include="Interop\OfficeInterfaces.cs" />
     <Compile Include="Outlook\EmailAttachmentReader.cs" />
+    <Compile Include="Outlook\AttachmentIntakePolicy.cs" />
+    <Compile Include="Outlook\CompoundFileReader.cs" />
     <Compile Include="Outlook\DraftService.cs" />
     <Compile Include="Outlook\DraftReference.cs" />
     <Compile Include="Outlook\DraftToolHost.cs" />

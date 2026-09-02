@@ -5,7 +5,7 @@ using System.IO.Compression;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Xml.Linq;
+using System.Threading;
 using Scribble.Security;
 
 namespace Scribble.Outlook
@@ -57,13 +57,36 @@ namespace Scribble.Outlook
         public string ImageDataUrl { get; }
     }
 
+    public sealed class LocalAttachmentLoadResult
+    {
+        public LocalAttachmentLoadResult(
+            string path,
+            EmailAttachmentContent content,
+            string thumbnail)
+        {
+            Path = path ?? string.Empty;
+            Content = content;
+            Thumbnail = thumbnail ?? string.Empty;
+        }
+
+        public string Path { get; }
+
+        public EmailAttachmentContent Content { get; }
+
+        public string Thumbnail { get; }
+    }
+
     public static class EmailAttachmentReader
     {
         public const int MaxAttachments = 10;
-        // Uniform 25 MB intake: extraction output stays bounded in
+        // Uniform 100 MiB intake: extraction output stays bounded in
         // characters, so large files cost read time, not context.
-        public const int MaxBytesPerAttachment = 25 * 1024 * 1024;
-        public const int MaxImageBytesPerAttachment = 25 * 1024 * 1024;
+        public const int MaxBytesPerAttachment =
+            (int)AttachmentIntakePolicy.MaxFileBytes;
+        public const int MaxImageBytesPerAttachment =
+            (int)AttachmentIntakePolicy.MaxFileBytes;
+        public const long MaxOperationBytes =
+            AttachmentIntakePolicy.MaxOperationBytes;
         public const int MaxCharactersPerAttachment = 48000;
         public const int MaxTotalCharacters = 120000;
         // The data URL cap must stay comfortably above the encoded
@@ -96,6 +119,10 @@ namespace Scribble.Outlook
         // around 768px internally, so 1280px keeps screenshot text
         // legible while cutting the per-image payload several-fold.
         private const int MaxImageBytesForBase64 = 800 * 1024;
+        public const long MaxImagePixels = 64L * 1000 * 1000;
+        public const int MaxImageDimension = 32768;
+        private const int MaxArchiveEntries = 10000;
+        private const long MaxArchivePartBytes = 32L * 1024 * 1024;
 
         private static readonly HashSet<string> ImageExtensions =
             new HashSet<string>(
@@ -139,6 +166,31 @@ namespace Scribble.Outlook
         public static IReadOnlyList<EmailAttachmentContent> Read(
             object outlookApplication,
             MessageSnapshot message)
+        {
+            return Read(
+                outlookApplication,
+                message,
+                CancellationToken.None,
+                new AttachmentReadBudget());
+        }
+
+        public static IReadOnlyList<EmailAttachmentContent> Read(
+            object outlookApplication,
+            MessageSnapshot message,
+            CancellationToken cancellationToken)
+        {
+            return Read(
+                outlookApplication,
+                message,
+                cancellationToken,
+                new AttachmentReadBudget());
+        }
+
+        public static IReadOnlyList<EmailAttachmentContent> Read(
+            object outlookApplication,
+            MessageSnapshot message,
+            CancellationToken cancellationToken,
+            AttachmentReadBudget sourceBudget)
         {
             if (outlookApplication == null)
             {
@@ -184,6 +236,10 @@ namespace Scribble.Outlook
                     Convert.ToInt32(outlookAttachments.Count),
                     MaxAttachments);
                 var results = new List<EmailAttachmentContent>(count);
+                if (sourceBudget == null)
+                {
+                    sourceBudget = new AttachmentReadBudget();
+                }
                 var totalCharacters = 0;
                 var signatureImagesSkipped = 0;
                 for (var index = 1;
@@ -191,6 +247,7 @@ namespace Scribble.Outlook
                      totalCharacters < ScaledTotalCharacters;
                      index++)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     object attachment = null;
                     string tempPath = null;
                     try
@@ -205,12 +262,41 @@ namespace Scribble.Outlook
                         }
 
                         var extension = Path.GetExtension(fileName);
+                        var reportedSize = SafeLong(
+                            () => outlookAttachment.Size);
                         if (IsLikelySignatureImage(
                             attachment,
                             extension,
-                            SafeLong(() => outlookAttachment.Size)))
+                            reportedSize))
                         {
                             signatureImagesSkipped++;
+                            continue;
+                        }
+
+                        var reportedWarning =
+                            AttachmentIntakePolicy.ValidateFile(
+                                reportedSize);
+                        if (reportedWarning.Length > 0 &&
+                            reportedSize >
+                                AttachmentIntakePolicy.MaxFileBytes)
+                        {
+                            results.Add(LimitContent(
+                                fileName,
+                                reportedSize,
+                                reportedWarning));
+                            totalCharacters += 80;
+                            continue;
+                        }
+
+                        if (reportedSize > 0 &&
+                            reportedSize > sourceBudget.RemainingBytes)
+                        {
+                            results.Add(LimitContent(
+                                fileName,
+                                reportedSize,
+                                "Over the 250 MB attachment budget " +
+                                "for this operation - content not read."));
+                            totalCharacters += 80;
                             continue;
                         }
 
@@ -230,6 +316,7 @@ namespace Scribble.Outlook
                             Guid.NewGuid().ToString("N") +
                             safeExtension);
                         outlookAttachment.SaveAsFile(tempPath);
+                        cancellationToken.ThrowIfCancellationRequested();
 
                         var fileInfo = new FileInfo(tempPath);
                         if (!fileInfo.Exists)
@@ -237,20 +324,15 @@ namespace Scribble.Outlook
                             continue;
                         }
 
-                        var sizeLimit =
-                            ExcelExtensions.Contains(extension) ||
-                            TextExtensions.Contains(extension)
-                                ? MaxBytesPerAttachment
-                                : MaxImageBytesPerAttachment;
-                        if (fileInfo.Length > sizeLimit)
+                        string sourceWarning;
+                        if (!sourceBudget.TryReserve(
+                                fileInfo.Length,
+                                out sourceWarning))
                         {
-                            results.Add(new EmailAttachmentContent(
+                            results.Add(LimitContent(
                                 fileName,
-                                "unreadable",
-                                "[Attachment: " + fileName + ", " +
-                                fileInfo.Length.ToString() +
-                                " bytes. Too large for Scribble to " +
-                                "read.]"));
+                                fileInfo.Length,
+                                sourceWarning));
                             totalCharacters += 80;
                             continue;
                         }
@@ -258,7 +340,8 @@ namespace Scribble.Outlook
                         var extracted = ExtractContent(
                             tempPath,
                             fileName,
-                            extension);
+                            extension,
+                            cancellationToken);
                         if (extracted == null ||
                             extracted.Text.Length == 0)
                         {
@@ -310,6 +393,10 @@ namespace Scribble.Outlook
                         results.Add(entry);
                         totalCharacters += entry.Text.Length;
                     }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
                     catch
                     {
                     }
@@ -336,6 +423,10 @@ namespace Scribble.Outlook
                 }
 
                 return results;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch
             {
@@ -433,8 +524,16 @@ namespace Scribble.Outlook
         // text, images become vision input). User-initiated only.
         public static EmailAttachmentContent LoadLocalFile(string path)
         {
+            return LoadLocalFile(path, CancellationToken.None);
+        }
+
+        public static EmailAttachmentContent LoadLocalFile(
+            string path,
+            CancellationToken cancellationToken)
+        {
             try
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 var fileName = Path.GetFileName(path ?? string.Empty);
                 if (fileName.Length == 0)
                 {
@@ -448,25 +547,21 @@ namespace Scribble.Outlook
                 }
 
                 var extension = Path.GetExtension(fileName);
-                var sizeLimit =
-                    ExcelExtensions.Contains(extension) ||
-                    TextExtensions.Contains(extension)
-                        ? MaxBytesPerAttachment
-                        : MaxImageBytesPerAttachment;
-                if (info.Length > sizeLimit)
+                var sizeWarning =
+                    AttachmentIntakePolicy.ValidateFile(info.Length);
+                if (sizeWarning.Length > 0)
                 {
-                    return new EmailAttachmentContent(
+                    return LimitContent(
                         fileName,
-                        "unreadable",
-                        "[File: " + fileName + ", " +
-                        info.Length.ToString() +
-                        " bytes. Too large for Scribble to read.]");
+                        info.Length,
+                        sizeWarning);
                 }
 
                 var extracted = ExtractContent(
                     path,
                     fileName,
-                    extension);
+                    extension,
+                    cancellationToken);
                 return extracted ?? new EmailAttachmentContent(
                     fileName,
                     "unreadable",
@@ -474,10 +569,106 @@ namespace Scribble.Outlook
                     ". This file type could not be converted to " +
                     "text or image input.]");
             }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
             catch
             {
                 return null;
             }
+        }
+
+        public static IReadOnlyList<LocalAttachmentLoadResult>
+            LoadLocalFiles(
+                IEnumerable<string> paths,
+                CancellationToken cancellationToken,
+                Action<int, int, string> progress = null)
+        {
+            var selected = (paths ?? new string[0])
+                .Where(path => !string.IsNullOrWhiteSpace(path))
+                .ToArray();
+            var results = new List<LocalAttachmentLoadResult>(
+                selected.Length);
+            var budget = new AttachmentReadBudget();
+            for (var index = 0; index < selected.Length; index++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var path = selected[index];
+                var fileName = Path.GetFileName(path);
+                if (progress != null)
+                {
+                    progress(index + 1, selected.Length, fileName);
+                }
+
+                EmailAttachmentContent content;
+                try
+                {
+                    var info = new FileInfo(path);
+                    if (!info.Exists)
+                    {
+                        continue;
+                    }
+
+                    string warning;
+                    if (!budget.TryReserve(info.Length, out warning))
+                    {
+                        content = LimitContent(
+                            fileName,
+                            info.Length,
+                            warning);
+                    }
+                    else
+                    {
+                        content = LoadLocalFile(
+                            path,
+                            cancellationToken);
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch
+                {
+                    content = new EmailAttachmentContent(
+                        fileName,
+                        "unreadable",
+                        "[File: " + fileName +
+                        ". The file could not be read.]");
+                }
+
+                if (content == null)
+                {
+                    continue;
+                }
+
+                var thumbnail = content.ImageDataUrl.Length > 0
+                    ? BuildThumbnailDataUrl(path)
+                    : string.Empty;
+                results.Add(new LocalAttachmentLoadResult(
+                    path,
+                    content,
+                    thumbnail));
+            }
+
+            return results;
+        }
+
+        public static EmailAttachmentContent LimitContent(
+            string fileName,
+            long sizeBytes,
+            string warning)
+        {
+            return new EmailAttachmentContent(
+                fileName,
+                "resource-limited",
+                "[Attachment: " + fileName + ", " +
+                Math.Max(0L, sizeBytes).ToString() +
+                " bytes. " +
+                TextBoundary.SingleLine(
+                    warning ?? "Attachment resource limit reached.",
+                    240) + "]");
         }
 
         // Small JPEG preview for attachment tray thumbnails.
@@ -488,6 +679,13 @@ namespace Scribble.Outlook
                 using (var original =
                     System.Drawing.Image.FromFile(path))
                 {
+                    if (!IsSafeImageDimensions(
+                            original.Width,
+                            original.Height))
+                    {
+                        return null;
+                    }
+
                     var longSide = Math.Max(
                         original.Width,
                         original.Height);
@@ -547,24 +745,35 @@ namespace Scribble.Outlook
         private static EmailAttachmentContent ExtractContent(
             string path,
             string fileName,
-            string extension)
+            string extension,
+            CancellationToken cancellationToken)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             if (ImageExtensions.Contains(extension))
             {
                 return ExtractImage(
                     path,
                     fileName,
-                    ImageMimeType(extension));
+                    ImageMimeType(extension),
+                    cancellationToken);
             }
 
             if (ExcelExtensions.Contains(extension))
             {
-                return ExtractSpreadsheet(path, fileName, extension);
+                return ExtractSpreadsheet(
+                    path,
+                    fileName,
+                    extension,
+                    cancellationToken);
             }
 
             if (DocumentExtensions.Contains(extension))
             {
-                return ExtractDocument(path, fileName, extension);
+                return ExtractDocument(
+                    path,
+                    fileName,
+                    extension,
+                    cancellationToken);
             }
 
             if (TextExtensions.Contains(extension))
@@ -572,10 +781,13 @@ namespace Scribble.Outlook
                 return new EmailAttachmentContent(
                     fileName,
                     "text",
-                    ReadTextFile(path));
+                    ReadTextFile(path, cancellationToken));
             }
 
-            return SniffUnknownContent(path, fileName);
+            return SniffUnknownContent(
+                path,
+                fileName,
+                cancellationToken);
         }
 
         // Unknown or missing extensions are identified by content so
@@ -583,12 +795,18 @@ namespace Scribble.Outlook
         // OOXML zip parts, OLE compound streams, then plain text.
         private static EmailAttachmentContent SniffUnknownContent(
             string path,
-            string fileName)
+            string fileName,
+            CancellationToken cancellationToken)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var sniffedMimeType = SniffImageMimeType(path);
             if (sniffedMimeType != null)
             {
-                return ExtractImage(path, fileName, sniffedMimeType);
+                return ExtractImage(
+                    path,
+                    fileName,
+                    sniffedMimeType,
+                    cancellationToken);
             }
 
             var header = ReadHeader(path, 4096);
@@ -598,12 +816,14 @@ namespace Scribble.Outlook
             {
                 if (ZipContainsEntry(path, "word/document.xml"))
                 {
-                    return ExtractDocument(path, fileName, ".docx");
+                    return ExtractDocument(
+                        path, fileName, ".docx", cancellationToken);
                 }
 
                 if (ZipContainsEntry(path, "ppt/presentation.xml"))
                 {
-                    return ExtractDocument(path, fileName, ".pptx");
+                    return ExtractDocument(
+                        path, fileName, ".pptx", cancellationToken);
                 }
 
                 if (ZipContainsEntry(path, "xl/workbook.xml"))
@@ -611,7 +831,8 @@ namespace Scribble.Outlook
                     return ExtractSpreadsheet(
                         path,
                         fileName,
-                        ".xlsx");
+                        ".xlsx",
+                        cancellationToken);
                 }
 
                 if (ZipContainsEntry(path, "xl/workbook.bin"))
@@ -619,12 +840,14 @@ namespace Scribble.Outlook
                     return ExtractSpreadsheet(
                         path,
                         fileName,
-                        ".xlsb");
+                        ".xlsb",
+                        cancellationToken);
                 }
 
                 if (ZipContainsEntry(path, "content.xml"))
                 {
-                    return ExtractDocument(path, fileName, ".odt");
+                    return ExtractDocument(
+                        path, fileName, ".odt", cancellationToken);
                 }
 
                 return null;
@@ -633,45 +856,24 @@ namespace Scribble.Outlook
             if (LegacyOfficeTextExtractor.LooksLikeCompoundFile(
                 header))
             {
-                var bytes = File.ReadAllBytes(path);
-                if (LegacyOfficeTextExtractor.CompoundStreamExists(
-                    bytes,
-                    "WordDocument"))
-                {
-                    return ExtractDocument(path, fileName, ".doc");
-                }
-
-                if (LegacyOfficeTextExtractor.CompoundStreamExists(
-                    bytes,
-                    "PowerPoint Document"))
-                {
-                    return ExtractDocument(path, fileName, ".ppt");
-                }
-
-                if (LegacyOfficeTextExtractor.CompoundStreamExists(
-                        bytes,
-                        "Workbook") ||
-                    LegacyOfficeTextExtractor.CompoundStreamExists(
-                        bytes,
-                        "Book"))
-                {
-                    return ExtractSpreadsheet(
+                var compoundExtension =
+                    LegacyOfficeTextExtractor
+                        .IdentifyCompoundExtension(
+                            path,
+                            cancellationToken);
+                return compoundExtension == ".xls"
+                    ? ExtractSpreadsheet(
                         path,
                         fileName,
-                        ".xls");
-                }
-
-                if (LegacyOfficeTextExtractor.CompoundStreamExists(
-                        bytes,
-                        "__properties_version1.0") ||
-                    LegacyOfficeTextExtractor.CompoundStreamExists(
-                        bytes,
-                        "__substg1.0_0037001F"))
-                {
-                    return ExtractDocument(path, fileName, ".msg");
-                }
-
-                return null;
+                        compoundExtension,
+                        cancellationToken)
+                    : compoundExtension.Length > 0
+                        ? ExtractDocument(
+                            path,
+                            fileName,
+                            compoundExtension,
+                            cancellationToken)
+                        : null;
             }
 
             if (header.Length > 4 &&
@@ -680,7 +882,11 @@ namespace Scribble.Outlook
                 header[2] == (byte)'D' &&
                 header[3] == (byte)'F')
             {
-                return ExtractDocument(path, fileName, ".pdf");
+                return ExtractDocument(
+                    path,
+                    fileName,
+                    ".pdf",
+                    cancellationToken);
             }
 
             if (LooksLikeText(header))
@@ -688,7 +894,7 @@ namespace Scribble.Outlook
                 return new EmailAttachmentContent(
                     fileName,
                     "text",
-                    ReadTextFile(path));
+                    ReadTextFile(path, cancellationToken));
             }
 
             return null;
@@ -726,6 +932,26 @@ namespace Scribble.Outlook
             {
                 return false;
             }
+        }
+
+        private static void ValidateArchive(ZipArchive archive)
+        {
+            if (archive == null ||
+                archive.Entries.Count > MaxArchiveEntries)
+            {
+                throw new AttachmentResourceLimitException(
+                    "The archive exceeded the 10,000-entry cap.");
+            }
+        }
+
+        private static Stream OpenBoundedPart(
+            ZipArchiveEntry entry,
+            ArchiveReadBudget budget)
+        {
+            return new BoundedArchivePartStream(
+                entry.Open(),
+                budget,
+                MaxArchivePartBytes);
         }
 
         private static bool LooksLikeText(byte[] header)
@@ -771,8 +997,10 @@ namespace Scribble.Outlook
         private static EmailAttachmentContent ExtractDocument(
             string path,
             string fileName,
-            string extension)
+            string extension,
+            CancellationToken cancellationToken)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var kind = "document";
             string text;
             try
@@ -781,7 +1009,7 @@ namespace Scribble.Outlook
                 {
                     case ".pdf":
                         kind = "pdf";
-                        text = ExtractPdfText(path);
+                        text = ExtractPdfText(path, cancellationToken);
                         if (CountReadableCharacters(text) < 40)
                         {
                             text =
@@ -808,27 +1036,26 @@ namespace Scribble.Outlook
                     case ".ppsm":
                     case ".potx":
                         kind = "powerpoint";
-                        text = ExtractPptxText(path);
+                        text = ExtractPptxText(path, cancellationToken);
                         break;
                     case ".docx":
                     case ".docm":
                     case ".dotx":
                     case ".dotm":
                         kind = "word";
-                        text = ExtractDocxText(path);
+                        text = ExtractDocxText(path, cancellationToken);
                         break;
                     case ".odt":
                     case ".ods":
                     case ".odp":
                         kind = "document";
-                        text = ExtractOdfText(path);
+                        text = ExtractOdfText(path, cancellationToken);
                         break;
                     case ".msg":
                     case ".oft":
                         kind = "email";
                         text = LegacyOfficeTextExtractor
-                            .ExtractMsgText(
-                                File.ReadAllBytes(path));
+                            .ExtractMsgText(path, cancellationToken);
                         if (text.Trim().Length > 0)
                         {
                             text =
@@ -844,7 +1071,8 @@ namespace Scribble.Outlook
                             "PowerPoint",
                             LegacyOfficeTextExtractor
                                 .ExtractPptText(
-                                    File.ReadAllBytes(path)));
+                                    path,
+                                    cancellationToken));
                         break;
                     case ".doc":
                         kind = "word";
@@ -853,18 +1081,31 @@ namespace Scribble.Outlook
                             "Word",
                             LegacyOfficeTextExtractor
                                 .ExtractDocText(
-                                    File.ReadAllBytes(path)));
+                                    path,
+                                    cancellationToken));
                         break;
                     case ".rtf":
                         kind = "word";
                         text = LegacyOfficeTextExtractor
                             .ExtractRtfText(
-                                File.ReadAllBytes(path));
+                                path,
+                                cancellationToken);
                         break;
                     default:
                         text = string.Empty;
                         break;
                 }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (AttachmentResourceLimitException exception)
+            {
+                return LimitContent(
+                    fileName,
+                    new FileInfo(path).Length,
+                    exception.Message);
             }
             catch
             {
@@ -886,12 +1127,14 @@ namespace Scribble.Outlook
                 text);
         }
 
-        private static string ExtractPptxText(string path)
+        private static string ExtractPptxText(
+            string path,
+            CancellationToken cancellationToken)
         {
             using (var zip = ZipFile.OpenRead(path))
             {
-                XNamespace drawingNamespace =
-                    "http://schemas.openxmlformats.org/drawingml/2006/main";
+                ValidateArchive(zip);
+                var archiveBudget = new ArchiveReadBudget();
                 var slides = zip.Entries
                     .Where(entry =>
                         entry.FullName.StartsWith(
@@ -905,26 +1148,52 @@ namespace Scribble.Outlook
                 var builder = new StringBuilder();
                 foreach (var slide in slides)
                 {
-                    XDocument document;
-                    using (var stream = slide.Open())
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var lineHasText = false;
+                    using (var stream = OpenBoundedPart(
+                        slide,
+                        archiveBudget))
+                    using (var reader = System.Xml.XmlReader.Create(
+                        stream,
+                        StreamingXmlSettings()))
                     {
-                        document = XDocument.Load(stream);
-                    }
-
-                    builder.AppendLine(
-                        "[Slide " +
-                        SlideNumber(slide.FullName).ToString() +
-                        "]");
-                    foreach (var paragraph in document.Descendants(
-                        drawingNamespace + "p"))
-                    {
-                        var text = string.Concat(
-                            paragraph
-                                .Descendants(drawingNamespace + "t")
-                                .Select(node => node.Value));
-                        if (text.Trim().Length > 0)
+                        builder.AppendLine(
+                            "[Slide " +
+                            SlideNumber(slide.FullName).ToString() +
+                            "]");
+                        while (reader.Read())
                         {
-                            builder.AppendLine(text);
+                            cancellationToken
+                                .ThrowIfCancellationRequested();
+                            if (reader.NodeType ==
+                                    System.Xml.XmlNodeType.Element &&
+                                reader.LocalName == "t")
+                            {
+                                var content =
+                                    reader.ReadElementContentAsString();
+                                if (content.Length > 0)
+                                {
+                                    builder.Append(content);
+                                    lineHasText = true;
+                                }
+
+                                continue;
+                            }
+
+                            if (reader.NodeType ==
+                                    System.Xml.XmlNodeType.EndElement &&
+                                reader.LocalName == "p" &&
+                                lineHasText)
+                            {
+                                builder.AppendLine();
+                                lineHasText = false;
+                            }
+
+                            if (builder.Length >=
+                                ScaledCharactersPerAttachment)
+                            {
+                                break;
+                            }
                         }
                     }
 
@@ -961,10 +1230,14 @@ namespace Scribble.Outlook
 
         // Streamed with XmlReader so a large document part never
         // loads as a whole DOM.
-        private static string ExtractDocxText(string path)
+        private static string ExtractDocxText(
+            string path,
+            CancellationToken cancellationToken)
         {
             using (var zip = ZipFile.OpenRead(path))
             {
+                ValidateArchive(zip);
+                var archiveBudget = new ArchiveReadBudget();
                 var entry = zip.GetEntry("word/document.xml");
                 if (entry == null)
                 {
@@ -972,7 +1245,9 @@ namespace Scribble.Outlook
                 }
 
                 var builder = new StringBuilder();
-                using (var stream = entry.Open())
+                using (var stream = OpenBoundedPart(
+                    entry,
+                    archiveBudget))
                 using (var reader = System.Xml.XmlReader.Create(
                     stream,
                     StreamingXmlSettings()))
@@ -985,6 +1260,7 @@ namespace Scribble.Outlook
                     var lineHasText = false;
                     while (!reader.EOF)
                     {
+                        cancellationToken.ThrowIfCancellationRequested();
                         if (reader.NodeType ==
                                 System.Xml.XmlNodeType.Element &&
                             reader.LocalName == "t")
@@ -1032,10 +1308,14 @@ namespace Scribble.Outlook
         // content.xml. Text nodes are streamed and paragraph or
         // heading ends become line breaks, which also yields one line
         // per spreadsheet cell.
-        private static string ExtractOdfText(string path)
+        private static string ExtractOdfText(
+            string path,
+            CancellationToken cancellationToken)
         {
             using (var zip = ZipFile.OpenRead(path))
             {
+                ValidateArchive(zip);
+                var archiveBudget = new ArchiveReadBudget();
                 var entry = zip.GetEntry("content.xml");
                 if (entry == null)
                 {
@@ -1043,7 +1323,9 @@ namespace Scribble.Outlook
                 }
 
                 var builder = new StringBuilder();
-                using (var stream = entry.Open())
+                using (var stream = OpenBoundedPart(
+                    entry,
+                    archiveBudget))
                 using (var reader = System.Xml.XmlReader.Create(
                     stream,
                     StreamingXmlSettings()))
@@ -1056,6 +1338,7 @@ namespace Scribble.Outlook
                     var lineHasText = false;
                     while (!reader.EOF)
                     {
+                        cancellationToken.ThrowIfCancellationRequested();
                         if (reader.NodeType ==
                                 System.Xml.XmlNodeType.Text ||
                             reader.NodeType ==
@@ -1110,11 +1393,14 @@ namespace Scribble.Outlook
             };
         }
 
-        private static string ExtractPdfText(string path)
+        private static string ExtractPdfText(
+            string path,
+            CancellationToken cancellationToken)
         {
             return PdfTextExtractor.Extract(
-                File.ReadAllBytes(path),
-                ScaledCharactersPerAttachment);
+                path,
+                ScaledCharactersPerAttachment,
+                cancellationToken);
         }
 
         private static int CountReadableCharacters(string text)
@@ -1202,21 +1488,26 @@ namespace Scribble.Outlook
         private static EmailAttachmentContent ExtractImage(
             string path,
             string fileName,
-            string mimeType)
+            string mimeType,
+            CancellationToken cancellationToken)
         {
-            var bytes = File.ReadAllBytes(path);
+            cancellationToken.ThrowIfCancellationRequested();
+            var sourceBytes = new FileInfo(path).Length;
             var builder = new StringBuilder();
             builder.Append("[Image attachment: ");
             builder.Append(fileName);
             builder.Append(", ");
-            builder.Append(bytes.Length.ToString());
+            builder.Append(sourceBytes.ToString());
             builder.Append(" bytes, type ");
             builder.Append(mimeType);
             builder.Append(']');
 
             string dataUrl = null;
-            if (bytes.Length <= MaxImageBytesForBase64)
+            if (sourceBytes <= MaxImageBytesForBase64)
             {
+                var bytes = ReadSmallFile(
+                    path,
+                    MaxImageBytesForBase64);
                 dataUrl =
                     "data:" +
                     mimeType +
@@ -1225,7 +1516,18 @@ namespace Scribble.Outlook
             }
             else
             {
-                var downscaled = TryDownscaleToJpeg(path);
+                string resourceWarning;
+                var downscaled = TryDownscaleToJpeg(
+                    path,
+                    cancellationToken,
+                    out resourceWarning);
+                if (resourceWarning.Length > 0)
+                {
+                    return LimitContent(
+                        fileName,
+                        sourceBytes,
+                        resourceWarning);
+                }
                 if (downscaled != null)
                 {
                     builder.Append(
@@ -1257,19 +1559,36 @@ namespace Scribble.Outlook
                 dataUrl);
         }
 
-        private static byte[] TryDownscaleToJpeg(string path)
+        private static byte[] TryDownscaleToJpeg(
+            string path,
+            CancellationToken cancellationToken,
+            out string resourceWarning)
         {
+            resourceWarning = string.Empty;
             try
             {
                 using (var original =
                     System.Drawing.Image.FromFile(path))
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (!IsSafeImageDimensions(
+                            original.Width,
+                            original.Height))
+                    {
+                        resourceWarning =
+                            "Image dimensions exceed the safe " +
+                            "32,768-pixel or 64-megapixel limit. " +
+                            "Only metadata is included.";
+                        return null;
+                    }
+
                     var longSide = Math.Max(
                         original.Width,
                         original.Height);
                     var targetSide = Math.Min(longSide, 1280);
                     while (targetSide >= 256)
                     {
+                        cancellationToken.ThrowIfCancellationRequested();
                         var scale = (double)targetSide / longSide;
                         var width = Math.Max(
                             1,
@@ -1317,11 +1636,63 @@ namespace Scribble.Outlook
                     }
                 }
             }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
             catch
             {
             }
 
             return null;
+        }
+
+        public static bool IsSafeImageDimensions(
+            int width,
+            int height)
+        {
+            return width > 0 &&
+                   height > 0 &&
+                   width <= MaxImageDimension &&
+                   height <= MaxImageDimension &&
+                   (long)width * height <= MaxImagePixels;
+        }
+
+        private static byte[] ReadSmallFile(
+            string path,
+            int maximumBytes)
+        {
+            using (var stream = File.OpenRead(path))
+            {
+                if (stream.Length > maximumBytes)
+                {
+                    throw new AttachmentResourceLimitException(
+                        "The image exceeded the model-image input cap.");
+                }
+
+                var bytes = new byte[(int)stream.Length];
+                var offset = 0;
+                while (offset < bytes.Length)
+                {
+                    var read = stream.Read(
+                        bytes,
+                        offset,
+                        bytes.Length - offset);
+                    if (read <= 0)
+                    {
+                        break;
+                    }
+
+                    offset += read;
+                }
+
+                if (offset != bytes.Length)
+                {
+                    throw new EndOfStreamException();
+                }
+
+                return bytes;
+            }
         }
 
         private static byte[] EncodeJpeg(
@@ -1356,44 +1727,63 @@ namespace Scribble.Outlook
         private static EmailAttachmentContent ExtractSpreadsheet(
             string path,
             string fileName,
-            string extension)
+            string extension,
+            CancellationToken cancellationToken)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             string text;
-            if (extension.Equals(
-                    ".csv",
-                    StringComparison.OrdinalIgnoreCase) ||
-                extension.Equals(
-                    ".tsv",
+            try
+            {
+                if (extension.Equals(
+                        ".csv",
+                        StringComparison.OrdinalIgnoreCase) ||
+                    extension.Equals(
+                        ".tsv",
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    text = ReadTextFile(path, cancellationToken);
+                }
+                else if (extension.Equals(
+                    ".xlsb",
                     StringComparison.OrdinalIgnoreCase))
-            {
-                text = ReadTextFile(path);
+                {
+                    text = XlsbTextExtractor.Extract(
+                        path,
+                        ScaledCharactersPerAttachment,
+                        cancellationToken);
+                }
+                else if (extension.Equals(
+                    ".xls",
+                    StringComparison.OrdinalIgnoreCase))
+                {
+                    var extracted = LegacyOfficeTextExtractor
+                        .ExtractXlsText(path, cancellationToken);
+                    text = extracted.Trim().Length > 0
+                        ? "[Excel attachment: " + fileName +
+                          " - legacy .xls cell text without positions]\n" +
+                          extracted
+                        : "[Excel attachment: " + fileName +
+                          ". No readable cell text was extracted from " +
+                          "the legacy workbook. Save as .xlsx or .csv " +
+                          "for full extraction.]";
+                }
+                else
+                {
+                    text = ExtractXlsxText(
+                        path,
+                        cancellationToken);
+                }
             }
-            else if (extension.Equals(
-                ".xlsb",
-                StringComparison.OrdinalIgnoreCase))
+            catch (OperationCanceledException)
             {
-                text = XlsbTextExtractor.Extract(
-                    File.ReadAllBytes(path),
-                    ScaledCharactersPerAttachment);
+                throw;
             }
-            else if (extension.Equals(
-                ".xls",
-                StringComparison.OrdinalIgnoreCase))
+            catch (AttachmentResourceLimitException exception)
             {
-                var extracted = LegacyOfficeTextExtractor
-                    .ExtractXlsText(File.ReadAllBytes(path));
-                text = extracted.Trim().Length > 0
-                    ? "[Excel attachment: " + fileName +
-                      " - legacy .xls cell text without positions]\n" +
-                      extracted
-                    : "[Excel attachment: " + fileName +
-                      ". No readable cell text was extracted from " +
-                      "the legacy workbook. Save as .xlsx or .csv " +
-                      "for full extraction.]";
-            }
-            else
-            {
-                text = ExtractXlsxText(path);
+                return LimitContent(
+                    fileName,
+                    new FileInfo(path).Length,
+                    exception.Message);
             }
 
             if (string.IsNullOrWhiteSpace(text))
@@ -1411,12 +1801,19 @@ namespace Scribble.Outlook
 
         // Streamed with XmlReader: shared strings and rows are read
         // sequentially and extraction stops at the character budget, so
-        // a 25 MB workbook never materializes a full XML DOM.
-        private static string ExtractXlsxText(string path)
+        // a 100 MB workbook never materializes a full XML DOM.
+        private static string ExtractXlsxText(
+            string path,
+            CancellationToken cancellationToken)
         {
             using (var zip = ZipFile.OpenRead(path))
             {
-                var sharedStrings = ReadSharedStrings(zip);
+                ValidateArchive(zip);
+                var archiveBudget = new ArchiveReadBudget();
+                var sharedStrings = ReadSharedStrings(
+                    zip,
+                    archiveBudget,
+                    cancellationToken);
                 var sheetEntries = zip.Entries
                     .Where(entry =>
                         entry.FullName.StartsWith(
@@ -1430,6 +1827,7 @@ namespace Scribble.Outlook
                 var builder = new StringBuilder();
                 foreach (var sheetEntry in sheetEntries)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     if (sheetEntries.Count > 1)
                     {
                         builder.AppendLine(
@@ -1442,7 +1840,9 @@ namespace Scribble.Outlook
                     ExtractXlsxSheet(
                         sheetEntry,
                         sharedStrings,
-                        builder);
+                        builder,
+                        archiveBudget,
+                        cancellationToken);
                     if (builder.Length > ScaledCharactersPerAttachment)
                     {
                         break;
@@ -1456,9 +1856,13 @@ namespace Scribble.Outlook
         private static void ExtractXlsxSheet(
             ZipArchiveEntry sheetEntry,
             IList<string> sharedStrings,
-            StringBuilder builder)
+            StringBuilder builder,
+            ArchiveReadBudget archiveBudget,
+            CancellationToken cancellationToken)
         {
-            using (var stream = sheetEntry.Open())
+            using (var stream = OpenBoundedPart(
+                sheetEntry,
+                archiveBudget))
             using (var reader = System.Xml.XmlReader.Create(
                 stream,
                 StreamingXmlSettings()))
@@ -1472,6 +1876,7 @@ namespace Scribble.Outlook
                 var rowValues = new List<string>();
                 while (!reader.EOF)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     if (reader.NodeType ==
                             System.Xml.XmlNodeType.Element &&
                         (reader.LocalName == "v" ||
@@ -1539,7 +1944,10 @@ namespace Scribble.Outlook
             }
         }
 
-        private static IList<string> ReadSharedStrings(ZipArchive zip)
+        private static IList<string> ReadSharedStrings(
+            ZipArchive zip,
+            ArchiveReadBudget archiveBudget,
+            CancellationToken cancellationToken)
         {
             var entry = zip.GetEntry("xl/sharedStrings.xml");
             if (entry == null)
@@ -1549,7 +1957,9 @@ namespace Scribble.Outlook
 
             var strings = new List<string>();
             var totalCharacters = 0L;
-            using (var stream = entry.Open())
+            using (var stream = OpenBoundedPart(
+                entry,
+                archiveBudget))
             using (var reader = System.Xml.XmlReader.Create(
                 stream,
                 StreamingXmlSettings()))
@@ -1564,6 +1974,7 @@ namespace Scribble.Outlook
                        strings.Count < 500000 &&
                        totalCharacters < 16 * 1024 * 1024)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     if (reader.NodeType ==
                             System.Xml.XmlNodeType.Element &&
                         reader.LocalName == "t")
@@ -1606,7 +2017,9 @@ namespace Scribble.Outlook
             return strings;
         }
 
-        private static string ReadTextFile(string path)
+        private static string ReadTextFile(
+            string path,
+            CancellationToken cancellationToken)
         {
             using (var reader = new StreamReader(
                 path,
@@ -1621,6 +2034,7 @@ namespace Scribble.Outlook
                 var total = 0;
                 while (total < buffer.Length)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     var read = reader.Read(
                         buffer,
                         total,

@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Text;
+using System.Threading;
 
 namespace Scribble.Outlook
 {
@@ -19,101 +21,89 @@ namespace Scribble.Outlook
         {
             try
             {
-                var stream = ReadCompoundStream(
+                return ExtractPptStream(ReadCompoundStream(
                     fileBytes,
-                    "PowerPoint Document");
-                if (stream == null)
-                {
-                    return string.Empty;
-                }
-
-                var builder = new StringBuilder();
-                var position = 0;
-                while (position + 8 <= stream.Length &&
-                       builder.Length < MaxOutputCharacters)
-                {
-                    var verInstance = ReadUInt16(stream, position);
-                    var recordType = ReadUInt16(stream, position + 2);
-                    var recordLength = (int)Math.Min(
-                        ReadUInt32(stream, position + 4),
-                        (uint)(stream.Length - position - 8));
-                    if ((verInstance & 0x000F) == 0x000F)
-                    {
-                        // Container record: descend into its payload.
-                        position += 8;
-                        continue;
-                    }
-
-                    if (recordType == 0x0FA0)
-                    {
-                        // TextCharsAtom: UTF-16LE text.
-                        AppendClean(
-                            DecodeUtf16(
-                                stream,
-                                position + 8,
-                                recordLength),
-                            builder);
-                    }
-                    else if (recordType == 0x0FA8)
-                    {
-                        // TextBytesAtom: single-byte text.
-                        AppendClean(
-                            DecodeLatin(
-                                stream,
-                                position + 8,
-                                recordLength),
-                            builder);
-                    }
-
-                    position += 8 + recordLength;
-                }
-
-                return builder.ToString();
+                    "PowerPoint Document"));
             }
             catch
             {
                 return string.Empty;
             }
+        }
+
+        public static string ExtractPptText(string path)
+        {
+            return ExtractPptText(path, CancellationToken.None);
+        }
+
+        public static string ExtractPptText(
+            string path,
+            CancellationToken cancellationToken)
+        {
+            using (var file = new CompoundFileReader(
+                path,
+                cancellationToken))
+            {
+                return ExtractPptStream(
+                    file.ReadStream("PowerPoint Document"));
+            }
+        }
+
+        private static string ExtractPptStream(byte[] stream)
+        {
+            if (stream == null)
+            {
+                return string.Empty;
+            }
+
+            var builder = new StringBuilder();
+            var position = 0;
+            while (position + 8 <= stream.Length &&
+                   builder.Length < MaxOutputCharacters)
+            {
+                var verInstance = ReadUInt16(stream, position);
+                var recordType = ReadUInt16(stream, position + 2);
+                var recordLength = (int)Math.Min(
+                    ReadUInt32(stream, position + 4),
+                    (uint)(stream.Length - position - 8));
+                if ((verInstance & 0x000F) == 0x000F)
+                {
+                    position += 8;
+                    continue;
+                }
+
+                if (recordType == 0x0FA0)
+                {
+                    AppendClean(
+                        DecodeUtf16(
+                            stream,
+                            position + 8,
+                            recordLength),
+                        builder);
+                }
+                else if (recordType == 0x0FA8)
+                {
+                    AppendClean(
+                        DecodeLatin(
+                            stream,
+                            position + 8,
+                            recordLength),
+                        builder);
+                }
+
+                position += 8 + recordLength;
+            }
+
+            return builder.ToString();
         }
 
         public static string ExtractDocText(byte[] fileBytes)
         {
             try
             {
-                var stream = ReadCompoundStream(
+                return ExtractDocStream(ReadCompoundStream(
                     fileBytes,
-                    "WordDocument");
-                if (stream == null)
-                {
-                    return string.Empty;
-                }
-
-                var text = string.Empty;
-                if (stream.Length > 0x20)
-                {
-                    var flags = ReadUInt16(stream, 0x0A);
-                    var complex = (flags & 0x0004) != 0;
-                    var fcMin = (int)Math.Min(
-                        ReadUInt32(stream, 0x18),
-                        (uint)stream.Length);
-                    var fcMac = (int)Math.Min(
-                        ReadUInt32(stream, 0x1C),
-                        (uint)stream.Length);
-                    if (!complex && fcMac > fcMin)
-                    {
-                        text = DecodeTextSlice(
-                            stream,
-                            fcMin,
-                            fcMac - fcMin);
-                    }
-                }
-
-                if (CountLettersAndDigits(text) < 40)
-                {
-                    text = ScanPrintableRuns(stream);
-                }
-
-                return text;
+                    "WordDocument"));
             }
             catch
             {
@@ -121,52 +111,125 @@ namespace Scribble.Outlook
             }
         }
 
+        public static string ExtractDocText(string path)
+        {
+            return ExtractDocText(path, CancellationToken.None);
+        }
+
+        public static string ExtractDocText(
+            string path,
+            CancellationToken cancellationToken)
+        {
+            using (var file = new CompoundFileReader(
+                path,
+                cancellationToken))
+            {
+                return ExtractDocStream(
+                    file.ReadStream("WordDocument"));
+            }
+        }
+
+        private static string ExtractDocStream(byte[] stream)
+        {
+            if (stream == null)
+            {
+                return string.Empty;
+            }
+
+            var text = string.Empty;
+            if (stream.Length > 0x20)
+            {
+                var flags = ReadUInt16(stream, 0x0A);
+                var complex = (flags & 0x0004) != 0;
+                var fcMin = (int)Math.Min(
+                    ReadUInt32(stream, 0x18),
+                    (uint)stream.Length);
+                var fcMac = (int)Math.Min(
+                    ReadUInt32(stream, 0x1C),
+                    (uint)stream.Length);
+                if (!complex && fcMac > fcMin)
+                {
+                    text = DecodeTextSlice(
+                        stream,
+                        fcMin,
+                        fcMac - fcMin);
+                }
+            }
+
+            if (CountLettersAndDigits(text) < 40)
+            {
+                text = ScanPrintableRuns(stream);
+            }
+
+            return text;
+        }
+
         public static string ExtractXlsText(byte[] fileBytes)
         {
             try
             {
-                var stream =
+                return ExtractXlsStream(
                     ReadCompoundStream(fileBytes, "Workbook") ??
-                    ReadCompoundStream(fileBytes, "Book");
-                if (stream == null)
-                {
-                    return string.Empty;
-                }
-
-                var builder = new StringBuilder();
-                var position = 0;
-                while (position + 4 <= stream.Length &&
-                       builder.Length < MaxOutputCharacters)
-                {
-                    var opcode = ReadUInt16(stream, position);
-                    var size = ReadUInt16(stream, position + 2);
-                    var payload = position + 4;
-                    if (payload + size > stream.Length)
-                    {
-                        break;
-                    }
-
-                    if (opcode == 0x00FC)
-                    {
-                        // Shared string table: cell text without
-                        // positions, split across Continue records
-                        // is skipped on boundary overrun.
-                        ParseSharedStrings(
-                            stream,
-                            payload,
-                            size,
-                            builder);
-                    }
-
-                    position = payload + size;
-                }
-
-                return builder.ToString();
+                    ReadCompoundStream(fileBytes, "Book"));
             }
             catch
             {
                 return string.Empty;
             }
+        }
+
+        public static string ExtractXlsText(string path)
+        {
+            return ExtractXlsText(path, CancellationToken.None);
+        }
+
+        public static string ExtractXlsText(
+            string path,
+            CancellationToken cancellationToken)
+        {
+            using (var file = new CompoundFileReader(
+                path,
+                cancellationToken))
+            {
+                return ExtractXlsStream(
+                    file.ReadStream("Workbook") ??
+                    file.ReadStream("Book"));
+            }
+        }
+
+        private static string ExtractXlsStream(byte[] stream)
+        {
+            if (stream == null)
+            {
+                return string.Empty;
+            }
+
+            var builder = new StringBuilder();
+            var position = 0;
+            while (position + 4 <= stream.Length &&
+                   builder.Length < MaxOutputCharacters)
+            {
+                var opcode = ReadUInt16(stream, position);
+                var size = ReadUInt16(stream, position + 2);
+                var payload = position + 4;
+                if (payload + size > stream.Length)
+                {
+                    break;
+                }
+
+                if (opcode == 0x00FC)
+                {
+                    ParseSharedStrings(
+                        stream,
+                        payload,
+                        size,
+                        builder);
+                }
+
+                position = payload + size;
+            }
+
+            return builder.ToString();
         }
 
         public static string ExtractRtfText(byte[] fileBytes)
@@ -348,6 +411,45 @@ namespace Scribble.Outlook
             }
         }
 
+        public static string ExtractRtfText(
+            string path,
+            CancellationToken cancellationToken)
+        {
+            const int maximumInputBytes = 32 * 1024 * 1024;
+            using (var stream = new FileStream(
+                path,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read))
+            using (var output = new MemoryStream())
+            {
+                var buffer = new byte[81920];
+                while (output.Length < maximumInputBytes)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var read = stream.Read(
+                        buffer,
+                        0,
+                        (int)Math.Min(
+                            buffer.Length,
+                            maximumInputBytes - output.Length));
+                    if (read <= 0)
+                    {
+                        break;
+                    }
+
+                    output.Write(buffer, 0, read);
+                }
+
+                var text = ExtractRtfText(output.ToArray());
+                return stream.Length > maximumInputBytes
+                    ? text +
+                      "\n[RTF extraction stopped at the 32 MB " +
+                      "resource cap.]"
+                    : text;
+            }
+        }
+
         // Outlook .msg / .oft items are compound files whose MAPI
         // string properties live in named substreams: 001F suffixes
         // are UTF-16, 001E are the ANSI code page. Subject, sender,
@@ -392,6 +494,49 @@ namespace Scribble.Outlook
             }
         }
 
+        public static string ExtractMsgText(string path)
+        {
+            return ExtractMsgText(path, CancellationToken.None);
+        }
+
+        public static string ExtractMsgText(
+            string path,
+            CancellationToken cancellationToken)
+        {
+            using (var file = new CompoundFileReader(
+                path,
+                cancellationToken))
+            {
+                var builder = new StringBuilder();
+                var subject = ReadMsgString(file, "0037");
+                var sender = ReadMsgString(file, "0C1A");
+                var recipients = ReadMsgString(file, "0E04");
+                var body = ReadMsgString(file, "1000");
+                if (subject.Length > 0)
+                {
+                    builder.AppendLine("Subject: " + subject);
+                }
+
+                if (sender.Length > 0)
+                {
+                    builder.AppendLine("From: " + sender);
+                }
+
+                if (recipients.Length > 0)
+                {
+                    builder.AppendLine("To: " + recipients);
+                }
+
+                if (builder.Length > 0 && body.Length > 0)
+                {
+                    builder.AppendLine();
+                }
+
+                builder.Append(body);
+                return builder.ToString().Trim();
+            }
+        }
+
         private static string ReadMsgString(
             byte[] fileBytes,
             string propertyId)
@@ -419,6 +564,101 @@ namespace Scribble.Outlook
             }
 
             return string.Empty;
+        }
+
+        private static string ReadMsgString(
+            CompoundFileReader file,
+            string propertyId)
+        {
+            var unicode = file.ReadStream(
+                "__substg1.0_" + propertyId + "001F");
+            if (unicode != null && unicode.Length > 1)
+            {
+                return Encoding.Unicode
+                    .GetString(unicode)
+                    .Trim('\0')
+                    .Trim();
+            }
+
+            var ansi = file.ReadStream(
+                "__substg1.0_" + propertyId + "001E");
+            if (ansi != null && ansi.Length > 0)
+            {
+                return Encoding.Default
+                    .GetString(ansi)
+                    .Trim('\0')
+                    .Trim();
+            }
+
+            return string.Empty;
+        }
+
+        public static bool CompoundStreamExists(
+            string path,
+            string streamName)
+        {
+            return CompoundStreamExists(
+                path,
+                streamName,
+                CancellationToken.None);
+        }
+
+        public static bool CompoundStreamExists(
+            string path,
+            string streamName,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                using (var file = new CompoundFileReader(
+                    path,
+                    cancellationToken))
+                {
+                    return file.ContainsStream(streamName);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        public static string IdentifyCompoundExtension(
+            string path,
+            CancellationToken cancellationToken)
+        {
+            using (var file = new CompoundFileReader(
+                path,
+                cancellationToken))
+            {
+                if (file.ContainsStream("WordDocument"))
+                {
+                    return ".doc";
+                }
+
+                if (file.ContainsStream("PowerPoint Document"))
+                {
+                    return ".ppt";
+                }
+
+                if (file.ContainsStream("Workbook") ||
+                    file.ContainsStream("Book"))
+                {
+                    return ".xls";
+                }
+
+                if (file.ContainsStream("__properties_version1.0") ||
+                    file.ContainsStream("__substg1.0_0037001F"))
+                {
+                    return ".msg";
+                }
+
+                return string.Empty;
+            }
         }
 
         public static bool LooksLikeCompoundFile(byte[] bytes)

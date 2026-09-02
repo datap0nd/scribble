@@ -157,7 +157,7 @@ The settings window is a centered modal with Connection, MCP, Topics, Writing so
 
 A compact Topic strip sits immediately below every chat header. It always shows `Topic: None` or the selected name, locks after the first message, and resets only with Clear chat. This keeps the persistent repository boundary visible separately from the transient context tray.
 
-The context toolbar uses short native actions for Add email, Add files, New, and Settings. Email drops resolve the current Outlook Explorer selection. File drops and the file picker accept only a small supported text-format set, show each accepted file in the context ledger, and expose the fixed three-file boundary in status text.
+The context toolbar uses short native actions for Add email, Add files, New, and Settings. Email drops resolve the current Outlook Explorer selection. File drops and the file picker accept the supported document and image formats, show progress while local extraction runs, and apply results only after the batch completes. Files may be up to 100 MiB each with a 250 MiB source budget per picker or drop; resource-limited files remain visible as warnings. The existing three-document, four-image, and bounded-context limits remain visible in status text.
 
 ### Named Rules
 

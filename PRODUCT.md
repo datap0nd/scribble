@@ -62,6 +62,9 @@ locally linked item. The dedicated host exposes no send operation.
 ## Capabilities and Constraints
 
 - Search and read bounded context from the primary Inbox and Sent Items.
+- Accept explicitly selected local files and Outlook attachments up to 100 MiB
+  each, with a 250 MiB source budget per operation. Extraction stays local;
+  only bounded text or downscaled image input reaches the configured endpoint.
 - Launch saved prompts immediately from a two-part Skills shelf. Public skills
   are read-only packages shipped with Scribble; Local skills are created per
   Office app and remain in the current Windows user's LocalAppData.

@@ -52,6 +52,8 @@ $settingsStorePath = Join-Path $sourceRoot "Configuration\SettingsStore.cs"
 $skillStorePath = Join-Path $sourceRoot "Configuration\SkillStore.cs"
 $skillDefinitionPath = Join-Path $sourceRoot "Configuration\SkillDefinition.cs"
 $publicSkillsPath = Join-Path $sourceRoot "Skills\PublicSkills.json"
+$attachmentPolicyPath = Join-Path $sourceRoot "Outlook\AttachmentIntakePolicy.cs"
+$attachmentReaderPath = Join-Path $sourceRoot "Outlook\EmailAttachmentReader.cs"
 $addInPath = Join-Path $sourceRoot "AddIn.cs"
 $catalogSource = Get-Content $catalogPath -Raw
 $draftCatalogSource = Get-Content $draftCatalogPath -Raw
@@ -60,6 +62,29 @@ $modelFacingSource =
     (Get-Content $factoryPath -Raw) +
     $catalogSource +
     $draftCatalogSource
+
+if (-not (Test-Path $attachmentPolicyPath)) {
+    throw "Attachment intake policy is missing."
+}
+$attachmentPolicySource = Get-Content $attachmentPolicyPath -Raw
+foreach ($requiredAttachmentBoundary in @(
+    "MaxFileBytes = 100L * 1024 * 1024",
+    "MaxOperationBytes = 250L * 1024 * 1024",
+    "MaxTotalBytes = 128L * 1024 * 1024"
+)) {
+    if (-not $attachmentPolicySource.Contains(
+            $requiredAttachmentBoundary)) {
+        throw "Attachment boundary is missing $requiredAttachmentBoundary."
+    }
+}
+
+$wholeFileReads = Get-ChildItem (Join-Path $sourceRoot "Outlook") -Filter *.cs |
+    Select-String -SimpleMatch "File.ReadAllBytes("
+if ($wholeFileReads) {
+    $wholeFileReads | ForEach-Object {
+        Write-Error "Attachment parser performs a whole-file read: $($_.Path):$($_.LineNumber)"
+    }
+}
 
 $toolNames = [regex]::Matches(
     $catalogSource,

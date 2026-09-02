@@ -1019,21 +1019,55 @@ namespace Scribble.UI
             }
         }
 
-        private void AddExternalFiles(IEnumerable<string> paths)
+        private async void AddExternalFiles(IEnumerable<string> paths)
         {
+            if (_busy)
+            {
+                return;
+            }
+
+            var selectedPaths = (paths ?? new string[0])
+                .Where(path => !string.IsNullOrWhiteSpace(path))
+                .ToArray();
+            if (selectedPaths.Length == 0)
+            {
+                return;
+            }
+
+            var cancellation = new CancellationTokenSource();
+            _requestCancellation = cancellation;
+            SetBusy(true);
             try
             {
+                var loaded = await Task.Run(
+                    () => EmailAttachmentReader.LoadLocalFiles(
+                        selectedPaths,
+                        cancellation.Token,
+                        (current, total, name) =>
+                        {
+                            try
+                            {
+                                if (!IsDisposed && IsHandleCreated)
+                                {
+                                    BeginInvoke(new Action(() => SetStatus(
+                                        "Reading " + current + " of " +
+                                        total + ": " + name,
+                                        false)));
+                                }
+                            }
+                            catch (InvalidOperationException)
+                            {
+                            }
+                        }),
+                    cancellation.Token);
+                cancellation.Token.ThrowIfCancellationRequested();
                 var added = 0;
-                foreach (var path in
-                    paths ?? new string[0])
+                var resourceLimited = loaded.Count(item =>
+                    item.Content != null &&
+                    item.Content.Kind == "resource-limited");
+                foreach (var loadedFile in loaded)
                 {
-                    if (string.IsNullOrWhiteSpace(path))
-                    {
-                        continue;
-                    }
-
-                    var content =
-                        EmailAttachmentReader.LoadLocalFile(path);
+                    var content = loadedFile.Content;
                     if (content == null)
                     {
                         continue;
@@ -1056,8 +1090,7 @@ namespace Scribble.UI
                                 new VisionImagePayload(
                                     content.FileName,
                                     content.ImageDataUrl),
-                                EmailAttachmentReader
-                                    .BuildThumbnailDataUrl(path)));
+                                loadedFile.Thumbnail));
                         AppendContext(
                             "Added image " + content.FileName);
                         added++;
@@ -1072,7 +1105,9 @@ namespace Scribble.UI
                     AddContextDocument(
                         content.FileName,
                         content.Text,
-                        content.Truncated
+                        content.Kind == "resource-limited"
+                            ? "attachment resource limit - content not read"
+                            : content.Truncated
                             ? "truncated to the text cap"
                             : content.Text.Length +
                               " text characters");
@@ -1086,9 +1121,26 @@ namespace Scribble.UI
                         added +
                         (added == 1
                             ? " item added"
-                            : " items added"),
-                        false);
+                            : " items added") +
+                        (resourceLimited > 0
+                            ? "; " + resourceLimited +
+                              " skipped by attachment limits"
+                            : string.Empty),
+                        resourceLimited > 0);
                 }
+                else if (resourceLimited > 0)
+                {
+                    SetStatus(
+                        resourceLimited +
+                        " file" +
+                        (resourceLimited == 1 ? "" : "s") +
+                        " skipped by attachment limits",
+                        true);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                SetStatus("Attachment reading stopped", false);
             }
             catch (Exception exception)
             {
@@ -1097,6 +1149,16 @@ namespace Scribble.UI
                     "EXTERNAL_CONTEXT_FAILED");
                 SetStatus(FirstLine(details), true);
                 Log.Error("OfficeAddExternalContext", exception);
+            }
+            finally
+            {
+                if (ReferenceEquals(_requestCancellation, cancellation))
+                {
+                    _requestCancellation = null;
+                    SetBusy(false);
+                }
+
+                cancellation.Dispose();
             }
         }
 

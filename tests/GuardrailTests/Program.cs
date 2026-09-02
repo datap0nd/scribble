@@ -197,6 +197,9 @@ namespace GuardrailTests
                     "Email attachments are bounded and readable",
                     EmailAttachmentsAreBounded);
                 Run(
+                    "100 MB attachment intake is bounded and streaming",
+                    LargeAttachmentIntakeIsBoundedAndStreaming);
+                Run(
                     "Compatible endpoint model discovery is verified",
                     ModelDiscoveryUsesCompatibleContract);
                 Run(
@@ -760,6 +763,345 @@ namespace GuardrailTests
                 !names.Contains("mark_read") &&
                 !names.Contains("schedule"),
                 "Mailbox time and unread filters widened the capability surface.");
+        }
+
+        private static void LargeAttachmentIntakeIsBoundedAndStreaming()
+        {
+            Assert(
+                AttachmentIntakePolicy.MaxFileBytes ==
+                    100L * 1024 * 1024 &&
+                AttachmentIntakePolicy.MaxOperationBytes ==
+                    250L * 1024 * 1024 &&
+                EmailAttachmentReader.MaxBytesPerAttachment ==
+                    100 * 1024 * 1024 &&
+                TopicIndex.MaxFileBytes == 25 * 1024 * 1024,
+                "The 100/250 MB attachment limits or the 25 MB " +
+                "Topic limit changed unexpectedly.");
+
+            var budget = new AttachmentReadBudget();
+            string warning;
+            Assert(
+                budget.TryReserve(
+                    AttachmentIntakePolicy.MaxFileBytes,
+                    out warning) &&
+                budget.TryReserve(
+                    AttachmentIntakePolicy.MaxFileBytes,
+                    out warning) &&
+                budget.TryReserve(
+                    50L * 1024 * 1024,
+                    out warning) &&
+                !budget.TryReserve(1, out warning) &&
+                warning.Contains("250 MB"),
+                "The cumulative attachment budget did not accept " +
+                "exactly 250 MB and reject the next byte.");
+
+            var overFile = new AttachmentReadBudget();
+            Assert(
+                !overFile.TryReserve(
+                    AttachmentIntakePolicy.MaxFileBytes + 1,
+                    out warning) &&
+                warning.Contains("100 MB"),
+                "The per-file attachment budget did not reject " +
+                "one byte over 100 MB.");
+
+            Assert(
+                EmailAttachmentReader.IsSafeImageDimensions(
+                    8000,
+                    8000) &&
+                !EmailAttachmentReader.IsSafeImageDimensions(
+                    8001,
+                    8000) &&
+                !EmailAttachmentReader.IsSafeImageDimensions(
+                    32769,
+                    1),
+                "Image pixel and dimension limits are not enforced.");
+
+            var root = Path.Combine(
+                Path.GetTempPath(),
+                "Scribble-large-attachment-" +
+                Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(root);
+            try
+            {
+                var sizes = new[]
+                {
+                    100L * 1024 * 1024,
+                    100L * 1024 * 1024,
+                    50L * 1024 * 1024,
+                    1L
+                };
+                var paths = new List<string>();
+                for (var index = 0; index < sizes.Length; index++)
+                {
+                    var path = Path.Combine(
+                        root,
+                        "ordered-" + index + ".txt");
+                    using (var stream = new FileStream(
+                        path,
+                        FileMode.Create,
+                        FileAccess.Write,
+                        FileShare.None))
+                    {
+                        var prefix = Encoding.UTF8.GetBytes(
+                            "Attachment " + index + " text\n");
+                        stream.Write(prefix, 0, prefix.Length);
+                        stream.SetLength(sizes[index]);
+                    }
+
+                    paths.Add(path);
+                }
+
+                var loaded = EmailAttachmentReader.LoadLocalFiles(
+                    paths,
+                    CancellationToken.None);
+                Assert(
+                    loaded.Count == 4 &&
+                    loaded[0].Content.FileName == "ordered-0.txt" &&
+                    loaded[1].Content.FileName == "ordered-1.txt" &&
+                    loaded[2].Content.FileName == "ordered-2.txt" &&
+                    loaded[3].Content.Kind == "resource-limited" &&
+                    loaded[3].Content.Text.Contains("250 MB"),
+                    "A manual batch did not preserve order and " +
+                    "partially accept files at the 250 MB boundary.");
+
+                var outlookAttachments =
+                    new FakeOutlookAttachments();
+                outlookAttachments.Add(new FakeOutlookAttachment(
+                    "remaining-budget.bin",
+                    paths[3])
+                {
+                    Size = 60 * 1024 * 1024
+                });
+                var unreadMail = new FakeSelectedMailItem(
+                    "large-attachment-entry",
+                    "Large attachment",
+                    null,
+                    true)
+                {
+                    Attachments = outlookAttachments
+                };
+                var outlook = new FakeOutlookApplication();
+                outlook.Session.Register(
+                    "large-attachment-entry",
+                    "store",
+                    unreadMail);
+                var snapshot = new MessageReader(outlook).CaptureById(
+                    "large-attachment-entry",
+                    "store");
+                var sharedBudget = new AttachmentReadBudget();
+                Assert(
+                    sharedBudget.TryReserve(
+                        100L * 1024 * 1024,
+                        out warning) &&
+                    sharedBudget.TryReserve(
+                        100L * 1024 * 1024,
+                        out warning),
+                    "The Outlook test budget could not be prepared.");
+                var outlookResults = EmailAttachmentReader.Read(
+                    outlook,
+                    snapshot,
+                    CancellationToken.None,
+                    sharedBudget);
+                Assert(
+                    outlookResults.Count == 1 &&
+                    outlookResults[0].Kind == "resource-limited" &&
+                    outlookResults[0].Text.Contains("250 MB") &&
+                    unreadMail.UnRead &&
+                    new FileInfo(paths[3]).Length == 1,
+                    "Outlook did not honor the shared source budget " +
+                    "or changed the source message or file.");
+
+                var overPath = Path.Combine(root, "over.txt");
+                using (var stream = new FileStream(
+                    overPath,
+                    FileMode.Create,
+                    FileAccess.Write,
+                    FileShare.None))
+                {
+                    stream.SetLength(
+                        AttachmentIntakePolicy.MaxFileBytes + 1);
+                }
+
+                var rejected = EmailAttachmentReader.LoadLocalFile(
+                    overPath);
+                Assert(
+                    rejected != null &&
+                    rejected.Kind == "resource-limited" &&
+                    rejected.Text.Contains("100 MB"),
+                    "A file over 100 MB was not visibly rejected.");
+
+                var pdfPath = Path.Combine(root, "padded.pdf");
+                File.WriteAllText(
+                    pdfPath,
+                    "%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\n" +
+                    "endobj\n%%EOF\n",
+                    Encoding.ASCII);
+                using (var stream = new FileStream(
+                    pdfPath,
+                    FileMode.Open,
+                    FileAccess.Write,
+                    FileShare.None))
+                {
+                    stream.SetLength(
+                        AttachmentIntakePolicy.MaxFileBytes);
+                }
+
+                var paddedPdf = EmailAttachmentReader.LoadLocalFile(
+                    pdfPath);
+                Assert(
+                    paddedPdf != null && paddedPdf.Kind == "pdf",
+                    "A sparse 100 MB PDF did not use the " +
+                    "file-backed extraction path.");
+
+                var imagePath = Path.Combine(root, "padded.png");
+                using (var bitmap = new System.Drawing.Bitmap(512, 512))
+                {
+                    bitmap.Save(
+                        imagePath,
+                        System.Drawing.Imaging.ImageFormat.Png);
+                }
+                using (var stream = new FileStream(
+                    imagePath,
+                    FileMode.Open,
+                    FileAccess.Write,
+                    FileShare.None))
+                {
+                    stream.SetLength(
+                        AttachmentIntakePolicy.MaxFileBytes);
+                }
+
+                var paddedImage = EmailAttachmentReader.LoadLocalFile(
+                    imagePath);
+                Assert(
+                    paddedImage != null &&
+                    paddedImage.Kind == "image" &&
+                    paddedImage.ImageDataUrl.Length > 0,
+                    "A sparse 100 MB image was not safely " +
+                    "downscaled from disk.");
+
+                var legacyPath = Path.Combine(root, "padded.doc");
+                File.WriteAllBytes(
+                    legacyPath,
+                    BuildCompoundFile(
+                        "WordDocument",
+                        BuildDocStream(
+                            "Large legacy document baseline")));
+                using (var stream = new FileStream(
+                    legacyPath,
+                    FileMode.Open,
+                    FileAccess.Write,
+                    FileShare.None))
+                {
+                    stream.SetLength(
+                        AttachmentIntakePolicy.MaxFileBytes);
+                }
+
+                var paddedLegacy = EmailAttachmentReader.LoadLocalFile(
+                    legacyPath);
+                Assert(
+                    paddedLegacy != null &&
+                    paddedLegacy.Text.Contains(
+                        "Large legacy document baseline"),
+                    "A sparse 100 MB legacy Office file did not use " +
+                    "targeted compound-stream reads.");
+
+                var officePath = Path.Combine(root, "padded.docx");
+                using (var stream = new FileStream(
+                    officePath,
+                    FileMode.Create,
+                    FileAccess.ReadWrite,
+                    FileShare.None))
+                {
+                    stream.SetLength(99L * 1024 * 1024);
+                    stream.Position = stream.Length;
+                    using (var archive = new ZipArchive(
+                        stream,
+                        ZipArchiveMode.Create,
+                        true))
+                    {
+                        var entry = archive.CreateEntry(
+                            "word/document.xml",
+                            CompressionLevel.Optimal);
+                        using (var writer = new StreamWriter(
+                            entry.Open(),
+                            new UTF8Encoding(false)))
+                        {
+                            writer.Write(
+                                "<w:document xmlns:w=\"http://schemas." +
+                                "openxmlformats.org/wordprocessingml/" +
+                                "2006/main\"><w:body><w:p><w:r><w:t>" +
+                                "Large OOXML baseline</w:t></w:r></w:p>" +
+                                "</w:body></w:document>");
+                        }
+                    }
+                }
+
+                var paddedOffice = EmailAttachmentReader.LoadLocalFile(
+                    officePath);
+                Assert(
+                    new FileInfo(officePath).Length >
+                        98L * 1024 * 1024 &&
+                    paddedOffice != null &&
+                    paddedOffice.Text.Contains("Large OOXML baseline"),
+                    "A near-limit sparse-prefix OOXML file did not " +
+                    "stream only its text part.");
+
+                var bombPath = Path.Combine(root, "bounded.docx");
+                using (var archive = ZipFile.Open(
+                    bombPath,
+                    ZipArchiveMode.Create))
+                {
+                    var entry = archive.CreateEntry(
+                        "word/document.xml",
+                        CompressionLevel.Optimal);
+                    using (var writer = new StreamWriter(
+                        entry.Open(),
+                        new UTF8Encoding(false)))
+                    {
+                        writer.Write("<document>");
+                        var spaces = new string(' ', 8192);
+                        for (var written = 0;
+                             written < 33 * 1024 * 1024;
+                             written += spaces.Length)
+                        {
+                            writer.Write(spaces);
+                        }
+
+                        writer.Write("</document>");
+                    }
+                }
+
+                var boundedArchive =
+                    EmailAttachmentReader.LoadLocalFile(bombPath);
+                Assert(
+                    boundedArchive != null &&
+                    boundedArchive.Kind == "resource-limited" &&
+                    boundedArchive.Text.Contains("32 MB"),
+                    "An oversized decompressed document part was " +
+                    "not reported as resource-limited.");
+
+                var cancellation = new CancellationTokenSource();
+                cancellation.Cancel();
+                var cancelled = false;
+                try
+                {
+                    EmailAttachmentReader.LoadLocalFiles(
+                        paths,
+                        cancellation.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    cancelled = true;
+                }
+
+                Assert(
+                    cancelled,
+                    "Attachment batch cancellation was swallowed.");
+            }
+            finally
+            {
+                Directory.Delete(root, true);
+            }
         }
 
         private static void SkillsAreBoundedAndPersistent()

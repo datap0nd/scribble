@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Threading;
 using System.Web.Script.Serialization;
 using Scribble.Chat;
 using Scribble.Security;
@@ -73,6 +74,14 @@ namespace Scribble.Outlook
 
         public MailboxToolResult Execute(ChatToolCall call)
         {
+            return Execute(call, CancellationToken.None);
+        }
+
+        internal MailboxToolResult Execute(
+            ChatToolCall call,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
             if (call?.function == null ||
                 string.IsNullOrWhiteSpace(call.id))
             {
@@ -100,15 +109,25 @@ namespace Scribble.Outlook
                     case MailboxToolCatalog.SearchMailbox:
                         return Search(call.id, arguments);
                     case MailboxToolCatalog.ReadMessages:
-                        return ReadMessages(call.id, arguments);
+                        return ReadMessages(
+                            call.id,
+                            arguments,
+                            cancellationToken);
                     case MailboxToolCatalog.ReadThread:
-                        return ReadThread(call.id, arguments);
+                        return ReadThread(
+                            call.id,
+                            arguments,
+                            cancellationToken);
                     default:
                         return Error(
                             call.id,
                             "MAILBOX_TOOL_NOT_ALLOWED",
                             "The requested mailbox tool is not allowed.");
                 }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch (Exception exception)
             {
@@ -265,7 +284,8 @@ namespace Scribble.Outlook
 
         private MailboxToolResult ReadMessages(
             string callId,
-            IDictionary<string, object> arguments)
+            IDictionary<string, object> arguments,
+            CancellationToken cancellationToken)
         {
             var handles = GetStringList(arguments, "handles")
                 .Distinct(StringComparer.Ordinal)
@@ -281,9 +301,11 @@ namespace Scribble.Outlook
 
             var messages = new List<object>();
             var visionImages = new List<VisionImagePayload>();
+            var attachmentBudget = new AttachmentReadBudget();
             var loadedCount = 0;
             foreach (var handle in handles)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 MessageSnapshot message;
                 if (!_handles.TryGetValue(handle, out message))
                 {
@@ -326,7 +348,9 @@ namespace Scribble.Outlook
                         handle,
                         message,
                         MaxDirectMessageBodyCharacters,
-                        visionImages));
+                        visionImages,
+                        cancellationToken,
+                        attachmentBudget));
                 _loadedBodyHandles.Add(handle);
                 loadedCount++;
             }
@@ -352,7 +376,8 @@ namespace Scribble.Outlook
 
         private MailboxToolResult ReadThread(
             string callId,
-            IDictionary<string, object> arguments)
+            IDictionary<string, object> arguments,
+            CancellationToken cancellationToken)
         {
             if (_workingSetOnly)
             {
@@ -389,8 +414,10 @@ namespace Scribble.Outlook
                 MaxThreadMessages);
             var messages = new List<object>();
             var visionImages = new List<VisionImagePayload>();
+            var attachmentBudget = new AttachmentReadBudget();
             foreach (var message in conversation)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 var messageHandle = Register(message);
                 if (_loadedBodyHandles.Contains(messageHandle))
                 {
@@ -408,7 +435,9 @@ namespace Scribble.Outlook
                         messageHandle,
                         message,
                         MaxThreadMessageBodyCharacters,
-                        visionImages));
+                        visionImages,
+                        cancellationToken,
+                        attachmentBudget));
                 _loadedBodyHandles.Add(messageHandle);
             }
 
@@ -437,7 +466,9 @@ namespace Scribble.Outlook
             string handle,
             MessageSnapshot message,
             int maximumBodyCharacters,
-            IList<VisionImagePayload> visionImages)
+            IList<VisionImagePayload> visionImages,
+            CancellationToken cancellationToken,
+            AttachmentReadBudget attachmentBudget)
         {
             var payload = new Dictionary<string, object>
             {
@@ -469,7 +500,10 @@ namespace Scribble.Outlook
                     "are readable.";
             }
 
-            var attachments = _mailbox.ReadAttachments(message);
+            var attachments = _mailbox.ReadAttachments(
+                message,
+                cancellationToken,
+                attachmentBudget);
             if (attachments.Count > 0)
             {
                 var serialized = new List<object>(attachments.Count);

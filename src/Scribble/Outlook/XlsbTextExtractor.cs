@@ -5,6 +5,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Text;
+using System.Threading;
 
 namespace Scribble.Outlook
 {
@@ -29,7 +30,7 @@ namespace Scribble.Outlook
         private const int BrtFmlaBool = 10;
         private const int BrtSstItem = 19;
 
-        // A 25 MB workbook can decompress far larger; each part is
+        // A 100 MB workbook can decompress far larger; each part is
         // read up to this cap so a hostile archive cannot balloon
         // memory. A truncated final record simply ends extraction.
         private const int MaxPartBytes = 32 * 1024 * 1024;
@@ -40,9 +41,48 @@ namespace Scribble.Outlook
         {
             try
             {
-                return ExtractCore(
-                    bytes,
-                    Math.Max(1, maxCharacters));
+                using (var stream = new MemoryStream(
+                    bytes ?? new byte[0],
+                    false))
+                {
+                    return ExtractCore(
+                        stream,
+                        Math.Max(1, maxCharacters),
+                        CancellationToken.None);
+                }
+            }
+            catch
+            {
+                return string.Empty;
+            }
+        }
+
+        public static string Extract(
+            string path,
+            int maxCharacters,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                using (var stream = new FileStream(
+                    path,
+                    FileMode.Open,
+                    FileAccess.Read,
+                    FileShare.Read))
+                {
+                    return ExtractCore(
+                        stream,
+                        Math.Max(1, maxCharacters),
+                        cancellationToken);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (AttachmentResourceLimitException)
+            {
+                throw;
             }
             catch
             {
@@ -51,14 +91,26 @@ namespace Scribble.Outlook
         }
 
         private static string ExtractCore(
-            byte[] bytes,
-            int maxCharacters)
+            Stream stream,
+            int maxCharacters,
+            CancellationToken cancellationToken)
         {
             using (var archive = new ZipArchive(
-                new MemoryStream(bytes),
-                ZipArchiveMode.Read))
+                stream,
+                ZipArchiveMode.Read,
+                true))
             {
-                var sharedStrings = ReadSharedStrings(archive);
+                if (archive.Entries.Count > 10000)
+                {
+                    throw new AttachmentResourceLimitException(
+                        "The archive exceeded the 10,000-entry cap.");
+                }
+
+                var archiveBudget = new ArchiveReadBudget();
+                var sharedStrings = ReadSharedStrings(
+                    archive,
+                    archiveBudget,
+                    cancellationToken);
                 var sheets = archive.Entries
                     .Where(entry =>
                         entry.FullName.StartsWith(
@@ -72,6 +124,7 @@ namespace Scribble.Outlook
                 var builder = new StringBuilder();
                 foreach (var sheet in sheets)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     if (sheets.Count > 1)
                     {
                         builder.AppendLine(
@@ -81,10 +134,14 @@ namespace Scribble.Outlook
                     }
 
                     ExtractSheet(
-                        ReadPart(sheet),
+                        ReadPart(
+                            sheet,
+                            archiveBudget,
+                            cancellationToken),
                         sharedStrings,
                         builder,
-                        maxCharacters);
+                        maxCharacters,
+                        cancellationToken);
                     if (builder.Length >= maxCharacters)
                     {
                         break;
@@ -99,7 +156,8 @@ namespace Scribble.Outlook
             byte[] data,
             IList<string> sharedStrings,
             StringBuilder builder,
-            int maxCharacters)
+            int maxCharacters,
+            CancellationToken cancellationToken)
         {
             var position = 0;
             var rowValues = new List<string>();
@@ -113,6 +171,7 @@ namespace Scribble.Outlook
                 out start,
                 out length))
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 if (id == BrtRowHdr)
                 {
                     FlushRow(rowValues, builder);
@@ -212,7 +271,9 @@ namespace Scribble.Outlook
         }
 
         private static IList<string> ReadSharedStrings(
-            ZipArchive archive)
+            ZipArchive archive,
+            ArchiveReadBudget archiveBudget,
+            CancellationToken cancellationToken)
         {
             var entry = archive.GetEntry("xl/sharedStrings.bin");
             if (entry == null)
@@ -220,7 +281,10 @@ namespace Scribble.Outlook
                 return new string[0];
             }
 
-            var data = ReadPart(entry);
+            var data = ReadPart(
+                entry,
+                archiveBudget,
+                cancellationToken);
             var strings = new List<string>();
             var totalCharacters = 0L;
             var position = 0;
@@ -236,6 +300,7 @@ namespace Scribble.Outlook
                    strings.Count < MaxSharedStrings &&
                    totalCharacters < MaxSharedStringCharacters)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 if (id != BrtSstItem || length < 5)
                 {
                     continue;
@@ -385,14 +450,24 @@ namespace Scribble.Outlook
                 CultureInfo.InvariantCulture);
         }
 
-        private static byte[] ReadPart(ZipArchiveEntry entry)
+        private static byte[] ReadPart(
+            ZipArchiveEntry entry,
+            ArchiveReadBudget archiveBudget,
+            CancellationToken cancellationToken)
         {
+            if (entry.Length > MaxPartBytes)
+            {
+                throw new AttachmentResourceLimitException(
+                    "An XLSB part exceeded the 32 MB decompressed cap.");
+            }
+
             using (var stream = entry.Open())
             using (var buffer = new MemoryStream())
             {
                 var chunk = new byte[81920];
                 while (buffer.Length < MaxPartBytes)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     var read = stream.Read(
                         chunk,
                         0,
@@ -404,6 +479,7 @@ namespace Scribble.Outlook
                         break;
                     }
 
+                    archiveBudget.Add(read);
                     buffer.Write(chunk, 0, read);
                 }
 

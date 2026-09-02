@@ -194,7 +194,8 @@ the tool-call probe allows up to 90 seconds.
    context: up to three documents and four images. Documents go through the
    same extractors as email attachments (PDF, Office, text formats), and
    images become vision input with a tray thumbnail. HTML files are read as
-   inert text, not rendered. Each file may be up to 25 MB on disk; extracted
+   inert text, not rendered. Each file may be up to 100 MB on disk, with a
+   250 MB source-file budget per picker or drop operation; extracted
    text is bounded to 48,000 characters per document and 120,000 characters
    total. A file that exceeds a cap still appears in the tray as an amber
    warning chip explaining what was kept — oversized files are noted, and
@@ -220,7 +221,8 @@ the tool-call probe allows up to 90 seconds.
    Chrome — scanned PDFs yield a clear "no readable text" note. Legacy
    binary Office files get best-effort extraction. Every attachment is
    listed; anything unreadable is noted rather than silently skipped.
-   Attachments up to 25 MB are read; extraction is streamed and bounded
+   Attachments up to 100 MB are read, with a 250 MB source-file budget per
+   mailbox read operation. Extraction is local, streamed, and bounded
    to 48,000 characters per attachment and 120,000 characters per
    message, with an explicit truncation notice when more content
    remains.
@@ -228,6 +230,8 @@ the tool-call probe allows up to 90 seconds.
    as signature graphics and ignored, with a note in the tool result;
    pasted screenshots and photos are far larger and are always read.
    Attachments are decrypted locally through Outlook COM before reading.
+   Raw files are never uploaded: only bounded extracted text and images
+   downscaled to the existing 800 KB vision-input cap reach the model.
 7. The sidebar records which bounded context operations ran.
 8. Ask explicitly, for example "create a reply draft" or "write an email."
    Local code recognizes that drafting intent and exposes one creation attempt

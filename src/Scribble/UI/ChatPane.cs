@@ -1546,21 +1546,55 @@ namespace Scribble.UI
         // same bounded extractors as email attachments, and images become
         // vision input with a tray thumbnail. ExternalContextLoader
         // remains the strict text-only path for programmatic use.
-        private void AddExternalFiles(IEnumerable<string> paths)
+        private async void AddExternalFiles(IEnumerable<string> paths)
         {
+            if (_busy)
+            {
+                return;
+            }
+
+            var selectedPaths = (paths ?? new string[0])
+                .Where(path => !string.IsNullOrWhiteSpace(path))
+                .ToArray();
+            if (selectedPaths.Length == 0)
+            {
+                return;
+            }
+
+            var cancellation = new CancellationTokenSource();
+            _requestCancellation = cancellation;
+            SetBusy(true);
             try
             {
+                var loaded = await Task.Run(
+                    () => EmailAttachmentReader.LoadLocalFiles(
+                        selectedPaths,
+                        cancellation.Token,
+                        (current, total, name) =>
+                        {
+                            try
+                            {
+                                if (!IsDisposed && IsHandleCreated)
+                                {
+                                    BeginInvoke(new Action(() => SetStatus(
+                                        "Reading " + current + " of " +
+                                        total + ": " + name,
+                                        false)));
+                                }
+                            }
+                            catch (InvalidOperationException)
+                            {
+                            }
+                        }),
+                    cancellation.Token);
+                cancellation.Token.ThrowIfCancellationRequested();
                 var added = 0;
-                foreach (var path in
-                    paths ?? new string[0])
+                var resourceLimited = loaded.Count(item =>
+                    item.Content != null &&
+                    item.Content.Kind == "resource-limited");
+                foreach (var loadedFile in loaded)
                 {
-                    if (string.IsNullOrWhiteSpace(path))
-                    {
-                        continue;
-                    }
-
-                    var content =
-                        EmailAttachmentReader.LoadLocalFile(path);
+                    var content = loadedFile.Content;
                     if (content == null)
                     {
                         continue;
@@ -1583,8 +1617,7 @@ namespace Scribble.UI
                                 new VisionImagePayload(
                                     content.FileName,
                                     content.ImageDataUrl),
-                                EmailAttachmentReader
-                                    .BuildThumbnailDataUrl(path)));
+                                loadedFile.Thumbnail));
                         AppendContext(
                             "Added image " + content.FileName);
                         added++;
@@ -1633,17 +1666,12 @@ namespace Scribble.UI
 
                     var warn = false;
                     var subtitle = string.Empty;
-                    if (content.Kind == "unreadable")
+                    if (content.Kind == "unreadable" ||
+                        content.Kind == "resource-limited")
                     {
                         warn = true;
-                        subtitle = content.Text.IndexOf(
-                            "Too large",
-                            StringComparison.Ordinal) >= 0
-                            ? "Over " +
-                              (EmailAttachmentReader
-                                  .MaxBytesPerAttachment /
-                                  (1024 * 1024)) +
-                              " MB cap - content not read"
+                        subtitle = content.Kind == "resource-limited"
+                            ? "Attachment resource limit - content not read"
                             : "Unsupported type - noted for the model";
                     }
                     else if (content.Truncated)
@@ -1732,9 +1760,26 @@ namespace Scribble.UI
                         added +
                         (added == 1
                             ? " item added"
-                            : " items added"),
-                        false);
+                            : " items added") +
+                        (resourceLimited > 0
+                            ? "; " + resourceLimited +
+                              " skipped by attachment limits"
+                            : string.Empty),
+                        resourceLimited > 0);
                 }
+                else if (resourceLimited > 0)
+                {
+                    SetStatus(
+                        resourceLimited +
+                        " file" +
+                        (resourceLimited == 1 ? "" : "s") +
+                        " skipped by attachment limits",
+                        true);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                SetStatus("Attachment reading stopped", false);
             }
             catch (Exception exception)
             {
@@ -1743,6 +1788,16 @@ namespace Scribble.UI
                     "EXTERNAL_CONTEXT_FAILED");
                 SetStatus(FirstLine(details), true);
                 Log.Error("AddExternalContext", exception);
+            }
+            finally
+            {
+                if (ReferenceEquals(_requestCancellation, cancellation))
+                {
+                    _requestCancellation = null;
+                    SetBusy(false);
+                }
+
+                cancellation.Dispose();
             }
         }
 
@@ -2421,7 +2476,9 @@ namespace Scribble.UI
                         result = await Task.Run(
                             () => mcpHost != null
                                 ? mcpHost.Execute(toolCall)
-                                : mailboxTools.Execute(toolCall),
+                                : mailboxTools.Execute(
+                                    toolCall,
+                                    cancellationToken),
                             cancellationToken);
                     }
                     else if (TopicToolCatalog.IsTopicTool(
@@ -2436,7 +2493,9 @@ namespace Scribble.UI
                     }
                     else
                     {
-                        result = mailboxTools.Execute(toolCall);
+                        result = mailboxTools.Execute(
+                            toolCall,
+                            cancellationToken);
                     }
                     results.Add(result);
                     _diagnostics.RecordEvent(

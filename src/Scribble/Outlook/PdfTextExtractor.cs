@@ -4,6 +4,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
 
 namespace Scribble.Outlook
 {
@@ -15,6 +16,10 @@ namespace Scribble.Outlook
     public static class PdfTextExtractor
     {
         private const int MaxInflatedBytesPerStream = 4 * 1024 * 1024;
+        private const int MaxCompressedBytesPerStream = 16 * 1024 * 1024;
+        private const long MaxInflatedBytesTotal = 64L * 1024 * 1024;
+        private const int MaxPdfObjects = 200000;
+        private const int MaxDictionaryBytes = 64 * 1024;
         private const int MaxCMapEntries = 200000;
 
         private static readonly Regex ObjectHeader = new Regex(
@@ -48,6 +53,42 @@ namespace Scribble.Outlook
             public string DictionaryText = string.Empty;
 
             public byte[] StreamData;
+
+            public string SourcePath = string.Empty;
+
+            public long StreamOffset;
+
+            public int StreamLength;
+        }
+
+        private sealed class PdfReadBudget
+        {
+            private long _inflatedBytes;
+            private readonly CancellationToken _cancellationToken;
+
+            public PdfReadBudget(CancellationToken cancellationToken)
+            {
+                _cancellationToken = cancellationToken;
+            }
+
+            public void ThrowIfCancellationRequested()
+            {
+                _cancellationToken.ThrowIfCancellationRequested();
+            }
+
+            public void AddInflated(long count)
+            {
+                ThrowIfCancellationRequested();
+                if (count < 0 ||
+                    _inflatedBytes > MaxInflatedBytesTotal - count)
+                {
+                    throw new AttachmentResourceLimitException(
+                        "The PDF exceeded the 64 MB cumulative " +
+                        "inflated-stream cap.");
+                }
+
+                _inflatedBytes += count;
+            }
         }
 
         private sealed class PdfFontMap
@@ -80,16 +121,61 @@ namespace Scribble.Outlook
             }
         }
 
+        public static string Extract(
+            string path,
+            int maxCharacters,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                var objects = IndexObjects(path, cancellationToken);
+                return ExtractObjects(
+                    objects,
+                    null,
+                    Math.Max(1, maxCharacters),
+                    new PdfReadBudget(cancellationToken),
+                    cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (AttachmentResourceLimitException)
+            {
+                throw;
+            }
+            catch
+            {
+                return string.Empty;
+            }
+        }
+
         private static string ExtractCore(byte[] bytes, int maxCharacters)
         {
             var objects = IndexObjects(bytes);
-            ExpandObjectStreams(objects);
-            var fontMaps = BuildFontMaps(objects);
+            return ExtractObjects(
+                objects,
+                bytes,
+                maxCharacters,
+                new PdfReadBudget(CancellationToken.None),
+                CancellationToken.None);
+        }
+
+        private static string ExtractObjects(
+            Dictionary<int, PdfObject> objects,
+            byte[] fallbackBytes,
+            int maxCharacters,
+            PdfReadBudget readBudget,
+            CancellationToken cancellationToken)
+        {
+            ExpandObjectStreams(objects, readBudget);
+            var fontMaps = BuildFontMaps(objects, readBudget);
             var pages = FindPages(objects);
             var builder = new StringBuilder();
 
             foreach (var page in pages)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 foreach (var contentRef in page.ContentRefs)
                 {
                     PdfObject contentObject;
@@ -100,7 +186,9 @@ namespace Scribble.Outlook
                         continue;
                     }
 
-                    var data = GetStreamData(contentObject);
+                    var data = GetStreamData(
+                        contentObject,
+                        readBudget);
                     if (data == null)
                     {
                         continue;
@@ -126,11 +214,13 @@ namespace Scribble.Outlook
             {
                 builder.Length = 0;
                 FallbackScan(
-                    bytes,
+                    fallbackBytes,
                     objects,
                     fontMaps,
                     builder,
-                    maxCharacters);
+                    maxCharacters,
+                    readBudget,
+                    cancellationToken);
             }
 
             return builder.ToString();
@@ -236,8 +326,301 @@ namespace Scribble.Outlook
             return objects;
         }
 
+        private static Dictionary<int, PdfObject> IndexObjects(
+            string path,
+            CancellationToken cancellationToken)
+        {
+            var objects = new Dictionary<int, PdfObject>();
+            using (var stream = new FileStream(
+                path,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read))
+            {
+                var position = 0L;
+                var objectToken = Encoding.ASCII.GetBytes(" obj");
+                var streamToken = Encoding.ASCII.GetBytes("stream");
+                var endStreamToken = Encoding.ASCII.GetBytes("endstream");
+                var endObjectToken = Encoding.ASCII.GetBytes("endobj");
+                while (position < stream.Length)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var token = FindAscii(
+                        stream,
+                        objectToken,
+                        position,
+                        cancellationToken);
+                    if (token < 0)
+                    {
+                        break;
+                    }
+
+                    var prefixStart = Math.Max(0L, token - 48L);
+                    var prefix = ReadLatin(
+                        stream,
+                        prefixStart,
+                        (int)(token + objectToken.Length -
+                              prefixStart));
+                    var header = Regex.Match(
+                        prefix,
+                        "(\\d+)\\s+\\d+\\s+obj\\s*$",
+                        RegexOptions.None,
+                        TimeSpan.FromSeconds(2));
+                    int objectNumber;
+                    if (!header.Success ||
+                        !int.TryParse(
+                            header.Groups[1].Value,
+                            out objectNumber))
+                    {
+                        position = token + objectToken.Length;
+                        continue;
+                    }
+
+                    var bodyStart = token + objectToken.Length;
+                    var endObject = FindAscii(
+                        stream,
+                        endObjectToken,
+                        bodyStart,
+                        cancellationToken);
+                    if (endObject < 0)
+                    {
+                        break;
+                    }
+
+                    var streamStart = FindAscii(
+                        stream,
+                        streamToken,
+                        bodyStart,
+                        endObject,
+                        cancellationToken);
+                    var entry = new PdfObject
+                    {
+                        SourcePath = path
+                    };
+                    if (streamStart >= 0 && streamStart < endObject)
+                    {
+                        entry.DictionaryText = ReadLatin(
+                            stream,
+                            bodyStart,
+                            (int)Math.Min(
+                                MaxDictionaryBytes,
+                                streamStart - bodyStart));
+                        var dataStart =
+                            streamStart + streamToken.Length;
+                        var first = ReadByteAt(stream, dataStart);
+                        if (first == '\r')
+                        {
+                            dataStart++;
+                        }
+
+                        if (ReadByteAt(stream, dataStart) == '\n')
+                        {
+                            dataStart++;
+                        }
+
+                        var declaredLength = ReadDirectStreamLength(
+                            entry.DictionaryText,
+                            "/Length");
+                        var directLengthIsValid =
+                            declaredLength >= 0 &&
+                            dataStart + declaredLength <= stream.Length;
+                        var locatedEndStream = directLengthIsValid
+                            ? FindAscii(
+                                stream,
+                                endStreamToken,
+                                dataStart + declaredLength,
+                                Math.Min(
+                                    stream.Length,
+                                    dataStart + declaredLength + 64L),
+                                cancellationToken)
+                            : FindAscii(
+                                stream,
+                                endStreamToken,
+                                dataStart,
+                                cancellationToken);
+                        long dataEnd;
+                        if (directLengthIsValid)
+                        {
+                            dataEnd = dataStart + declaredLength;
+                        }
+                        else
+                        {
+                            dataEnd = locatedEndStream;
+                        }
+
+                        if (dataEnd >= dataStart)
+                        {
+                            var length = dataEnd - dataStart;
+                            entry.StreamOffset = dataStart;
+                            entry.StreamLength = length <= int.MaxValue
+                                ? (int)length
+                                : -1;
+                        }
+
+                        var closingStart = locatedEndStream >= 0
+                            ? locatedEndStream + endStreamToken.Length
+                            : Math.Max(dataStart, dataEnd);
+                        var closingEndObject = FindAscii(
+                            stream,
+                            endObjectToken,
+                            closingStart,
+                            cancellationToken);
+                        if (closingEndObject >= 0)
+                        {
+                            endObject = closingEndObject;
+                        }
+                    }
+                    else
+                    {
+                        entry.DictionaryText = ReadLatin(
+                            stream,
+                            bodyStart,
+                            (int)Math.Min(
+                                MaxDictionaryBytes,
+                                endObject - bodyStart));
+                    }
+
+                    if (!objects.ContainsKey(objectNumber))
+                    {
+                        if (objects.Count >= MaxPdfObjects)
+                        {
+                            throw new AttachmentResourceLimitException(
+                                "The PDF exceeded the 200,000-object cap.");
+                        }
+
+                        objects[objectNumber] = entry;
+                    }
+
+                    position = endObject + endObjectToken.Length;
+                }
+            }
+
+            return objects;
+        }
+
+        private static long FindAscii(
+            FileStream stream,
+            byte[] pattern,
+            long start,
+            CancellationToken cancellationToken)
+        {
+            return FindAscii(
+                stream,
+                pattern,
+                start,
+                stream.Length,
+                cancellationToken);
+        }
+
+        private static long FindAscii(
+            FileStream stream,
+            byte[] pattern,
+            long start,
+            long endExclusive,
+            CancellationToken cancellationToken)
+        {
+            const int blockBytes = 64 * 1024;
+            var buffer = new byte[blockBytes + pattern.Length];
+            var overlap = 0;
+            var position = Math.Max(0L, start);
+            var limit = Math.Min(stream.Length, endExclusive);
+            while (position < limit)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                stream.Position = position;
+                var read = stream.Read(
+                    buffer,
+                    overlap,
+                    (int)Math.Min(
+                        blockBytes,
+                        limit - position));
+                if (read <= 0)
+                {
+                    break;
+                }
+
+                var available = overlap + read;
+                for (var index = 0;
+                     index <= available - pattern.Length;
+                     index++)
+                {
+                    var matches = true;
+                    for (var offset = 0;
+                         offset < pattern.Length;
+                         offset++)
+                    {
+                        if (buffer[index + offset] != pattern[offset])
+                        {
+                            matches = false;
+                            break;
+                        }
+                    }
+
+                    if (matches)
+                    {
+                        var matchPosition =
+                            position - overlap + index;
+                        return matchPosition + pattern.Length <= limit
+                            ? matchPosition
+                            : -1;
+                    }
+                }
+
+                overlap = Math.Min(pattern.Length - 1, available);
+                Array.Copy(
+                    buffer,
+                    available - overlap,
+                    buffer,
+                    0,
+                    overlap);
+                position += read;
+            }
+
+            return -1;
+        }
+
+        private static string ReadLatin(
+            FileStream stream,
+            long offset,
+            int count)
+        {
+            if (count <= 0)
+            {
+                return string.Empty;
+            }
+
+            var bytes = new byte[count];
+            stream.Position = offset;
+            var total = 0;
+            while (total < count)
+            {
+                var read = stream.Read(bytes, total, count - total);
+                if (read <= 0)
+                {
+                    break;
+                }
+
+                total += read;
+            }
+
+            return Encoding.GetEncoding("ISO-8859-1")
+                .GetString(bytes, 0, total);
+        }
+
+        private static int ReadByteAt(FileStream stream, long offset)
+        {
+            if (offset < 0 || offset >= stream.Length)
+            {
+                return -1;
+            }
+
+            stream.Position = offset;
+            return stream.ReadByte();
+        }
+
         private static void ExpandObjectStreams(
-            Dictionary<int, PdfObject> objects)
+            Dictionary<int, PdfObject> objects,
+            PdfReadBudget readBudget)
         {
             var members = new Dictionary<int, PdfObject>();
             foreach (var pair in objects)
@@ -249,7 +632,9 @@ namespace Scribble.Outlook
                     continue;
                 }
 
-                var data = GetStreamData(pair.Value);
+                var data = GetStreamData(
+                    pair.Value,
+                    readBudget);
                 if (data == null)
                 {
                     continue;
@@ -335,8 +720,35 @@ namespace Scribble.Outlook
                 : -1;
         }
 
+        private static int ReadDirectStreamLength(
+            string dictionary,
+            string key)
+        {
+            if (Regex.IsMatch(
+                    dictionary,
+                    Regex.Escape(key) +
+                    "\\s+\\d+\\s+\\d+\\s+R",
+                    RegexOptions.None,
+                    TimeSpan.FromSeconds(2)))
+            {
+                return -1;
+            }
+
+            var match = Regex.Match(
+                dictionary,
+                Regex.Escape(key) + "\\s+(\\d+)",
+                RegexOptions.None,
+                TimeSpan.FromSeconds(2));
+            int value;
+            return match.Success &&
+                   int.TryParse(match.Groups[1].Value, out value)
+                ? value
+                : -1;
+        }
+
         private static Dictionary<int, PdfFontMap> BuildFontMaps(
-            Dictionary<int, PdfObject> objects)
+            Dictionary<int, PdfObject> objects,
+            PdfReadBudget readBudget)
         {
             var maps = new Dictionary<int, PdfFontMap>();
             foreach (var pair in objects)
@@ -361,7 +773,9 @@ namespace Scribble.Outlook
                     continue;
                 }
 
-                var data = GetStreamData(cmapObject);
+                var data = GetStreamData(
+                    cmapObject,
+                    readBudget);
                 if (data == null)
                 {
                     continue;
@@ -725,9 +1139,29 @@ namespace Scribble.Outlook
             return string.Empty;
         }
 
-        private static byte[] GetStreamData(PdfObject entry)
+        private static byte[] GetStreamData(
+            PdfObject entry,
+            PdfReadBudget readBudget)
         {
-            if (entry?.StreamData == null)
+            if (entry == null)
+            {
+                return null;
+            }
+
+            var sourceData = entry.StreamData;
+            if (sourceData == null &&
+                entry.SourcePath.Length > 0 &&
+                entry.StreamLength >= 0 &&
+                entry.StreamLength <= MaxCompressedBytesPerStream)
+            {
+                sourceData = ReadFileSlice(
+                    entry.SourcePath,
+                    entry.StreamOffset,
+                    entry.StreamLength,
+                    readBudget);
+            }
+
+            if (sourceData == null)
             {
                 return null;
             }
@@ -737,7 +1171,7 @@ namespace Scribble.Outlook
                 StringComparison.Ordinal) >= 0;
             if (!hasFilter)
             {
-                return entry.StreamData;
+                return sourceData;
             }
 
             if (entry.DictionaryText.IndexOf(
@@ -747,10 +1181,12 @@ namespace Scribble.Outlook
                 return null;
             }
 
-            return TryInflate(entry.StreamData);
+            return TryInflate(sourceData, readBudget);
         }
 
-        private static byte[] TryInflate(byte[] data)
+        private static byte[] TryInflate(
+            byte[] data,
+            PdfReadBudget readBudget)
         {
             try
             {
@@ -780,6 +1216,7 @@ namespace Scribble.Outlook
                         }
 
                         total += read;
+                        readBudget.AddInflated(read);
                         if (total > MaxInflatedBytesPerStream)
                         {
                             break;
@@ -795,6 +1232,47 @@ namespace Scribble.Outlook
             catch
             {
                 return null;
+            }
+        }
+
+        private static byte[] ReadFileSlice(
+            string path,
+            long offset,
+            int count,
+            PdfReadBudget readBudget)
+        {
+            using (var stream = new FileStream(
+                path,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read))
+            {
+                if (offset < 0 ||
+                    count < 0 ||
+                    offset > stream.Length - count)
+                {
+                    return null;
+                }
+
+                var bytes = new byte[count];
+                stream.Position = offset;
+                var total = 0;
+                while (total < count)
+                {
+                    readBudget.ThrowIfCancellationRequested();
+                    var read = stream.Read(
+                        bytes,
+                        total,
+                        count - total);
+                    if (read <= 0)
+                    {
+                        return null;
+                    }
+
+                    total += read;
+                }
+
+                return bytes;
             }
         }
 
@@ -1066,7 +1544,9 @@ namespace Scribble.Outlook
             Dictionary<int, PdfObject> objects,
             Dictionary<int, PdfFontMap> fontMaps,
             StringBuilder builder,
-            int maxCharacters)
+            int maxCharacters,
+            PdfReadBudget readBudget,
+            CancellationToken cancellationToken)
         {
             // With exactly one mapped font in the file there is no
             // ambiguity, so hex-coded text can still be decoded even
@@ -1082,24 +1562,31 @@ namespace Scribble.Outlook
 
             if (objects.Count == 0)
             {
-                DecodeContentStream(
-                    Latin1(bytes),
-                    null,
-                    fontMaps,
-                    defaultMap,
-                    builder,
-                    maxCharacters);
+                if (bytes != null)
+                {
+                    DecodeContentStream(
+                        Latin1(bytes),
+                        null,
+                        fontMaps,
+                        defaultMap,
+                        builder,
+                        maxCharacters);
+                }
+
                 return;
             }
 
             foreach (var pair in objects)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 if (builder.Length >= maxCharacters)
                 {
                     return;
                 }
 
-                var data = GetStreamData(pair.Value);
+                var data = GetStreamData(
+                    pair.Value,
+                    readBudget);
                 if (data == null)
                 {
                     continue;
