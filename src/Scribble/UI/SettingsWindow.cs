@@ -23,7 +23,6 @@ namespace Scribble.UI
         private readonly ComboBox _model = new ComboBox();
         private readonly TextBox _apiKey = new TextBox();
         private readonly Label _transportWarning = new Label();
-        private readonly CheckBox _switchVisionForImages = new CheckBox();
         private readonly Label _modelGuidance = new Label();
         private readonly Label _testStatus = new Label();
         private readonly CheckBox _useToneProfile = new CheckBox();
@@ -164,8 +163,10 @@ namespace Scribble.UI
 
             Text = "Scribble settings";
             StartPosition = FormStartPosition.CenterParent;
-            ClientSize = new Size(700, 620);
-            MinimumSize = new Size(620, 560);
+            // Open at a comfortable reading size so field values, help text,
+            // and skill prompts do not require a manual resize.
+            ClientSize = new Size(900, 720);
+            MinimumSize = new Size(760, 620);
             MaximizeBox = false;
             MinimizeBox = false;
             ShowIcon = false;
@@ -235,8 +236,6 @@ namespace Scribble.UI
             _useToneProfile.Checked =
                 (current?.UseToneProfile ?? false) &&
                 _toneProfile.TextLength > 0;
-            _switchVisionForImages.Checked =
-                current?.SwitchToVisionModelForImages ?? false;
             RestoreDiscoveredModels(current?.DiscoveredModels);
             _geminiRefreshToken =
                 current?.GeminiRefreshToken ?? string.Empty;
@@ -399,15 +398,6 @@ namespace Scribble.UI
                 "organization requires a designated project. The " +
                 "same id works for everyone in the organization.");
 
-            _switchVisionForImages.AutoSize = true;
-            _switchVisionForImages.Text =
-                "Auto-switch to vision for images";
-            _switchVisionForImages.AccessibleName =
-                "Switch to vision model for images";
-            _switchVisionForImages.AccessibleDescription =
-                "Uses your saved model list to pick a vision model for this request only. " +
-                "Save settings after Connect and load models so Scribble knows which vision models are available.";
-
             _useToneProfile.AutoSize = true;
             _useToneProfile.Text =
                 "Use this writing profile for drafts";
@@ -458,9 +448,9 @@ namespace Scribble.UI
                 AutoSize = true,
                 AutoSizeMode = AutoSizeMode.GrowAndShrink,
                 ColumnCount = 1,
-                RowCount = 15,
+                RowCount = 14,
                 Padding = new Padding(18, 16, 18, 12),
-                Width = 640
+                Width = 840
             };
             layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -472,7 +462,6 @@ namespace Scribble.UI
             layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
-            layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -530,8 +519,6 @@ namespace Scribble.UI
             };
             testRow.Controls.Add(_checkEndpoint);
             layout.Controls.Add(testRow, 0, 11);
-            layout.Controls.Add(_switchVisionForImages, 0, 12);
-
             _updateButton.Click += UpdateClick;
             var updateRow = new FlowLayoutPanel
             {
@@ -548,7 +535,7 @@ namespace Scribble.UI
                 SelfUpdater.InstalledVersion() + ".");
             versionLabel.Padding = new Padding(8, 8, 0, 0);
             updateRow.Controls.Add(versionLabel);
-            layout.Controls.Add(updateRow, 0, 13);
+            layout.Controls.Add(updateRow, 0, 12);
 
             ConfigureSupportingLabel(_updateStatus);
             _updateStatus.Text =
@@ -556,7 +543,7 @@ namespace Scribble.UI
                 "silently once Outlook, Excel, PowerPoint, and Word are closed. " +
                 "One update refreshes all four add-ins.";
             _updateStatus.AccessibleRole = AccessibleRole.StatusBar;
-            layout.Controls.Add(_updateStatus, 0, 14);
+            layout.Controls.Add(_updateStatus, 0, 13);
             page.Controls.Add(layout);
             return page;
         }
@@ -674,7 +661,7 @@ namespace Scribble.UI
                 ColumnCount = 1,
                 RowCount = 8,
                 Padding = new Padding(18, 16, 18, 12),
-                Width = 640
+                Width = 840
             };
             for (var index = 0; index < 8; index++)
             {
@@ -2226,7 +2213,7 @@ namespace Scribble.UI
         private static void ConfigureSupportingLabel(Label label)
         {
             label.AutoSize = true;
-            label.MaximumSize = new Size(620, 0);
+            label.MaximumSize = new Size(820, 0);
             label.ForeColor = SecondaryText;
         }
 
@@ -2309,8 +2296,7 @@ namespace Scribble.UI
                 DraftRules = TextBoundary.PlainText(
                     _draftRules.Text,
                     2000),
-                SwitchToVisionModelForImages =
-                    _switchVisionForImages.Checked,
+                SwitchToVisionModelForImages = true,
                 DiscoveredModels = CollectDiscoveredModels(),
                 McpServers = _mcpServers
                     .Select(server => server.Sanitized())
@@ -2797,7 +2783,6 @@ namespace Scribble.UI
             _endpoint.Enabled = enabled;
             _model.Enabled = enabled;
             _apiKey.Enabled = enabled;
-            _switchVisionForImages.Enabled = enabled;
             _useToneProfile.Enabled = enabled;
             _toneProfile.Enabled = enabled;
             _checkEndpoint.Enabled = enabled || _checking;

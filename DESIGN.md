@@ -153,7 +153,7 @@ Horizontal content padding is 14 pixels in the sidebar work areas. The toolbar u
 
 The composer is a two-column grid: a fluid multiline text field and a fixed action column. The send button fills the message row. A persistent safety line below the message field says "Say 'create a draft' to open one. Scribble cannot send." After creation it becomes a blue linked state: "One draft linked. Revision requests update this draft only." Long message subjects and status text ellipsize rather than breaking the frame.
 
-The settings window is a centered modal with Connection, MCP, Topics, Writing soul, Limits, and Support tabs. Connection leads with endpoint URL and API key, then an explicit model-discovery action, editable model selector, remote-HTTP warning, and optional compatibility test. Topics presents a native list plus name, local-folder picker, add/update/remove, and explicit index-refresh controls. It explains both the plaintext LocalAppData index and transmission of bounded excerpts to the configured endpoint. Writing soul contains an explicit consent action, a visible disclosure that no analysis runs automatically, an editable profile field, and a draft-only enable checkbox. Save and Cancel remain common bottom actions.
+The settings window is a centered, generously sized modal with Connection, MCP, Topics, Writing soul, Limits, and Support tabs. Its default width exposes full fields and readable help text without requiring a manual resize. Connection leads with endpoint URL and API key, then an explicit model-discovery action, editable model selector, remote-HTTP warning, and optional compatibility test. Image-bearing requests automatically use the best discovered vision model; this routing is always active and is not exposed as a setting. Topics presents a native list plus name, local-folder picker, add/update/remove, and explicit index-refresh controls. It explains both the plaintext LocalAppData index and transmission of bounded excerpts to the configured endpoint. Writing soul contains an explicit consent action, a visible disclosure that no analysis runs automatically, an editable profile field, and a draft-only enable checkbox. Save and Cancel remain common bottom actions.
 
 A compact Topic strip sits immediately below every chat header. It always shows `Topic: None` or the selected name, locks after the first message, and resets only with Clear chat. This keeps the persistent repository boundary visible separately from the transient context tray.
 
@@ -219,9 +219,9 @@ Controls use square native geometry. Text fields have fixed single borders; flat
 
 ### Skills Shelf
 
-- **Structure:** Directly above the composer, show two compact, explicitly
-  labeled rows: **Public** and **Local**. Buttons wrap within the pane and the
-  shelf scrolls vertically when many Local skills exist.
+- **Structure:** Directly above the composer, show one compact horizontal
+  shelf containing explicitly labeled **Public** and **Local** groups. Buttons
+  stay on one line and the shelf scrolls horizontally when needed.
 - **Behavior:** A skill button runs immediately and becomes disabled with the
   rest of the composer while a request is active. Dynamic text is never placed
   in HTML; names and descriptions enter through inert text nodes.

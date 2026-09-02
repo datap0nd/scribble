@@ -78,6 +78,9 @@ namespace GuardrailTests
                     "Vision auto-switch picks the best discovered model",
                     VisionAutoSwitchPicksBestDiscoveredModel);
                 Run(
+                    "Vision auto-switch is enabled for installs and upgrades",
+                    VisionAutoSwitchIsEnabledForInstallsAndUpgrades);
+                Run(
                     "Gauss models are excluded from discovery",
                     GaussModelsAreExcluded);
                 Run(
@@ -2694,6 +2697,54 @@ namespace GuardrailTests
                     settings,
                     "qwen3-vl-30b"),
                 "Vision models should not be replaced when already selected.");
+        }
+
+        private static void VisionAutoSwitchIsEnabledForInstallsAndUpgrades()
+        {
+            Assert(
+                new AppSettings().SwitchToVisionModelForImages,
+                "A fresh install must automatically route image requests.");
+
+            var directory = Path.Combine(
+                Path.GetTempPath(),
+                "Scribble-vision-settings-" +
+                Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(directory);
+            try
+            {
+                var path = Path.Combine(directory, "settings.json");
+                File.WriteAllText(
+                    path,
+                    "{\"BaseUrl\":\"http://ai.example.test/v1\"," +
+                    "\"Model\":\"qwen3.6-35b-a3b\"," +
+                    "\"ProtectedApiKey\":\"\"," +
+                    "\"SwitchToVisionModelForImages\":false}",
+                    Encoding.UTF8);
+                var store = new SettingsStore();
+                SetPrivateField(store, "_settingsPath", path);
+                SetPrivateField(
+                    store,
+                    "_legacySettingsPath",
+                    Path.Combine(directory, "legacy.json"));
+
+                var loaded = store.Load();
+                Assert(
+                    loaded.SwitchToVisionModelForImages,
+                    "A saved legacy opt-out must migrate to automatic routing.");
+                loaded.ApiKey = "test-key";
+                store.Save(loaded);
+                Assert(
+                    File.ReadAllText(path, Encoding.UTF8).Contains(
+                        "\"SwitchToVisionModelForImages\":true"),
+                    "Automatic vision routing was not persisted after migration.");
+            }
+            finally
+            {
+                if (Directory.Exists(directory))
+                {
+                    Directory.Delete(directory, true);
+                }
+            }
         }
 
         private static void GaussModelsAreExcluded()

@@ -28,7 +28,9 @@ namespace Scribble.Configuration
         // User-authored hard rules applied to every draft's wording.
         public string DraftRules { get; set; } = string.Empty;
 
-        public bool SwitchToVisionModelForImages { get; set; }
+        // Image requests automatically use the best discovered vision
+        // model. This is product behavior rather than an end-user setting.
+        public bool SwitchToVisionModelForImages { get; set; } = true;
 
         // Gemini via Google sign-in: when enabled, requests go to
         // Google's Code Assist API with OAuth tokens instead of the

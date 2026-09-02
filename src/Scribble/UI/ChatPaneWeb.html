@@ -423,21 +423,23 @@
   }
   #skillsShelf {
     display: flex;
-    flex-direction: column;
-    gap: 5px;
-    max-height: 108px;
-    overflow-y: auto;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+    overflow-x: auto;
+    overflow-y: hidden;
     margin-bottom: 7px;
-    padding: 7px 8px;
+    padding: 6px 8px;
     background: var(--bg2);
     border: 1px solid var(--border);
     border-radius: 10px;
+    scrollbar-width: thin;
   }
   .skillRow {
-    display: grid;
-    grid-template-columns: 45px minmax(0, 1fr);
-    align-items: start;
-    gap: 6px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex: 0 0 auto;
   }
   .skillLabel {
     color: var(--dim);
@@ -449,7 +451,7 @@
   }
   .skillItems {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 4px;
     min-width: 0;
   }

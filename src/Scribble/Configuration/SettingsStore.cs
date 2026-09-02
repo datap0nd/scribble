@@ -101,8 +101,10 @@ namespace Scribble.Configuration
                     DraftRules = TextBoundary.PlainText(
                         stored.DraftRules,
                         2000),
-                    SwitchToVisionModelForImages =
-                        stored.SwitchToVisionModelForImages,
+                    // Auto-routing images to a discovered vision model is
+                    // now always enabled. This also upgrades installations
+                    // whose legacy checkbox was saved as false.
+                    SwitchToVisionModelForImages = true,
                     DiscoveredModels = NormalizeDiscoveredModels(
                         stored.DiscoveredModels),
                     McpServers = NormalizeMcpServers(
@@ -254,8 +256,7 @@ namespace Scribble.Configuration
                 DraftRules = TextBoundary.PlainText(
                     settings.DraftRules,
                     2000),
-                SwitchToVisionModelForImages =
-                    settings.SwitchToVisionModelForImages,
+                SwitchToVisionModelForImages = true,
                 DiscoveredModels = NormalizeDiscoveredModels(
                     settings.DiscoveredModels),
                 McpServers = StoreMcpServers(

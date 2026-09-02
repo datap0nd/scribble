@@ -155,9 +155,10 @@ them as multimodal input, capped at eight images per request. Multimodal Gemma
 requires the server to load its vision projector; if the server rejects image
 input, use a `vl` model instead. Text-only models get spreadsheet text and
 image metadata only, and the chat will say so if you ask about an image.
-Optional: enable **Auto-switch to vision for images** to temporarily use a
-discovered vision model while keeping your everyday text model saved. Save after
-**Connect & load models** so auto-switch knows which vision models are available.
+For image-bearing requests, Scribble automatically uses the best discovered
+vision model while keeping your everyday text model saved. Save after
+**Connect & load models** so automatic routing knows which vision models are
+available. This behavior is always enabled and does not require a setting.
 
 Embedding-only and Gemini models are excluded from discovery. **Test selected model** verifies
 authentication with a lightweight `search_mailbox` tool-call probe. It does not
@@ -174,8 +175,9 @@ the tool-call probe allows up to 90 seconds.
    hidden where a subject is shown.
    Right-click works inside the pane for the usual copy, paste, and select-all
    actions.
-   Directly above the composer, **Public** and **Local** Skills appear as
-   small run buttons. Clicking one submits its saved prompt immediately.
+   Directly above the composer, **Public** and **Local** Skills share one
+   compact horizontal shelf of small run buttons. Clicking one submits its
+   saved prompt immediately.
 2. To choose a bounded group first, enter `/search person or topic`. Scribble
    searches locally and keeps the newest matching Inbox or Sent Items
    emails as the working set (up to the per-request size configured in

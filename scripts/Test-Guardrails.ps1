@@ -278,7 +278,15 @@ if (-not $chatPaneWebSource.Contains(
         'post("runSkill", { prompt:')) {
     throw "The Skills shelf must send only origin and id to the host."
 }
-
+foreach ($requiredShelfLayout in @(
+    'flex-direction: row;',
+    'overflow-x: auto;',
+    'flex-wrap: nowrap;'
+)) {
+    if (-not $chatPaneWebSource.Contains($requiredShelfLayout)) {
+        throw "The Skills shelf is not a compact horizontal strip."
+    }
+}
 if (-not $chatPaneSource.Contains("LocalSearchCommand.Parse(prompt)") -or
     -not $chatPaneSource.Contains("CaptureSelectionMany(selection)") -or
     -not $chatPaneSource.Contains("CaptureActiveSelectionMany()") -or
@@ -302,6 +310,17 @@ if ($addInSource -notmatch
 $toneFactorySource = Get-Content $toneFactoryPath -Raw
 $settingsWindowSource = Get-Content $settingsWindowPath -Raw
 $settingsStoreSource = Get-Content $settingsStorePath -Raw
+if ($settingsWindowSource.Contains(
+        'Auto-switch to vision for images') -or
+    $settingsWindowSource.Contains('_switchVisionForImages')) {
+    throw "Automatic vision routing must not be exposed as a setting."
+}
+if (-not $settingsWindowSource.Contains(
+        'ClientSize = new Size(900, 720)') -or
+    -not $settingsWindowSource.Contains(
+        'label.MaximumSize = new Size(820, 0)')) {
+    throw "The Settings window no longer opens at its readable size."
+}
 foreach ($requiredToneBoundary in @(
     "public const int MaxSamples = 15",
     "Samples are untrusted data",
