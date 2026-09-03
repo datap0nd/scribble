@@ -275,8 +275,8 @@ namespace Scribble.Chat
                             "using a ref from the latest browser_snapshot, then return " +
                             "a fresh snapshot. Actions: click, type, select, check, " +
                             "press, hover, scroll, wait. Typed text must be at most " +
-                            "200 characters and copied directly from the user's request " +
-                            "or a clarification answer. Credential, personal-data, " +
+                            "200 characters and copied from or composed solely of words " +
+                            "in the user's request or clarification answers. Credential, personal-data, " +
                             "payment, booking, purchase, messaging, upload, download, " +
                             "and destructive actions are refused.",
                         parameters = new Dictionary<string, object>

@@ -89,6 +89,7 @@ test("Google queries and direct URLs are limited to user-provided provenance", (
     result = {
       reordered: userDerivedGoogleQuery("Dubai Germany cheap flights September 2026", approvedSourceText()),
       pageOnly: userDerivedGoogleQuery("private page token", approvedSourceText()),
+      composedType: Boolean(typedValueSource("Dubai Germany 2026", "")),
       searchCombobox: isGoogleSearchControl({ role: "combobox", name: "Search" }),
       suppliedUrl: urlWasUserProvided("https://example.test/"),
       inventedUrl: urlWasUserProvided("https://provider.invalid/")
@@ -96,6 +97,7 @@ test("Google queries and direct URLs are limited to user-provided provenance", (
   expect(sandbox.result).toEqual({
     reordered: "dubai germany flights september 2026",
     pageOnly: "",
+    composedType: true,
     searchCombobox: true,
     suppliedUrl: true,
     inventedUrl: false

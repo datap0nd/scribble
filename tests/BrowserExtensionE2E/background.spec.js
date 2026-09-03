@@ -46,7 +46,9 @@ function createHarness() {
     path.resolve(__dirname, "../../src/Scribble.BrowserExtension/background.js"),
     "utf8"
   );
-  vm.runInNewContext(source, { chrome, console, Set, Map, Promise, setTimeout });
+  const sandbox = { chrome, console, Set, Map, Promise, setTimeout };
+  vm.createContext(sandbox);
+  vm.runInContext(source, sandbox);
   const port = {
     name: "scribble-browser-operator",
     sender: { url: "chrome-extension://fixture/sidepanel.html" },
@@ -56,7 +58,20 @@ function createHarness() {
     disconnect: () => {}
   };
   connect.listener(port);
-  return { detach, portMessage, portDisconnect, posted, detachCalls };
+  return {
+    detach,
+    portMessage,
+    portDisconnect,
+    posted,
+    detachCalls,
+    validateKey(params) {
+      sandbox.__scribbleKeyParams = params;
+      return vm.runInContext(
+        'validateCdpParams("Input.dispatchKeyEvent", __scribbleKeyParams)',
+        sandbox
+      );
+    }
+  };
 }
 
 async function registerAndStart(harness) {
@@ -104,4 +119,12 @@ test("side-panel port disconnect detaches the live work tab", async () => {
   harness.portDisconnect.listener();
   await new Promise((resolve) => setTimeout(resolve, 0));
   expect(harness.detachCalls).toContain(42);
+});
+
+test("Enter dispatch includes browser-compatible keyboard metadata", () => {
+  const harness = createHarness();
+  const validated = harness.validateKey({ type: "keyDown", key: "Enter" });
+  expect(validated.key).toBe("Enter");
+  expect(validated.code).toBe("Enter");
+  expect(validated.windowsVirtualKeyCode).toBe(13);
 });

@@ -185,14 +185,9 @@ namespace Scribble.Security
                         "Typed browser values are limited to 200 characters.");
                 }
 
-                var sourceAllowed = googleSearchAction
-                    ? IsGoogleQueryDerivedFromUser(
-                        value,
-                        descriptor.SourceText)
-                    : IsContiguousUserPhrase(
-                        value,
-                        descriptor.SourceText);
-                if (!sourceAllowed)
+                if (!IsTypedValueDerivedFromUser(
+                    value,
+                    descriptor.SourceText))
                 {
                     return Deny(
                         "TYPE_SOURCE_NOT_USER",
@@ -262,7 +257,7 @@ namespace Scribble.Security
                 StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
-        public static bool IsGoogleQueryDerivedFromUser(
+        public static bool IsTypedValueDerivedFromUser(
             string value,
             string sourceText)
         {

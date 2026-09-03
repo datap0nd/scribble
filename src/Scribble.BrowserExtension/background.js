@@ -13,6 +13,23 @@ const ALLOWED_KEYS = new Set([
   "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
   "Home", "End", "PageUp", "PageDown", "a"
 ]);
+const KEY_DETAILS = Object.freeze({
+  Enter: { code: "Enter", windowsVirtualKeyCode: 13 },
+  Escape: { code: "Escape", windowsVirtualKeyCode: 27 },
+  Tab: { code: "Tab", windowsVirtualKeyCode: 9 },
+  Backspace: { code: "Backspace", windowsVirtualKeyCode: 8 },
+  Delete: { code: "Delete", windowsVirtualKeyCode: 46 },
+  " ": { code: "Space", windowsVirtualKeyCode: 32 },
+  ArrowUp: { code: "ArrowUp", windowsVirtualKeyCode: 38 },
+  ArrowDown: { code: "ArrowDown", windowsVirtualKeyCode: 40 },
+  ArrowLeft: { code: "ArrowLeft", windowsVirtualKeyCode: 37 },
+  ArrowRight: { code: "ArrowRight", windowsVirtualKeyCode: 39 },
+  Home: { code: "Home", windowsVirtualKeyCode: 36 },
+  End: { code: "End", windowsVirtualKeyCode: 35 },
+  PageUp: { code: "PageUp", windowsVirtualKeyCode: 33 },
+  PageDown: { code: "PageDown", windowsVirtualKeyCode: 34 },
+  a: { code: "KeyA", windowsVirtualKeyCode: 65 }
+});
 const operatorStates = new Map();
 const attachedTabs = new Map();
 const intentionalDetaches = new Set();
@@ -195,7 +212,14 @@ function validateCdpParams(command, raw) {
         (modifiers === 2 && key !== "a")) {
       throw new Error("The requested keyboard event is not allowlisted.");
     }
-    return { type, key, modifiers };
+    const details = KEY_DETAILS[key];
+    return {
+      type,
+      key,
+      code: details.code,
+      windowsVirtualKeyCode: details.windowsVirtualKeyCode,
+      modifiers
+    };
   }
 
   const type = String(params.type || "");

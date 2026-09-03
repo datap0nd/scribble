@@ -87,8 +87,8 @@ never reads values from sensitive fields.
 
 Typing is itself an exfiltration channel because page JavaScript can observe
 keystrokes before submission. Typed values are therefore capped at 200
-characters, must be a normalized contiguous phrase from the user request or a
-clarification answer, are evaluated by the DOM-independent native
+characters, may use only normalized words from the user request or clarification
+answers, and are evaluated by the DOM-independent native
 `BrowserActionPolicy`, and appear verbatim in the activity log and transcript
 before dispatch. Search queries are normalized to user-supplied tokens; harmless
 reordering and singular/plural differences do not cause the search to fail, while

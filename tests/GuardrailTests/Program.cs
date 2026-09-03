@@ -7804,6 +7804,17 @@ namespace GuardrailTests
                     Name = "Passenger count",
                     Url = "https://travel.example/search"
                 });
+            var composedTravelType = BrowserActionPolicy.Evaluate(
+                new BrowserActionDescriptor
+                {
+                    Action = "type",
+                    InputType = "text",
+                    Role = "textbox",
+                    Name = "Travel search",
+                    Url = "https://travel.example/search",
+                    Value = "Dubai Germany 2026",
+                    SourceText = "Flights from Germany to Dubai. Travel year: 2026"
+                });
             var reversibleControls = new[]
             {
                 "Apply filters",
@@ -7962,6 +7973,7 @@ namespace GuardrailTests
 
             Check(
                 allowedType.Allowed && passengerCount.Allowed &&
+                composedTravelType.Allowed &&
                 reversibleControls && googleSearch.Allowed &&
                 googleSubmit.Allowed &&
                 !password.Allowed && !email.Allowed &&

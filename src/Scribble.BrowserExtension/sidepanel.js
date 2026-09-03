@@ -1020,7 +1020,12 @@ async function searchGoogle(toolRequest) {
     { action: "press", ref: refreshedSearch.ref, key: "Enter" },
     snapshot
   );
-  await Promise.race([waitForTabComplete(tabId).catch(() => {}), delay(3_000)]);
+  const navigated = await waitForTabNavigation(tabId, snapshot.url, 10_000);
+  if (!navigated) {
+    throw new Error(
+      "Google received the query, but the visible search control did not submit it. Inspect the work tab and retry."
+    );
+  }
   await delay(NAVIGATION_SETTLE_MS);
   const resultsSnapshot = await inspectWorkTab(tabId);
   appendAudit(`google.com | work tab ${slot} | search | success`);
@@ -1589,12 +1594,21 @@ function typedValueSource(value, sourceKind) {
     const normalized = normalizedTokens(candidate).join(" ");
     return (` ${normalized} `).includes(` ${wanted} `);
   });
-  if (!wanted || !match) {
-    throw new Error(
-      "Typed text must be one contiguous phrase from the identified user prompt or clarification answer."
-    );
+  if (wanted && match) {
+    return match;
   }
-  return match;
+  const combined = preferred.filter(Boolean).join("\n");
+  const requestedTokens = normalizedTokens(value);
+  const derivedTokens = normalizedTokens(
+    userDerivedGoogleQuery(value, combined)
+  );
+  if (requestedTokens.length > 0 &&
+      requestedTokens.length === derivedTokens.length) {
+    return combined;
+  }
+  throw new Error(
+    "Typed text may combine only words from the identified user prompt or clarification answers."
+  );
 }
 
 function normalizedTokens(value) {
@@ -2236,6 +2250,41 @@ function renderComposerState() {
     elements.messages.querySelector(".message") === null;
   elements.topicSelect.disabled = isSending || topicLocked ||
     topicUnavailable;
+}
+
+function waitForTabNavigation(tabId, previousUrl, maximumMilliseconds) {
+  return new Promise((resolve) => {
+    let settled = false;
+    let navigationStarted = false;
+    const finish = (navigated) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      chrome.tabs.onUpdated.removeListener(onUpdated);
+      resolve(navigated);
+    };
+    const timer = setTimeout(() => finish(false), maximumMilliseconds);
+    const onUpdated = (updatedTabId, changeInfo, tab) => {
+      if (updatedTabId !== tabId) return;
+      if ((changeInfo.url && changeInfo.url !== previousUrl) ||
+          changeInfo.status === "loading") {
+        navigationStarted = true;
+      }
+      if (navigationStarted && changeInfo.status === "complete") {
+        finish(true);
+      } else if (changeInfo.url && changeInfo.url !== previousUrl &&
+                 tab?.status === "complete") {
+        finish(true);
+      }
+    };
+    chrome.tabs.onUpdated.addListener(onUpdated);
+    void chrome.tabs.get(tabId).then((tab) => {
+      if (tab?.url && tab.url !== previousUrl) {
+        navigationStarted = true;
+        if (tab.status === "complete") finish(true);
+      }
+    }).catch(() => finish(false));
+  });
 }
 
 function appendAudit(content) {
