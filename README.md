@@ -428,15 +428,17 @@ this document"), it goes there instead - still unsaved:
   for explicit change-my-sheet requests ("fill in the missing totals",
   "fix the formulas in column D"). Same formula safety rules; nothing is
   saved, so closing without saving discards everything.
-- `write_selection_output` (Excel only) handles source-preserving, one-to-one
-  transformations of a deliberately attached single-column selection. Up to
+- `write_selection_output` (Excel only) handles one-to-one transformations of
+  a deliberately attached single-column selection. It translates every
+  selected cell, including the first cell or header, without asking again. Up to
   500 values are staged in bounded ordered batches, then written once as inert
-  text into the adjacent column only when the complete destination range is
-  blank. Existing values, formulas, merged cells, a changed workbook/window/
+  text. By default the target is the adjacent column and its complete range
+  must be blank. Existing values, formulas, merged cells, a changed workbook/window/
   sheet, or a stale request handle stop the write without consuming draft
   permission. If the adjacent column is occupied, Scribble offers nearby empty
-  columns and asks where the result should go. The source is never changed and
-  the workbook is never saved.
+  columns and asks where the result should go. The source is preserved by
+  default; an explicit **replace**, **overwrite**, or **in place** instruction
+  safely targets only the captured source range. The workbook is never saved.
 - `add_draft_slides` adds slides marked **[Scribble draft]**; existing slides
   are never modified. Every slide is painted from the corporate theme (see
   below). By default new slides append at the end, or ask for a position

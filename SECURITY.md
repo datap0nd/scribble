@@ -249,11 +249,14 @@ unless the user enters exact tool names and affirms that each is read-only.
     chat. `write_selection_output` stages at most 500 one-to-one literal values
     in four bounded calls without consuming permission. The final call
     revalidates saved `FullName` (or unsaved workbook name), window handle,
-    worksheet name, source address, exact row count, and a fully blank,
-    unmerged, formula-free destination before consuming one draft permission
-    and performing one bulk write. Values beginning with `=`, `+`, `-`, or `@`
-    are forced to inert text. Source cells are never modified and no file is
-    saved.
+    worksheet name, source address, exact row count, and either a fully blank,
+    unmerged, formula-free destination or an explicitly authorized exact-source
+    replacement before consuming one draft permission and performing one bulk
+    write. Values beginning with `=`, `+`, `-`, or `@`
+    are forced to inert text. Source cells are preserved unless the user's own
+    prompt or `ask_user` answer explicitly says replace, overwrite, or in place;
+    that choice remains bound to the captured source range and the same final
+    identity checks. No file is saved.
 22. Model and webpage output is never parsed as HTML or evaluated as
     script. Assistant replies pass through a bounded local formatter that
     builds paragraph, list, table, bold, and code DOM nodes itself and
