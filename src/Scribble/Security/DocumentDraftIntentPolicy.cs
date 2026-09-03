@@ -173,6 +173,8 @@ namespace Scribble.Security
             "populate",
             "revise",
             "rewrite",
+            "replace",
+            "overwrite",
             "modify",
             "adjust",
             "calculate",

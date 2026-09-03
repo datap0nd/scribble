@@ -1480,7 +1480,9 @@ namespace Scribble.UI
                 selectionRequest = new ExcelSelectionRequestContext(
                     "excel_selection_" +
                         Guid.NewGuid().ToString("N"),
-                    eligibleSelection.ExcelSelection);
+                    eligibleSelection.ExcelSelection,
+                    ExcelSelectionOutputPolicy
+                        .AllowsSourceReplacement(prompt));
             }
 
             var requestExternalContext =
@@ -1818,6 +1820,14 @@ namespace Scribble.UI
                         result = await _promptHelper.AskAsync(
                             toolCall,
                             cancellationToken);
+                        if (SelectionAnswerAllowsSourceReplacement(
+                            selectionRequest,
+                            result))
+                        {
+                            _draftHost?
+                                .AllowExcelSelectionSourceReplacement();
+                        }
+
                         request.tool_choice = "auto";
                     }
                     else if (isDraftCall)
@@ -1896,6 +1906,31 @@ namespace Scribble.UI
             throw new AiEndpointException(
                 "TOOL_ROUND_LIMIT",
                 "The model did not finish after bounded tool use.");
+        }
+
+        private bool SelectionAnswerAllowsSourceReplacement(
+            ExcelSelectionRequestContext selectionRequest,
+            MailboxToolResult result)
+        {
+            if (selectionRequest == null || result == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                var payload = _serializer.DeserializeObject(
+                    result.Content) as IDictionary<string, object>;
+                object answer;
+                return payload != null &&
+                    payload.TryGetValue("answer", out answer) &&
+                    ExcelSelectionOutputPolicy.AllowsSourceReplacement(
+                        Convert.ToString(answer));
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         // ------------------------------------------------------------------

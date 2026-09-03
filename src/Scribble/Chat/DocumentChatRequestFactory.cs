@@ -33,8 +33,8 @@ namespace Scribble.Chat
             "search engines such as google.com or bing.com - they block " +
             "automated reads. If a site blocks the fetch, stop, say so, and " +
             "continue with what you have. It cannot sign in, submit forms, " +
-            "purchase, or download. You can never save, overwrite, " +
-            "delete, rename, move, print, protect, or close the user's files, " +
+            "purchase, or download. You can never save, delete, rename, move, " +
+            "print, protect, or close the user's files, " +
             "and you can never send email. Every write stays in memory and is " +
             "never saved: clearly marked Scribble drafts (numbered 'Scribble " +
             "Draft' worksheets that never overwrite each other, '[Scribble " +
@@ -42,6 +42,8 @@ namespace Scribble.Chat
             "documents, and unsent Outlook email drafts that always open for " +
             "human review), plus bounded writes into the user's own active " +
             "document or sheet when their prompt explicitly asked for it. " +
+            "Those guarded active-sheet writes may overwrite only the exact " +
+            "area the user explicitly asked to replace. " +
             "Never claim content was saved or that an email was sent. Return " +
             "plain text when you have enough context. Answer concisely and " +
             "directly; expand only when the user asks for detail.";
@@ -230,11 +232,20 @@ namespace Scribble.Chat
                     ? " For a one-to-one transformation of the attached " +
                       "Excel selection, including translation, use " +
                       "write_selection_output instead of write_cells. " +
-                      "Preserve the source, keep exact row alignment, send " +
-                      "ordered batches, and set complete=true only when every " +
-                      "selected row has one output value. If the adjacent " +
-                      "destination is occupied, use the returned empty-column " +
-                      "candidates to ask the user where the output should go."
+                      "The captured address is the complete scope: transform " +
+                      "EVERY selected cell, including the first cell or header, " +
+                      "and never ask whether to include the header. Keep exact " +
+                      "row alignment, send ordered batches, and set complete=true " +
+                      "only when every selected row has one output value. Unless " +
+                      "the user explicitly says replace, overwrite, or in place, " +
+                      "preserve the source and use the adjacent blank column; " +
+                      "that is the safe default, so do not ask the user to choose " +
+                      "between a draft and replacement. If the user explicitly " +
+                      "requests replacement in their prompt or an ask_user answer, " +
+                      "use write_selection_output with replace_source=true; this " +
+                      "tool can write the selection, so never claim the workbook " +
+                      "is read-only. Ask only if the adjacent destination is " +
+                      "occupied, using the returned empty-column candidates."
                     : string.Empty;
                 return boundary + selectionInstruction +
                     " The local host recognized an explicit draft request in the " +
@@ -257,12 +268,14 @@ namespace Scribble.Chat
                     "each data slide its unit indicator and source footnote, and " +
                     "mark performance with the growth and deficit markers so the " +
                     "theme can highlight it. Never ask the user to confirm first - " +
-                    "the request already IS the authorization. When the user asked " +
-                    "to change their own sheet or document (fill, fix, update, " +
+                    "the request already IS the authorization. When no Excel " +
+                    "selection-output rule above applies and the user asked to " +
+                    "change their own sheet or document (fill, fix, update, " +
                     "continue it in place), write directly where they asked: " +
                     "write_cells in Excel, or write_draft_document with placement " +
-                    "'end' or 'selection' in Word. Otherwise deliver into the " +
-                    "marked draft surface. After the final tool result, state " +
+                    "'end' or 'selection' in Word. Otherwise, when the Excel " +
+                    "selection-output rule above does not apply, deliver into " +
+                    "the marked draft surface. After the final tool result, state " +
                     "briefly that nothing was saved - the output is an in-memory " +
                     "change or unsaved marked draft (or an unsent email draft) " +
                     "open for the user's review.";

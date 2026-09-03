@@ -235,8 +235,11 @@ namespace Scribble.Chat
                     name = WriteSelectionOutput,
                     description =
                         "Stage literal-text output for the attached Excel " +
-                        "selection, preserving every source cell. Use this " +
+                        "selection. By default it preserves every source cell. " +
+                        "Use this " +
                         "for translations and other one-to-one transforms. " +
+                        "Transform every selected value, including the first " +
+                        "cell/header; the selection already defines the scope. " +
                         "Submit contiguous ordered batches of at most " +
                         ExcelSelectionOutputPolicy.MaxBatchValues +
                         " values and " +
@@ -245,6 +248,9 @@ namespace Scribble.Chat
                         "Omit destination_column to use the column directly " +
                         "right of the source. The host writes only after all " +
                         "rows are staged and the destination is fully blank. " +
+                        "Set replace_source=true only when the user explicitly " +
+                        "said to replace, overwrite, or edit the selected cells " +
+                        "in place; the host otherwise rejects source changes. " +
                         "If it reports occupied destination candidates, call " +
                         "ask_user before retrying. Call this as the only tool " +
                         "in its response.",
@@ -296,6 +302,19 @@ namespace Scribble.Chat
                                     {
                                         "description",
                                         "True only for the final batch."
+                                    }
+                                }
+                            },
+                            {
+                                "replace_source",
+                                new Dictionary<string, object>
+                                {
+                                    { "type", "boolean" },
+                                    {
+                                        "description",
+                                        "True only when the user explicitly " +
+                                        "asked to overwrite the attached " +
+                                        "source selection. Omit otherwise."
                                     }
                                 }
                             }

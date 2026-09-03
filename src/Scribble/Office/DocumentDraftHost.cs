@@ -19,9 +19,10 @@ namespace Scribble.Office
     // attempt; selection output consumes it only after staging and
     // final preflight succeed.
     // The normal write surfaces are clearly marked drafts. Excel's
-    // selection output is the narrow exception: it preserves the
-    // source and commits inert text once to a preflighted blank
-    // column bound to the user's snapshot. Nothing is saved or sent.
+    // selection output is the narrow exception: it commits inert
+    // text once to a snapshot-bound blank column, or to that exact
+    // source only after explicit replacement intent. Nothing is
+    // saved or sent.
     public sealed class DocumentDraftHost : IDisposable
     {
         private static readonly HashSet<string> EmailArguments =
@@ -56,7 +57,8 @@ namespace Scribble.Office
                 "destination_column",
                 "start_offset",
                 "values",
-                "complete"
+                "complete",
+                "replace_source"
             };
 
         private static readonly HashSet<string> SlideArguments =
@@ -82,6 +84,8 @@ namespace Scribble.Office
         private string _latestUserPrompt = string.Empty;
         private ExcelSelectionRequestContext _selectionRequest;
         private ExcelSelectionOutputSession _selectionOutput;
+        private bool _allowSelectionSourceReplacement;
+        private bool _selectionReplaceSource;
 
         public DocumentDraftHost(
             string hostKind,
@@ -400,12 +404,25 @@ namespace Scribble.Office
         {
             _selectionRequest = context;
             _selectionOutput = null;
+            _allowSelectionSourceReplacement =
+                context != null && context.AllowSourceReplacement;
+            _selectionReplaceSource = false;
+        }
+
+        internal void AllowExcelSelectionSourceReplacement()
+        {
+            if (_selectionRequest != null)
+            {
+                _allowSelectionSourceReplacement = true;
+            }
         }
 
         internal void EndExcelSelectionRequest()
         {
             _selectionOutput = null;
             _selectionRequest = null;
+            _allowSelectionSourceReplacement = false;
+            _selectionReplaceSource = false;
         }
 
         private MailboxToolResult ExecuteSelectionOutput(
@@ -460,7 +477,57 @@ namespace Scribble.Office
                 arguments,
                 "destination_column",
                 string.Empty);
-            if (destination.Length == 0)
+            var replaceSourceSpecified =
+                arguments.ContainsKey("replace_source");
+            var replaceSource = replaceSourceSpecified &&
+                ToolArguments.GetBoolean(arguments, "replace_source");
+            if (_selectionOutput != null)
+            {
+                if (replaceSourceSpecified &&
+                    replaceSource != _selectionReplaceSource)
+                {
+                    return Error(
+                        callId,
+                        authorization,
+                        "SELECTION_OUTPUT_MODE_CHANGED",
+                        "All batches must keep the replacement mode " +
+                        "chosen by the first accepted batch.");
+                }
+
+                replaceSource = _selectionReplaceSource;
+            }
+            if (replaceSource && !_allowSelectionSourceReplacement)
+            {
+                return Error(
+                    callId,
+                    authorization,
+                    "SELECTION_REPLACE_NOT_AUTHORIZED",
+                    "Replacing the source requires the user's explicit " +
+                    "replace, overwrite, or in-place instruction.");
+            }
+
+            var sourceColumn =
+                ExcelSelectionOutputPolicy.ColumnNumberToName(
+                    snapshot.StartColumn);
+            if (replaceSource)
+            {
+                if (destination.Length > 0 &&
+                    !string.Equals(
+                        destination,
+                        sourceColumn,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    return Error(
+                        callId,
+                        authorization,
+                        "SELECTION_DESTINATION_CONFLICT",
+                        "Do not provide a different destination column " +
+                        "when replacing the selected source cells.");
+                }
+
+                destination = sourceColumn;
+            }
+            else if (destination.Length == 0)
             {
                 destination =
                     ExcelSelectionOutputPolicy.ColumnNumberToName(
@@ -481,10 +548,10 @@ namespace Scribble.Office
             {
                 // Read-only preflight happens before staging, and is
                 // repeated before the final bulk commit.
-                WorkbookSelectionOutputWriter.ValidateDestination(
-                    _hostApplication,
+                ValidateSelectionTarget(
                     snapshot,
-                    destination);
+                    destination,
+                    replaceSource);
 
                 if (_selectionOutput == null)
                 {
@@ -492,6 +559,7 @@ namespace Scribble.Office
                         new ExcelSelectionOutputSession(
                             _selectionRequest.Handle,
                             snapshot.RowCount);
+                    _selectionReplaceSource = replaceSource;
                 }
 
                 var values = ParseSelectionValues(arguments);
@@ -535,10 +603,10 @@ namespace Scribble.Office
 
                 // Validate once more immediately before consuming
                 // permission; rejected preflights never spend it.
-                WorkbookSelectionOutputWriter.ValidateDestination(
-                    _hostApplication,
+                ValidateSelectionTarget(
                     snapshot,
-                    _selectionOutput.DestinationColumn);
+                    _selectionOutput.DestinationColumn,
+                    replaceSource);
                 if (!authorization.TryConsume())
                 {
                     return Error(
@@ -553,7 +621,8 @@ namespace Scribble.Office
                     _hostApplication,
                     snapshot,
                     _selectionOutput.DestinationColumn,
-                    _selectionOutput.Values);
+                    _selectionOutput.Values,
+                    replaceSource);
                 authorization.MarkCreated();
                 return SelectionSuccess(
                     callId,
@@ -581,6 +650,25 @@ namespace Scribble.Office
                         exception,
                         "SELECTION_OUTPUT_INVALID"));
             }
+        }
+
+        private void ValidateSelectionTarget(
+            ExcelSelectionSnapshot snapshot,
+            string destination,
+            bool replaceSource)
+        {
+            if (replaceSource)
+            {
+                WorkbookSelectionOutputWriter.ValidateSource(
+                    _hostApplication,
+                    snapshot);
+                return;
+            }
+
+            WorkbookSelectionOutputWriter.ValidateDestination(
+                _hostApplication,
+                snapshot,
+                destination);
         }
 
         private static IReadOnlyList<string> ParseSelectionValues(

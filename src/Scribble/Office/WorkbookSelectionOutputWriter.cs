@@ -24,7 +24,8 @@ namespace Scribble.Office
 
     // The only COM-writing boundary for staged selection output.
     // Validation is repeated immediately before the one bulk write;
-    // no source cell is changed and Scribble never saves the file.
+    // source cells change only under explicit replacement intent,
+    // and Scribble never saves the file.
     internal static class WorkbookSelectionOutputWriter
     {
         internal static void ValidateDestination(
@@ -63,11 +64,28 @@ namespace Scribble.Office
             }
         }
 
+        internal static void ValidateSource(
+            object excelApplication,
+            ExcelSelectionSnapshot snapshot)
+        {
+            dynamic sheet = ResolveSheet(
+                excelApplication,
+                snapshot);
+            dynamic source = sheet.Range(snapshot.Address);
+            if (!IsFalse(source.MergeCells))
+            {
+                throw new InvalidOperationException(
+                    "The selected source contains merged cells and " +
+                    "cannot be safely replaced.");
+            }
+        }
+
         internal static string Commit(
             object excelApplication,
             ExcelSelectionSnapshot snapshot,
             string destinationColumn,
-            IReadOnlyList<string> values)
+            IReadOnlyList<string> values,
+            bool replaceSource)
         {
             if (values == null || values.Count != snapshot.RowCount)
             {
@@ -81,10 +99,12 @@ namespace Scribble.Office
             var destinationNumber =
                 ExcelSelectionOutputPolicy.ColumnNameToNumber(
                     destinationColumn);
-            dynamic destination = DestinationRange(
-                sheet,
-                snapshot,
-                destinationNumber);
+            dynamic destination = replaceSource
+                ? sheet.Range(snapshot.Address)
+                : DestinationRange(
+                    sheet,
+                    snapshot,
+                    destinationNumber);
             var grid = new object[snapshot.RowCount, 1];
             for (var row = 0; row < snapshot.RowCount; row++)
             {
@@ -95,12 +115,16 @@ namespace Scribble.Office
             // COM-free policy keeps =, +, -, and @ values inert.
             destination.NumberFormat = "@";
             destination.Value2 = grid;
+            var rangeAddress = destinationColumn + snapshot.StartRow + ":" +
+                destinationColumn +
+                (snapshot.StartRow + snapshot.RowCount - 1);
             return "Wrote " + snapshot.RowCount +
                 " literal values to " + snapshot.WorksheetName +
-                "!" + destinationColumn + snapshot.StartRow + ":" +
-                destinationColumn +
-                (snapshot.StartRow + snapshot.RowCount - 1) +
-                ". Source cells were unchanged. Nothing was saved.";
+                "!" + rangeAddress + ". " +
+                (replaceSource
+                    ? "The explicitly selected source cells were replaced. "
+                    : "Source cells were unchanged. ") +
+                "Nothing was saved.";
         }
 
         private static dynamic ResolveSheet(

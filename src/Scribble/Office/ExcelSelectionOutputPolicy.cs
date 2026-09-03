@@ -86,16 +86,20 @@ namespace Scribble.Office
     {
         public ExcelSelectionRequestContext(
             string handle,
-            ExcelSelectionSnapshot snapshot)
+            ExcelSelectionSnapshot snapshot,
+            bool allowSourceReplacement = false)
         {
             Handle = handle ?? string.Empty;
             Snapshot = snapshot ??
                 throw new ArgumentNullException(nameof(snapshot));
+            AllowSourceReplacement = allowSourceReplacement;
         }
 
         public string Handle { get; }
 
         public ExcelSelectionSnapshot Snapshot { get; }
+
+        public bool AllowSourceReplacement { get; }
     }
 
     public sealed class ExcelDestinationCellState
@@ -196,6 +200,59 @@ namespace Scribble.Office
             }
 
             return bounded;
+        }
+
+        // Source replacement is a separate, explicit user choice.
+        // Negated and preservation phrases win over the positive
+        // terms so document or model wording cannot broaden it.
+        public static bool AllowsSourceReplacement(string userText)
+        {
+            var text = TextBoundary.PlainText(userText, 500)
+                .ToLowerInvariant();
+            if (text.Length == 0 ||
+                ContainsAny(
+                    text,
+                    "do not replace",
+                    "don't replace",
+                    "dont replace",
+                    "without replacing",
+                    "do not overwrite",
+                    "don't overwrite",
+                    "dont overwrite",
+                    "keep the source",
+                    "keep source",
+                    "preserve the source",
+                    "preserve source"))
+            {
+                return false;
+            }
+
+            return ContainsAny(
+                text,
+                "replace",
+                "overwrite",
+                "in place",
+                "in-place",
+                "same cells",
+                "source cells",
+                "original cells");
+        }
+
+        private static bool ContainsAny(
+            string value,
+            params string[] terms)
+        {
+            foreach (var term in terms)
+            {
+                if (value.IndexOf(
+                    term,
+                    StringComparison.Ordinal) >= 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         public static int ColumnNameToNumber(string value)

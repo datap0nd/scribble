@@ -6118,6 +6118,9 @@ namespace GuardrailTests
                 DocumentDraftIntentPolicy.AllowsDraft(
                     "translate this to English",
                     true) &&
+                DocumentDraftIntentPolicy.AllowsDraft(
+                    "replace",
+                    true) &&
                 !DocumentDraftIntentPolicy.AllowsDraft(
                     "what does this mean",
                     true) &&
@@ -6147,6 +6150,9 @@ namespace GuardrailTests
             var names = request.tools
                 .Select(tool => tool.function.name)
                 .ToArray();
+            var selectionToolJson = new JavaScriptSerializer().Serialize(
+                request.tools.Single(tool =>
+                    tool.function.name == "write_selection_output"));
             var unauthorizedNames = DocumentChatRequestFactory.Create(
                     "test-model",
                     "excel",
@@ -6164,10 +6170,15 @@ namespace GuardrailTests
             Assert(
                 names.Contains("write_selection_output") &&
                 !unauthorizedNames.Contains("write_selection_output") &&
+                selectionToolJson.Contains("replace_source") &&
                 Convert.ToString(
                     ((ChatCompletionInputMessage)
                         request.messages[0]).content)
-                    .Contains("Preserve the source"),
+                    .Contains("including the first cell or header") &&
+                Convert.ToString(
+                    ((ChatCompletionInputMessage)
+                        request.messages[0]).content)
+                    .Contains("never claim the workbook is read-only"),
                 "An eligible selection request must expose the " +
                 "source-preserving output tool and instructions.");
         }
@@ -6192,7 +6203,13 @@ namespace GuardrailTests
                     ExcelSelectionOutputPolicy.MaxExcelColumns &&
                 ExcelSelectionOutputPolicy.ColumnNameToNumber("XFE") == 0 &&
                 ExcelSelectionOutputPolicy.ColumnNumberToName(
-                    ExcelSelectionOutputPolicy.MaxExcelColumns) == "XFD",
+                    ExcelSelectionOutputPolicy.MaxExcelColumns) == "XFD" &&
+                ExcelSelectionOutputPolicy.AllowsSourceReplacement(
+                    "replace") &&
+                ExcelSelectionOutputPolicy.AllowsSourceReplacement(
+                    "overwrite these in place") &&
+                !ExcelSelectionOutputPolicy.AllowsSourceReplacement(
+                    "do not replace; keep the source"),
                 "Formula-like selection output must become inert text.");
 
             Assert(
