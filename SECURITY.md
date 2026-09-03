@@ -248,7 +248,9 @@ unless the user enters exact tool names and affirms that each is read-only.
     single-column attachment mints an opaque request-scoped handle which
     expires after the request and is invalidated by context removal or a new
     chat. `write_selection_output` stages at most 500 one-to-one literal values
-    in four bounded calls without consuming permission. The final call
+    in five bounded calls without consuming permission. Excel selection
+    requests may use up to eight bounded tool rounds so five staging calls,
+    one clarification, and a rejected retry can still finish. The final call
     revalidates saved `FullName` (or unsaved workbook name), window handle,
     worksheet name, source address, exact row count, and either a fully blank,
     unmerged, formula-free destination or an explicitly authorized exact-source

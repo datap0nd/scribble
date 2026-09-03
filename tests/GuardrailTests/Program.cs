@@ -6185,6 +6185,7 @@ namespace GuardrailTests
                 names.Contains("write_selection_output") &&
                 !unauthorizedNames.Contains("write_selection_output") &&
                 selectionToolJson.Contains("replace_source") &&
+                selectionToolJson.Contains("next_start_offset") &&
                 Convert.ToString(
                     ((ChatCompletionInputMessage)
                         request.messages[0]).content)
@@ -6223,7 +6224,11 @@ namespace GuardrailTests
                 ExcelSelectionOutputPolicy.AllowsSourceReplacement(
                     "overwrite these in place") &&
                 !ExcelSelectionOutputPolicy.AllowsSourceReplacement(
-                    "do not replace; keep the source"),
+                    "do not replace; keep the source") &&
+                ExcelSelectionOutputPolicy.PreferredBatchValues == 100 &&
+                ExcelSelectionOutputPolicy.MaxBatches == 5 &&
+                ExcelSelectionOutputPolicy.MaxRequestToolRounds ==
+                    LimitOverrides.MaxToolRoundsLimit,
                 "Formula-like selection output must become inert text.");
 
             Assert(
@@ -6305,6 +6310,31 @@ namespace GuardrailTests
                 rejectedGap && rejectedCount,
                 "Gapped or incomplete selection output was accepted.");
 
+            var rows409 = new ExcelSelectionOutputSession(
+                "rows-409",
+                409);
+            for (var offset = 0; offset < 400; offset += 100)
+            {
+                Assert(
+                    !rows409.Stage(
+                        "rows-409",
+                        "X",
+                        offset,
+                        Enumerable.Repeat("English", 100).ToArray(),
+                        false),
+                    "A non-final 409-row batch completed early.");
+            }
+
+            Assert(
+                rows409.Stage(
+                    "rows-409",
+                    "X",
+                    400,
+                    Enumerable.Repeat("English", 9).ToArray(),
+                    true) &&
+                rows409.Values.Count == 409,
+                "A 409-row translation did not fit the bounded batch plan.");
+
             var retry = new ExcelSelectionOutputSession("retry", 2);
             var rejectedRetry = false;
             try
@@ -6383,20 +6413,12 @@ namespace GuardrailTests
                     false);
             }
 
-            var rejectedFifthBatch = false;
-            try
-            {
-                batches.Stage(
-                    "batches",
-                    "E",
-                    4,
-                    new[] { "four" },
-                    true);
-            }
-            catch (InvalidOperationException)
-            {
-                rejectedFifthBatch = true;
-            }
+            var acceptedFifthBatch = batches.Stage(
+                "batches",
+                "E",
+                4,
+                new[] { "four" },
+                true);
 
             var rejectedLargeBatch = false;
             try
@@ -6431,7 +6453,7 @@ namespace GuardrailTests
             }
 
             Assert(
-                rejectedFifthBatch &&
+                acceptedFifthBatch &&
                 rejectedLargeBatch &&
                 rejectedLargePayload,
                 "Selection output batch-count and value-count caps failed.");

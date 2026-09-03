@@ -445,6 +445,9 @@ this document"), it goes there instead - still unsaved:
   columns and asks where the result should go. The source is preserved by
   default; an explicit **replace**, **overwrite**, or **in place** instruction
   safely targets only the captured source range. The workbook is never saved.
+  For larger selections it uses 100-row batches (up to five for 500 cells),
+  with progress metadata directing each next offset so a 409-row translation
+  finishes within the Excel selection request's bounded eight-round ceiling.
 - `add_draft_slides` adds slides marked **[Scribble draft]**; existing slides
   are never modified. Every slide is painted from the corporate theme (see
   below). By default new slides append at the end, or ask for a position
