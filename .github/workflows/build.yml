@@ -782,3 +782,32 @@ jobs:
         with:
           files: artifacts/ScribbleSetup.exe
           generate_release_notes: true
+
+  browser-extension-e2e:
+    name: Optional browser extension fixtures
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: tests/BrowserExtensionE2E
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tests/BrowserExtensionE2E/package-lock.json
+
+      - name: Install test dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run browser extension fixtures
+        run: npm test

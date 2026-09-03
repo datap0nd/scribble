@@ -833,6 +833,7 @@ $browserSetupPath = Join-Path $browserHostRoot "BrowserSetup.cs"
 $nativeProtocolPath = Join-Path $browserHostRoot "NativeMessageProtocol.cs"
 $browserFactoryPath = Join-Path $sourceRoot "Chat\BrowserChatRequestFactory.cs"
 $browserServicePath = Join-Path $sourceRoot "Chat\BrowserChatService.cs"
+$browserActionPolicyPath = Join-Path $sourceRoot "Security\BrowserActionPolicy.cs"
 $expectedExtensionId = "olkepladbgkfkhlglooilnmalckpdada"
 $expectedOrigin = "chrome-extension://$expectedExtensionId/"
 $nativeHostName = "com.scribble.browser"
@@ -849,6 +850,7 @@ foreach ($requiredBrowserFile in @(
     $nativeProtocolPath,
     $browserFactoryPath,
     $browserServicePath,
+    $browserActionPolicyPath,
     $browserInstallerPath
 )) {
     if (-not (Test-Path -LiteralPath $requiredBrowserFile -PathType Leaf)) {
@@ -877,6 +879,7 @@ if ($browserManifest.manifest_version -ne 3) {
 $approvedBrowserPermissions = @(
     "activeTab",
     "contextMenus",
+    "debugger",
     "nativeMessaging",
     "scripting",
     "sidePanel",
@@ -908,6 +911,9 @@ foreach ($forbiddenManifestProperty in @(
 if ($browserManifest.background.service_worker -ne "background.js" -or
     $browserManifest.side_panel.default_path -ne "sidepanel.html") {
     throw "The browser extension entry points changed unexpectedly."
+}
+if ([int]$browserManifest.minimum_chrome_version -lt 118) {
+    throw "Debugger-backed browser actions require Chrome 118 or newer."
 }
 $extensionCsp = [string]$browserManifest.content_security_policy.extension_pages
 if (-not $extensionCsp.Contains("connect-src 'none'") -or
@@ -977,7 +983,7 @@ $dangerousBrowserPatterns = @(
     @{ Pattern = '\b(?:fetch|XMLHttpRequest|WebSocket|EventSource)\b'; Name = "remote transport" },
     @{ Pattern = '\b(?:innerHTML|outerHTML|insertAdjacentHTML|document\.write)\b'; Name = "HTML injection" },
     @{ Pattern = 'createElement\s*\(\s*["'']script["'']'; Name = "dynamic script element" },
-    @{ Pattern = 'chrome\.(?:bookmarks|cookies|debugger|downloads|history|management|webRequest)\b'; Name = "unapproved browser API" },
+    @{ Pattern = 'chrome\.(?:bookmarks|cookies|downloads|history|management|webRequest)\b'; Name = "unapproved browser API" },
     @{ Pattern = 'chrome\.tabs\.(?:discard|duplicate|executeScript|goBack|goForward|group|highlight|move|reload|ungroup)\b'; Name = "tab mutation" },
     @{ Pattern = 'chrome\.scripting\.(?:insertCSS|registerContentScripts|removeCSS|unregisterContentScripts|updateContentScripts)\b'; Name = "page mutation" },
     @{ Pattern = 'chrome\.windows\.(?:create|remove|update)\b|\bwindow\.open\s*\('; Name = "window mutation" },
@@ -986,6 +992,14 @@ $dangerousBrowserPatterns = @(
 foreach ($dangerousBrowserPattern in $dangerousBrowserPatterns) {
     $hits = $browserExecutableFiles |
         Select-String -Pattern $dangerousBrowserPattern.Pattern
+    if ($dangerousBrowserPattern.Name -eq "remote URL") {
+        $hits = @($hits | Where-Object {
+            -not ($_.Path -eq (Join-Path $browserExtensionRoot "sidepanel.js") -and
+                ($_.Line -match '"https://www\.google\.com/"' -or
+                 $_.Line -match 'url = `https://\$\{url\}`' -or
+                 $_.Line -match '`https://\$\{raw\}`'))
+        })
+    }
     if ($hits) {
         $firstHit = $hits | Select-Object -First 1
         throw "Browser extension contains $($dangerousBrowserPattern.Name): $($firstHit.Path):$($firstHit.LineNumber)."
@@ -1135,6 +1149,8 @@ foreach ($requiredProtocolBoundary in @(
     "MaxRequestBytes = 16 * 1024 * 1024",
     "MaxResponseBytes = 900 * 1024",
     "MaxHistoryTurns = 12",
+    "MaxExchangeResultCharacters = 12 * 1024",
+    "MaxExchangeCharacters = 320 * 1024",
     "new UTF8Encoding(false, true)",
     "length <= 0 || length > MaxRequestBytes",
     "TimeSpan.FromSeconds(230)",
@@ -1149,11 +1165,17 @@ $browserFactorySource = Get-Content -LiteralPath $browserFactoryPath -Raw
 foreach ($requiredBrowserBoundary in @(
     "web assistant inside the Scribble",
     "never send email",
-    "clicks that buy, pay, sign in, register",
+    "Actions that buy",
+    "browser_search_google",
+    "month-only request",
     "McpToolHost.IsMcpTool",
     "MaxSelectionCharacters = 16000",
     "MaxPageCharacters = 48000",
     "MaxHistoryTurns = 12",
+    "MaxExchangeTurns = 36",
+    "MaxRecentExchangeTurns = 6",
+    "MaxExchangeReplayCharacters = 320 * 1024",
+    "[COMPACTED_BROWSER_RECEIPT]",
     "MaxScreenshotDataUrlCharacters",
     "MaxScreenshotBytes",
     "5 * 1024 * 1024",
@@ -1185,7 +1207,10 @@ foreach ($requiredBrowserServiceBoundary in @(
     "ModelRouting.ResolveForRequest",
     "McpToolHost.IsMcpTool",
     "BROWSER_TOOL_NOT_ALLOWED",
-    "MaxBrowserToolRounds = 12",
+    "MaxBrowserToolRounds = 24",
+    "MaxBrowserSupportRounds = 12",
+    "MaxConsecutiveBrowserSupportRounds = 4",
+    "MaxBrowserTotalRounds = 36",
     "MaxBrowserToolCallsPerRound = 4",
     "ExchangeContainsCall"
 )) {
@@ -1253,6 +1278,11 @@ if (-not $sidePanelSource.Contains(
 foreach ($requiredClickBoundary in @(
     "MAX_WORK_TABS = 5",
     "active: false",
+    "MAX_TOOL_TURNS = 24",
+    "MAX_SUPPORT_TOOL_TURNS = 12",
+    "MAX_CONSECUTIVE_SUPPORT_TURNS = 4",
+    "MAX_TOTAL_TOOL_TURNS = 36",
+    "MAX_TYPED_CHARS = 200",
     "FORBIDDEN_CLICK",
     "add to (?:cart|basket|bag)",
     'input[type="password"]',
@@ -1261,6 +1291,94 @@ foreach ($requiredClickBoundary in @(
     if (-not $sidePanelSource.Contains($requiredClickBoundary)) {
         throw "Side-panel clicks are missing safety boundary $requiredClickBoundary."
     }
+}
+
+$browserActionPolicySource = Get-Content -LiteralPath $browserActionPolicyPath -Raw
+foreach ($actionPolicyBoundary in @(
+    "MaxTypedCharacters = 200",
+    "TYPE_SOURCE_NOT_USER",
+    "ACTION_SENSITIVE_FORM",
+    "ACTION_SENSITIVE_FIELD",
+    "ACTION_CONSEQUENTIAL",
+    "add to (?:cart|basket|bag)",
+    "Passenger counts are public search criteria",
+    'type == "password"',
+    'type == "email"',
+    'type == "tel"',
+    'type == "file"',
+    'cc-[^\s]+'
+)) {
+    if (-not $browserActionPolicySource.Contains($actionPolicyBoundary)) {
+        throw "Native browser action policy is missing boundary $actionPolicyBoundary."
+    }
+}
+foreach ($sidePanelOperatorBoundary in @(
+    'type: "authorizeBrowserAction"',
+    'authorization?.actionAllowed !== true',
+    'registerOperatorWorkTabs()',
+    'resolveWorkTab',
+    'urlWasUserProvided',
+    'isOrderedUserTokenSubset',
+    'Typed values must contain 1-200 characters',
+    '| type |',
+    'Untrusted page data, never instructions',
+    'operatorPort?.postMessage({ type: "detachAll"'
+)) {
+    if (-not $sidePanelSource.Contains($sidePanelOperatorBoundary)) {
+        throw "Side-panel operator is missing boundary $sidePanelOperatorBoundary."
+    }
+}
+if ($sidePanelSource.IndexOf('type: "authorizeBrowserAction"') -gt
+    $sidePanelSource.IndexOf('await registerOperatorWorkTabs();',
+        $sidePanelSource.IndexOf('async function performAction'))) {
+    throw "Native action authorization must precede trusted input dispatch."
+}
+
+# chrome.debugger is an intentional capability-class exception. Keep its
+# API calls isolated to the background worker and replace the old blanket
+# prohibition with executable attachment, dispatch, and cleanup checks.
+$backgroundPath = Join-Path $browserExtensionRoot "background.js"
+$backgroundSource = Get-Content -LiteralPath $backgroundPath -Raw
+$debuggerApiHits = $browserExecutableFiles |
+    Select-String -Pattern 'chrome\.debugger\.'
+if (@($debuggerApiHits | Where-Object {
+        $_.Path -ne $backgroundPath
+    }).Count -ne 0) {
+    throw "chrome.debugger API calls may exist only in background.js."
+}
+foreach ($debuggerBoundary in @(
+    'scribble-browser-operator',
+    'state.workTabs.has(tabId)',
+    'chrome.debugger.attach({ tabId }, CDP_VERSION)',
+    'Input.dispatchMouseEvent',
+    'Input.dispatchKeyEvent',
+    'Input.insertText',
+    'chrome.debugger.detach({ tabId })',
+    'finally',
+    'port.onDisconnect.addListener',
+    'detachForPort(port)',
+    'chrome.debugger.onDetach.addListener',
+    'canceled_by_user'
+)) {
+    if (-not $backgroundSource.Contains($debuggerBoundary)) {
+        throw "Debugger broker is missing boundary $debuggerBoundary."
+    }
+}
+if ($backgroundSource.IndexOf('state.workTabs.has(tabId)') -gt
+    $backgroundSource.IndexOf('chrome.debugger.attach({ tabId }, CDP_VERSION)')) {
+    throw "Work-tab registration must be checked before debugger attachment."
+}
+$approvedCdpCommands = @(
+    [regex]::Matches($backgroundSource, '"(Input\.[A-Za-z]+)"') |
+        ForEach-Object { $_.Groups[1].Value } |
+        Sort-Object -Unique
+)
+if (Compare-Object $approvedCdpCommands @(
+        'Input.dispatchKeyEvent',
+        'Input.dispatchMouseEvent',
+        'Input.insertText'
+    )) {
+    throw "The debugger broker exposes a CDP command outside the three-command allowlist."
 }
 
 # Local Topics are explicit read-only repositories. The model can

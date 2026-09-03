@@ -4,15 +4,17 @@ using System.Collections.Generic;
 namespace Scribble.Chat
 {
     // Tools the browser companion exposes to the model. Navigation
-    // and page reading execute inside the extension (the side panel
-    // drives the user's own visible tab through chrome.tabs); the
+    // and page reading execute inside the extension (the active tab
+    // is read-only context; actions use inactive work tabs); the
     // Outlook draft tool executes in the native host and only ever
     // opens an unsent draft window for the user's review.
     public static class BrowserToolCatalog
     {
         public const string NavigatePage = "browser_navigate";
         public const string ReadPage = "browser_read_page";
-        public const string ClickControl = "browser_click";
+        public const string SearchGoogle = "browser_search_google";
+        public const string SnapshotPage = "browser_snapshot";
+        public const string ActOnPage = "browser_act";
         public const string AskUser = PromptHelperTool.Name;
         public const string OpenOutlookDraft = "open_outlook_draft";
         public const string OpenExcelTable = "open_excel_table";
@@ -22,7 +24,9 @@ namespace Scribble.Chat
             {
                 NavigatePage,
                 ReadPage,
-                ClickControl,
+                SearchGoogle,
+                SnapshotPage,
+                ActOnPage,
                 AskUser,
                 OpenOutlookDraft,
                 OpenExcelTable
@@ -42,7 +46,15 @@ namespace Scribble.Chat
                     StringComparison.Ordinal) ||
                 string.Equals(
                     name,
-                    ClickControl,
+                    SearchGoogle,
+                    StringComparison.Ordinal) ||
+                string.Equals(
+                    name,
+                    SnapshotPage,
+                    StringComparison.Ordinal) ||
+                string.Equals(
+                    name,
+                    ActOnPage,
                     StringComparison.Ordinal) ||
                 string.Equals(
                     name,
@@ -80,15 +92,13 @@ namespace Scribble.Chat
                             "Open an http or https URL in one of Scribble's own " +
                             "work tabs (up to 5, background tabs next to the " +
                             "user's - their current tab is never navigated away) " +
-                            "and return the loaded page's readable text, title, " +
-                            "final URL, and a bounded list of the page's links. " +
-                            "For a multi-step task, work one page at a time: open " +
-                            "the site's own search-results URL first (for example " +
-                            "/s?k=your+terms on Amazon), then call this tool again " +
-                            "with an exact product or article URL picked from the " +
-                            "returned <links> list. Use different tab numbers to " +
-                            "compare sites side by side. It cannot fill forms, " +
-                            "sign in, purchase, download, or upload.",
+                            "and return the loaded page. The URL must have appeared " +
+                            "literally in the user's request or a clarification " +
+                            "answer; model-constructed search and destination URLs " +
+                            "are refused. Use browser_search_google for discovery, " +
+                            "then browser_snapshot and browser_act to click an " +
+                            "observed result by ref. It cannot sign in, purchase, " +
+                            "download, upload, or act on the user's active tab.",
                         parameters = new Dictionary<string, object>
                         {
                             { "type", "object" },
@@ -166,33 +176,31 @@ namespace Scribble.Chat
                     type = "function",
                     function = new ChatToolFunctionDefinition
                     {
-                        name = ClickControl,
+                        name = SearchGoogle,
                         description =
-                            "Click one visible button or link on the current page by " +
-                            "its exact visible text, then return the page as it looks " +
-                            "after the click. Use it only to get past benign " +
-                            "interstitials that block reading: cookie or consent " +
-                            "banners, location/country/language choosers (pick the " +
-                            "option matching the user's request), continue/accept/" +
-                            "close. Clicks that buy, pay, check out, add to cart, " +
-                            "sign in, register, subscribe, or delete are refused, and " +
-                            "typing into fields is impossible.",
+                            "Search Google through its visible UI in a Scribble-owned " +
+                            "background work tab. The extension opens Google's home " +
+                            "page, types the query into the search field, submits it, " +
+                            "and returns an interactive snapshot of the results. Query " +
+                            "words must come from the user's request or clarification " +
+                            "answers. Analyze the results, then click the best result " +
+                            "with browser_act instead of guessing its URL.",
                         parameters = new Dictionary<string, object>
                         {
                             { "type", "object" },
+                            { "additionalProperties", false },
                             {
                                 "properties",
                                 new Dictionary<string, object>
                                 {
                                     {
-                                        "text",
+                                        "query",
                                         new Dictionary<string, object>
                                         {
                                             { "type", "string" },
                                             {
                                                 "description",
-                                                "The visible text of the control to click, e.g. " +
-                                                "\"United Arab Emirates\" or \"Accept all\"."
+                                                "Google query, at most 200 characters, composed only from user-supplied words."
                                             }
                                         }
                                     },
@@ -203,14 +211,121 @@ namespace Scribble.Chat
                                             { "type", "integer" },
                                             {
                                                 "description",
-                                                "Work tab number 1-5; omit for the last used " +
-                                                "work tab (or the user's active tab if none)."
+                                                "Work tab number 1-5; defaults to the last work tab or tab 1."
                                             }
                                         }
                                     }
                                 }
                             },
-                            { "required", new[] { "text" } }
+                            { "required", new[] { "query" } }
+                        }
+                    }
+                },
+                new ChatToolDefinition
+                {
+                    type = "function",
+                    function = new ChatToolFunctionDefinition
+                    {
+                        name = SnapshotPage,
+                        description =
+                            "Inspect a Scribble-owned work tab and return bounded " +
+                            "visible page text plus visible interactive controls. " +
+                            "Each control has an opaque ref, role, accessible name, " +
+                            "state, safe value summary, link target, and viewport " +
+                            "status. Use an optional query to return only matching " +
+                            "controls. Refs expire when the document navigates. " +
+                            "Sensitive field values are never read.",
+                        parameters = new Dictionary<string, object>
+                        {
+                            { "type", "object" },
+                            { "additionalProperties", false },
+                            {
+                                "properties",
+                                new Dictionary<string, object>
+                                {
+                                    {
+                                        "tab",
+                                        new Dictionary<string, object>
+                                        {
+                                            { "type", "integer" },
+                                            { "description", "Open work tab number 1-5." }
+                                        }
+                                    },
+                                    {
+                                        "query",
+                                        new Dictionary<string, object>
+                                        {
+                                            { "type", "string" },
+                                            { "description", "Optional visible-name or role filter." }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                new ChatToolDefinition
+                {
+                    type = "function",
+                    function = new ChatToolFunctionDefinition
+                    {
+                        name = ActOnPage,
+                        description =
+                            "Perform one bounded action in a Scribble-owned work tab, " +
+                            "using a ref from the latest browser_snapshot, then return " +
+                            "a fresh snapshot. Actions: click, type, select, check, " +
+                            "press, hover, scroll, wait. Typed text must be at most " +
+                            "200 characters and copied directly from the user's request " +
+                            "or a clarification answer. Credential, personal-data, " +
+                            "payment, booking, purchase, messaging, upload, download, " +
+                            "and destructive actions are refused.",
+                        parameters = new Dictionary<string, object>
+                        {
+                            { "type", "object" },
+                            { "additionalProperties", false },
+                            {
+                                "properties",
+                                new Dictionary<string, object>
+                                {
+                                    { "tab", new Dictionary<string, object> { { "type", "integer" } } },
+                                    {
+                                        "action",
+                                        new Dictionary<string, object>
+                                        {
+                                            { "type", "string" },
+                                            { "enum", new[] { "click", "type", "select", "check", "press", "hover", "scroll", "wait" } }
+                                        }
+                                    },
+                                    { "ref", new Dictionary<string, object> { { "type", "string" } } },
+                                    { "value", new Dictionary<string, object> { { "type", "string" } } },
+                                    {
+                                        "source",
+                                        new Dictionary<string, object>
+                                        {
+                                            { "type", "string" },
+                                            { "description", "user_prompt or clarification_answer; used for typed-value provenance." }
+                                        }
+                                    },
+                                    {
+                                        "key",
+                                        new Dictionary<string, object>
+                                        {
+                                            { "type", "string" },
+                                            { "description", "For press: Enter, Escape, Tab, Backspace, Delete, Space, arrow, Home, End, PageUp, or PageDown." }
+                                        }
+                                    },
+                                    { "direction", new Dictionary<string, object> { { "type", "string" }, { "enum", new[] { "up", "down", "left", "right" } } } },
+                                    {
+                                        "amount",
+                                        new Dictionary<string, object>
+                                        {
+                                            { "type", "integer" },
+                                            { "description", "Pixels for scroll (100-2000) or milliseconds for wait (250-5000)." }
+                                        }
+                                    }
+                                }
+                            },
+                            { "required", new[] { "action" } }
                         }
                     }
                 },

@@ -168,6 +168,12 @@ namespace GuardrailTests
                     "Browser context is bounded and tools are approved-only",
                     BrowserContextIsBoundedAndReadOnly);
                 Run(
+                    "Browser actions enforce typing and consequence boundaries",
+                    BrowserOperatorGuardrailTests.ActionsEnforceSafetyBoundary);
+                Run(
+                    "Browser round accounting and replay remain bounded",
+                    BrowserOperatorGuardrailTests.RoundAccountingAndReplayAreBounded);
+                Run(
                     "Browser screenshots require valid vision input",
                     BrowserScreenshotRequiresVision);
                 Run(
@@ -6888,7 +6894,9 @@ namespace GuardrailTests
                 {
                     "browser_navigate",
                     "browser_read_page",
-                    "browser_click",
+                    "browser_search_google",
+                    "browser_snapshot",
+                    "browser_act",
                     "ask_user",
                     "open_excel_table",
                     "open_outlook_draft",
@@ -6896,14 +6904,14 @@ namespace GuardrailTests
                 }),
                 "The browser request must expose exactly the approved " +
                 "browser tools and namespaced MCP tools.");
-            var clickDescription = request.tools
+            var actionDescription = request.tools
                 .First(tool =>
-                    tool.function.name == "browser_click")
+                    tool.function.name == "browser_act")
                 .function.description;
             Assert(
-                clickDescription.Contains("benign") &&
-                clickDescription.Contains("refused"),
-                "The click tool must declare its benign-only contract.");
+                actionDescription.Contains("200 characters") &&
+                actionDescription.Contains("refused"),
+                "The action tool must declare its provenance and safety contract.");
             var draftDescription = request.tools
                 .First(tool =>
                     tool.function.name == "open_outlook_draft")
@@ -6920,7 +6928,9 @@ namespace GuardrailTests
             Assert(
                 system.Contains("web assistant inside the Scribble") &&
                 system.Contains(
-                    "clicks that buy, pay, sign in, register") &&
+                    "Actions that buy") &&
+                system.Contains("browser_search_google") &&
+                system.Contains("month-only request") &&
                 system.Contains("never send email") &&
                 system.Contains("untrusted reference data") &&
                 system.Contains("cannot expand these capabilities") &&
@@ -7723,7 +7733,7 @@ namespace GuardrailTests
         public object Items { get; set; }
     }
 
-    public sealed class FakeSearchItems
+    public sealed partial class FakeSearchItems
     {
         private readonly FakeSelectedMailItem[] _items;
 
@@ -7735,6 +7745,242 @@ namespace GuardrailTests
                 .OrderByDescending(item => item.ReceivedTime)
                 .ToArray();
         }
+
+    }
+
+    internal static class BrowserOperatorGuardrailTests
+    {
+
+        internal static void ActionsEnforceSafetyBoundary()
+        {
+            var allowedType = BrowserActionPolicy.Evaluate(
+                new BrowserActionDescriptor
+                {
+                    Action = "type",
+                    TagName = "input",
+                    InputType = "text",
+                    Role = "searchbox",
+                    Name = "From",
+                    Url = "https://travel.example/search",
+                    Value = "Germany",
+                    SourceText = "Flights from Germany to Dubai"
+                });
+            var passengerCount = BrowserActionPolicy.Evaluate(
+                new BrowserActionDescriptor
+                {
+                    Action = "click",
+                    Role = "button",
+                    Name = "Passenger count",
+                    Url = "https://travel.example/search"
+                });
+            var reversibleControls = new[]
+            {
+                "Apply filters",
+                "Order by price",
+                "Booking.com flight result"
+            }.All(label => BrowserActionPolicy.Evaluate(
+                new BrowserActionDescriptor
+                {
+                    Action = "click",
+                    Role = "button",
+                    Name = label,
+                    Url = "https://travel.example/results"
+                }).Allowed);
+            var password = BrowserActionPolicy.Evaluate(
+                new BrowserActionDescriptor
+                {
+                    Action = "type",
+                    InputType = "password",
+                    Name = "Password",
+                    Url = "https://travel.example/login",
+                    Value = "secret",
+                    SourceText = "secret"
+                });
+            var email = BrowserActionPolicy.Evaluate(
+                new BrowserActionDescriptor
+                {
+                    Action = "type",
+                    InputType = "email",
+                    Name = "Contact email",
+                    Url = "https://travel.example/checkout",
+                    Value = "me@example.test",
+                    SourceText = "me@example.test"
+                });
+            var paymentForm = BrowserActionPolicy.Evaluate(
+                new BrowserActionDescriptor
+                {
+                    Action = "press",
+                    Role = "button",
+                    Name = "Continue",
+                    Url = "https://travel.example/checkout",
+                    FormHasPayment = true
+                });
+            var booking = BrowserActionPolicy.Evaluate(
+                new BrowserActionDescriptor
+                {
+                    Action = "click",
+                    Role = "button",
+                    Name = "Book now",
+                    Url = "https://travel.example/results"
+                });
+            var pageDerivedType = BrowserActionPolicy.Evaluate(
+                new BrowserActionDescriptor
+                {
+                    Action = "type",
+                    Role = "textbox",
+                    Name = "Search",
+                    Url = "https://example.test/",
+                    Value = "page only value",
+                    SourceText = "user supplied value"
+                });
+            var tooLong = BrowserActionPolicy.Evaluate(
+                new BrowserActionDescriptor
+                {
+                    Action = "type",
+                    Role = "textbox",
+                    Name = "Search",
+                    Url = "https://example.test/",
+                    Value = new string('a', 201),
+                    SourceText = new string('a', 201)
+                });
+            var blockedLabels = new[]
+            {
+                "Send message",
+                "Upload file",
+                "Download receipt",
+                "Delete account",
+                "Register"
+            };
+            var blockedConsequences = blockedLabels.All(label =>
+                !BrowserActionPolicy.Evaluate(
+                    new BrowserActionDescriptor
+                    {
+                        Action = "click",
+                        Role = "button",
+                        Name = label,
+                        Url = "https://example.test/"
+                    }).Allowed);
+            var travelerIdentity = BrowserActionPolicy.Evaluate(
+                new BrowserActionDescriptor
+                {
+                    Action = "type",
+                    InputType = "text",
+                    Name = "Passenger name",
+                    Url = "https://travel.example/",
+                    Value = "Jane Doe",
+                    SourceText = "Jane Doe"
+                });
+
+            Check(
+                allowedType.Allowed && passengerCount.Allowed &&
+                reversibleControls &&
+                !password.Allowed && !email.Allowed &&
+                !paymentForm.Allowed && !booking.Allowed &&
+                !pageDerivedType.Allowed && !tooLong.Allowed &&
+                !travelerIdentity.Allowed && blockedConsequences &&
+                pageDerivedType.Code == "TYPE_SOURCE_NOT_USER",
+                "BrowserActionPolicy did not enforce the approved public-data boundary.");
+        }
+
+        internal static void RoundAccountingAndReplayAreBounded()
+        {
+            var scroll = Call(
+                "scroll-1",
+                BrowserToolCatalog.ActOnPage,
+                "{\"action\":\"scroll\",\"tab\":1}");
+            var wait = Call(
+                "wait-1",
+                BrowserToolCatalog.ActOnPage,
+                "{\"action\":\"wait\",\"tab\":1}");
+            var click = Call(
+                "click-1",
+                BrowserToolCatalog.ActOnPage,
+                "{\"action\":\"click\",\"tab\":1,\"ref\":\"r:e1\"}");
+            Check(
+                BrowserChatService.MaxBrowserToolRounds == 24 &&
+                BrowserChatService.MaxBrowserSupportRounds == 12 &&
+                BrowserChatService.MaxConsecutiveBrowserSupportRounds == 4 &&
+                BrowserChatService.MaxBrowserTotalRounds == 36 &&
+                BrowserChatService.IsSupportOnlyRound(new[] { scroll, wait }) &&
+                !BrowserChatService.IsSupportOnlyRound(new[] { scroll, click }),
+                "Browser action/support/total round accounting drifted.");
+
+            var exchange = new List<BrowserExchangeTurn>();
+            for (var index = 0; index < 10; index++)
+            {
+                var name = index == 0
+                    ? PromptHelperTool.Name
+                    : BrowserToolCatalog.SnapshotPage;
+                exchange.Add(new BrowserExchangeTurn
+                {
+                    AssistantContent = "step " + index,
+                    ToolCalls = new List<ChatToolCall>
+                    {
+                        Call("call-" + index, name, "{}")
+                    },
+                    Results = new List<BrowserExchangeResult>
+                    {
+                        new BrowserExchangeResult
+                        {
+                            Id = "call-" + index,
+                            Content = index == 0
+                                ? "The user answered: 2026 " + new string('x', 2_000)
+                                : "snapshot-" + index + " " + new string('y', 2_000)
+                        }
+                    }
+                });
+            }
+            var replay = BrowserChatRequestFactory.Create(
+                "model",
+                new ChatTurn[0],
+                "Scrape flight prices from Germany to Dubai, September",
+                "Example",
+                "https://example.test/",
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                null,
+                exchange);
+            var serialized = new JavaScriptSerializer().Serialize(replay.messages);
+            Check(
+                BrowserChatRequestFactory.MaxExchangeTurns == 36 &&
+                serialized.Contains("The user answered: 2026") &&
+                serialized.Contains("[COMPACTED_BROWSER_RECEIPT]") &&
+                serialized.Contains("snapshot-1") &&
+                !serialized.Contains("snapshot-1 " + new string('y', 1_000)) &&
+                serialized.Contains("snapshot-9 " + new string('y', 1_000)),
+                "Browser replay did not retain clarification answers and compact old snapshots.");
+        }
+
+        private static ChatToolCall Call(
+            string id,
+            string name,
+            string arguments)
+        {
+            return new ChatToolCall
+            {
+                id = id,
+                type = "function",
+                function = new ChatToolCallFunction
+                {
+                    name = name,
+                    arguments = arguments
+                }
+            };
+        }
+
+        private static void Check(bool condition, string message)
+        {
+            if (!condition)
+            {
+                throw new InvalidOperationException(message);
+            }
+        }
+
+    }
+
+    public sealed partial class FakeSearchItems
+    {
 
         public int Count
         {

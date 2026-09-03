@@ -329,6 +329,13 @@ p {
   white-space: normal;
 }
 
+.message.audit .message-body {
+  border-color: #b7c9f8;
+  background: var(--accent-soft);
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .message.assistant .message-body > p {
   margin: 0 0 8px;
 }

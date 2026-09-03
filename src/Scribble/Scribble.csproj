@@ -135,6 +135,7 @@
     <Compile Include="Outlook\SentMailToneSampler.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Security\DraftIntentPolicy.cs" />
+    <Compile Include="Security\BrowserActionPolicy.cs" />
     <Compile Include="Security\DocumentDraftIntentPolicy.cs" />
     <Compile Include="Security\DraftFormulaPolicy.cs" />
     <Compile Include="Security\RecipientIntentCheck.cs" />

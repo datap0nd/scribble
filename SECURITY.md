@@ -65,27 +65,37 @@ Explicit toolbar, context-menu, or attach-button gesture
     |
     v
 active-tab capture (title/URL/selection/page text) + model-driven
-http/https navigation of up to five Scribble-owned background work tabs
+http/https operation of up to five registered Scribble work tabs
     |
     v
 fixed extension origin -> framed per-user native bridge -> BrowserChatService
     |
     v
-configured endpoint + browser tools + allowlisted read-only MCP tools
+configured endpoint + native BrowserActionPolicy + browser tools
 ```
 
-The extension holds http/https host permissions so the panel can read and
-navigate the user's own visible tab without a per-click gesture. It has no
-content scripts, remote code, browsing-history, cookie, download, debugger, or
-browser-management access, and it never reads other tabs or pages in the
-background. Its only page interaction beyond reading is `browser_click`:
-one visible, benign control at a time (consent banners, location/language
-choosers, continue), with a hard blocklist refusing buy/checkout/sign-in/
-register/subscribe clicks and any control inside a credential or payment
-form; it cannot type into fields, fill or submit forms, enter credentials,
-upload, download, purchase, post, message, or otherwise mutate a page -
-http/https only. `ask_user` pauses at the panel to ask the person one
-clarifying question with clickable options. The native host accepts only the
+The extension holds http/https host permissions and the required `debugger`
+permission. That is an intentional capability-class change: compromise of the
+extension would be more powerful than its exposed tool surface. Compensating
+controls keep `chrome.debugger` calls in `background.js`, require side-panel
+port registration of a live Scribble work-tab ID, allow only
+`Input.dispatchMouseEvent`, `Input.dispatchKeyEvent`, and `Input.insertText`,
+and detach in `finally` after each atomic action and on port disconnect. The
+active tab remains read-only. Inspection uses `chrome.scripting`, traverses
+open Shadow DOM and same-origin frames, leaves cross-origin frames opaque, and
+never reads values from sensitive fields.
+
+Typing is itself an exfiltration channel because page JavaScript can observe
+keystrokes before submission. Typed values are therefore capped at 200
+characters, must be a normalized contiguous phrase from the user request or a
+clarification answer, are evaluated by the DOM-independent native
+`BrowserActionPolicy`, and appear verbatim in the activity log and transcript
+before dispatch. Search queries additionally require an ordered subset of
+user-supplied tokens. The policy blocks credential, personal/traveler identity,
+payment, purchase/booking, messaging, upload/download, and destructive fields,
+forms, and controls, including Enter or a benign-looking button in a sensitive
+form. Passenger-count controls remain allowed. `ask_user` pauses at the panel
+for material ambiguities. The native host accepts only the
 fixed public extension identity; its write-shaped capabilities are opening
 one unsent Outlook draft and one new unsaved Excel workbook per request -
 both visible, both left for the user to review, and neither able to send
@@ -170,7 +180,7 @@ unless the user enters exact tool names and affirms that each is read-only.
 18. Browser context is the active tab of the panel's own window, captured at
     send time and shown in the panel header; beyond that, reads touch only
     Scribble's own work tabs. Model-driven navigation is restricted to
-    http/https URLs in up to five Scribble-created background tabs - the
+    user-supplied http/https URLs in up to five Scribble-created background tabs; open-ended discovery uses Google's visible UI and observed result refs - the
     user's current tab is never navigated - and every tab is a normal,
     visible browser tab the user can inspect or close.
 19. Browser context is capped at 16,000 selection characters, 48,000 page-text
@@ -180,20 +190,25 @@ unless the user enters exact tool names and affirms that each is read-only.
 20. The native-host manifest allowlists one stable extension origin. The host
     independently requires that exact origin argument, uses strict binary
     stdin/stdout framing, and returns no settings secrets or stack traces.
-21. `BrowserChatService` exposes the fixed browser tools (navigate, read
-    page, the shared `ask_user` prompt helper, one unsent Outlook draft per request, and one unsaved Excel
+21. `BrowserChatService` exposes the fixed browser tools (navigate, read,
+    Google UI search, snapshot, act, the shared `ask_user` prompt helper, one unsent Outlook draft per request, and one unsaved Excel
     workbook per request) plus exact, case-sensitive MCP tool names the
     user separately allowlisted and affirmed as read-only. Tool use is bounded
-    to eight rounds and four calls per round per request. It rejects every
+    to 24 chargeable action rounds, 12 additional scroll/wait-only rounds,
+    four consecutive support-only rounds, 36 total rounds, and four calls per
+    round. It rejects every
     other requested tool and
     labels page, screenshot, and MCP results as untrusted data. Every page
     read returns a bounded link list so multi-step navigation follows exact
-    URLs instead of guessing. Its only
+    URLs and ref-scoped controls instead of guessing. Older browser results are
+    compacted while clarification answers and the six newest snapshots remain
+    full. Its only
     Office capabilities are `OutlookDraftLauncher` (displays one unsent draft;
     no send, read, delete, or mailbox access) and `ExcelTableLauncher` (opens
     one brand-new unsaved workbook with a bounded table and optional chart; no
     save, print, protect, or close capability, and it never touches existing
-    files). It has no page-control API.
+    files). Page control is limited to the separately authorized background
+    operator described above.
 21a. The Excel, PowerPoint, and Word panes expose `fetch_web_page`: one
     bounded read-only HTTP GET per call (http/https only, no cookies, no
     credentials, 3 MB / 48,000-character caps, results marked untrusted).

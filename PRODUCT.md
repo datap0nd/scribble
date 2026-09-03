@@ -82,6 +82,14 @@ locally linked item. The dedicated host exposes no send operation.
   configured working-set size) as the same locked working set.
 - Hold a text conversation about the mailbox, a selected message, or a retrieved
   conversation.
+- In Chrome, preserve the active tab as read-only context while operating at
+  most five Scribble-owned inactive work tabs. Resolve material ambiguity first,
+  search through Google's visible UI, inspect ref-scoped controls, and use
+  trusted input only after native policy authorization.
+- Permit public search and travel criteria, consent/language/location controls,
+  filtering, sorting, pagination, and reversible itinerary inspection. Block
+  credentials, personal/traveler identity, booking, payment, messaging,
+  upload/download, and destructive actions, and stop on CAPTCHA or sign-in.
 - Generate text suitable for a reply or a new message.
 - Create and display at most one unsent Outlook draft per chat, then update that
   same item at most once per later user request.

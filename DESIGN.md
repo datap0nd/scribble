@@ -185,6 +185,26 @@ Controls use square native geometry. Text fields have fixed single borders; flat
 
 ## Components
 
+### Chrome Browser Operator
+
+- **Context versus action:** The current Chrome tab is a clearly labelled,
+  read-only context source. Every mutation occurs in one of five numbered,
+  inactive Scribble work tabs.
+- **Clarification:** Materially ambiguous requests pause in the transcript for
+  one focused `ask_user` card before browsing begins.
+- **Activity:** Every operation names the site, work-tab number, action, and
+  outcome. Typed text is displayed verbatim before dispatch so the page-visible
+  data flow can be audited.
+- **Intervention:** CAPTCHA, bot defense, protected/cross-origin widgets,
+  sign-in walls, unexpected debugger detach, and the debugger banner's Cancel
+  action stop cleanly with a plain-language recovery message.
+- **Chrome disclosure:** Documentation and upgrade UI disclose the required
+  debugger permission, possible re-approval after upgrade, and per-action banner
+  flicker. The extension never disguises Chrome's own security indicator.
+- **Implementation boundary:** Browser Agent and Nanobrowser informed the
+  inspect/ref/act shape only. No browser-agent runtime ships in production;
+  Playwright remains an optional test-only dependency under `tests/`.
+
 ### Mailbox Scope Strip
 
 - **Character:** Quiet context anchor, not a card.

@@ -57,6 +57,35 @@ namespace Scribble.BrowserHost
         public List<BrowserNativeToolResult> results { get; set; }
     }
 
+    internal sealed class BrowserNativeActionDescriptor
+    {
+        public string action { get; set; }
+
+        public string tagName { get; set; }
+
+        public string inputType { get; set; }
+
+        public string role { get; set; }
+
+        public string name { get; set; }
+
+        public string placeholder { get; set; }
+
+        public string autocomplete { get; set; }
+
+        public string url { get; set; }
+
+        public string value { get; set; }
+
+        public string sourceText { get; set; }
+
+        public bool formHasPassword { get; set; }
+
+        public bool formHasPayment { get; set; }
+
+        public bool formHasPersonalData { get; set; }
+    }
+
     internal sealed class BrowserNativeRequest
     {
         public string type { get; set; }
@@ -78,6 +107,8 @@ namespace Scribble.BrowserHost
         public string topicId { get; set; }
 
         public string topicBinding { get; set; }
+
+        public BrowserNativeActionDescriptor action { get; set; }
     }
 
     internal sealed class BrowserNativeTopic
@@ -120,6 +151,10 @@ namespace Scribble.BrowserHost
         public string assistantContent { get; set; }
 
         public List<BrowserNativeToolResult> hostResults { get; set; }
+
+        public bool actionAllowed { get; set; }
+
+        public string actionCode { get; set; }
     }
 
     internal static class NativeMessageProtocol
@@ -127,6 +162,8 @@ namespace Scribble.BrowserHost
         internal const int MaxRequestBytes = 16 * 1024 * 1024;
         internal const int MaxResponseBytes = 900 * 1024;
         internal const int MaxHistoryTurns = 12;
+        internal const int MaxExchangeResultCharacters = 12 * 1024;
+        internal const int MaxExchangeCharacters = 320 * 1024;
 
         private static readonly Encoding Utf8 =
             new UTF8Encoding(false, true);
@@ -254,6 +291,17 @@ namespace Scribble.BrowserHost
                         false);
                 }
 
+                if (string.Equals(
+                    request.type,
+                    "authorizeBrowserAction",
+                    StringComparison.Ordinal))
+                {
+                    return ActionAuthorization(
+                        service,
+                        requestId,
+                        request.action);
+                }
+
                 if (!string.Equals(
                     request.type,
                     "chat",
@@ -262,7 +310,7 @@ namespace Scribble.BrowserHost
                     return Error(
                         requestId,
                         "REQUEST_TYPE_NOT_ALLOWED",
-                        "Only ping, chat, clearSession, and openSettings requests are allowed.",
+                        "Only ping, chat, clearSession, openSettings, and authorizeBrowserAction requests are allowed.",
                         service);
                 }
 
@@ -425,13 +473,20 @@ namespace Scribble.BrowserHost
                 IReadOnlyList<BrowserNativeExchangeTurn> exchange)
         {
             var result = new List<BrowserExchangeTurn>();
+            var exchangeCharacters = 0;
             if (exchange == null)
             {
                 return result;
             }
 
-            foreach (var turn in exchange)
+            var exchangeStart = Math.Max(
+                0,
+                exchange.Count - BrowserChatRequestFactory.MaxExchangeTurns);
+            for (var exchangeIndex = exchangeStart;
+                 exchangeIndex < exchange.Count;
+                 exchangeIndex++)
             {
+                var turn = exchange[exchangeIndex];
                 if (turn == null)
                 {
                     continue;
@@ -446,14 +501,23 @@ namespace Scribble.BrowserHost
                         continue;
                     }
 
+                    var callRemaining = Math.Max(
+                        0,
+                        MaxExchangeCharacters - exchangeCharacters);
+                    var arguments = TextBoundary.PlainText(
+                        call.arguments,
+                        Math.Min(
+                            BrowserChatRequestFactory.MaxToolArgumentCharacters,
+                            callRemaining));
+                    exchangeCharacters += arguments.Length;
                     calls.Add(new ChatToolCall
                     {
-                        id = call.id,
+                        id = TextBoundary.SingleLine(call.id, 100),
                         type = "function",
                         function = new ChatToolCallFunction
                         {
-                            name = call.name,
-                            arguments = call.arguments
+                            name = TextBoundary.SingleLine(call.name, 100),
+                            arguments = arguments
                         }
                     });
                 }
@@ -467,24 +531,37 @@ namespace Scribble.BrowserHost
                         continue;
                     }
 
+                    var remaining = Math.Max(
+                        0,
+                        MaxExchangeCharacters - exchangeCharacters);
+                    var content = TextBoundary.PlainText(
+                        toolResult.content,
+                        Math.Min(
+                            MaxExchangeResultCharacters,
+                            remaining));
+                    exchangeCharacters += content.Length;
                     results.Add(new BrowserExchangeResult
                     {
                         Id = toolResult.id,
-                        Content = toolResult.content
+                        Content = content
                     });
                 }
 
+                var assistantRemaining = Math.Max(
+                    0,
+                    MaxExchangeCharacters - exchangeCharacters);
+                var assistantContent = TextBoundary.PlainText(
+                    turn.assistantContent,
+                    Math.Min(
+                        BrowserChatRequestFactory.MaxBrowserToolResultCharacters,
+                        assistantRemaining));
+                exchangeCharacters += assistantContent.Length;
                 result.Add(new BrowserExchangeTurn
                 {
-                    AssistantContent = turn.assistantContent,
+                    AssistantContent = assistantContent,
                     ToolCalls = calls,
                     Results = results
                 });
-                if (result.Count ==
-                    BrowserChatRequestFactory.MaxExchangeTurns)
-                {
-                    break;
-                }
             }
 
             return result;
@@ -640,6 +717,63 @@ namespace Scribble.BrowserHost
                 version = VersionText(),
                 topics = BuildTopics(service)
             };
+        }
+
+        private static BrowserNativeResponse ActionAuthorization(
+            BrowserChatService service,
+            string requestId,
+            BrowserNativeActionDescriptor action)
+        {
+            var decision = BrowserActionPolicy.Evaluate(
+                action == null
+                    ? null
+                    : new BrowserActionDescriptor
+                    {
+                        Action = TextBoundary.SingleLine(
+                            action.action,
+                            40),
+                        TagName = TextBoundary.SingleLine(
+                            action.tagName,
+                            40),
+                        InputType = TextBoundary.SingleLine(
+                            action.inputType,
+                            40),
+                        Role = TextBoundary.SingleLine(
+                            action.role,
+                            80),
+                        Name = TextBoundary.SingleLine(
+                            action.name,
+                            200),
+                        Placeholder = TextBoundary.SingleLine(
+                            action.placeholder,
+                            200),
+                        Autocomplete = TextBoundary.SingleLine(
+                            action.autocomplete,
+                            300),
+                        Url = TextBoundary.SingleLine(
+                            action.url,
+                            BrowserChatRequestFactory.MaxUrlCharacters),
+                        Value = TextBoundary.SingleLine(
+                            action.value,
+                            BrowserActionPolicy.MaxTypedCharacters + 1),
+                        SourceText = TextBoundary.PlainText(
+                            action.sourceText,
+                            TextBoundary.MaxUserPromptCharacters),
+                        FormHasPassword = action.formHasPassword,
+                        FormHasPayment = action.formHasPayment,
+                        FormHasPersonalData = action.formHasPersonalData
+                    });
+            var response = Success(
+                service,
+                requestId,
+                decision.Message,
+                service?.Model,
+                false);
+            response.actionAllowed = decision.Allowed;
+            response.actionCode = TextBoundary.SingleLine(
+                decision.Code,
+                100);
+            return response;
         }
 
         private static List<BrowserNativeTopic> BuildTopics(

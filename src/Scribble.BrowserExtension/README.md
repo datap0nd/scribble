@@ -24,7 +24,7 @@ The fixed public key in `manifest.json` keeps that extension ID stable across co
 6. Pin Scribble from Chrome's Extensions menu if you want the toolbar button to remain visible.
 7. Click the Scribble toolbar button to open the side panel.
 
-After replacing extension files with a newer version, return to the browser's Extensions page and choose **Reload** on Scribble.
+After replacing extension files with a newer version, return to the browser's Extensions page and choose **Reload** on Scribble. Version 1.2 adds the required `debugger` permission; Chrome may disable an older installation until you review and accept the permission increase.
 
 ## Using page context
 
@@ -36,18 +36,26 @@ viewers) are shared as address-only.
 
 Scribble can also browse for you. When you ask it to look something up, the
 model opens http/https pages in up to five of its own background work tabs
-(numbered 1-5, so it can compare sites side by side) and reads them, across up
-to twelve bounded tool rounds per request. Your current tab is never navigated
-away, and **Clear chat** closes Scribble's work tabs. It can click one
-benign, visible control at a time to get past interstitials (cookie banners,
-location choosers, continue); a hard blocklist refuses buy/checkout/sign-in/
-register clicks and credential or payment forms, and it cannot type into
-fields, fill or submit forms, sign in, purchase, download, or upload. When
+(numbered 1-5, so it can compare sites side by side), searches through Google's
+visible UI, inspects ref-scoped controls, and performs bounded trusted input.
+Your current tab is never navigated away, and **Clear chat** closes Scribble's
+work tabs. Public search and travel criteria can be typed, selected, clicked,
+scrolled, and filtered. Typed values are capped at 200 characters, must come
+directly from your request or a clarification answer, and appear verbatim in
+the activity log. A native policy refuses credential, personal/traveler
+identity, booking, payment, message, upload/download, and destructive fields,
+forms, and controls. When
 something important is ambiguous, it asks you one clarifying question with
 clickable options and waits. When
 you ask Scribble to email someone, it opens one unsent Outlook draft window
 for your review; ask for Excel and it opens one unsaved workbook. It can never
 send or save either.
+
+Chrome displays its normal “Scribble is debugging this browser” banner during
+trusted input. Scribble attaches only for an atomic action and detaches in a
+`finally` block, so the banner may flicker. Clicking the banner's **Cancel**
+control stops the run and requires user attention; Scribble never bypasses a
+CAPTCHA, bot check, protected page, cross-origin widget, or sign-in wall.
 
 The **Settings** button in the panel opens the shared Scribble Settings window
 on your desktop - the same one the Office add-ins use. The extension treats
@@ -62,9 +70,11 @@ approve an MCP tool that writes data or takes actions.
 ## Permissions
 
 - `tabs` + `http://*/*`, `https://*/*` host permissions: read the active tab's
-  title/URL/text and navigate that same visible tab when the model browses for
-  you. Other tabs and background pages are never read.
+  bounded context and create/manage at most five inactive Scribble work tabs.
 - `activeTab`, `scripting`: read the page text of the tab you are on.
+- `debugger`: dispatch only allowlisted mouse, keyboard, and text input in a
+  registered Scribble work tab after native policy authorization. It is never
+  used on the active context tab and is detached after each atomic action.
 - `contextMenus`: provides “Ask Scribble about this page.”
 - `nativeMessaging`: talks to the locally installed `com.scribble.browser` bridge.
 - `sidePanel`: hosts the Scribble conversation beside the current page.

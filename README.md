@@ -34,10 +34,10 @@ not.
   your current tab is never navigated away. When
   you ask, it opens an unsent Outlook draft or a new unsaved Excel workbook
   with a table and chart built from what it found. A Stop button halts a
-  running chain of steps. It can click one benign, visible
-  control at a time (cookie banners, location choosers, continue) - never
-  anything that buys, signs in, or pays - and it never types into fields,
-  fills forms, downloads, uploads, or sends anything.
+  running chain of steps. In those inactive work tabs it can inspect controls,
+  type user-supplied search criteria, select, click, scroll, wait, and extract
+  public results. A native policy blocks credentials, personal data, booking,
+  payment, messaging, upload/download, and destructive actions.
 - **The web from Office**: the Excel, PowerPoint, and Word panes can fetch
   http/https pages read-only (`fetch_web_page`) - bounded text and links, no
   cookies, no sign-ins, no forms - so "get the top 5 iPhone prices from
@@ -68,6 +68,14 @@ Entra ID.
    in-app updater) keep your previous selection.
 4. If you selected Chrome, leave **Finish setting up Scribble in Google
    Chrome** ticked. Setup opens the Extensions page and the exact Scribble folder.
+
+Upgrading from a version installed before browser operation adds Chrome's
+`debugger` permission. Chrome can disable the unpacked extension until you
+review and accept that new permission. Reload or re-enable Scribble on
+`chrome://extensions`. During an automated input action Chrome also shows its
+standard “Scribble is debugging this browser” banner; the banner can flicker
+because Scribble deliberately detaches after every atomic action. Clicking
+**Cancel** stops the run cleanly.
    Turn on **Developer mode**, select **Load unpacked**, and choose that folder.
    The installer prepares the
    files and secure local bridge, but the browser must receive this approval
@@ -327,20 +335,24 @@ at 48,000. A right-click **Ask Scribble about this page** opens the panel too.
 
 Scribble can also browse for you: ask it to look something up and the model
 opens http/https pages in up to five of its own background work tabs
-(`browser_navigate` with a tab number 1-5), re-reads them
-(`browser_read_page`), and compares sites side by side across up to twelve
-bounded tool rounds per request. Your current tab is never navigated away;
+and searches Google through the visible search UI (`browser_search_google`).
+It inspects ref-scoped controls (`browser_snapshot`) and performs one bounded
+click, type, select, check, key press, hover, scroll, or wait (`browser_act`) at
+a time. Direct navigation accepts only a URL that appeared in your request or
+clarification answer; discovery links are clicked by observed ref, not guessed.
+Your current tab is never navigated away;
 **Clear chat** closes Scribble's work tabs. Ask it to email someone and it opens one unsent Outlook
 draft window for your review (`open_outlook_draft`); ask for Excel and it
 opens one unsaved workbook (`open_excel_table`). Neither is ever sent or
-saved by Scribble. When an interstitial blocks reading - a cookie banner, a
-country or language chooser - Scribble can click that one visible control
-(`browser_click`); a hard blocklist refuses anything that buys, checks out,
-signs in, registers, subscribes, or submits a credential or payment form, and
-typing into fields is impossible. When your request is ambiguous (location,
-recipient, budget), it asks you one clarifying question with clickable
-options (`ask_user`) and waits for your answer. It never fills or submits
-forms, enters credentials, uploads, downloads, purchases, or posts. Browser settings
+saved by Scribble. Search typing is limited to 200 characters copied from your
+request or clarification answers and is shown verbatim in the activity log.
+The native `BrowserActionPolicy` refuses credential, personal/traveler identity,
+payment, purchase/booking, message, upload/download, and destructive fields,
+forms, and controls. Passenger counts and other public travel filters remain
+allowed. When your request is ambiguous (for example September without a year,
+country versus airport, or trip shape), it asks one focused question at a time
+with `ask_user`. Scribble stops on CAPTCHA, bot checks, and sign-in walls.
+Browser settings
 pages, extension galleries, and some protected viewers block page-text
 extraction; those tabs are shared as address-only.
 
@@ -349,6 +361,11 @@ the Office add-ins (it appears on your desktop). Messages go through a per-user
 native bridge to the same Scribble connection and model configured there. The
 extension never receives the API key, Gemini token, or stored integration
 headers. Page content is always labelled as untrusted data.
+
+Each request may use 24 chargeable action rounds plus up to 12 scroll/wait-only
+rounds, with no more than four support-only rounds consecutively and 36 total.
+Older browser results are compacted while all clarification answers and the six
+newest full snapshots remain in the replay.
 
 To repeat the one-time setup, use **Set up Scribble in Google Chrome** from the
 Scribble Start menu folder. After a Scribble update, click **Reload** on

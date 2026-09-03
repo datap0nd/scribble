@@ -6,6 +6,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Web.Script.Serialization;
 using Scribble.Configuration;
 using Scribble.Outlook;
 using Scribble.Security;
@@ -91,7 +92,10 @@ namespace Scribble.Chat
     // anywhere in this process, and it can never send email.
     public sealed class BrowserChatService : IDisposable
     {
-        public const int MaxBrowserToolRounds = 12;
+        public const int MaxBrowserToolRounds = 24;
+        public const int MaxBrowserSupportRounds = 12;
+        public const int MaxConsecutiveBrowserSupportRounds = 4;
+        public const int MaxBrowserTotalRounds = 36;
         public const int MaxBrowserToolCallsPerRound = 4;
 
         private readonly AppSettings _settings;
@@ -256,7 +260,11 @@ namespace Scribble.Chat
                 links,
                 activeTopic);
 
-            var roundsUsed = CountExchangeTurns(exchange);
+            var roundsUsed = CountChargeableExchangeTurns(exchange);
+            var supportRoundsUsed = CountSupportExchangeTurns(exchange);
+            var totalRoundsUsed = CountExchangeTurns(exchange);
+            var consecutiveSupportRounds =
+                CountTrailingSupportExchangeTurns(exchange);
             var draftOpened = false;
             var tableOpened = false;
             while (true)
@@ -283,11 +291,29 @@ namespace Scribble.Chat
                         screenshotUsed);
                 }
 
-                if (roundsUsed >= MaxBrowserToolRounds)
+                var supportOnly = IsSupportOnlyRound(toolCalls);
+                if (totalRoundsUsed >= MaxBrowserTotalRounds)
                 {
                     throw new AiEndpointException(
                         "TOOL_ROUND_LIMIT",
-                        "The model exceeded the maximum number of bounded tool rounds.");
+                        "The model exceeded the absolute browser-tool round limit.");
+                }
+
+                if (supportOnly &&
+                    (supportRoundsUsed >= MaxBrowserSupportRounds ||
+                     consecutiveSupportRounds >=
+                        MaxConsecutiveBrowserSupportRounds))
+                {
+                    throw new AiEndpointException(
+                        "SUPPORT_ROUND_LIMIT",
+                        "The model requested too many browser scroll or wait rounds.");
+                }
+
+                if (!supportOnly && roundsUsed >= MaxBrowserToolRounds)
+                {
+                    throw new AiEndpointException(
+                        "TOOL_ROUND_LIMIT",
+                        "The model exceeded the bounded browser-action round limit.");
                 }
 
                 if (toolCalls.Count > MaxBrowserToolCallsPerRound)
@@ -316,10 +342,22 @@ namespace Scribble.Chat
                     request.tool_choice =
                         PromptHelperTool.CreateRequiredChoice();
                     roundsUsed++;
+                    totalRoundsUsed++;
+                    consecutiveSupportRounds = 0;
                     continue;
                 }
 
-                roundsUsed++;
+                totalRoundsUsed++;
+                if (supportOnly)
+                {
+                    supportRoundsUsed++;
+                    consecutiveSupportRounds++;
+                }
+                else
+                {
+                    roundsUsed++;
+                    consecutiveSupportRounds = 0;
+                }
                 var needsBrowser = false;
                 foreach (var call in toolCalls)
                 {
@@ -531,6 +569,115 @@ namespace Scribble.Chat
             }
 
             return count;
+        }
+
+        private static int CountChargeableExchangeTurns(
+            IReadOnlyList<BrowserExchangeTurn> exchange)
+        {
+            var count = 0;
+            foreach (var turn in exchange ??
+                new BrowserExchangeTurn[0])
+            {
+                if (turn?.ToolCalls != null &&
+                    turn.ToolCalls.Count > 0 &&
+                    !IsSupportOnlyRound(turn.ToolCalls))
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
+        private static int CountSupportExchangeTurns(
+            IReadOnlyList<BrowserExchangeTurn> exchange)
+        {
+            var count = 0;
+            foreach (var turn in exchange ??
+                new BrowserExchangeTurn[0])
+            {
+                if (turn?.ToolCalls != null &&
+                    turn.ToolCalls.Count > 0 &&
+                    IsSupportOnlyRound(turn.ToolCalls))
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
+        private static int CountTrailingSupportExchangeTurns(
+            IReadOnlyList<BrowserExchangeTurn> exchange)
+        {
+            var count = 0;
+            var turns = exchange ?? new BrowserExchangeTurn[0];
+            for (var index = turns.Count - 1; index >= 0; index--)
+            {
+                var calls = turns[index]?.ToolCalls;
+                if (calls == null || calls.Count == 0)
+                {
+                    continue;
+                }
+
+                if (!IsSupportOnlyRound(calls))
+                {
+                    break;
+                }
+
+                count++;
+            }
+
+            return count;
+        }
+
+        public static bool IsSupportOnlyRound(
+            IReadOnlyList<ChatToolCall> calls)
+        {
+            if (calls == null || calls.Count == 0)
+            {
+                return false;
+            }
+
+            foreach (var call in calls)
+            {
+                if (!string.Equals(
+                        call?.function?.name,
+                        BrowserToolCatalog.ActOnPage,
+                        StringComparison.Ordinal))
+                {
+                    return false;
+                }
+
+                IDictionary<string, object> arguments;
+                try
+                {
+                    arguments = new JavaScriptSerializer()
+                        .DeserializeObject(
+                            call.function.arguments ?? "{}")
+                        as IDictionary<string, object>;
+                }
+                catch (ArgumentException)
+                {
+                    return false;
+                }
+
+                object actionValue;
+                if (arguments == null ||
+                    !arguments.TryGetValue("action", out actionValue))
+                {
+                    return false;
+                }
+
+                var action = Convert.ToString(actionValue);
+                if (!string.Equals(action, "scroll", StringComparison.Ordinal) &&
+                    !string.Equals(action, "wait", StringComparison.Ordinal))
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         private static bool ExchangeContainsCall(
