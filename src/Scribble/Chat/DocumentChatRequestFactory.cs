@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Scribble.Office;
 using Scribble.Security;
 
 namespace Scribble.Chat
@@ -235,7 +236,11 @@ namespace Scribble.Chat
                       "The captured address is the complete scope: transform " +
                       "EVERY selected cell, including the first cell or header, " +
                       "and never ask whether to include the header. Keep exact " +
-                      "row alignment, send ordered batches, and set complete=true " +
+                      "row alignment and send ordered batches of exactly " +
+                      ExcelSelectionOutputPolicy.PreferredBatchValues +
+                      " values except for the final remainder. Follow the " +
+                      "next_start_offset, next_batch_size, and complete_next " +
+                      "fields returned after every batch. Set complete=true " +
                       "only when every selected row has one output value. Unless " +
                       "the user explicitly says replace, overwrite, or in place, " +
                       "preserve the source and use the adjacent blank column; " +

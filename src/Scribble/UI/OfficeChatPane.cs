@@ -1742,8 +1742,11 @@ namespace Scribble.UI
                     });
             }
 
+            var maxToolRounds = selectionRequest == null
+                ? TextBoundary.MaxToolRounds
+                : ExcelSelectionOutputPolicy.MaxRequestToolRounds;
             for (var round = 0;
-                 round <= TextBoundary.MaxToolRounds;
+                 round <= maxToolRounds;
                  round++)
             {
                 var response =
@@ -1767,7 +1770,7 @@ namespace Scribble.UI
 
                 PostStreamEnd();
 
-                if (round == TextBoundary.MaxToolRounds)
+                if (round == maxToolRounds)
                 {
                     throw new AiEndpointException(
                         "TOOL_ROUND_LIMIT",

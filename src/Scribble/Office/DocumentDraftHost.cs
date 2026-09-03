@@ -598,7 +598,9 @@ namespace Scribble.Office
                         callId,
                         staged,
                         false,
-                        authorization);
+                        authorization,
+                        _selectionOutput.StagedCount,
+                        snapshot.RowCount);
                 }
 
                 // Validate once more immediately before consuming
@@ -628,7 +630,9 @@ namespace Scribble.Office
                     callId,
                     status,
                     true,
-                    authorization);
+                    authorization,
+                    _selectionOutput.StagedCount,
+                    snapshot.RowCount);
             }
             catch (ExcelSelectionDestinationException exception)
             {
@@ -710,8 +714,14 @@ namespace Scribble.Office
             string callId,
             string status,
             bool committed,
-            OneShotDraftAuthorization authorization)
+            OneShotDraftAuthorization authorization,
+            int stagedCount,
+            int expectedCount)
         {
+            var remaining = Math.Max(0, expectedCount - stagedCount);
+            var nextBatchSize = Math.Min(
+                ExcelSelectionOutputPolicy.PreferredBatchValues,
+                remaining);
             return new MailboxToolResult(
                 callId,
                 _serializer.Serialize(
@@ -726,6 +736,18 @@ namespace Scribble.Office
                         { "saved", false },
                         { "permission_consumed",
                             authorization.IsConsumed },
+                        { "staged_count", stagedCount },
+                        { "expected_count", expectedCount },
+                        { "next_start_offset", stagedCount },
+                        { "remaining_count", remaining },
+                        { "next_batch_size", nextBatchSize },
+                        {
+                            "complete_next",
+                            remaining > 0 &&
+                            remaining <=
+                                ExcelSelectionOutputPolicy
+                                    .PreferredBatchValues
+                        },
                         { "status", status }
                     }),
                 TextBoundary.SingleLine(status, 300));

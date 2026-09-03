@@ -125,8 +125,10 @@ namespace Scribble.Office
     {
         public const int MaxSelectedCells = 500;
         public const int MaxBatchValues = 125;
+        public const int PreferredBatchValues = 100;
         public const int MaxBatchCharacters = 10000;
-        public const int MaxBatches = 4;
+        public const int MaxBatches = 5;
+        public const int MaxRequestToolRounds = 8;
         public const int MaxCellCharacters = 500;
         public const int MaxExcelColumns = 16384;
 
@@ -418,6 +420,27 @@ namespace Scribble.Office
                     "A batch must contain between 1 and " +
                     ExcelSelectionOutputPolicy.MaxBatchValues +
                     " values.");
+            }
+
+            var batchesAfterThis = _batches + 1;
+            var remainingAfterThis = _expectedValues -
+                (_values.Count + values.Count);
+            var remainingBatchCapacity =
+                (ExcelSelectionOutputPolicy.MaxBatches -
+                 batchesAfterThis) *
+                ExcelSelectionOutputPolicy.MaxBatchValues;
+            if (!complete &&
+                remainingAfterThis > remainingBatchCapacity)
+            {
+                var minimumCount = _expectedValues -
+                    _values.Count - remainingBatchCapacity;
+                throw new InvalidOperationException(
+                    "This batch is too small to finish within the " +
+                    "remaining batch limit. Retry start_offset " +
+                    _values.Count + " with at least " + minimumCount +
+                    " values; " +
+                    ExcelSelectionOutputPolicy.PreferredBatchValues +
+                    " values per non-final batch is preferred.");
             }
 
             var bounded = new List<string>();

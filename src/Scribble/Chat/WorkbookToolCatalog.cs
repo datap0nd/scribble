@@ -240,11 +240,18 @@ namespace Scribble.Chat
                         "for translations and other one-to-one transforms. " +
                         "Transform every selected value, including the first " +
                         "cell/header; the selection already defines the scope. " +
-                        "Submit contiguous ordered batches of at most " +
+                        "Submit contiguous ordered batches. Use exactly " +
+                        ExcelSelectionOutputPolicy.PreferredBatchValues +
+                        " values in each non-final batch unless fewer " +
+                        "remain, with an absolute maximum of " +
                         ExcelSelectionOutputPolicy.MaxBatchValues +
                         " values and " +
                         ExcelSelectionOutputPolicy.MaxBatchCharacters +
-                        " characters; set complete=true on the last batch. " +
+                        " characters per batch and no more than " +
+                        ExcelSelectionOutputPolicy.MaxBatches +
+                        " batches. Follow next_start_offset, " +
+                        "next_batch_size, and complete_next from each tool " +
+                        "result; set complete=true on the last batch. " +
                         "Omit destination_column to use the column directly " +
                         "right of the source. The host writes only after all " +
                         "rows are staged and the destination is fully blank. " +
