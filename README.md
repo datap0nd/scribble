@@ -9,6 +9,13 @@ settings and writing soul, rich markdown output with tables, and the same hard
 guardrails: the model can read bounded
 context but can never send email, save a file, or delete anything.
 
+## See Scribble in action
+
+Watch the 2:49 product tour to see Scribble research, analyze, and prepare
+reviewable work across Chrome and Microsoft Office.
+
+https://github.com/user-attachments/assets/9086da4e-5e41-4fea-8085-0694f9c0baaa
+
 Every pane also has the same prompt helper. Before substantial work, Scribble
 asks one focused question when the goal, audience, source, scope, success
 criteria, format, recipient, location, budget, date, quantity, or variant would
