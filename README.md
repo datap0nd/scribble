@@ -14,7 +14,7 @@ context but can never send email, save a file, or delete anything.
 Watch the 2:49 product tour to see Scribble research, analyze, and prepare
 reviewable work across Chrome and Microsoft Office.
 
-https://github.com/user-attachments/assets/9086da4e-5e41-4fea-8085-0694f9c0baaa
+https://github.com/user-attachments/assets/cff881a4-cd26-4582-a938-edfb53722b3c
 
 Every pane also has the same prompt helper. Before substantial work, Scribble
 asks one focused question when the goal, audience, source, scope, success
