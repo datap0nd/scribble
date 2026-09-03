@@ -35,6 +35,9 @@ namespace Scribble.UI
     [ClassInterface(ClassInterfaceType.AutoDispatch)]
     public sealed class OfficeChatPane : UserControl
     {
+        private const string TranslateKoreanSkillId =
+            "translate-korean-to-english";
+
         private const int MaxTranscriptEvents = 400;
         private const int MaxExternalImages = 4;
 
@@ -739,7 +742,101 @@ namespace Scribble.UI
                 HandleNewChat();
             }
 
+            if (_hostKind == "excel" &&
+                string.Equals(
+                    skill.Id,
+                    TranslateKoreanSkillId,
+                    StringComparison.OrdinalIgnoreCase) &&
+                !EnsureExcelSelectionForTranslation())
+            {
+                return;
+            }
+
             HandleSendMessage(SkillStore.ExpandPrompt(skill.Prompt));
+        }
+
+        private bool EnsureExcelSelectionForTranslation()
+        {
+            var attached = _externalContext
+                .Where(entry => entry.ExcelSelection != null)
+                .ToArray();
+            if (attached.Length > 1)
+            {
+                SetStatus(
+                    "Translate from Korean needs exactly one attached " +
+                    "Excel selection. Remove the extra selections and " +
+                    "try again.",
+                    true);
+                return false;
+            }
+
+            if (attached.Length == 1)
+            {
+                if (attached[0].Warn)
+                {
+                    SetStatus(
+                        "The attached Excel selection was clipped to the " +
+                        "context budget. Select a smaller contiguous chunk " +
+                        "of the Korean column and run the skill again.",
+                        true);
+                    return false;
+                }
+
+                var attachedError =
+                    ExcelSelectionOutputPolicy.TranslationSelectionError(
+                        attached[0].ExcelSelection);
+                if (attachedError.Length > 0)
+                {
+                    SetStatus(attachedError, true);
+                    return false;
+                }
+
+                return true;
+            }
+
+            try
+            {
+                var snapshot = new WorkbookToolHost(
+                    _hostApplication).CaptureSelection();
+                var error =
+                    ExcelSelectionOutputPolicy.TranslationSelectionError(
+                        snapshot);
+                if (error.Length > 0)
+                {
+                    SetStatus(error, true);
+                    return false;
+                }
+
+                if (!AddExcelSelection(snapshot))
+                {
+                    return false;
+                }
+
+                var added = _externalContext.LastOrDefault(entry =>
+                    ReferenceEquals(entry.ExcelSelection, snapshot));
+                if (added != null && added.Warn)
+                {
+                    SetStatus(
+                        "The selected Excel cells were clipped to the " +
+                        "context budget. Select a smaller contiguous chunk " +
+                        "of the Korean column and run the skill again.",
+                        true);
+                    return false;
+                }
+
+                return true;
+            }
+            catch (Exception exception)
+            {
+                Log.Error("ExcelTranslationSkillSelection", exception);
+                SetStatus(
+                    FirstLine(
+                        DiagnosticDetails.ForException(
+                            exception,
+                            "SELECTION_CONTEXT_FAILED")),
+                    true);
+                return false;
+            }
         }
 
         private void RefreshModelPicker()
@@ -957,7 +1054,7 @@ namespace Scribble.UI
         // Ribbon callbacks capture before opening the task pane and
         // hand the immutable snapshot in here. The click attaches
         // context and focuses the composer; it never submits a prompt.
-        internal void AddExcelSelection(
+        internal bool AddExcelSelection(
             ExcelSelectionSnapshot snapshot)
         {
             if (_busy)
@@ -966,13 +1063,13 @@ namespace Scribble.UI
                     "Scribble is working\u2014stop or wait before " +
                     "sending another selection",
                     true);
-                return;
+                return false;
             }
 
             if (snapshot == null)
             {
                 SetStatus("Select cells in Excel first", true);
-                return;
+                return false;
             }
 
             var added = AddContextDocument(
@@ -986,7 +1083,7 @@ namespace Scribble.UI
                 snapshot);
             if (!added)
             {
-                return;
+                return false;
             }
 
             FocusComposer();
@@ -1006,6 +1103,8 @@ namespace Scribble.UI
             {
                 SetStatus("Selection added to context", false);
             }
+
+            return true;
         }
 
         private void FocusComposer()

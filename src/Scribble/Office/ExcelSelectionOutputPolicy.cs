@@ -132,6 +132,39 @@ namespace Scribble.Office
         public const int MaxCellCharacters = 500;
         public const int MaxExcelColumns = 16384;
 
+        public static string TranslationSelectionError(
+            ExcelSelectionSnapshot snapshot)
+        {
+            if (snapshot == null)
+            {
+                return "Select the Korean column in Excel first.";
+            }
+
+            if (snapshot.ColumnCount != 1)
+            {
+                var cells = (long)snapshot.RowCount *
+                    snapshot.ColumnCount;
+                return "Translate from Korean works with one column at a " +
+                    "time. The current selection contains " +
+                    snapshot.ColumnCount + " columns and " + cells +
+                    " cells. Select only the Korean column in one " +
+                    "contiguous block of up to " + MaxSelectedCells +
+                    " rows, then run the skill again.";
+            }
+
+            if (snapshot.RowCount > MaxSelectedCells ||
+                snapshot.PreviewTruncated)
+            {
+                return "Translate from Korean supports up to " +
+                    MaxSelectedCells + " rows at a time. The current " +
+                    "selection contains " + snapshot.RowCount +
+                    " rows. Select a contiguous chunk of the Korean " +
+                    "column and run the skill again.";
+            }
+
+            return string.Empty;
+        }
+
         public static bool IdentityMatches(
             ExcelSelectionSnapshot snapshot,
             bool saved,

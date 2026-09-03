@@ -13,7 +13,7 @@
     {
       "Id": "translate-korean-to-english",
       "Name": "Translate from Korean",
-      "Description": "Translate an attached Korean Excel column to English in the adjacent blank column.",
+      "Description": "Translate the selected Korean Excel column to English in the adjacent blank column.",
       "Host": "excel",
       "DisplayOrder": 10,
       "StartFresh": false,
