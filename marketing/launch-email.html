@@ -78,6 +78,17 @@
         padding-left: 7px !important;
         padding-right: 7px !important;
       }
+
+      .flow-step,
+      .flow-arrow {
+        display: block !important;
+        width: 100% !important;
+      }
+
+      .flow-arrow {
+        padding: 7px 0 !important;
+        transform: rotate(90deg);
+      }
     }
   </style>
 </head>
@@ -166,34 +177,69 @@
           <tr>
             <td class="pad" style="padding:0 38px 38px;font-family:Segoe UI,Arial,sans-serif;">
               <p style="margin:0 0 13px;font-family:'Courier New',Courier,monospace;font-size:12px;line-height:18px;font-weight:700;letter-spacing:.8px;color:#16845b;">
-                // WHAT_SCRIBBLE_DOES
+                // HOW_IT_WORKS
               </p>
-              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f7f9fc;border:1px solid #dce4ef;border-radius:12px;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
                 <tr>
-                  <td width="46" valign="top" style="width:46px;padding:18px 0 15px 18px;font-family:'Courier New',Courier,monospace;font-size:12px;line-height:20px;font-weight:700;color:#376fe8;">01</td>
-                  <td valign="top" style="padding:18px 18px 15px 7px;border-bottom:1px dashed #d5deea;">
-                    <p style="margin:0 0 3px;font-size:15px;line-height:21px;font-weight:700;color:#17233b;">Understands your context</p>
-                    <p style="margin:0;font-size:14px;line-height:22px;color:#526077;">
-                      Share the email, attachment, workbook, document, or page that matters.
-                    </p>
+                  <td class="flow-step" width="166" valign="top" style="width:166px;">
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f7f9fc;border:1px solid #dce4ef;border-radius:13px;">
+                      <tr>
+                        <td align="center" height="88" style="height:88px;padding:16px 8px 5px;">
+                          <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center">
+                            <tr>
+                              <td style="padding:0 3px;"><img src="https://raw.githubusercontent.com/datap0nd/scribble/6fd71d810d808d2ce6ef7651e3a224db5c6449c5/marketing/assets/outlook.png" width="28" height="28" alt="" style="width:28px;height:28px;"></td>
+                              <td style="padding:0 3px;"><img src="https://raw.githubusercontent.com/datap0nd/scribble/6fd71d810d808d2ce6ef7651e3a224db5c6449c5/marketing/assets/excel.png" width="28" height="28" alt="" style="width:28px;height:28px;"></td>
+                              <td style="padding:0 3px;"><img src="https://raw.githubusercontent.com/datap0nd/scribble/6fd71d810d808d2ce6ef7651e3a224db5c6449c5/marketing/assets/chrome.png" width="28" height="28" alt="" style="width:28px;height:28px;"></td>
+                            </tr>
+                          </table>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td align="center" style="padding:0 13px 18px;">
+                          <p style="margin:0 0 5px;font-family:'Courier New',Courier,monospace;font-size:10px;line-height:15px;font-weight:700;color:#376fe8;">01 / CONTEXT</p>
+                          <p style="margin:0 0 6px;font-size:15px;line-height:20px;font-weight:700;color:#17233b;">Bring what matters</p>
+                          <p style="margin:0;font-size:12px;line-height:18px;color:#5b687d;">Choose the email, file, workbook, or page.</p>
+                        </td>
+                      </tr>
+                    </table>
                   </td>
-                </tr>
-                <tr>
-                  <td width="46" valign="top" style="width:46px;padding:15px 0 15px 18px;font-family:'Courier New',Courier,monospace;font-size:12px;line-height:20px;font-weight:700;color:#376fe8;">02</td>
-                  <td valign="top" style="padding:15px 18px 15px 7px;border-bottom:1px dashed #d5deea;">
-                    <p style="margin:0 0 3px;font-size:15px;line-height:21px;font-weight:700;color:#17233b;">Turns intent into a draft</p>
-                    <p style="margin:0;font-size:14px;line-height:22px;color:#526077;">
-                      Ask in plain language. Scribble analyzes, researches, and creates a result you can review.
-                    </p>
+                  <td class="flow-arrow" width="24" align="center" valign="middle" style="width:24px;font-family:'Courier New',Courier,monospace;font-size:20px;line-height:24px;font-weight:700;color:#9aabc2;">→</td>
+                  <td class="flow-step" width="166" valign="top" style="width:166px;">
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#eff5ff;border:1px solid #cbdcff;border-radius:13px;">
+                      <tr>
+                        <td align="center" height="88" style="height:88px;padding:10px 8px 5px;">
+                          <img src="https://raw.githubusercontent.com/datap0nd/scribble/6fd71d810d808d2ce6ef7651e3a224db5c6449c5/marketing/assets/pixel-pal.png" width="68" height="64" alt="Pixel Pal" style="width:68px;height:64px;margin:0 auto;">
+                        </td>
+                      </tr>
+                      <tr>
+                        <td align="center" style="padding:0 13px 18px;">
+                          <p style="margin:0 0 5px;font-family:'Courier New',Courier,monospace;font-size:10px;line-height:15px;font-weight:700;color:#376fe8;">02 / ASK</p>
+                          <p style="margin:0 0 6px;font-size:15px;line-height:20px;font-weight:700;color:#17233b;">Say what you need</p>
+                          <p style="margin:0;font-size:12px;line-height:18px;color:#5b687d;">Use plain language. Scribble handles the work.</p>
+                        </td>
+                      </tr>
+                    </table>
                   </td>
-                </tr>
-                <tr>
-                  <td width="46" valign="top" style="width:46px;padding:15px 0 18px 18px;font-family:'Courier New',Courier,monospace;font-size:12px;line-height:20px;font-weight:700;color:#376fe8;">03</td>
-                  <td valign="top" style="padding:15px 18px 18px 7px;">
-                    <p style="margin:0 0 3px;font-size:15px;line-height:21px;font-weight:700;color:#17233b;">Keeps the work moving</p>
-                    <p style="margin:0;font-size:14px;line-height:22px;color:#526077;">
-                      Take a finding from Chrome into Excel, then shape it into a presentation, document, or reply.
-                    </p>
+                  <td class="flow-arrow" width="24" align="center" valign="middle" style="width:24px;font-family:'Courier New',Courier,monospace;font-size:20px;line-height:24px;font-weight:700;color:#9aabc2;">→</td>
+                  <td class="flow-step" width="166" valign="top" style="width:166px;">
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f1faf6;border:1px solid #cce9dc;border-radius:13px;">
+                      <tr>
+                        <td align="center" height="88" style="height:88px;padding:16px 8px 5px;">
+                          <table role="presentation" width="60" height="60" cellspacing="0" cellpadding="0" border="0" align="center" style="width:60px;height:60px;background:#dff4e9;border-radius:30px;">
+                            <tr>
+                              <td align="center" valign="middle" style="font-family:Segoe UI,Arial,sans-serif;font-size:30px;line-height:60px;font-weight:700;color:#16845b;">✓</td>
+                            </tr>
+                          </table>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td align="center" style="padding:0 13px 18px;">
+                          <p style="margin:0 0 5px;font-family:'Courier New',Courier,monospace;font-size:10px;line-height:15px;font-weight:700;color:#16845b;">03 / REVIEW</p>
+                          <p style="margin:0 0 6px;font-size:15px;line-height:20px;font-weight:700;color:#17233b;">Get a ready draft</p>
+                          <p style="margin:0;font-size:12px;line-height:18px;color:#5b687d;">Review the result in the app where it belongs.</p>
+                        </td>
+                      </tr>
+                    </table>
                   </td>
                 </tr>
               </table>
