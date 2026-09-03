@@ -1,6 +1,6 @@
 # Release notes
 
-## Browser operator (extension 1.2.0)
+## Browser operator (extension 1.2.1)
 
 Scribble for Chrome can now search through Google's visible UI and inspect,
 type, select, click, check, press, hover, scroll, and wait in its own inactive
@@ -13,14 +13,24 @@ accepts the permission increase. Chrome's debugging banner appears during an
 action and may flicker because Scribble detaches after every atomic action.
 Canceling that banner stops the run cleanly.
 
-Typing is capped at 200 characters, must originate in the user request or a
-clarification answer, and is shown verbatim in the activity log before it is
-sent to a page. A native policy blocks credential, personal/traveler identity,
+Typing is capped at 200 characters and may originate in the user request, a
+locally validated public alias, or a clarification answer. An unfamiliar
+inferred public term now prompts for exact confirmation and retries instead of
+ending the task. Typed text is shown verbatim once beside the Pixel Pal before it
+is sent to a page. Browser activity is now translated into plain language; raw
+control refs no longer appear as duplicate chat cards. A native policy blocks credential, personal/traveler identity,
 booking, payment, messaging, upload/download, and destructive fields, forms,
 and controls. CAPTCHA, bot checks, protected pages, inaccessible cross-origin
 widgets, and sign-in walls are not bypassed.
 
-The browser budget is now 24 chargeable action rounds, up to 12 additional
-scroll/wait-only rounds, no more than four consecutive support-only rounds, and
-36 total. Replay keeps clarification answers and six recent snapshots in full
+The normal browser stopping rule is now progress-based: 20 consecutive calls
+without an observed page-state change stop as a loop, while a longer task may
+continue as long as it progresses. A 120-round emergency cost/safety fuse
+remains. Travel flows verify displayed airports and dates before searching;
+Dubai resolves to DXB rather than nearby Sharjah unless the user asks for nearby
+airports. Replay keeps clarification answers and six recent snapshots in full
 and compacts older browser results.
+
+The browser panel now compares its running extension version with the extension
+bundled by installed Scribble. When Chrome is still using stale unpacked code,
+the footer shows the available version and offers a one-click reload.

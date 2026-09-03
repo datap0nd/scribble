@@ -234,7 +234,10 @@ namespace Scribble.Chat
                             "state, safe value summary, link target, and viewport " +
                             "status. Use an optional query to return only matching " +
                             "controls. Refs expire when the document navigates. " +
-                            "Sensitive field values are never read.",
+                            "Safe public-search field values are included so inputs " +
+                            "can be verified. Sensitive field values are never read. " +
+                            "Do not call this immediately after browser_act because " +
+                            "browser_act already returns the same fresh snapshot.",
                         parameters = new Dictionary<string, object>
                         {
                             { "type", "object" },
@@ -273,10 +276,16 @@ namespace Scribble.Chat
                         description =
                             "Perform one bounded action in a Scribble-owned work tab, " +
                             "using a ref from the latest browser_snapshot, then return " +
-                            "a fresh snapshot. Actions: click, type, select, check, " +
+                            "a fresh snapshot including a changed/unchanged progress " +
+                            "marker. Verify the expected displayed value or state from " +
+                            "this result before continuing; do not request a redundant " +
+                            "snapshot. Actions: click, type, select, check, " +
                             "press, hover, scroll, wait. Typed text must be at most " +
-                            "200 characters and copied from or composed solely of words " +
-                            "in the user's request or clarification answers. Credential, personal-data, " +
+                            "200 characters and derived from the user's request, a " +
+                            "locally validated public alias (for example Dubai to " +
+                            "DXB), or a clarification answer. An unfamiliar inferred " +
+                            "term must trigger a user confirmation instead of ending " +
+                            "the task. Credential, personal-data, " +
                             "payment, booking, purchase, messaging, upload, download, " +
                             "and destructive actions are refused.",
                         parameters = new Dictionary<string, object>

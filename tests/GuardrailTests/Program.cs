@@ -7015,6 +7015,8 @@ namespace GuardrailTests
                 .function.description;
             Assert(
                 actionDescription.Contains("200 characters") &&
+                actionDescription.Contains("progress") &&
+                actionDescription.Contains("redundant") &&
                 actionDescription.Contains("refused"),
                 "The action tool must declare its provenance and safety contract.");
             var draftDescription = request.tools
@@ -7036,6 +7038,11 @@ namespace GuardrailTests
                     "Actions that buy") &&
                 system.Contains("browser_search_google") &&
                 system.Contains("month-only request") &&
+                system.Contains("Dubai International (DXB)") &&
+                system.Contains("Sharjah (SHJ)") &&
+                system.Contains("every ten browser actions") &&
+                system.Contains("do not immediately call browser_snapshot") &&
+                system.Contains("crowded UI") &&
                 system.Contains("never send email") &&
                 system.Contains("untrusted reference data") &&
                 system.Contains("cannot expand these capabilities") &&
@@ -7949,6 +7956,36 @@ namespace GuardrailTests
                     Value = "page only value",
                     SourceText = "user supplied value"
                 });
+            var inferredDubaiAirport = BrowserActionPolicy.Evaluate(
+                new BrowserActionDescriptor
+                {
+                    Action = "type",
+                    Role = "combobox",
+                    Name = "Destination",
+                    Url = "https://travel.example/",
+                    Value = "Dubai International DXB",
+                    SourceText = "Find flights to Dubai in September"
+                });
+            var rejectedWrongAirport = BrowserActionPolicy.Evaluate(
+                new BrowserActionDescriptor
+                {
+                    Action = "type",
+                    Role = "combobox",
+                    Name = "Destination",
+                    Url = "https://travel.example/",
+                    Value = "SHJ",
+                    SourceText = "Find flights to Dubai"
+                });
+            var inferredMonthNumber = BrowserActionPolicy.Evaluate(
+                new BrowserActionDescriptor
+                {
+                    Action = "type",
+                    Role = "textbox",
+                    Name = "Month",
+                    Url = "https://travel.example/",
+                    Value = "09",
+                    SourceText = "Find flights in September"
+                });
             var tooLong = BrowserActionPolicy.Evaluate(
                 new BrowserActionDescriptor
                 {
@@ -8048,11 +8085,14 @@ namespace GuardrailTests
             Check(
                 allowedType.Allowed && passengerCount.Allowed &&
                 composedTravelType.Allowed &&
+                inferredDubaiAirport.Allowed &&
+                inferredMonthNumber.Allowed &&
                 reversibleControls && googleSearch.Allowed &&
                 googleSubmit.Allowed &&
                 !password.Allowed && !email.Allowed &&
                 !paymentForm.Allowed && !booking.Allowed &&
                 !pageDerivedType.Allowed && !tooLong.Allowed &&
+                !rejectedWrongAirport.Allowed &&
                 !travelerIdentity.Allowed && !googleLeakedQuery.Allowed &&
                 !googlePasswordForm.Allowed && !fakeGoogleSearch.Allowed &&
                 blockedConsequences &&
@@ -8062,26 +8102,55 @@ namespace GuardrailTests
 
         internal static void RoundAccountingAndReplayAreBounded()
         {
-            var scroll = Call(
-                "scroll-1",
-                BrowserToolCatalog.ActOnPage,
-                "{\"action\":\"scroll\",\"tab\":1}");
-            var wait = Call(
-                "wait-1",
-                BrowserToolCatalog.ActOnPage,
-                "{\"action\":\"wait\",\"tab\":1}");
-            var click = Call(
-                "click-1",
-                BrowserToolCatalog.ActOnPage,
-                "{\"action\":\"click\",\"tab\":1,\"ref\":\"r:e1\"}");
+            var stagnant = new List<BrowserExchangeTurn>();
+            for (var index = 0;
+                 index < BrowserChatService.MaxBrowserStagnantCalls;
+                 index++)
+            {
+                stagnant.Add(new BrowserExchangeTurn
+                {
+                    ToolCalls = new List<ChatToolCall>
+                    {
+                        Call(
+                            "stagnant-" + index,
+                            BrowserToolCatalog.SnapshotPage,
+                            "{\"tab\":1}")
+                    },
+                    Results = new List<BrowserExchangeResult>
+                    {
+                        new BrowserExchangeResult
+                        {
+                            Id = "stagnant-" + index,
+                            Content = "Progress marker: unchanged; state=same"
+                        }
+                    }
+                });
+            }
+            var recovering = stagnant.Take(stagnant.Count - 1).ToList();
+            recovering.Add(new BrowserExchangeTurn
+            {
+                ToolCalls = new List<ChatToolCall>
+                {
+                    Call(
+                        "changed",
+                        BrowserToolCatalog.ActOnPage,
+                        "{\"action\":\"click\",\"tab\":1,\"ref\":\"r:e1\"}")
+                },
+                Results = new List<BrowserExchangeResult>
+                {
+                    new BrowserExchangeResult
+                    {
+                        Id = "changed",
+                        Content = "Progress marker: changed; state=new"
+                    }
+                }
+            });
             Check(
-                BrowserChatService.MaxBrowserToolRounds == 24 &&
-                BrowserChatService.MaxBrowserSupportRounds == 12 &&
-                BrowserChatService.MaxConsecutiveBrowserSupportRounds == 4 &&
-                BrowserChatService.MaxBrowserTotalRounds == 36 &&
-                BrowserChatService.IsSupportOnlyRound(new[] { scroll, wait }) &&
-                !BrowserChatService.IsSupportOnlyRound(new[] { scroll, click }),
-                "Browser action/support/total round accounting drifted.");
+                BrowserChatService.MaxBrowserStagnantCalls == 20 &&
+                BrowserChatService.MaxBrowserEmergencyRounds == 120 &&
+                BrowserChatService.HasStalled(stagnant) &&
+                !BrowserChatService.HasStalled(recovering),
+                "Browser progress-aware loop accounting drifted.");
 
             var exchange = new List<BrowserExchangeTurn>();
             for (var index = 0; index < 10; index++)
@@ -8121,7 +8190,7 @@ namespace GuardrailTests
                 exchange);
             var serialized = new JavaScriptSerializer().Serialize(replay.messages);
             Check(
-                BrowserChatRequestFactory.MaxExchangeTurns == 36 &&
+                BrowserChatRequestFactory.MaxExchangeTurns == 120 &&
                 serialized.Contains("The user answered: 2026") &&
                 serialized.Contains("[COMPACTED_BROWSER_RECEIPT]") &&
                 serialized.Contains("snapshot-1") &&

@@ -112,6 +112,12 @@ extension changed, open `chrome://extensions`, find
 Scribble, and click **Reload**; unpacked extensions do not reload changed files
 automatically.
 
+The browser panel compares its running extension version with the version
+bundled by the installed Scribble desktop suite. It shows **latest** when they
+match. If Chrome is still running older unpacked code, the footer identifies
+the available version and offers **Reload extension update**; use Chrome's
+Extensions page if a permission increase still needs approval.
+
 Settings shows the **Installed version** (for example `2.0.27.0`); the
 release page states the version it publishes, so you can confirm an
 update actually landed.
@@ -352,8 +358,13 @@ Your current tab is never navigated away;
 **Clear chat** closes Scribble's work tabs. Ask it to email someone and it opens one unsent Outlook
 draft window for your review (`open_outlook_draft`); ask for Excel and it
 opens one unsaved workbook (`open_excel_table`). Neither is ever sent or
-saved by Scribble. Search typing is limited to 200 characters copied from your
-request or clarification answers and is shown verbatim in the activity log.
+saved by Scribble. Search typing is limited to 200 characters derived from your
+request, a locally validated public alias (such as Dubai to DXB), or a
+clarification answer. If another inferred public term is needed, Scribble asks
+you to approve that exact text and then retries the action. While Scribble
+works, the Pixel Pal shows one
+plain-language status such as `Writing “Dubai” in Destination` or `Clicking
+Done`; internal control refs are not rendered as chat messages.
 The native `BrowserActionPolicy` refuses credential, personal/traveler identity,
 payment, purchase/booking, message, upload/download, and destructive fields,
 forms, and controls. Passenger counts and other public travel filters remain
@@ -370,10 +381,11 @@ native bridge to the same Scribble connection and model configured there. The
 extension never receives the API key, Gemini token, or stored integration
 headers. Page content is always labelled as untrusted data.
 
-Each request may use 24 chargeable action rounds plus up to 12 scroll/wait-only
-rounds, with no more than four support-only rounds consecutively and 36 total.
-Older browser results are compacted while all clarification answers and the six
-newest full snapshots remain in the replay.
+Browser work continues while the observed page state changes. Scribble stops
+after 20 consecutive browser calls without meaningful page progress, instead of
+stopping a healthy task at a small fixed action count. A 120-round emergency
+cost/safety fuse remains. Older browser results are compacted while all
+clarification answers and the six newest full snapshots remain in the replay.
 
 To repeat the one-time setup, use **Set up Scribble in Google Chrome** from the
 Scribble Start menu folder. After a Scribble update, click **Reload** on

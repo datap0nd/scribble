@@ -92,10 +92,10 @@ namespace Scribble.Chat
     // anywhere in this process, and it can never send email.
     public sealed class BrowserChatService : IDisposable
     {
-        public const int MaxBrowserToolRounds = 24;
-        public const int MaxBrowserSupportRounds = 12;
-        public const int MaxConsecutiveBrowserSupportRounds = 4;
-        public const int MaxBrowserTotalRounds = 36;
+        public const int MaxBrowserStagnantCalls = 20;
+        // An emergency cost/safety fuse. Normal completion is governed by
+        // observed progress rather than a small fixed action allowance.
+        public const int MaxBrowserEmergencyRounds = 120;
         public const int MaxBrowserToolCallsPerRound = 4;
 
         private readonly AppSettings _settings;
@@ -260,11 +260,13 @@ namespace Scribble.Chat
                 links,
                 activeTopic);
 
-            var roundsUsed = CountChargeableExchangeTurns(exchange);
-            var supportRoundsUsed = CountSupportExchangeTurns(exchange);
             var totalRoundsUsed = CountExchangeTurns(exchange);
-            var consecutiveSupportRounds =
-                CountTrailingSupportExchangeTurns(exchange);
+            if (HasStalled(exchange))
+            {
+                throw new AiEndpointException(
+                    "BROWSER_STALLED",
+                    "The last 20 browser steps did not meaningfully change the page.");
+            }
             var draftOpened = false;
             var tableOpened = false;
             while (true)
@@ -291,29 +293,11 @@ namespace Scribble.Chat
                         screenshotUsed);
                 }
 
-                var supportOnly = IsSupportOnlyRound(toolCalls);
-                if (totalRoundsUsed >= MaxBrowserTotalRounds)
+                if (totalRoundsUsed >= MaxBrowserEmergencyRounds)
                 {
                     throw new AiEndpointException(
                         "TOOL_ROUND_LIMIT",
-                        "The model exceeded the absolute browser-tool round limit.");
-                }
-
-                if (supportOnly &&
-                    (supportRoundsUsed >= MaxBrowserSupportRounds ||
-                     consecutiveSupportRounds >=
-                        MaxConsecutiveBrowserSupportRounds))
-                {
-                    throw new AiEndpointException(
-                        "SUPPORT_ROUND_LIMIT",
-                        "The model requested too many browser scroll or wait rounds.");
-                }
-
-                if (!supportOnly && roundsUsed >= MaxBrowserToolRounds)
-                {
-                    throw new AiEndpointException(
-                        "TOOL_ROUND_LIMIT",
-                        "The model exceeded the bounded browser-action round limit.");
+                        "The model exceeded the emergency browser safety limit.");
                 }
 
                 if (toolCalls.Count > MaxBrowserToolCallsPerRound)
@@ -341,23 +325,11 @@ namespace Scribble.Chat
                         activeModel);
                     request.tool_choice =
                         PromptHelperTool.CreateRequiredChoice();
-                    roundsUsed++;
                     totalRoundsUsed++;
-                    consecutiveSupportRounds = 0;
                     continue;
                 }
 
                 totalRoundsUsed++;
-                if (supportOnly)
-                {
-                    supportRoundsUsed++;
-                    consecutiveSupportRounds++;
-                }
-                else
-                {
-                    roundsUsed++;
-                    consecutiveSupportRounds = 0;
-                }
                 var needsBrowser = false;
                 foreach (var call in toolCalls)
                 {
@@ -571,64 +543,60 @@ namespace Scribble.Chat
             return count;
         }
 
-        private static int CountChargeableExchangeTurns(
+        public static bool HasStalled(
             IReadOnlyList<BrowserExchangeTurn> exchange)
         {
-            var count = 0;
+            var stagnantCalls = 0;
             foreach (var turn in exchange ??
                 new BrowserExchangeTurn[0])
             {
-                if (turn?.ToolCalls != null &&
-                    turn.ToolCalls.Count > 0 &&
-                    !IsSupportOnlyRound(turn.ToolCalls))
+                foreach (var call in turn?.ToolCalls ??
+                    new List<ChatToolCall>())
                 {
-                    count++;
+                    if (!BrowserToolCatalog.IsBrowserExecuted(
+                            call?.function?.name))
+                    {
+                        continue;
+                    }
+
+                    var content = string.Empty;
+                    foreach (var result in turn.Results ??
+                        new List<BrowserExchangeResult>())
+                    {
+                        if (string.Equals(
+                            result?.Id,
+                            call.id,
+                            StringComparison.Ordinal))
+                        {
+                            content = result.Content ?? string.Empty;
+                            break;
+                        }
+                    }
+
+                    if (content.IndexOf(
+                            "Progress marker: changed",
+                            StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        stagnantCalls = 0;
+                    }
+                    else if (content.IndexOf(
+                                "Progress marker: unchanged",
+                                StringComparison.OrdinalIgnoreCase) >= 0 ||
+                             content.StartsWith(
+                                "[BROWSER_TOOL_FAILED]",
+                                StringComparison.Ordinal))
+                    {
+                        stagnantCalls++;
+                    }
+
+                    if (stagnantCalls >= MaxBrowserStagnantCalls)
+                    {
+                        return true;
+                    }
                 }
             }
 
-            return count;
-        }
-
-        private static int CountSupportExchangeTurns(
-            IReadOnlyList<BrowserExchangeTurn> exchange)
-        {
-            var count = 0;
-            foreach (var turn in exchange ??
-                new BrowserExchangeTurn[0])
-            {
-                if (turn?.ToolCalls != null &&
-                    turn.ToolCalls.Count > 0 &&
-                    IsSupportOnlyRound(turn.ToolCalls))
-                {
-                    count++;
-                }
-            }
-
-            return count;
-        }
-
-        private static int CountTrailingSupportExchangeTurns(
-            IReadOnlyList<BrowserExchangeTurn> exchange)
-        {
-            var count = 0;
-            var turns = exchange ?? new BrowserExchangeTurn[0];
-            for (var index = turns.Count - 1; index >= 0; index--)
-            {
-                var calls = turns[index]?.ToolCalls;
-                if (calls == null || calls.Count == 0)
-                {
-                    continue;
-                }
-
-                if (!IsSupportOnlyRound(calls))
-                {
-                    break;
-                }
-
-                count++;
-            }
-
-            return count;
+            return false;
         }
 
         public static bool IsSupportOnlyRound(

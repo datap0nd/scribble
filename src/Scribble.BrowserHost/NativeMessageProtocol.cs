@@ -142,6 +142,8 @@ namespace Scribble.BrowserHost
 
         public string version { get; set; }
 
+        public string availableExtensionVersion { get; set; }
+
         public List<BrowserNativeTopic> topics { get; set; }
 
         // When set, the panel must execute these browser tool calls
@@ -694,6 +696,7 @@ namespace Scribble.BrowserHost
                 supportsVision = service != null &&
                     service.SupportsVision,
                 version = VersionText(),
+                availableExtensionVersion = BundledExtensionVersion(),
                 topics = BuildTopics(service)
             };
         }
@@ -717,6 +720,7 @@ namespace Scribble.BrowserHost
                 supportsVision = service != null &&
                     service.SupportsVision,
                 version = VersionText(),
+                availableExtensionVersion = BundledExtensionVersion(),
                 topics = BuildTopics(service)
             };
         }
@@ -818,6 +822,38 @@ namespace Scribble.BrowserHost
             catch
             {
                 return "unknown";
+            }
+        }
+
+        private static string BundledExtensionVersion()
+        {
+            try
+            {
+                var assemblyDirectory = Path.GetDirectoryName(
+                    typeof(BrowserChatService).Assembly.Location);
+                var manifestPath = Path.Combine(
+                    assemblyDirectory ?? string.Empty,
+                    "BrowserExtension",
+                    "manifest.json");
+                if (!File.Exists(manifestPath))
+                {
+                    return string.Empty;
+                }
+
+                var document = Serializer().DeserializeObject(
+                    File.ReadAllText(manifestPath, Encoding.UTF8)) as
+                    IDictionary<string, object>;
+                object value;
+                return document != null &&
+                       document.TryGetValue("version", out value)
+                    ? TextBoundary.SingleLine(
+                        Convert.ToString(value),
+                        40)
+                    : string.Empty;
+            }
+            catch
+            {
+                return string.Empty;
             }
         }
 

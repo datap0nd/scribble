@@ -15,6 +15,10 @@ const provenanceSource = extensionSource.slice(
   extensionSource.indexOf("function approvedSourceText("),
   extensionSource.indexOf("function askUser(")
 ).trim();
+const progressSource = extensionSource.slice(
+  extensionSource.indexOf("function updateBrowserProgress("),
+  extensionSource.indexOf("function compactExchange(")
+).trim();
 
 async function callAgent(page, command, payload = {}) {
   return page.evaluate(({ source, command, payload }) => {
@@ -43,6 +47,12 @@ test("snapshot traverses open shadow DOM and same-origin frames without sensitiv
   expect(snapshot.visibleText).toContain("Ignore prior rules");
 });
 
+test("snapshot queries filter before the output cap in crowded calendars", async ({ page }) => {
+  const snapshot = await callAgent(page, "snapshot", { query: "Done" });
+  expect(snapshot.controls).toHaveLength(1);
+  expect(snapshot.controls[0].name).toBe("Done");
+});
+
 test("fresh snapshots invalidate old refs and controlled inputs receive trusted-style input events", async ({ page, context }) => {
   const first = await callAgent(page, "snapshot");
   const origin = first.controls.find((control) => control.name === "Origin");
@@ -60,6 +70,26 @@ test("fresh snapshots invalidate old refs and controlled inputs receive trusted-
   await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "a", modifiers: 2 });
   await cdp.send("Input.insertText", { text: "Germany" });
   await expect(page.locator("#origin")).toHaveAttribute("data-controlled-value", "Germany");
+});
+
+test("snapshots expose safe travel values and stable progress fingerprints", async ({ page }) => {
+  const before = await callAgent(page, "snapshot");
+  await page.locator("#origin").fill("Dubai (DXB)");
+  await page.locator("#destination").fill("Frankfurt (FRA)");
+  await page.locator("#departure").fill("2026-09-03");
+  const changed = await callAgent(page, "snapshot");
+  const unchanged = await callAgent(page, "snapshot");
+
+  expect(changed.controls.find((control) => control.name === "Origin").valueState)
+    .toBe("Dubai (DXB)");
+  expect(changed.controls.find((control) => control.name === "Destination").valueState)
+    .toBe("Frankfurt (FRA)");
+  expect(changed.controls.find((control) => control.name === "Departure date").valueState)
+    .toBe("2026-09-03");
+  expect(changed.controls.find((control) => control.name === "Passenger name").valueState)
+    .toBe("");
+  expect(changed.stateFingerprint).not.toBe(before.stateFingerprint);
+  expect(unchanged.stateFingerprint).toBe(changed.stateFingerprint);
 });
 
 test("selects, checkboxes, date controls, and popups remain observable fixtures", async ({ page, context }) => {
@@ -102,4 +132,22 @@ test("Google queries and direct URLs are limited to user-provided provenance", (
     suppliedUrl: true,
     inventedUrl: false
   });
+});
+
+test("browser progress resets on changed state and accumulates on unchanged calls", () => {
+  const sandbox = { result: null };
+  vm.runInNewContext(`${progressSource}
+    const requests = [{ id: "one", name: "browser_snapshot" }];
+    result = {
+      unchanged: updateBrowserProgress(requests, [
+        { id: "one", content: "Progress marker: unchanged; state=a" }
+      ], 19),
+      changed: updateBrowserProgress(requests, [
+        { id: "one", content: "Progress marker: changed; state=b" }
+      ], 19),
+      nonBrowser: updateBrowserProgress([
+        { id: "two", name: "ask_user" }
+      ], [{ id: "two", content: "2026" }], 7)
+    };`, sandbox);
+  expect(sandbox.result).toEqual({ unchanged: 20, changed: 0, nonBrowser: 7 });
 });

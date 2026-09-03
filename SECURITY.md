@@ -87,10 +87,15 @@ never reads values from sensitive fields.
 
 Typing is itself an exfiltration channel because page JavaScript can observe
 keystrokes before submission. Typed values are therefore capped at 200
-characters, may use only normalized words from the user request or clarification
-answers, and are evaluated by the DOM-independent native
-`BrowserActionPolicy`, and appear verbatim in the activity log and transcript
-before dispatch. Search queries are normalized to user-supplied tokens; harmless
+characters and may use normalized words from the user request or clarification
+answers, or a small compile-time map of public aliases such as Dubai to DXB.
+Any other inferred public term requires the user to approve that exact text in
+an `ask_user` card before it can be typed. Values are evaluated independently
+by the DOM-independent native
+`BrowserActionPolicy`. Before dispatch, the value appears once in a
+plain-language Pixel Pal status and remains in the bounded internal tool
+transcript; raw refs are never rendered as chat activity. Search
+queries are normalized to user-supplied tokens; harmless
 reordering and singular/plural differences do not cause the search to fail, while
 page-only tokens are removed before dispatch. The policy blocks credential, personal/traveler identity,
 payment, purchase/booking, messaging, upload/download, and destructive fields,
@@ -194,10 +199,10 @@ unless the user enters exact tool names and affirms that each is read-only.
 21. `BrowserChatService` exposes the fixed browser tools (navigate, read,
     Google UI search, snapshot, act, the shared `ask_user` prompt helper, one unsent Outlook draft per request, and one unsaved Excel
     workbook per request) plus exact, case-sensitive MCP tool names the
-    user separately allowlisted and affirmed as read-only. Tool use is bounded
-    to 24 chargeable action rounds, 12 additional scroll/wait-only rounds,
-    four consecutive support-only rounds, 36 total rounds, and four calls per
-    round. It rejects every
+    user separately allowlisted and affirmed as read-only. Progress is measured
+    from stable page-state fingerprints. Twenty consecutive browser calls with
+    no meaningful state change stop as a loop; progressing work may continue up
+    to a 120-round emergency cost/safety fuse, with four calls per round. It rejects every
     other requested tool and
     labels page, screenshot, and MCP results as untrusted data. Every page
     read returns a bounded link list so multi-step navigation follows exact

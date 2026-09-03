@@ -329,13 +329,6 @@ p {
   white-space: normal;
 }
 
-.message.audit .message-body {
-  border-color: #b7c9f8;
-  background: var(--accent-soft);
-  color: var(--muted);
-  font-size: 11px;
-}
-
 .message.assistant .message-body > p {
   margin: 0 0 8px;
 }
@@ -513,13 +506,12 @@ p {
 }
 
 .typing-status {
+  flex: 1;
   padding-bottom: 5px;
   color: var(--muted);
   font-size: 11px;
-  overflow: hidden;
-  max-width: 210px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.35;
+  white-space: normal;
 }
 
 .typing .dots {
@@ -665,6 +657,18 @@ p {
 
 #connectionDetails {
   margin-top: 2px;
+}
+
+.version-update {
+  margin-top: 6px;
+  padding: 5px 9px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 .sr-only {

@@ -191,16 +191,25 @@ Controls use square native geometry. Text fields have fixed single borders; flat
   read-only context source. Every mutation occurs in one of five numbered,
   inactive Scribble work tabs.
 - **Clarification:** Materially ambiguous requests pause in the transcript for
-  one focused `ask_user` card before browsing begins.
-- **Activity:** Every operation names the site, work-tab number, action, and
-  outcome. Typed text is displayed verbatim before dispatch so the page-visible
-  data flow can be audited.
+  one focused `ask_user` card before browsing begins. Public aliases with one
+  safe deterministic meaning can be inferred locally; any other typed
+  inference triggers an exact-value confirmation and resumes after approval.
+- **Activity:** The Pixel Pal carries one live, plain-language description of
+  the current operation, such as `Writing “Dubai” in Destination` or `Clicking
+  Done`. Raw refs, work-tab IDs, and duplicate browser-activity cards stay out
+  of the user-facing transcript. Typed text remains verbatim before dispatch.
+- **Progress:** Safe public-search field values and stable page-state
+  fingerprints let the model verify travel criteria and distinguish useful
+  progress from repeated inspection. Twenty unchanged browser calls stop as a
+  loop; progressing work continues behind a separate emergency fuse.
 - **Intervention:** CAPTCHA, bot defense, protected/cross-origin widgets,
   sign-in walls, unexpected debugger detach, and the debugger banner's Cancel
   action stop cleanly with a plain-language recovery message.
 - **Chrome disclosure:** Documentation and upgrade UI disclose the required
   debugger permission, possible re-approval after upgrade, and per-action banner
-  flicker. The extension never disguises Chrome's own security indicator.
+  flicker. The footer compares the running extension with the version bundled
+  by Scribble and offers a reload when Chrome is stale. The extension never
+  disguises Chrome's own security indicator.
 - **Implementation boundary:** Browser Agent and Nanobrowser informed the
   inspect/ref/act shape only. No browser-agent runtime ships in production;
   Playwright remains an optional test-only dependency under `tests/`.

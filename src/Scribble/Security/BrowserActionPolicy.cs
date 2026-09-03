@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -185,13 +186,13 @@ namespace Scribble.Security
                         "Typed browser values are limited to 200 characters.");
                 }
 
-                if (!IsTypedValueDerivedFromUser(
+                if (!IsTypedValueAuthorized(
                     value,
                     descriptor.SourceText))
                 {
                     return Deny(
                         "TYPE_SOURCE_NOT_USER",
-                        "Typed text must come directly from the user's prompt or clarification answers.");
+                        "Typed text must come from the user's prompt, a locally validated public alias, or a clarification answer.");
                 }
             }
 
@@ -281,6 +282,67 @@ namespace Scribble.Security
             return true;
         }
 
+        public static bool IsTypedValueAuthorized(
+            string value,
+            string sourceText)
+        {
+            if (IsTypedValueDerivedFromUser(value, sourceText))
+            {
+                return true;
+            }
+
+            var source = new HashSet<string>(
+                QueryTokens(sourceText),
+                StringComparer.OrdinalIgnoreCase);
+            var allowed = new HashSet<string>(
+                source,
+                StringComparer.OrdinalIgnoreCase);
+            foreach (var inference in PublicSearchInferences)
+            {
+                if (!source.Contains(inference.Key))
+                {
+                    continue;
+                }
+
+                foreach (var alias in inference.Value)
+                {
+                    allowed.Add(CanonicalQueryToken(alias));
+                }
+            }
+
+            var wanted = QueryTokens(value);
+            return wanted.Count > 0 &&
+                wanted.All(token => allowed.Contains(token));
+        }
+
+        private static readonly IDictionary<string, string[]>
+            PublicSearchInferences =
+                new Dictionary<string, string[]>(
+                    StringComparer.OrdinalIgnoreCase)
+                {
+                    { "dubai", new[] { "dxb", "international", "airport" } },
+                    { "sharjah", new[] { "shj", "international", "airport" } },
+                    { "lisbon", new[] { "lis", "airport" } },
+                    { "seoul", new[] { "icn", "gmp", "incheon", "airport" } },
+                    { "london", new[] { "lhr", "lgw", "airport" } },
+                    { "york", new[] { "jfk", "lga", "ewr", "airport" } },
+                    { "paris", new[] { "cdg", "ory", "airport" } },
+                    { "tokyo", new[] { "hnd", "nrt", "airport" } },
+                    { "singapore", new[] { "sin", "changi", "airport" } },
+                    { "january", new[] { "jan", "1", "01" } },
+                    { "february", new[] { "feb", "2", "02" } },
+                    { "march", new[] { "mar", "3", "03" } },
+                    { "april", new[] { "apr", "4", "04" } },
+                    { "may", new[] { "5", "05" } },
+                    { "june", new[] { "jun", "6", "06" } },
+                    { "july", new[] { "jul", "7", "07" } },
+                    { "august", new[] { "aug", "8", "08" } },
+                    { "september", new[] { "sep", "sept", "9", "09" } },
+                    { "october", new[] { "oct", "10" } },
+                    { "november", new[] { "nov", "11" } },
+                    { "december", new[] { "dec", "12" } }
+                };
+
         private static bool IsGoogleSearchAction(
             BrowserActionDescriptor descriptor,
             Uri page,
@@ -338,7 +400,7 @@ namespace Scribble.Security
                 new[] { ' ' },
                 StringSplitOptions.RemoveEmptyEntries))
             {
-                var token = raw;
+                var token = CanonicalQueryToken(raw);
                 if (token.Length > 4 && token.EndsWith(
                     "ies",
                     StringComparison.OrdinalIgnoreCase))
@@ -360,6 +422,16 @@ namespace Scribble.Security
             }
 
             return result;
+        }
+
+        private static string CanonicalQueryToken(string value)
+        {
+            var token = value ?? string.Empty;
+            int numeric;
+            return int.TryParse(token, out numeric)
+                ? numeric.ToString(
+                    System.Globalization.CultureInfo.InvariantCulture)
+                : token;
         }
 
         private static BrowserActionDecision Allow()

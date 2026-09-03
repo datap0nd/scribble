@@ -26,6 +26,12 @@ The fixed public key in `manifest.json` keeps that extension ID stable across co
 
 After replacing extension files with a newer version, return to the browser's Extensions page and choose **Reload** on Scribble. Version 1.2 adds the required `debugger` permission; Chrome may disable an older installation until you review and accept the permission increase.
 
+The panel footer compares the running extension version with the extension
+bundled by the installed Scribble suite. It says **latest** when they match. If
+the files have been updated but Chrome still has older code loaded, it shows
+the available version and a **Reload extension update** button. A newly added
+permission may still require approval on `chrome://extensions`.
+
 ## Using page context
 
 The current tab's title, address, selection (up to 16,000 characters), and
@@ -40,9 +46,12 @@ model opens http/https pages in up to five of its own background work tabs
 visible UI, inspects ref-scoped controls, and performs bounded trusted input.
 Your current tab is never navigated away, and **Clear chat** closes Scribble's
 work tabs. Public search and travel criteria can be typed, selected, clicked,
-scrolled, and filtered. Typed values are capped at 200 characters, must come
-directly from your request or a clarification answer, and appear verbatim in
-the activity log. A native policy refuses credential, personal/traveler
+scrolled, and filtered. Typed values are capped at 200 characters and may come
+from your request, a locally validated public alias such as Dubai to DXB, or a
+clarification answer. Scribble asks you to approve the exact text before using
+an unfamiliar inferred public term. Values appear verbatim in
+one plain-language status beside the Pixel Pal. Raw control refs stay in the
+internal tool transcript rather than appearing as duplicate chat cards. A native policy refuses credential, personal/traveler
 identity, booking, payment, message, upload/download, and destructive fields,
 forms, and controls. When
 something important is ambiguous, it asks you one clarifying question with
@@ -50,6 +59,12 @@ clickable options and waits. When
 you ask Scribble to email someone, it opens one unsent Outlook draft window
 for your review; ask for Excel and it opens one unsaved workbook. It can never
 send or save either.
+
+Long tasks continue while the page is making observable progress. Scribble
+stops after 20 consecutive browser calls with no meaningful state change, with
+a separate 120-round emergency cost/safety fuse. Public travel inputs expose
+safe displayed values so the model can verify airport codes and dates before
+submitting; sensitive field values remain unreadable.
 
 Chrome displays its normal “Scribble is debugging this browser” banner during
 trusted input. Scribble attaches only for an atomic action and detaches in a
@@ -85,6 +100,7 @@ There are no content scripts, no remote scripts, and no background page collecti
 
 - **Browser support is not installed:** rerun Scribble Setup with browser support enabled, then restart the browser.
 - **The extension is not authorized:** the extension and Scribble bridge are from different builds, or the native-host manifest does not contain the stable origin above. Reinstall matching versions.
+- **The footer says an extension update is available:** choose **Reload extension update**. If Chrome asks about new permissions, approve or re-enable Scribble on `chrome://extensions`.
 - **No model is configured:** open Scribble Settings from an Office app and select/configure a model.
 - **The page cannot be read:** browser settings pages, extension galleries, PDF viewers, and some protected pages block injected scripts; those tabs are shared as address-only. Try a regular webpage.
 

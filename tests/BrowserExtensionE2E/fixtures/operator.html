@@ -34,6 +34,17 @@
     });
     const shadow = document.getElementById("shadow-host").attachShadow({ mode: "open" });
     shadow.innerHTML = '<button aria-label="Shadow filter">Filter</button>';
+    const crowdedCalendar = document.createElement("section");
+    crowdedCalendar.setAttribute("aria-label", "Crowded calendar");
+    for (let day = 0; day < 180; day++) {
+      const button = document.createElement("button");
+      button.textContent = `Calendar day ${day + 1}`;
+      crowdedCalendar.append(button);
+    }
+    const done = document.createElement("button");
+    done.textContent = "Done";
+    crowdedCalendar.append(done);
+    document.querySelector("main").append(crowdedCalendar);
   </script>
 </body>
 </html>

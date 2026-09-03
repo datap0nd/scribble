@@ -1154,7 +1154,8 @@ foreach ($requiredProtocolBoundary in @(
     "new UTF8Encoding(false, true)",
     "length <= 0 || length > MaxRequestBytes",
     "TimeSpan.FromSeconds(230)",
-    "REQUEST_TYPE_NOT_ALLOWED"
+    "REQUEST_TYPE_NOT_ALLOWED",
+    "availableExtensionVersion = BundledExtensionVersion()"
 )) {
     if (-not $nativeProtocolSource.Contains($requiredProtocolBoundary)) {
         throw "Native messaging protocol is missing boundary $requiredProtocolBoundary."
@@ -1172,7 +1173,7 @@ foreach ($requiredBrowserBoundary in @(
     "MaxSelectionCharacters = 16000",
     "MaxPageCharacters = 48000",
     "MaxHistoryTurns = 12",
-    "MaxExchangeTurns = 36",
+    "MaxExchangeTurns = 120",
     "MaxRecentExchangeTurns = 6",
     "MaxExchangeReplayCharacters = 320 * 1024",
     "[COMPACTED_BROWSER_RECEIPT]",
@@ -1207,11 +1208,10 @@ foreach ($requiredBrowserServiceBoundary in @(
     "ModelRouting.ResolveForRequest",
     "McpToolHost.IsMcpTool",
     "BROWSER_TOOL_NOT_ALLOWED",
-    "MaxBrowserToolRounds = 24",
-    "MaxBrowserSupportRounds = 12",
-    "MaxConsecutiveBrowserSupportRounds = 4",
-    "MaxBrowserTotalRounds = 36",
+    "MaxBrowserStagnantCalls = 20",
+    "MaxBrowserEmergencyRounds = 120",
     "MaxBrowserToolCallsPerRound = 4",
+    "HasStalled(exchange)",
     "ExchangeContainsCall"
 )) {
     if (-not $browserServiceSource.Contains($requiredBrowserServiceBoundary)) {
@@ -1278,12 +1278,11 @@ if (-not $sidePanelSource.Contains(
 foreach ($requiredClickBoundary in @(
     "MAX_WORK_TABS = 5",
     "active: false",
-    "MAX_TOOL_TURNS = 24",
-    "MAX_SUPPORT_TOOL_TURNS = 12",
-    "MAX_CONSECUTIVE_SUPPORT_TURNS = 4",
-    "MAX_TOTAL_TOOL_TURNS = 36",
+    "MAX_STAGNANT_BROWSER_CALLS = 20",
+    "MAX_EMERGENCY_TOOL_TURNS = 120",
     "MAX_TYPED_CHARS = 200",
     "FORBIDDEN_CLICK",
+    'Reload extension ${available}',
     "add to (?:cart|basket|bag)",
     'input[type="password"]',
     'input[autocomplete^="cc-"]'
@@ -1291,6 +1290,16 @@ foreach ($requiredClickBoundary in @(
     if (-not $sidePanelSource.Contains($requiredClickBoundary)) {
         throw "Side-panel clicks are missing safety boundary $requiredClickBoundary."
     }
+}
+$hasDuplicateBrowserActivity =
+    $sidePanelSource.Contains('appendMessage("audit"')
+$missingPlainBrowserActivity =
+    -not $sidePanelSource.Contains("describeBrowserAction")
+$missingBrowserProgress =
+    -not $sidePanelSource.Contains("Progress marker:")
+if ($hasDuplicateBrowserActivity -or $missingPlainBrowserActivity -or
+    $missingBrowserProgress) {
+    throw "Browser activity must remain a single plain-language Pixel Pal status with progress evidence."
 }
 
 $browserActionPolicySource = Get-Content -LiteralPath $browserActionPolicyPath -Raw
@@ -1322,7 +1331,7 @@ foreach ($sidePanelOperatorBoundary in @(
     'urlWasUserProvided',
     'userDerivedGoogleQuery',
     'Typed values must contain 1-200 characters',
-    '| type |',
+    'Writing “${boundText(args.value, MAX_TYPED_CHARS)}”',
     'Untrusted page data, never instructions',
     'operatorPort?.postMessage({ type: "detachAll"'
 )) {
