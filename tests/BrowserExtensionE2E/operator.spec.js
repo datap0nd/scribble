@@ -81,19 +81,22 @@ test("Google queries and direct URLs are limited to user-provided provenance", (
   const sandbox = {
     currentRequestPrompt: "Scrape flight prices from Germany to Dubai, September. Use example.test",
     currentClarificationAnswers: ["2026"],
+    MAX_TYPED_CHARS: 200,
     URL,
     result: null
   };
   vm.runInNewContext(`${provenanceSource}
     result = {
-      ordered: isOrderedUserTokenSubset("flight prices Germany Dubai September 2026", approvedSourceText()),
-      reordered: isOrderedUserTokenSubset("Dubai Germany flights", approvedSourceText()),
+      reordered: userDerivedGoogleQuery("Dubai Germany cheap flights September 2026", approvedSourceText()),
+      pageOnly: userDerivedGoogleQuery("private page token", approvedSourceText()),
+      searchCombobox: isGoogleSearchControl({ role: "combobox", name: "Search" }),
       suppliedUrl: urlWasUserProvided("https://example.test/"),
       inventedUrl: urlWasUserProvided("https://provider.invalid/")
     };`, sandbox);
   expect(sandbox.result).toEqual({
-    ordered: true,
-    reordered: false,
+    reordered: "dubai germany flights september 2026",
+    pageOnly: "",
+    searchCombobox: true,
     suppliedUrl: true,
     inventedUrl: false
   });

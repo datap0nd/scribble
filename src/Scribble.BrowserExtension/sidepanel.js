@@ -951,13 +951,14 @@ async function searchGoogle(toolRequest) {
   } catch {
     throw new Error("The Google search arguments were not valid JSON.");
   }
-  const query = String(args.query || "").replace(/\s+/g, " ").trim();
-  if (!query || query.length > MAX_TYPED_CHARS) {
+  const requestedQuery = String(args.query || "").replace(/\s+/g, " ").trim();
+  if (!requestedQuery || requestedQuery.length > MAX_TYPED_CHARS) {
     throw new Error("A Google query must contain 1-200 characters.");
   }
-  if (!isOrderedUserTokenSubset(query, approvedSourceText())) {
+  const query = userDerivedGoogleQuery(requestedQuery, approvedSourceText());
+  if (!query) {
     throw new Error(
-      "Google query words must come, in order, from the user's request and clarification answers."
+      "The Google query must include words from the user's request or clarification answers."
     );
   }
   let slot = parseTabSlot(args.tab);
@@ -988,25 +989,29 @@ async function searchGoogle(toolRequest) {
   await waitForTabComplete(tabId);
   await delay(NAVIGATION_SETTLE_MS);
   let snapshot = await inspectWorkTab(tabId);
-  const searchControl = snapshot.controls.find((control) =>
-    (control.role === "searchbox" || control.role === "textbox") &&
-    /search|google/i.test(`${control.name} ${control.placeholder}`)
-  ) || snapshot.controls.find((control) =>
-    control.role === "searchbox" || control.role === "textbox"
-  );
+  const searchControl = snapshot.controls.find(isGoogleSearchControl) ||
+    snapshot.controls.find((control) =>
+      control.role === "searchbox" || control.inputType === "search"
+    );
   if (!searchControl) {
     return serializeSnapshot(slot, snapshot,
       "Google did not expose a search field. A consent, CAPTCHA, or protected-page interstitial may require user attention.");
   }
   await performAction(
     { tab: await chrome.tabs.get(tabId), slot },
-    { action: "type", ref: searchControl.ref, value: query, sourceText: query },
+    {
+      action: "type",
+      ref: searchControl.ref,
+      value: query,
+      sourceText: approvedSourceText()
+    },
     snapshot
   );
   snapshot = await inspectWorkTab(tabId);
-  const refreshedSearch = snapshot.controls.find((control) =>
-    control.role === "searchbox" || control.role === "textbox"
-  );
+  const refreshedSearch = snapshot.controls.find(isGoogleSearchControl) ||
+    snapshot.controls.find((control) =>
+      control.role === "searchbox" || control.inputType === "search"
+    );
   if (!refreshedSearch) {
     throw new Error("The Google search field became unavailable after typing.");
   }
@@ -1096,6 +1101,7 @@ async function performAction(target, args, knownSnapshot = null) {
     url: target.tab.url,
     value: action === "type" ? args.value : "",
     sourceText: args.sourceText || "",
+    key: action === "press" ? args.key : "",
     formHasPassword: false,
     formHasPayment: false,
     formHasPersonalData: false
@@ -1595,17 +1601,35 @@ function normalizedTokens(value) {
   return String(value || "").toLocaleLowerCase().match(/[\p{L}\p{N}]+/gu) || [];
 }
 
-function isOrderedUserTokenSubset(value, sourceText) {
-  const wanted = normalizedTokens(value);
-  const source = normalizedTokens(sourceText);
-  if (wanted.length === 0) return false;
-  let cursor = 0;
-  for (const token of wanted) {
-    while (cursor < source.length && source[cursor] !== token) cursor++;
-    if (cursor >= source.length) return false;
-    cursor++;
+function canonicalQueryToken(value) {
+  const token = String(value || "").toLocaleLowerCase();
+  if (token.length > 4 && token.endsWith("ies")) {
+    return `${token.slice(0, -3)}y`;
   }
-  return true;
+  if (token.length > 3 && token.endsWith("s") && !token.endsWith("ss")) {
+    return token.slice(0, -1);
+  }
+  return token;
+}
+
+function userDerivedGoogleQuery(value, sourceText) {
+  const sourceTokens = new Set(
+    normalizedTokens(sourceText).map(canonicalQueryToken)
+  );
+  return normalizedTokens(value)
+    .filter((token) => sourceTokens.has(canonicalQueryToken(token)))
+    .join(" ")
+    .slice(0, MAX_TYPED_CHARS)
+    .trim();
+}
+
+function isGoogleSearchControl(control) {
+  const role = String(control?.role || "").toLocaleLowerCase();
+  const inputType = String(control?.inputType || "").toLocaleLowerCase();
+  const label = `${control?.name || ""} ${control?.placeholder || ""}`;
+  return (role === "searchbox" || role === "textbox" || role === "combobox" ||
+      inputType === "search") &&
+    /\b(search|google)\b/i.test(label);
 }
 
 function urlWasUserProvided(value) {

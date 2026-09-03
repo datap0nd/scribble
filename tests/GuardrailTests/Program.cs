@@ -7901,14 +7901,75 @@ namespace GuardrailTests
                     Value = "Jane Doe",
                     SourceText = "Jane Doe"
                 });
+            var googleSearch = BrowserActionPolicy.Evaluate(
+                new BrowserActionDescriptor
+                {
+                    Action = "type",
+                    InputType = "text",
+                    Role = "combobox",
+                    Name = "Search",
+                    Url = "https://www.google.com/",
+                    Value = "Dubai Germany flights September 2026",
+                    SourceText = "Scrape flight prices from Germany to Dubai, September. 2026",
+                    FormHasPayment = true,
+                    FormHasPersonalData = true
+                });
+            var googleSubmit = BrowserActionPolicy.Evaluate(
+                new BrowserActionDescriptor
+                {
+                    Action = "press",
+                    InputType = "text",
+                    Role = "combobox",
+                    Name = "Search",
+                    Key = "Enter",
+                    Url = "https://www.google.com/search?q=dubai",
+                    FormHasPersonalData = true
+                });
+            var googleLeakedQuery = BrowserActionPolicy.Evaluate(
+                new BrowserActionDescriptor
+                {
+                    Action = "type",
+                    InputType = "text",
+                    Role = "searchbox",
+                    Name = "Search",
+                    Url = "https://www.google.com/",
+                    Value = "Germany private-page-token",
+                    SourceText = "Flights from Germany to Dubai"
+                });
+            var googlePasswordForm = BrowserActionPolicy.Evaluate(
+                new BrowserActionDescriptor
+                {
+                    Action = "press",
+                    InputType = "text",
+                    Role = "searchbox",
+                    Name = "Search",
+                    Key = "Enter",
+                    Url = "https://www.google.com/",
+                    FormHasPassword = true
+                });
+            var fakeGoogleSearch = BrowserActionPolicy.Evaluate(
+                new BrowserActionDescriptor
+                {
+                    Action = "type",
+                    InputType = "text",
+                    Role = "searchbox",
+                    Name = "Search",
+                    Url = "https://google.com.attacker.example/",
+                    Value = "Germany",
+                    SourceText = "Germany",
+                    FormHasPersonalData = true
+                });
 
             Check(
                 allowedType.Allowed && passengerCount.Allowed &&
-                reversibleControls &&
+                reversibleControls && googleSearch.Allowed &&
+                googleSubmit.Allowed &&
                 !password.Allowed && !email.Allowed &&
                 !paymentForm.Allowed && !booking.Allowed &&
                 !pageDerivedType.Allowed && !tooLong.Allowed &&
-                !travelerIdentity.Allowed && blockedConsequences &&
+                !travelerIdentity.Allowed && !googleLeakedQuery.Allowed &&
+                !googlePasswordForm.Allowed && !fakeGoogleSearch.Allowed &&
+                blockedConsequences &&
                 pageDerivedType.Code == "TYPE_SOURCE_NOT_USER",
                 "BrowserActionPolicy did not enforce the approved public-data boundary.");
         }

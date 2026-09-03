@@ -27,6 +27,8 @@ namespace Scribble.Security
 
         public string SourceText { get; set; }
 
+        public string Key { get; set; }
+
         public bool FormHasPassword { get; set; }
 
         public bool FormHasPayment { get; set; }
@@ -133,20 +135,26 @@ namespace Scribble.Security
                 return Allow();
             }
 
-            if (descriptor.FormHasPassword ||
-                descriptor.FormHasPayment ||
-                descriptor.FormHasPersonalData)
-            {
-                return Deny(
-                    "ACTION_SENSITIVE_FORM",
-                    "The target is inside a credential, payment, or personal-data form.");
-            }
+            var googleSearchAction = IsGoogleSearchAction(
+                descriptor,
+                page,
+                action);
 
             if (IsSensitiveField(descriptor))
             {
                 return Deny(
                     "ACTION_SENSITIVE_FIELD",
                     "Scribble cannot interact with credential, payment, or personal-data fields.");
+            }
+
+            if (descriptor.FormHasPassword ||
+                (!googleSearchAction &&
+                 (descriptor.FormHasPayment ||
+                  descriptor.FormHasPersonalData)))
+            {
+                return Deny(
+                    "ACTION_SENSITIVE_FORM",
+                    "The target is inside a credential, payment, or personal-data form.");
             }
 
             var controlText = Clean(
@@ -177,9 +185,14 @@ namespace Scribble.Security
                         "Typed browser values are limited to 200 characters.");
                 }
 
-                if (!IsContiguousUserPhrase(
-                    value,
-                    descriptor.SourceText))
+                var sourceAllowed = googleSearchAction
+                    ? IsGoogleQueryDerivedFromUser(
+                        value,
+                        descriptor.SourceText)
+                    : IsContiguousUserPhrase(
+                        value,
+                        descriptor.SourceText);
+                if (!sourceAllowed)
                 {
                     return Deny(
                         "TYPE_SOURCE_NOT_USER",
@@ -247,6 +260,111 @@ namespace Scribble.Security
             return (" " + source + " ").IndexOf(
                 " " + wanted + " ",
                 StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        public static bool IsGoogleQueryDerivedFromUser(
+            string value,
+            string sourceText)
+        {
+            var wanted = QueryTokens(value);
+            var source = new HashSet<string>(
+                QueryTokens(sourceText),
+                StringComparer.OrdinalIgnoreCase);
+            if (wanted.Count == 0 || source.Count == 0)
+            {
+                return false;
+            }
+
+            foreach (var token in wanted)
+            {
+                if (!source.Contains(token))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool IsGoogleSearchAction(
+            BrowserActionDescriptor descriptor,
+            Uri page,
+            string action)
+        {
+            if (descriptor == null || page == null ||
+                !(page.Host.Equals(
+                      "google.com",
+                      StringComparison.OrdinalIgnoreCase) ||
+                  page.Host.EndsWith(
+                      ".google.com",
+                      StringComparison.OrdinalIgnoreCase)))
+            {
+                return false;
+            }
+
+            var role = Clean(descriptor.Role, 80)
+                .ToLowerInvariant();
+            var inputType = Clean(descriptor.InputType, 40)
+                .ToLowerInvariant();
+            var label = Clean(
+                (descriptor.Name ?? string.Empty) + " " +
+                (descriptor.Placeholder ?? string.Empty),
+                500);
+            var looksLikeSearch =
+                (role == "searchbox" ||
+                 role == "textbox" ||
+                 role == "combobox" ||
+                 inputType == "search") &&
+                Regex.IsMatch(
+                    label,
+                    @"\b(search|google)\b",
+                    RegexOptions.IgnoreCase);
+            if (!looksLikeSearch)
+            {
+                return false;
+            }
+
+            if (action == "type")
+            {
+                return true;
+            }
+
+            return action == "press" &&
+                Clean(descriptor.Key, 40).Equals(
+                    "Enter",
+                    StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static IList<string> QueryTokens(string value)
+        {
+            var normalized = NormalizePhrase(value);
+            var result = new List<string>();
+            foreach (var raw in normalized.Split(
+                new[] { ' ' },
+                StringSplitOptions.RemoveEmptyEntries))
+            {
+                var token = raw;
+                if (token.Length > 4 && token.EndsWith(
+                    "ies",
+                    StringComparison.OrdinalIgnoreCase))
+                {
+                    token = token.Substring(0, token.Length - 3) + "y";
+                }
+                else if (token.Length > 3 &&
+                         token.EndsWith(
+                             "s",
+                             StringComparison.OrdinalIgnoreCase) &&
+                         !token.EndsWith(
+                             "ss",
+                             StringComparison.OrdinalIgnoreCase))
+                {
+                    token = token.Substring(0, token.Length - 1);
+                }
+
+                result.Add(token);
+            }
+
+            return result;
         }
 
         private static BrowserActionDecision Allow()

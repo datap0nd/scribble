@@ -90,8 +90,9 @@ keystrokes before submission. Typed values are therefore capped at 200
 characters, must be a normalized contiguous phrase from the user request or a
 clarification answer, are evaluated by the DOM-independent native
 `BrowserActionPolicy`, and appear verbatim in the activity log and transcript
-before dispatch. Search queries additionally require an ordered subset of
-user-supplied tokens. The policy blocks credential, personal/traveler identity,
+before dispatch. Search queries are normalized to user-supplied tokens; harmless
+reordering and singular/plural differences do not cause the search to fail, while
+page-only tokens are removed before dispatch. The policy blocks credential, personal/traveler identity,
 payment, purchase/booking, messaging, upload/download, and destructive fields,
 forms, and controls, including Enter or a benign-looking button in a sensitive
 form. Passenger-count controls remain allowed. `ask_user` pauses at the panel

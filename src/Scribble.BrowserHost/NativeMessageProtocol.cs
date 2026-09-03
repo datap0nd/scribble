@@ -79,6 +79,8 @@ namespace Scribble.BrowserHost
 
         public string sourceText { get; set; }
 
+        public string key { get; set; }
+
         public bool formHasPassword { get; set; }
 
         public bool formHasPayment { get; set; }
@@ -759,6 +761,9 @@ namespace Scribble.BrowserHost
                         SourceText = TextBoundary.PlainText(
                             action.sourceText,
                             TextBoundary.MaxUserPromptCharacters),
+                        Key = TextBoundary.SingleLine(
+                            action.key,
+                            40),
                         FormHasPassword = action.formHasPassword,
                         FormHasPayment = action.formHasPayment,
                         FormHasPersonalData = action.formHasPersonalData
