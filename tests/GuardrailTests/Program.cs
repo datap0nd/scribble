@@ -2513,6 +2513,12 @@ namespace GuardrailTests
                 "Microsoft.Excel.Workbook");
             var callback = typeof(ExcelAddIn).GetMethod(
                 "OnSendToScribble");
+            var skillPreflight = typeof(OfficeChatPane).GetMethod(
+                "EnsureExcelSelectionForTranslation",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            var attachSelection = typeof(OfficeChatPane).GetMethod(
+                "AddExcelSelection",
+                BindingFlags.Instance | BindingFlags.NonPublic);
             string chatPage;
             using (var stream = typeof(OfficeChatPane).Assembly
                 .GetManifestResourceStream(
@@ -2532,6 +2538,9 @@ namespace GuardrailTests
                 xml.Contains("OnSendToScribble") &&
                 xml.Contains("Send to Scribble") &&
                 callback != null &&
+                skillPreflight != null &&
+                attachSelection != null &&
+                attachSelection.ReturnType == typeof(bool) &&
                 chatPage.Contains("case \"focusComposer\"") &&
                 chatPage.Contains("input.focus()"),
                 "The Excel context-menu Ribbon XML is incomplete: " +
@@ -6472,6 +6481,34 @@ namespace GuardrailTests
                 1,
                 "a\nb\nc\nd",
                 false);
+            var largeTable = new ExcelSelectionSnapshot(
+                "large-table",
+                false,
+                "Book1",
+                "Book1",
+                42,
+                "Data",
+                "A1:CV500",
+                1,
+                1,
+                500,
+                100,
+                "preview",
+                true);
+            var longColumn = new ExcelSelectionSnapshot(
+                "long-column",
+                false,
+                "Book1",
+                "Book1",
+                42,
+                "Data",
+                "W1:W501",
+                1,
+                23,
+                501,
+                1,
+                "preview",
+                true);
             Assert(
                 ExcelSelectionOutputPolicy.IdentityMatches(
                     snapshot,
@@ -6512,6 +6549,21 @@ namespace GuardrailTests
                     snapshot.BuildContextText("request-handle")
                         .IndexOf("a\nb\nc\nd", StringComparison.Ordinal),
                 "Workbook, window, and sheet identity must fail closed.");
+
+            Assert(
+                ExcelSelectionOutputPolicy
+                    .TranslationSelectionError(snapshot).Length == 0 &&
+                ExcelSelectionOutputPolicy
+                    .TranslationSelectionError(largeTable)
+                    .Contains("one column") &&
+                ExcelSelectionOutputPolicy
+                    .TranslationSelectionError(largeTable)
+                    .Contains("50000 cells") &&
+                ExcelSelectionOutputPolicy
+                    .TranslationSelectionError(longColumn)
+                    .Contains("up to 500 rows"),
+                "The Korean translation skill must reject oversized or " +
+                "multi-column selections before sending a model request.");
         }
 
         private static void WorkbookAndPresentationCatalogsStayReadOnly()
