@@ -1145,6 +1145,20 @@ namespace GuardrailTests
                     morning.Prompt.Contains("unread_only"),
                     "The packaged morning skill is incomplete.");
 
+                var translateKorean = packaged.Single(skill =>
+                    skill.Id == "translate-korean-to-english");
+                Assert(
+                    translateKorean.Origin == "public" &&
+                    translateKorean.Host == "excel" &&
+                    !translateKorean.StartFresh &&
+                    translateKorean.Prompt.Contains(
+                        "every cell") &&
+                    translateKorean.Prompt.Contains(
+                        "write_selection_output") &&
+                    translateKorean.Prompt.Contains(
+                        "preserve the source"),
+                    "The packaged Korean translation skill is incomplete.");
+
                 File.WriteAllText(
                     path,
                     "{\"SchemaVersion\":1,\"Skills\":[" +
@@ -1177,7 +1191,7 @@ namespace GuardrailTests
                 store.SaveLocal(new[] { outlook, excel });
                 Assert(
                     store.LoadLocal().Count == 2 &&
-                    store.GetForHost("excel").Count == 1 &&
+                    store.GetForHost("excel").Count == 2 &&
                     store.GetForHost("outlook").Count == 2,
                     "Local skills did not persist or filter by app.");
 

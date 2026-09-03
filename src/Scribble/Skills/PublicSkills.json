@@ -9,6 +9,15 @@
       "DisplayOrder": 10,
       "StartFresh": true,
       "Prompt": "Summarize unread messages in my primary Inbox received inclusively from {{yesterday_5pm_local_iso}} through {{now_local_iso}}. Use search_mailbox exactly once with query an empty string, folder inbox, unread_only true, received_after and received_before set to those exact timestamps, and max_results set to the maximum allowed by the tool. Read every returned message. Start with the heading Morning unread summary, then state the exact window and number summarized. Put important or action-required messages first. Then list every remaining message as Sender — Subject — one-sentence summary. If the search result says truncated is true, clearly say that additional unread messages were excluded by Scribble's configured email limit. If there are no matches, say exactly: No unread messages arrived in this window. Do not create a draft or change any message."
+    },
+    {
+      "Id": "translate-korean-to-english",
+      "Name": "Translate from Korean",
+      "Description": "Translate an attached Korean Excel column to English in the adjacent blank column.",
+      "Host": "excel",
+      "DisplayOrder": 10,
+      "StartFresh": false,
+      "Prompt": "Translate every cell in the attached Excel selection from Korean to English. Treat the attached selection as the complete scope: include the first cell or header, preserve blank row positions, and produce exactly one output value per selected row. Use write_selection_output and preserve the source, writing to the immediately adjacent blank column by default. Do not ask whether to translate the header or whether to create a new draft or replace the source. If the adjacent destination is unavailable, explain why and ask the user to choose from the empty candidate columns returned by the tool. If there is no eligible attached contiguous single-column selection, tell the user to select one contiguous column block and choose Send to Scribble. Never save the workbook."
     }
   ]
 }

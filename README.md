@@ -307,6 +307,12 @@ are expanded locally. The skill reads at most the reviewed email count,
 reports when more matches were excluded, and never marks a message read. If the
 window is empty it reports: “No unread messages arrived in this window.”
 
+Excel ships with **Translate from Korean**. After a user attaches one
+contiguous column with **Send to Scribble**, the skill translates every
+selected cell—including the first cell or header—to English. It keeps the
+attachment in the current chat, preserves the source, and writes the aligned
+result to the adjacent blank column without saving the workbook.
+
 ### Local Topics
 
 The **Topics** tab lets you configure up to twenty named local document

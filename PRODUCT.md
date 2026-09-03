@@ -72,6 +72,10 @@ locally linked item. The dedicated host exposes no send operation.
   fresh in-memory chat, searches the primary Inbox from 5:00 PM yesterday
   through click time in the PC's local timezone, and summarizes no more than
   the configured email limit without changing read state.
+- Ship an Excel-only **Translate from Korean** Public skill. It translates
+  every cell in an attached contiguous column to English, including the first
+  cell or header, and writes aligned output to the adjacent blank column while
+  preserving the source and leaving the workbook unsaved.
 - Configure up to twenty named local Topics, explicitly select one per chat,
   and search and read only bounded relevant excerpts from its recursively
   indexed document folder.
