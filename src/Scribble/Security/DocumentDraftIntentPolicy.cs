@@ -254,6 +254,18 @@ namespace Scribble.Security
 
         public static bool AllowsDraft(string userPrompt)
         {
+            return AllowsDraft(userPrompt, false);
+        }
+
+        // A deliberately attached Excel selection is a local user
+        // gesture, so it can satisfy the document-reference half of
+        // the gate. An edit verb is still required: attaching cells
+        // by itself never grants write permission, and document or
+        // model text can never set this flag.
+        public static bool AllowsDraft(
+            string userPrompt,
+            bool hasAttachedExcelSelection)
+        {
             var prompt = TextBoundary.PlainText(
                     userPrompt,
                     TextBoundary.MaxUserPromptCharacters)
@@ -269,7 +281,8 @@ namespace Scribble.Security
             }
 
             return ContainsAny(prompt, EditActions) &&
-                   ContainsAny(prompt, DocumentReferences);
+                   (hasAttachedExcelSelection ||
+                    ContainsAny(prompt, DocumentReferences));
         }
 
         private static bool ContainsAny(

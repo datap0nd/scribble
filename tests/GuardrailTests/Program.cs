@@ -153,6 +153,12 @@ namespace GuardrailTests
                     "Document panes gate drafts behind explicit intent",
                     DocumentDraftIntentRequiresExplicitPhrase);
                 Run(
+                    "Attached Excel selections satisfy only the reference gate",
+                    ExcelSelectionIntentIsStillActionBound);
+                Run(
+                    "Excel selection output stages bounded literal values",
+                    ExcelSelectionOutputIsBoundedAndLiteral);
+                Run(
                     "Workbook and presentation catalogs stay read only",
                     WorkbookAndPresentationCatalogsStayReadOnly);
                 Run(
@@ -292,6 +298,9 @@ namespace GuardrailTests
                 Run(
                     "Outlook ribbon includes Send to Scribble",
                     RibbonIncludesSendToAi);
+                Run(
+                    "Excel context menus include Send to Scribble",
+                    ExcelRibbonIncludesSendToScribble);
                 Run(
                     "Selected subjects hide reply and forward prefixes",
                     SelectedSubjectIsCleaned);
@@ -2476,6 +2485,37 @@ namespace GuardrailTests
                 xml.Contains("Send to Scribble") &&
                 xml.Contains("label=\"Scribble\""),
                 "The Outlook explorer ribbon XML is incomplete: " + xml);
+        }
+
+        private static void ExcelRibbonIncludesSendToScribble()
+        {
+            var xml = new ExcelAddIn().GetCustomUI(
+                "Microsoft.Excel.Workbook");
+            var callback = typeof(ExcelAddIn).GetMethod(
+                "OnSendToScribble");
+            string chatPage;
+            using (var stream = typeof(OfficeChatPane).Assembly
+                .GetManifestResourceStream(
+                    "Scribble.UI.ChatPaneWeb.html"))
+            using (var reader = new StreamReader(
+                stream ?? throw new InvalidOperationException(
+                    "The embedded chat page is missing."),
+                Encoding.UTF8))
+            {
+                chatPage = reader.ReadToEnd();
+            }
+
+            Assert(
+                xml.Contains("ContextMenuCell") &&
+                xml.Contains("ContextMenuRow") &&
+                xml.Contains("ContextMenuColumn") &&
+                xml.Contains("OnSendToScribble") &&
+                xml.Contains("Send to Scribble") &&
+                callback != null &&
+                chatPage.Contains("case \"focusComposer\"") &&
+                chatPage.Contains("input.focus()"),
+                "The Excel context-menu Ribbon XML is incomplete: " +
+                xml);
         }
 
         private static void SelectedSubjectIsCleaned()
@@ -6064,6 +6104,357 @@ namespace GuardrailTests
                 "An overview request must not authorize a document draft.");
         }
 
+        private static void ExcelSelectionIntentIsStillActionBound()
+        {
+            Assert(
+                !DocumentDraftIntentPolicy.AllowsDraft(
+                    "translate this to English") &&
+                DocumentDraftIntentPolicy.AllowsDraft(
+                    "translate this to English",
+                    true) &&
+                !DocumentDraftIntentPolicy.AllowsDraft(
+                    "what does this mean",
+                    true) &&
+                !DocumentDraftIntentPolicy.AllowsDraft(
+                    string.Empty,
+                    true),
+                "An attached Excel selection must satisfy only the " +
+                "document-reference half of the intent gate.");
+
+            var request = DocumentChatRequestFactory.Create(
+                "test-model",
+                "excel",
+                "Workbook: Book1",
+                new List<ChatTurn>(),
+                "translate this to English",
+                true,
+                new List<ExternalContextDocument>
+                {
+                    new ExternalContextDocument(
+                        "Excel Data!A1:A2",
+                        "Selected Excel cells Data!A1:A2:\n\uc548\ub155\n\uc138\uacc4\n" +
+                        "Selection handle for this request: h1")
+                },
+                null,
+                null,
+                true);
+            var names = request.tools
+                .Select(tool => tool.function.name)
+                .ToArray();
+            var unauthorizedNames = DocumentChatRequestFactory.Create(
+                    "test-model",
+                    "excel",
+                    "Workbook: Book1",
+                    new List<ChatTurn>(),
+                    "what does this mean",
+                    false,
+                    null,
+                    null,
+                    null,
+                    true)
+                .tools
+                .Select(tool => tool.function.name)
+                .ToArray();
+            Assert(
+                names.Contains("write_selection_output") &&
+                !unauthorizedNames.Contains("write_selection_output") &&
+                Convert.ToString(
+                    ((ChatCompletionInputMessage)
+                        request.messages[0]).content)
+                    .Contains("Preserve the source"),
+                "An eligible selection request must expose the " +
+                "source-preserving output tool and instructions.");
+        }
+
+        private static void ExcelSelectionOutputIsBoundedAndLiteral()
+        {
+            Assert(
+                ExcelSelectionOutputPolicy.SanitizeLiteral("=A1") ==
+                    "'=A1" &&
+                ExcelSelectionOutputPolicy.SanitizeLiteral("+1") ==
+                    "'+1" &&
+                ExcelSelectionOutputPolicy.SanitizeLiteral("-1") ==
+                    "'-1" &&
+                ExcelSelectionOutputPolicy.SanitizeLiteral("@name") ==
+                    "'@name" &&
+                ExcelSelectionOutputPolicy.SanitizeLiteral("plain") ==
+                    "plain" &&
+                ExcelSelectionOutputPolicy.SanitizeLiteral(
+                    new string('x', 501)).Length ==
+                    ExcelSelectionOutputPolicy.MaxCellCharacters &&
+                ExcelSelectionOutputPolicy.ColumnNameToNumber("XFD") ==
+                    ExcelSelectionOutputPolicy.MaxExcelColumns &&
+                ExcelSelectionOutputPolicy.ColumnNameToNumber("XFE") == 0 &&
+                ExcelSelectionOutputPolicy.ColumnNumberToName(
+                    ExcelSelectionOutputPolicy.MaxExcelColumns) == "XFD",
+                "Formula-like selection output must become inert text.");
+
+            Assert(
+                ExcelSelectionOutputPolicy.IsDestinationWritable(
+                    new[]
+                    {
+                        new ExcelDestinationCellState("", false, false),
+                        new ExcelDestinationCellState("", false, false)
+                    }) &&
+                !ExcelSelectionOutputPolicy.IsDestinationWritable(
+                    new[]
+                    {
+                        new ExcelDestinationCellState("data", false, false)
+                    }) &&
+                !ExcelSelectionOutputPolicy.IsDestinationWritable(
+                    new[]
+                    {
+                        new ExcelDestinationCellState("", true, false)
+                    }) &&
+                !ExcelSelectionOutputPolicy.IsDestinationWritable(
+                    new[]
+                    {
+                        new ExcelDestinationCellState("", false, true)
+                    }),
+                "Constants, formulas, and merged cells must all count " +
+                "as occupied destinations.");
+
+            var staged = new ExcelSelectionOutputSession("h1", 4);
+            Assert(
+                !staged.Stage(
+                    "h1",
+                    "B",
+                    0,
+                    new[] { "one", "=two" },
+                    false) &&
+                staged.Stage(
+                    "h1",
+                    "B",
+                    2,
+                    new[] { "three", "four" },
+                    true) &&
+                staged.IsComplete &&
+                staged.Values.Count == 4 &&
+                staged.Values[1] == "'=two" &&
+                staged.DestinationColumn == "B",
+                "Ordered batches did not assemble a complete literal result.");
+
+            var rejectedGap = false;
+            try
+            {
+                new ExcelSelectionOutputSession("h2", 2).Stage(
+                    "h2",
+                    "C",
+                    1,
+                    new[] { "bad" },
+                    false);
+            }
+            catch (InvalidOperationException)
+            {
+                rejectedGap = true;
+            }
+
+            var rejectedCount = false;
+            try
+            {
+                new ExcelSelectionOutputSession("h3", 2).Stage(
+                    "h3",
+                    "C",
+                    0,
+                    new[] { "only one" },
+                    true);
+            }
+            catch (InvalidOperationException)
+            {
+                rejectedCount = true;
+            }
+
+            Assert(
+                rejectedGap && rejectedCount,
+                "Gapped or incomplete selection output was accepted.");
+
+            var retry = new ExcelSelectionOutputSession("retry", 2);
+            var rejectedRetry = false;
+            try
+            {
+                retry.Stage(
+                    "retry",
+                    "C",
+                    1,
+                    new[] { "bad" },
+                    false);
+            }
+            catch (InvalidOperationException)
+            {
+                rejectedRetry = true;
+            }
+
+            Assert(
+                rejectedRetry &&
+                !retry.Stage(
+                    "retry",
+                    "D",
+                    0,
+                    new[] { "one" },
+                    false) &&
+                retry.Stage(
+                    "retry",
+                    "D",
+                    1,
+                    new[] { "two" },
+                    true) &&
+                retry.DestinationColumn == "D",
+                "Rejected input must not lock a destination or prevent retry.");
+
+            var locked = new ExcelSelectionOutputSession("locked", 2);
+            locked.Stage(
+                "locked",
+                "G",
+                0,
+                new[] { "one" },
+                false);
+            var rejectedDestinationChange = false;
+            try
+            {
+                locked.Stage(
+                    "locked",
+                    "H",
+                    1,
+                    new[] { "two" },
+                    true);
+            }
+            catch (InvalidOperationException)
+            {
+                rejectedDestinationChange = true;
+            }
+
+            Assert(
+                rejectedDestinationChange &&
+                locked.StagedCount == 1 &&
+                locked.DestinationColumn == "G" &&
+                locked.Stage(
+                    "locked",
+                    "G",
+                    1,
+                    new[] { "two" },
+                    true),
+                "The first accepted batch must lock the destination column.");
+
+            var batches = new ExcelSelectionOutputSession("batches", 5);
+            for (var offset = 0; offset < 4; offset++)
+            {
+                batches.Stage(
+                    "batches",
+                    "E",
+                    offset,
+                    new[] { offset.ToString() },
+                    false);
+            }
+
+            var rejectedFifthBatch = false;
+            try
+            {
+                batches.Stage(
+                    "batches",
+                    "E",
+                    4,
+                    new[] { "four" },
+                    true);
+            }
+            catch (InvalidOperationException)
+            {
+                rejectedFifthBatch = true;
+            }
+
+            var rejectedLargeBatch = false;
+            try
+            {
+                new ExcelSelectionOutputSession("large", 126).Stage(
+                    "large",
+                    "F",
+                    0,
+                    Enumerable.Repeat("x", 126).ToArray(),
+                    true);
+            }
+            catch (InvalidOperationException)
+            {
+                rejectedLargeBatch = true;
+            }
+
+            var rejectedLargePayload = false;
+            try
+            {
+                new ExcelSelectionOutputSession("payload", 21).Stage(
+                    "payload",
+                    "F",
+                    0,
+                    Enumerable.Repeat(
+                        new string('x', 500),
+                        21).ToArray(),
+                    true);
+            }
+            catch (InvalidOperationException)
+            {
+                rejectedLargePayload = true;
+            }
+
+            Assert(
+                rejectedFifthBatch &&
+                rejectedLargeBatch &&
+                rejectedLargePayload,
+                "Selection output batch-count and value-count caps failed.");
+
+            var snapshot = new ExcelSelectionSnapshot(
+                "a1",
+                false,
+                "Book1",
+                "Book1",
+                42,
+                "Data",
+                "A1:A4",
+                1,
+                1,
+                4,
+                1,
+                "a\nb\nc\nd",
+                false);
+            Assert(
+                ExcelSelectionOutputPolicy.IdentityMatches(
+                    snapshot,
+                    false,
+                    "Book1",
+                    "Book1",
+                    42,
+                    "Data") &&
+                !ExcelSelectionOutputPolicy.IdentityMatches(
+                    snapshot,
+                    false,
+                    "Book1",
+                    "Book1",
+                    42,
+                    "Renamed") &&
+                !ExcelSelectionOutputPolicy.IdentityMatches(
+                    snapshot,
+                    false,
+                    "Book1",
+                    "Book1",
+                    43,
+                    "Data") &&
+                !ExcelSelectionOutputPolicy.IdentityMatches(
+                    snapshot,
+                    false,
+                    "Renamed",
+                    "Renamed",
+                    42,
+                    "Data") &&
+                snapshot.BuildContextText("request-handle")
+                    .IndexOf(
+                        "Selection handle for this request: request-handle",
+                        StringComparison.Ordinal) >= 0 &&
+                snapshot.BuildContextText("request-handle")
+                    .IndexOf(
+                        "Selection handle for this request: request-handle",
+                        StringComparison.Ordinal) <
+                    snapshot.BuildContextText("request-handle")
+                        .IndexOf("a\nb\nc\nd", StringComparison.Ordinal),
+                "Workbook, window, and sheet identity must fail closed.");
+        }
+
         private static void WorkbookAndPresentationCatalogsStayReadOnly()
         {
             var workbookNames = WorkbookToolCatalog.ApprovedNames
@@ -6181,6 +6572,9 @@ namespace GuardrailTests
                 DocumentDraftHost.IsDraftTool(
                     "excel",
                     WorkbookToolCatalog.WriteCells) &&
+                DocumentDraftHost.IsDraftTool(
+                    "excel",
+                    WorkbookToolCatalog.WriteSelectionOutput) &&
                 !DocumentDraftHost.IsDraftTool(
                     "word",
                     WorkbookToolCatalog.WriteCells) &&
@@ -6189,9 +6583,20 @@ namespace GuardrailTests
                     WorkbookToolCatalog.WriteCells) &&
                 !WorkbookToolCatalog.IsApproved(
                     WorkbookToolCatalog.WriteCells) &&
+                !WorkbookToolCatalog.IsApproved(
+                    WorkbookToolCatalog.WriteSelectionOutput) &&
                 WorkbookToolCatalog.IsDraftTool(
-                    WorkbookToolCatalog.WriteCells),
-                "write_cells must stay an Excel-only authorized draft tool.");
+                    WorkbookToolCatalog.WriteCells) &&
+                WorkbookToolCatalog.IsDraftTool(
+                    WorkbookToolCatalog.WriteSelectionOutput) &&
+                !DocumentDraftHost.IsDraftTool(
+                    "word",
+                    WorkbookToolCatalog.WriteSelectionOutput) &&
+                !DocumentDraftHost.IsDraftTool(
+                    "powerpoint",
+                    WorkbookToolCatalog.WriteSelectionOutput),
+                "Excel write tools must stay locally authorized and " +
+                "host-specific.");
 
             var outlookCross = CrossAppToolCatalog
                 .CreateDefinitions("outlook")

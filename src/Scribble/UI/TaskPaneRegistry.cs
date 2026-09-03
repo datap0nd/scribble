@@ -34,7 +34,7 @@ namespace Scribble.UI
 
         // Shows the pane belonging to the active window, creating
         // one on that window's first use.
-        internal void ShowForActiveWindow(
+        internal OfficeChatPane ShowForActiveWindow(
             object ctpFactory,
             object hostApplication)
         {
@@ -53,7 +53,7 @@ namespace Scribble.UI
                 {
                     dynamic existing = entry.TaskPane;
                     existing.Visible = true;
-                    return;
+                    return entry.ChatPane;
                 }
                 catch
                 {
@@ -91,6 +91,7 @@ namespace Scribble.UI
                 TaskPane = taskPane,
                 ChatPane = chatPane
             });
+            return chatPane;
         }
 
         internal void CloseAll()

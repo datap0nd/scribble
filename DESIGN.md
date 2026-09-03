@@ -159,6 +159,8 @@ A compact Topic strip sits immediately below every chat header. It always shows 
 
 The context toolbar uses short native actions for Add email, Add files, New, and Settings. Email drops resolve the current Outlook Explorer selection. File drops and the file picker accept the supported document and image formats, show progress while local extraction runs, and apply results only after the batch completes. Files may be up to 100 MiB each with a 250 MiB source budget per picker or drop; resource-limited files remain visible as warnings. The existing three-document, four-image, and bounded-context limits remain visible in status text.
 
+In Excel, the cell, row, and column context menus include **Send to Scribble**. The command captures the range before the task pane opens, adds one context card labeled with worksheet and address, and focuses the existing composer without replacing or submitting its text. Empty and discontiguous selections show an actionable status; filtered multi-area selections direct the user to choose one contiguous block. While a request is active, the command reports that Scribble is working instead of failing silently. A one-column transformation preserves the source and stages its aligned result for one bulk write into an empty destination column; occupied destinations trigger a user choice rather than shifting workbook structure.
+
 ### Named Rules
 
 **The Ordered Boundary Rule.** Keep mailbox scope, conversation and context ledger, composer, draft controls, and status in that order. This sequence is the interface's security explanation.

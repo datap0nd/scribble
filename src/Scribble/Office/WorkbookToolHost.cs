@@ -186,7 +186,21 @@ namespace Scribble.Office
         // tray ("add current selection").
         public string DescribeSelection(out string title)
         {
-            title = "Excel selection";
+            var snapshot = CaptureSelection();
+            title = TextBoundary.SingleLine(
+                "Excel " + snapshot.WorksheetName + "!" +
+                snapshot.Address,
+                120);
+            return snapshot.BuildContextText(string.Empty);
+        }
+
+        // Captures identity and a bounded preview before a Ribbon
+        // callback creates or focuses the task pane. Whole-column
+        // and whole-row selections are reduced to the used range;
+        // discontiguous selections fail closed because a single
+        // output column cannot preserve their row alignment.
+        public ExcelSelectionSnapshot CaptureSelection()
+        {
             dynamic application = _excelApplication;
             dynamic selection = application.Selection;
             if (selection == null)
@@ -195,32 +209,129 @@ namespace Scribble.Office
                     "Select cells in Excel first.");
             }
 
-            string address = Convert.ToString(
-                selection.Address(false, false));
-            string sheetName = string.Empty;
             try
             {
-                sheetName = Convert.ToString(
-                    selection.Worksheet.Name);
+                if ((int)selection.Areas.Count != 1)
+                {
+                    throw new InvalidOperationException(
+                        "Scribble cannot send a multi-area Excel selection. " +
+                        "Filtered selections can create separate areas; " +
+                        "select one contiguous block and try again.");
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                throw;
+            }
+            catch
+            {
+                throw new InvalidOperationException(
+                    "Select one contiguous range of Excel cells.");
+            }
+
+            dynamic sheet;
+            try
+            {
+                sheet = selection.Worksheet;
+            }
+            catch
+            {
+                throw new InvalidOperationException(
+                    "The Excel selection is not a cell range.");
+            }
+
+            dynamic normalized = selection;
+            var selectedRows = (int)selection.Rows.Count;
+            var selectedColumns = (int)selection.Columns.Count;
+            if (selectedRows >= 1048576 ||
+                selectedColumns >=
+                    ExcelSelectionOutputPolicy.MaxExcelColumns)
+            {
+                try
+                {
+                    normalized = application.Intersect(
+                        selection,
+                        sheet.UsedRange);
+                }
+                catch
+                {
+                    normalized = null;
+                }
+
+                if (normalized == null)
+                {
+                    throw new InvalidOperationException(
+                        "The selected rows or columns do not contain used cells.");
+                }
+            }
+
+            var rowCount = (int)normalized.Rows.Count;
+            var columnCount = (int)normalized.Columns.Count;
+            if (rowCount < 1 || columnCount < 1)
+            {
+                throw new InvalidOperationException(
+                    "The selected Excel range is empty.");
+            }
+
+            dynamic workbook = sheet.Parent;
+            var workbookName = TextBoundary.SingleLine(
+                Convert.ToString(workbook.Name),
+                180);
+            var workbookPath = string.Empty;
+            var workbookFullName = string.Empty;
+            try
+            {
+                workbookPath = Convert.ToString(workbook.Path) ??
+                    string.Empty;
+                workbookFullName = Convert.ToString(
+                    workbook.FullName) ?? string.Empty;
             }
             catch
             {
             }
 
-            title = TextBoundary.SingleLine(
-                "Excel " +
-                (sheetName.Length > 0 ? sheetName + "!" : string.Empty) +
-                address,
+            var windowHandle = 0;
+            try
+            {
+                windowHandle = (int)application.ActiveWindow.Hwnd;
+            }
+            catch
+            {
+            }
+
+            var address = TextBoundary.SingleLine(
+                Convert.ToString(
+                    normalized.Address(false, false, 1)),
+                80);
+            var sheetName = TextBoundary.SingleLine(
+                Convert.ToString(sheet.Name),
                 120);
             bool truncated;
             var text = ReadRangeText(
-                selection,
+                normalized,
                 out truncated);
-            return "Selected Excel cells " +
-                (sheetName.Length > 0 ? sheetName + "!" : string.Empty) +
-                address +
-                (truncated ? " (truncated)" : string.Empty) +
-                ":\n" + text;
+            if (text.Trim().Length == 0)
+            {
+                throw new InvalidOperationException(
+                    "The selected Excel range does not contain any values.");
+            }
+
+            return new ExcelSelectionSnapshot(
+                Guid.NewGuid().ToString("N"),
+                workbookPath.Length > 0,
+                workbookPath.Length > 0
+                    ? workbookFullName
+                    : workbookName,
+                workbookName,
+                windowHandle,
+                sheetName,
+                address,
+                (int)normalized.Row,
+                (int)normalized.Column,
+                rowCount,
+                columnCount,
+                text,
+                truncated);
         }
 
         private MailboxToolResult ListWorksheets(string callId)

@@ -15,6 +15,7 @@ namespace Scribble.Chat
         public const string ReadCells = "read_cells";
         public const string WriteDraftSheet = "write_draft_sheet";
         public const string WriteCells = "write_cells";
+        public const string WriteSelectionOutput = "write_selection_output";
 
         public static readonly IReadOnlyList<string> ApprovedNames =
             new[]
@@ -214,7 +215,97 @@ namespace Scribble.Chat
                    string.Equals(
                        name,
                        WriteCells,
+                       StringComparison.Ordinal) ||
+                   string.Equals(
+                       name,
+                       WriteSelectionOutput,
                        StringComparison.Ordinal);
+        }
+
+        // Stages a one-to-one result for a deliberately attached,
+        // single-column selection. The host validates and commits
+        // the complete result to one blank destination column.
+        public static ChatToolDefinition SelectionOutputDefinition()
+        {
+            return new ChatToolDefinition
+            {
+                type = "function",
+                function = new ChatToolFunctionDefinition
+                {
+                    name = WriteSelectionOutput,
+                    description =
+                        "Stage literal-text output for the attached Excel " +
+                        "selection, preserving every source cell. Use this " +
+                        "for translations and other one-to-one transforms. " +
+                        "Submit contiguous ordered batches of at most " +
+                        ExcelSelectionOutputPolicy.MaxBatchValues +
+                        " values and " +
+                        ExcelSelectionOutputPolicy.MaxBatchCharacters +
+                        " characters; set complete=true on the last batch. " +
+                        "Omit destination_column to use the column directly " +
+                        "right of the source. The host writes only after all " +
+                        "rows are staged and the destination is fully blank. " +
+                        "If it reports occupied destination candidates, call " +
+                        "ask_user before retrying. Call this as the only tool " +
+                        "in its response.",
+                    parameters = ToolSchema.Build(
+                        new Dictionary<string, object>
+                        {
+                            {
+                                "selection_handle",
+                                ToolSchema.String(
+                                    "Opaque request-scoped handle shown with " +
+                                    "the attached Excel selection.")
+                            },
+                            {
+                                "destination_column",
+                                ToolSchema.String(
+                                    "Optional Excel column label such as KU. " +
+                                    "Omit for the adjacent column.")
+                            },
+                            {
+                                "start_offset",
+                                ToolSchema.Integer(
+                                    "Zero-based source row offset. Batches " +
+                                    "must be contiguous and ordered.",
+                                    0,
+                                    ExcelSelectionOutputPolicy.MaxSelectedCells - 1)
+                            },
+                            {
+                                "values",
+                                new Dictionary<string, object>
+                                {
+                                    { "type", "array" },
+                                    {
+                                        "maxItems",
+                                        ExcelSelectionOutputPolicy.MaxBatchValues
+                                    },
+                                    {
+                                        "items",
+                                        ToolSchema.String(
+                                            "One literal output value aligned " +
+                                            "to one source row.")
+                                    }
+                                }
+                            },
+                            {
+                                "complete",
+                                new Dictionary<string, object>
+                                {
+                                    { "type", "boolean" },
+                                    {
+                                        "description",
+                                        "True only for the final batch."
+                                    }
+                                }
+                            }
+                        },
+                        "selection_handle",
+                        "start_offset",
+                        "values",
+                        "complete")
+                }
+            };
         }
 
         // Bounded writes into the ACTIVE worksheet - only for

@@ -4,7 +4,8 @@ page, the chat client, and every text boundary of the Outlook pane,
 while its capability surface is document-shaped: bounded read-only
 workbook/presentation tools, and one-shot clearly marked draft
 writes (Scribble Draft sheet, [Scribble draft] slides, unsent Outlook
-email drafts) that only unlock from the user's own prompt.
+email drafts, or source-preserving Excel selection output) that only
+unlock from the user's own prompt.
 */
 
 using System;
@@ -57,11 +58,13 @@ namespace Scribble.UI
             public ExternalDocumentContext(
                 ExternalContextDocument document,
                 bool warn,
-                string subtitle)
+                string subtitle,
+                ExcelSelectionSnapshot excelSelection = null)
             {
                 Document = document;
                 Warn = warn;
                 Subtitle = subtitle ?? string.Empty;
+                ExcelSelection = excelSelection;
             }
 
             public ExternalContextDocument Document { get; }
@@ -69,6 +72,8 @@ namespace Scribble.UI
             public bool Warn { get; }
 
             public string Subtitle { get; }
+
+            public ExcelSelectionSnapshot ExcelSelection { get; }
         }
 
         private readonly SettingsStore _settingsStore =
@@ -110,6 +115,7 @@ namespace Scribble.UI
         private bool _busy;
         private bool _shutdown;
         private bool _webReady;
+        private bool _focusComposerWhenReady;
         private string _statusText = "Ready";
         private bool _statusError;
 
@@ -437,6 +443,10 @@ namespace Scribble.UI
             PushContextToWeb();
             ReplayTranscript();
             _promptHelper.RestoreIfPending();
+            if (_focusComposerWhenReady)
+            {
+                FocusComposer();
+            }
         }
 
         private void ReplayTranscript()
@@ -890,7 +900,16 @@ namespace Scribble.UI
         // as a bounded untrusted context document.
         private void AddCurrentSelection()
         {
-            if (_busy || _hostApplication == null)
+            if (_busy)
+            {
+                SetStatus(
+                    "Scribble is working\u2014stop or wait before " +
+                    "sending another selection",
+                    true);
+                return;
+            }
+
+            if (_hostApplication == null)
             {
                 return;
             }
@@ -901,9 +920,10 @@ namespace Scribble.UI
                 string content;
                 if (_hostKind == "excel")
                 {
-                    content = new WorkbookToolHost(
-                        _hostApplication).DescribeSelection(
-                        out title);
+                    AddExcelSelection(
+                        new WorkbookToolHost(
+                            _hostApplication).CaptureSelection());
+                    return;
                 }
                 else if (_hostKind == "word")
                 {
@@ -934,10 +954,80 @@ namespace Scribble.UI
             }
         }
 
-        private void AddContextDocument(
+        // Ribbon callbacks capture before opening the task pane and
+        // hand the immutable snapshot in here. The click attaches
+        // context and focuses the composer; it never submits a prompt.
+        internal void AddExcelSelection(
+            ExcelSelectionSnapshot snapshot)
+        {
+            if (_busy)
+            {
+                SetStatus(
+                    "Scribble is working\u2014stop or wait before " +
+                    "sending another selection",
+                    true);
+                return;
+            }
+
+            if (snapshot == null)
+            {
+                SetStatus("Select cells in Excel first", true);
+                return;
+            }
+
+            var added = AddContextDocument(
+                "Excel " + snapshot.WorksheetName + "!" +
+                    snapshot.Address,
+                snapshot.BuildContextText(string.Empty),
+                "from Excel" +
+                    (snapshot.PreviewTruncated
+                        ? " - preview truncated"
+                        : string.Empty),
+                snapshot);
+            if (!added)
+            {
+                return;
+            }
+
+            FocusComposer();
+            if (snapshot.ColumnCount != 1 ||
+                snapshot.RowCount >
+                    ExcelSelectionOutputPolicy.MaxSelectedCells ||
+                snapshot.PreviewTruncated)
+            {
+                SetStatus(
+                    "Selection added. For adjacent output, select one " +
+                    "contiguous column in chunks of at most " +
+                    ExcelSelectionOutputPolicy.MaxSelectedCells +
+                    " fully captured cells",
+                    false);
+            }
+            else
+            {
+                SetStatus("Selection added to context", false);
+            }
+        }
+
+        private void FocusComposer()
+        {
+            if (!_webReady)
+            {
+                _focusComposerWhenReady = true;
+                return;
+            }
+
+            _focusComposerWhenReady = false;
+            PostToWeb(new Dictionary<string, object>
+            {
+                { "type", "focusComposer" }
+            });
+        }
+
+        private bool AddContextDocument(
             string name,
             string content,
-            string subtitle)
+            string subtitle,
+            ExcelSelectionSnapshot excelSelection = null)
         {
             if (_externalContext.Count >=
                 ExternalContextDocument.MaxDocuments)
@@ -947,7 +1037,7 @@ namespace Scribble.UI
                     ExternalContextDocument.MaxDocuments +
                     " items, bounded text)",
                     true);
-                return;
+                return false;
             }
 
             var usedCharacters = 0;
@@ -966,13 +1056,14 @@ namespace Scribble.UI
                 SetStatus(
                     "Context text budget reached",
                     true);
-                return;
+                return false;
             }
 
             var document = new ExternalContextDocument(
                 name,
                 content);
-            var warn = false;
+            var warn = document.Content.Length <
+                (content ?? string.Empty).Length;
             if (document.Content.Length > remaining)
             {
                 document = new ExternalContextDocument(
@@ -983,16 +1074,18 @@ namespace Scribble.UI
 
             if (document.Content.Length == 0)
             {
-                return;
+                return false;
             }
 
             _externalContext.Add(new ExternalDocumentContext(
                 document,
                 warn,
                 subtitle +
-                (warn ? " - clipped to the budget" : string.Empty)));
+                (warn ? " - clipped to the budget" : string.Empty),
+                excelSelection));
             AppendContext("Added " + document.Name);
             PushContextToWeb();
+            return true;
         }
 
         private void HandleAddFiles()
@@ -1360,11 +1453,53 @@ namespace Scribble.UI
                 return;
             }
 
+            ExternalDocumentContext eligibleSelection = null;
+            var selectionCount = 0;
+            foreach (var entry in _externalContext)
+            {
+                if (entry.ExcelSelection != null)
+                {
+                    selectionCount++;
+                    eligibleSelection = entry;
+                }
+            }
+
+            // Any locally attached Excel snapshot is an explicit
+            // document-reference gesture. Eligibility for the
+            // selection-bound output tool is deliberately narrower.
+            var hasAttachedExcelSelection = selectionCount > 0;
+            ExcelSelectionRequestContext selectionRequest = null;
+            if (selectionCount == 1 &&
+                eligibleSelection != null &&
+                !eligibleSelection.Warn &&
+                !eligibleSelection.ExcelSelection.PreviewTruncated &&
+                eligibleSelection.ExcelSelection.ColumnCount == 1 &&
+                eligibleSelection.ExcelSelection.RowCount <=
+                    ExcelSelectionOutputPolicy.MaxSelectedCells)
+            {
+                selectionRequest = new ExcelSelectionRequestContext(
+                    "excel_selection_" +
+                        Guid.NewGuid().ToString("N"),
+                    eligibleSelection.ExcelSelection);
+            }
+
             var requestExternalContext =
                 new List<ExternalContextDocument>();
             foreach (var entry in _externalContext)
             {
-                requestExternalContext.Add(entry.Document);
+                if (selectionRequest != null &&
+                    ReferenceEquals(entry, eligibleSelection))
+                {
+                    requestExternalContext.Add(
+                        new ExternalContextDocument(
+                            entry.Document.Name,
+                            selectionRequest.Snapshot.BuildContextText(
+                                selectionRequest.Handle)));
+                }
+                else
+                {
+                    requestExternalContext.Add(entry.Document);
+                }
             }
 
             var requestExternalImages =
@@ -1382,7 +1517,9 @@ namespace Scribble.UI
             // it in batches instead of thinning it out.
             var draftAuthorization =
                 new OneShotDraftAuthorization(
-                    DocumentDraftIntentPolicy.AllowsDraft(prompt),
+                    DocumentDraftIntentPolicy.AllowsDraft(
+                        prompt,
+                        hasAttachedExcelSelection),
                     false,
                     4);
             _diagnostics.BeginRequest(
@@ -1398,6 +1535,8 @@ namespace Scribble.UI
             var generation = ++_requestGeneration;
             var cancellation = new CancellationTokenSource();
             _requestCancellation = cancellation;
+            _draftHost?.BeginExcelSelectionRequest(
+                selectionRequest);
 
             try
             {
@@ -1409,6 +1548,7 @@ namespace Scribble.UI
                     activeTopic,
                     _memory.ChatId,
                     turnId,
+                    selectionRequest,
                     cancellation.Token);
                 if (generation != _requestGeneration)
                 {
@@ -1482,6 +1622,7 @@ namespace Scribble.UI
             }
             finally
             {
+                _draftHost?.EndExcelSelectionRequest();
                 PostStreamEnd();
                 if (ReferenceEquals(
                     _requestCancellation,
@@ -1506,6 +1647,7 @@ namespace Scribble.UI
             TopicConfig activeTopic,
             string chatId,
             string turnId,
+            ExcelSelectionRequestContext selectionRequest,
             CancellationToken cancellationToken)
         {
             var imagesExpected = externalImages.Count > 0;
@@ -1565,7 +1707,8 @@ namespace Scribble.UI
                 draftAuthorization.CanCreate,
                 externalContext,
                 mcpTools,
-                activeTopic);
+                activeTopic,
+                selectionRequest != null);
             var topicTools = activeTopic == null
                 ? null
                 : new TopicToolHost(

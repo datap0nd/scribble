@@ -369,6 +369,12 @@ document-shaped and read-only:
 - **+ > Add current selection / Add current slide** snapshots what you have
   selected into the bounded context tray; files and pictures work exactly as
   in Outlook.
+- In Excel, right-click a cell range, row, or column and choose **Send to
+  Scribble** to attach that exact selection and focus the composer. The click
+  never submits a prompt or grants write permission. For a one-column
+  transformation such as "translate this to English", the attached selection
+  supplies the document reference while the typed edit verb supplies the
+  authorization.
 
 Writes unlock only when your own latest message asks to produce something
 ("put this in a draft sheet", "build a slide with this", "do a bar chart
@@ -405,6 +411,15 @@ this document"), it goes there instead - still unsaved:
   for explicit change-my-sheet requests ("fill in the missing totals",
   "fix the formulas in column D"). Same formula safety rules; nothing is
   saved, so closing without saving discards everything.
+- `write_selection_output` (Excel only) handles source-preserving, one-to-one
+  transformations of a deliberately attached single-column selection. Up to
+  500 values are staged in bounded ordered batches, then written once as inert
+  text into the adjacent column only when the complete destination range is
+  blank. Existing values, formulas, merged cells, a changed workbook/window/
+  sheet, or a stale request handle stop the write without consuming draft
+  permission. If the adjacent column is occupied, Scribble offers nearby empty
+  columns and asks where the result should go. The source is never changed and
+  the workbook is never saved.
 - `add_draft_slides` adds slides marked **[Scribble draft]**; existing slides
   are never modified. Every slide is painted from the corporate theme (see
   below). By default new slides append at the end, or ask for a position

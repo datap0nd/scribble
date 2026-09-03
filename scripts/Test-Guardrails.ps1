@@ -417,6 +417,7 @@ $officeGuardedFiles = @(
     (Join-Path $sourceRoot "Office\MetoTheme.cs"),
     (Join-Path $sourceRoot "Office\DocumentDraftHost.cs"),
     (Join-Path $sourceRoot "Office\ExcelTableLauncher.cs"),
+    (Join-Path $sourceRoot "Office\WorkbookSelectionOutputWriter.cs"),
     (Join-Path $sourceRoot "ExcelAddIn.cs"),
     (Join-Path $sourceRoot "PowerPointAddIn.cs"),
     (Join-Path $sourceRoot "WordAddIn.cs"),
@@ -459,7 +460,8 @@ if (Compare-Object $workbookToolNames (@(
     "list_worksheets",
     "read_cells",
     "write_draft_sheet",
-    "write_cells") | Sort-Object)) {
+    "write_cells",
+    "write_selection_output") | Sort-Object)) {
     throw "Workbook tool catalog contains an unexpected capability."
 }
 
@@ -508,6 +510,20 @@ foreach ($requiredBoundary in @(
     if (-not $documentDraftHostSource.Contains($requiredBoundary)) {
         throw "Document draft host is missing boundary $requiredBoundary."
     }
+}
+
+$selectionStageIndex = $documentDraftHostSource.IndexOf(
+    "_selectionOutput.Stage(")
+$selectionConsumeIndex = $documentDraftHostSource.IndexOf(
+    "authorization.TryConsume()",
+    $selectionStageIndex)
+$selectionCommitIndex = $documentDraftHostSource.IndexOf(
+    "WorkbookSelectionOutputWriter.Commit(",
+    $selectionConsumeIndex)
+if ($selectionStageIndex -lt 0 -or
+    $selectionConsumeIndex -le $selectionStageIndex -or
+    $selectionCommitIndex -le $selectionConsumeIndex) {
+    throw "Selection output must stage and validate before consuming permission, then commit."
 }
 
 $workbookWriterSource = Get-Content (
@@ -602,7 +618,7 @@ foreach ($requiredDocumentBoundary in @(
 $officePaneSource = Get-Content (
     Join-Path $sourceRoot "UI\OfficeChatPane.cs") -Raw
 if (-not $officePaneSource.Contains(
-        "DocumentDraftIntentPolicy.AllowsDraft(prompt)")) {
+        "DocumentDraftIntentPolicy.AllowsDraft(")) {
     throw "Document drafts are not gated by the local intent policy."
 }
 

@@ -94,6 +94,8 @@
     <Compile Include="Office\MetoTheme.cs" />
     <Compile Include="Office\WorkbookToolHost.cs" />
     <Compile Include="Office\WorkbookDraftWriter.cs" />
+    <Compile Include="Office\ExcelSelectionOutputPolicy.cs" />
+    <Compile Include="Office\WorkbookSelectionOutputWriter.cs" />
     <Compile Include="Office\PresentationToolHost.cs" />
     <Compile Include="Office\PresentationDraftWriter.cs" />
     <Compile Include="Office\DocumentDraftHost.cs" />

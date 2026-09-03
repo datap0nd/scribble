@@ -55,7 +55,8 @@ namespace Scribble.Chat
             bool allowDraftCreate = false,
             IReadOnlyList<ExternalContextDocument> externalContext = null,
             IReadOnlyList<ChatToolDefinition> extraTools = null,
-            Scribble.Configuration.TopicConfig activeTopic = null)
+            Scribble.Configuration.TopicConfig activeTopic = null,
+            bool hasExcelSelection = false)
         {
             List<ChatToolDefinition> tools;
             if (hostKind == "excel")
@@ -82,6 +83,12 @@ namespace Scribble.Chat
                         WorkbookToolCatalog.DraftDefinition());
                     tools.Add(
                         WorkbookToolCatalog.CellsDefinition());
+                    if (hasExcelSelection)
+                    {
+                        tools.Add(
+                            WorkbookToolCatalog
+                                .SelectionOutputDefinition());
+                    }
                 }
                 else if (hostKind == "word")
                 {
@@ -118,7 +125,8 @@ namespace Scribble.Chat
                     content = BuildSystemBoundary(
                         hostKind,
                         allowDraftCreate,
-                        extraTools != null && extraTools.Count > 0) +
+                        extraTools != null && extraTools.Count > 0,
+                        hasExcelSelection) +
                         BuildTopicBoundary(activeTopic) +
                         PromptHelperTool.SystemInstruction
                 },
@@ -192,7 +200,8 @@ namespace Scribble.Chat
         private static string BuildSystemBoundary(
             string hostKind,
             bool allowDraftCreate,
-            bool hasExternalTools)
+            bool hasExternalTools,
+            bool hasExcelSelection)
         {
             var hostName = hostKind == "excel"
                 ? "Excel"
@@ -217,7 +226,17 @@ namespace Scribble.Chat
 
             if (allowDraftCreate)
             {
-                return boundary +
+                var selectionInstruction = hasExcelSelection
+                    ? " For a one-to-one transformation of the attached " +
+                      "Excel selection, including translation, use " +
+                      "write_selection_output instead of write_cells. " +
+                      "Preserve the source, keep exact row alignment, send " +
+                      "ordered batches, and set complete=true only when every " +
+                      "selected row has one output value. If the adjacent " +
+                      "destination is occupied, use the returned empty-column " +
+                      "candidates to ask the user where the output should go."
+                    : string.Empty;
+                return boundary + selectionInstruction +
                     " The local host recognized an explicit draft request in the " +
                     "user's latest prompt and authorized ONE deliverable for this " +
                     "request, which you may build over several bounded draft calls " +

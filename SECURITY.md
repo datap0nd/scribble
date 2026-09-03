@@ -226,6 +226,19 @@ unless the user enters exact tool names and affirms that each is read-only.
     parts and PDF streams, reject unsafe image dimensions, and retain the
     existing 48,000-character per-file, 120,000-character total, and 800 KiB
     vision-image payload limits. Topic indexing remains capped at 25 MiB.
+21g. Excel's **Send to Scribble** context-menu command captures one contiguous
+    range before focusing the task pane. The attachment is inert; only a later
+    user prompt containing an edit action can unlock writes. An eligible
+    single-column attachment mints an opaque request-scoped handle which
+    expires after the request and is invalidated by context removal or a new
+    chat. `write_selection_output` stages at most 500 one-to-one literal values
+    in four bounded calls without consuming permission. The final call
+    revalidates saved `FullName` (or unsaved workbook name), window handle,
+    worksheet name, source address, exact row count, and a fully blank,
+    unmerged, formula-free destination before consuming one draft permission
+    and performing one bulk write. Values beginning with `=`, `+`, `-`, or `@`
+    are forced to inert text. Source cells are never modified and no file is
+    saved.
 22. Model and webpage output is never parsed as HTML or evaluated as
     script. Assistant replies pass through a bounded local formatter that
     builds paragraph, list, table, bold, and code DOM nodes itself and
