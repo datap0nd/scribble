@@ -51,6 +51,7 @@ OutputBaseFilename=ScribbleSetup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+DisableWelcomePage=no
 CloseApplications=yes
 CloseApplicationsFilter=outlook.exe,excel.exe,powerpnt.exe,winword.exe,ScribbleBrowserHost.exe,{#LegacyBrowserHostFile}
 RestartApplications=no
@@ -72,6 +73,14 @@ Name: "word"; Description: "Scribble for Word (document chat and draft documents
 Name: "browser"; Description: "Scribble for Chrome (one-time browser approval required)"; Types: full
 
 [Files]
+; Installer-only artwork. These files are embedded in Setup, extracted to its
+; temporary directory for the wizard UI, and never copied into the app folder.
+Source: "..\marketing\assets\pixel-pal.png"; Flags: dontcopy noencryption
+Source: "..\marketing\assets\outlook.png"; Flags: dontcopy noencryption
+Source: "..\marketing\assets\excel.png"; Flags: dontcopy noencryption
+Source: "..\marketing\assets\powerpoint.png"; Flags: dontcopy noencryption
+Source: "..\marketing\assets\word.png"; Flags: dontcopy noencryption
+Source: "..\marketing\assets\chrome.png"; Flags: dontcopy noencryption
 Source: "..\src\Scribble\bin\Release\Scribble.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\src\Scribble\bin\Release\Microsoft.Web.WebView2.Core.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\src\Scribble\bin\Release\Microsoft.Web.WebView2.WinForms.dll"; DestDir: "{app}"; Flags: ignoreversion
@@ -440,6 +449,21 @@ Name: "{group}\Set up Scribble in Google Chrome"; Filename: "{app}\ScribbleBrows
 Filename: "{app}\ScribbleBrowserHost.exe"; Parameters: "--setup auto"; Description: "Finish setting up Scribble in Google Chrome"; Flags: nowait postinstall skipifsilent; Components: browser
 
 [Code]
+const
+  BrandNavy = $003B2317;
+  BrandBlue = $00E86F37;
+  BrandGreen = $005B8416;
+  BrandCanvas = $00FCF9F7;
+  BrandMuted = $008B7464;
+  BrandWhite = $00FFFFFF;
+
+var
+  SetupStepLabel: TLabel;
+  RunningPixel: TBitmapImage;
+  ProgressTrackLeft: Integer;
+  ProgressTrackWidth: Integer;
+  RunningPixelTop: Integer;
+
 function GetAssemblyCodeBase(Param: String): String;
 var
   Path: String;
@@ -447,4 +471,291 @@ begin
   Path := ExpandConstant('{app}\Scribble.dll');
   StringChangeEx(Path, '\', '/', True);
   Result := 'file:///' + Path;
+end;
+
+procedure ExtractInstallerArtwork;
+begin
+  ExtractTemporaryFile('pixel-pal.png');
+  ExtractTemporaryFile('outlook.png');
+  ExtractTemporaryFile('excel.png');
+  ExtractTemporaryFile('powerpoint.png');
+  ExtractTemporaryFile('word.png');
+  ExtractTemporaryFile('chrome.png');
+end;
+
+function AddPngImage(Parent: TWinControl; FileName: String;
+  Left, Top, Width, Height: Integer): TBitmapImage;
+var
+  Artwork: TBitmapImage;
+begin
+  Artwork := TBitmapImage.Create(Parent);
+  Artwork.Parent := Parent;
+  Artwork.SetBounds(Left, Top, Width, Height);
+  Artwork.Stretch := True;
+  Artwork.BackColor := BrandCanvas;
+  Artwork.PngImage.LoadFromFile(ExpandConstant('{tmp}\') + FileName);
+  Result := Artwork;
+end;
+
+procedure StyleHeader;
+var
+  AccentBar: TPanel;
+  HeaderPixel: TBitmapImage;
+begin
+  WizardForm.Color := BrandCanvas;
+  WizardForm.MainPanel.Color := BrandWhite;
+  WizardForm.PageNameLabel.Color := BrandWhite;
+  WizardForm.PageNameLabel.Font.Color := BrandNavy;
+  WizardForm.PageNameLabel.Font.Style := [fsBold];
+  WizardForm.PageDescriptionLabel.Color := BrandWhite;
+  WizardForm.PageDescriptionLabel.Font.Color := BrandMuted;
+  WizardForm.WizardSmallBitmapImage.Visible := False;
+  WizardForm.PageNameLabel.Width := WizardForm.MainPanel.ClientWidth - ScaleX(72);
+  WizardForm.PageDescriptionLabel.Width := WizardForm.MainPanel.ClientWidth - ScaleX(72);
+
+  AccentBar := TPanel.Create(WizardForm.MainPanel);
+  AccentBar.Parent := WizardForm.MainPanel;
+  AccentBar.SetBounds(0, 0, WizardForm.MainPanel.ClientWidth, ScaleY(3));
+  AccentBar.Anchors := [akLeft, akTop, akRight];
+  AccentBar.BevelOuter := bvNone;
+  AccentBar.Color := BrandBlue;
+
+  HeaderPixel := AddPngImage(WizardForm.MainPanel, 'pixel-pal.png',
+    WizardForm.MainPanel.ClientWidth - ScaleX(48), ScaleY(13), ScaleX(30), ScaleY(30));
+  HeaderPixel.Anchors := [akTop, akRight];
+
+  SetupStepLabel := TLabel.Create(WizardForm);
+  SetupStepLabel.Parent := WizardForm;
+  SetupStepLabel.AutoSize := False;
+  SetupStepLabel.SetBounds(ScaleX(12), WizardForm.NextButton.Top + ScaleY(5),
+    WizardForm.BackButton.Left - ScaleX(24), ScaleY(20));
+  SetupStepLabel.Font.Color := BrandMuted;
+  SetupStepLabel.Font.Size := 8;
+  SetupStepLabel.Transparent := True;
+end;
+
+procedure StyleWelcomePage;
+var
+  AppLine: TLabel;
+begin
+  WizardForm.WelcomePage.Color := BrandCanvas;
+  WizardForm.WizardBitmapImage.Visible := False;
+
+  AddPngImage(WizardForm.WelcomePage, 'pixel-pal.png', ScaleX(28), ScaleY(72),
+    ScaleX(72), ScaleY(72));
+
+  WizardForm.WelcomeLabel1.SetBounds(ScaleX(124), ScaleY(51),
+    WizardForm.WelcomePage.ClientWidth - ScaleX(148), ScaleY(57));
+  WizardForm.WelcomeLabel1.Caption := 'Meet Scribble.';
+  WizardForm.WelcomeLabel1.Font.Color := BrandNavy;
+  WizardForm.WelcomeLabel1.Font.Size := 18;
+  WizardForm.WelcomeLabel1.Font.Style := [fsBold];
+
+  WizardForm.WelcomeLabel2.SetBounds(ScaleX(124), ScaleY(106),
+    WizardForm.WelcomePage.ClientWidth - ScaleX(148), ScaleY(72));
+  WizardForm.WelcomeLabel2.Caption :=
+    'Your AI sidekick for the Office apps you already use. Choose where to add it, ' +
+    'then Setup will handle the rest.';
+  WizardForm.WelcomeLabel2.Font.Color := BrandMuted;
+  WizardForm.WelcomeLabel2.Font.Size := 10;
+
+  AppLine := TLabel.Create(WizardForm.WelcomePage);
+  AppLine.Parent := WizardForm.WelcomePage;
+  AppLine.AutoSize := False;
+  AppLine.SetBounds(ScaleX(124), ScaleY(188),
+    WizardForm.WelcomePage.ClientWidth - ScaleX(148), ScaleY(24));
+  AppLine.Caption := 'OUTLOOK  /  EXCEL  /  POWERPOINT  /  WORD  /  CHROME';
+  AppLine.Font.Color := BrandBlue;
+  AppLine.Font.Size := 8;
+  AppLine.Font.Style := [fsBold];
+  AppLine.Transparent := True;
+end;
+
+procedure AddAppLogo(FileName, AppName: String; TileLeft, TileTop, TileWidth: Integer);
+var
+  Logo: TBitmapImage;
+  AppLabel: TLabel;
+begin
+  Logo := AddPngImage(WizardForm.SelectComponentsPage, FileName,
+    TileLeft + ((TileWidth - ScaleX(30)) div 2), TileTop, ScaleX(30), ScaleY(30));
+  Logo.BackColor := BrandCanvas;
+
+  AppLabel := TLabel.Create(WizardForm.SelectComponentsPage);
+  AppLabel.Parent := WizardForm.SelectComponentsPage;
+  AppLabel.AutoSize := False;
+  AppLabel.SetBounds(TileLeft, TileTop + ScaleY(33), TileWidth, ScaleY(15));
+  AppLabel.Alignment := taCenter;
+  AppLabel.Caption := AppName;
+  AppLabel.Font.Color := BrandMuted;
+  AppLabel.Font.Size := 7;
+  AppLabel.Transparent := True;
+end;
+
+procedure StyleComponentsPage;
+var
+  LogoTop: Integer;
+  TileWidth: Integer;
+  StartLeft: Integer;
+begin
+  WizardForm.SelectComponentsPage.Color := BrandCanvas;
+  StartLeft := WizardForm.ComponentsList.Left;
+  LogoTop := WizardForm.ComponentsList.Top;
+  TileWidth := WizardForm.ComponentsList.Width div 5;
+
+  AddAppLogo('outlook.png', 'Outlook', StartLeft, LogoTop, TileWidth);
+  AddAppLogo('excel.png', 'Excel', StartLeft + TileWidth, LogoTop, TileWidth);
+  AddAppLogo('powerpoint.png', 'PowerPoint', StartLeft + (TileWidth * 2), LogoTop, TileWidth);
+  AddAppLogo('word.png', 'Word', StartLeft + (TileWidth * 3), LogoTop, TileWidth);
+  AddAppLogo('chrome.png', 'Chrome', StartLeft + (TileWidth * 4), LogoTop, TileWidth);
+
+  WizardForm.ComponentsList.Top := WizardForm.ComponentsList.Top + ScaleY(54);
+  WizardForm.ComponentsList.Height := WizardForm.ComponentsList.Height - ScaleY(54);
+end;
+
+procedure StyleFinishedPage;
+var
+  ReadyLabel: TLabel;
+begin
+  WizardForm.FinishedPage.Color := BrandCanvas;
+  WizardForm.WizardBitmapImage2.Visible := False;
+
+  AddPngImage(WizardForm.FinishedPage, 'pixel-pal.png', ScaleX(30), ScaleY(66),
+    ScaleX(64), ScaleY(64));
+
+  WizardForm.FinishedHeadingLabel.SetBounds(ScaleX(116), ScaleY(49),
+    WizardForm.FinishedPage.ClientWidth - ScaleX(140), ScaleY(38));
+  WizardForm.FinishedHeadingLabel.Caption := 'Scribble is ready.';
+  WizardForm.FinishedHeadingLabel.Font.Color := BrandNavy;
+  WizardForm.FinishedHeadingLabel.Font.Size := 18;
+  WizardForm.FinishedHeadingLabel.Font.Style := [fsBold];
+
+  WizardForm.FinishedLabel.SetBounds(ScaleX(116), ScaleY(94),
+    WizardForm.FinishedPage.ClientWidth - ScaleX(140), ScaleY(54));
+  WizardForm.FinishedLabel.Caption :=
+    'Open any selected app to start your first conversation. You can change your ' +
+    'Scribble settings at any time.';
+  WizardForm.FinishedLabel.Font.Color := BrandMuted;
+
+  ReadyLabel := TLabel.Create(WizardForm.FinishedPage);
+  ReadyLabel.Parent := WizardForm.FinishedPage;
+  ReadyLabel.AutoSize := False;
+  ReadyLabel.SetBounds(ScaleX(116), ScaleY(157),
+    WizardForm.FinishedPage.ClientWidth - ScaleX(140), ScaleY(22));
+  ReadyLabel.Caption := 'SETUP COMPLETE';
+  ReadyLabel.Font.Color := BrandGreen;
+  ReadyLabel.Font.Size := 8;
+  ReadyLabel.Font.Style := [fsBold];
+  ReadyLabel.Transparent := True;
+
+  WizardForm.RunList.SetBounds(ScaleX(116), ScaleY(190),
+    WizardForm.FinishedPage.ClientWidth - ScaleX(140), ScaleY(42));
+end;
+
+procedure StyleInstallingPage;
+begin
+  WizardForm.InstallingPage.Color := BrandCanvas;
+  WizardForm.ProgressGauge.Top := WizardForm.ProgressGauge.Top + ScaleY(34);
+
+  ProgressTrackLeft := WizardForm.ProgressGauge.Left;
+  ProgressTrackWidth := WizardForm.ProgressGauge.Width;
+  RunningPixelTop := WizardForm.ProgressGauge.Top - ScaleY(23);
+  RunningPixel := AddPngImage(WizardForm.InstallingPage, 'pixel-pal.png',
+    ProgressTrackLeft, RunningPixelTop, ScaleX(24), ScaleY(24));
+end;
+
+procedure InitializeWizard;
+begin
+  ExtractInstallerArtwork;
+  StyleHeader;
+  StyleWelcomePage;
+  StyleComponentsPage;
+  StyleInstallingPage;
+  StyleFinishedPage;
+
+  WizardForm.SelectDirPage.Color := BrandCanvas;
+  WizardForm.ReadyPage.Color := BrandCanvas;
+end;
+
+procedure CurPageChanged(CurPageID: Integer);
+begin
+  case CurPageID of
+    wpWelcome:
+      begin
+        SetupStepLabel.Caption := 'Step 1 of 5';
+        WizardForm.NextButton.Caption := '&Next >';
+      end;
+    wpSelectDir:
+      begin
+        SetupStepLabel.Caption := 'Step 2 of 5';
+        WizardForm.NextButton.Caption := '&Next >';
+      end;
+    wpSelectComponents:
+      begin
+        SetupStepLabel.Caption := 'Step 3 of 5';
+        WizardForm.NextButton.Caption := '&Next >';
+      end;
+    wpReady:
+      begin
+        SetupStepLabel.Caption := 'Step 4 of 5';
+        WizardForm.NextButton.Caption := '&Install';
+      end;
+    wpInstalling:
+      begin
+        SetupStepLabel.Caption := 'Step 5 of 5';
+      end;
+    wpFinished:
+      begin
+        SetupStepLabel.Caption := 'Complete';
+        WizardForm.NextButton.Caption := '&Finish';
+      end;
+  else
+    begin
+      SetupStepLabel.Caption := '';
+      WizardForm.NextButton.Caption := '&Next >';
+    end;
+  end;
+end;
+
+procedure CurInstallProgressChanged(CurProgress, MaxProgress: Integer);
+var
+  Percent: Integer;
+  PixelLeft: Integer;
+begin
+  if MaxProgress = 0 then
+    Percent := 0
+  else
+    Percent := (CurProgress * 100) div MaxProgress;
+
+  PixelLeft := ProgressTrackLeft +
+    (((ProgressTrackWidth - RunningPixel.Width) * Percent) div 100);
+  RunningPixel.Left := PixelLeft;
+  if ((Percent div 3) mod 2) = 0 then
+    RunningPixel.Top := RunningPixelTop
+  else
+    RunningPixel.Top := RunningPixelTop - ScaleY(2);
+
+  if Percent < 8 then
+    WizardForm.StatusLabel.Caption := 'Initializing the multi-application cooperation framework...'
+  else if Percent < 16 then
+    WizardForm.StatusLabel.Caption := 'Negotiating a mutually agreeable desk arrangement...'
+  else if Percent < 25 then
+    WizardForm.StatusLabel.Caption := 'Aligning Outlook atoms with Excel molecules...'
+  else if Percent < 34 then
+    WizardForm.StatusLabel.Caption := 'Asking PowerPoint to keep the transitions tasteful...'
+  else if Percent < 43 then
+    WizardForm.StatusLabel.Caption := 'Alphabetizing Word''s alphabetization subsystem...'
+  else if Percent < 52 then
+    WizardForm.StatusLabel.Caption := 'Convincing Chrome that the native bridge is perfectly normal...'
+  else if Percent < 61 then
+    WizardForm.StatusLabel.Caption := 'Indexing the unindexable indexes...'
+  else if Percent < 70 then
+    WizardForm.StatusLabel.Caption := 'Recalculating the spreadsheet-to-coffee ratio...'
+  else if Percent < 79 then
+    WizardForm.StatusLabel.Caption := 'Synchronizing the unsynchronized synchronization units...'
+  else if Percent < 88 then
+    WizardForm.StatusLabel.Caption := 'Validating the validation validators...'
+  else if Percent < 96 then
+    WizardForm.StatusLabel.Caption := 'Polishing the final 12% of the final 12%...'
+  else
+    WizardForm.StatusLabel.Caption := 'Finalizing the finalization protocols...';
 end;
