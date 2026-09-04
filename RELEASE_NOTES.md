@@ -1,5 +1,12 @@
 # Release notes
 
+## User-supplied domain navigation (extension 1.5.2)
+
+When the user types a bare domain such as `samsungtradein.ae`, Scribble now
+explicitly treats it as a valid direct-navigation target and opens it with
+HTTPS. The model-facing prompt and tool schema no longer misleadingly require
+the user to repeat the same site with a scheme and full path.
+
 ## Google result ref hotfix (extension 1.5.1)
 
 Scribble now resolves the exact ref returned by Google before taking any new

@@ -7039,11 +7039,16 @@ namespace GuardrailTests
                 .First(tool =>
                     tool.function.name == "browser_act")
                 .function.description;
+            var navigateDescription = request.tools
+                .First(tool =>
+                    tool.function.name == "browser_navigate")
+                .function.description;
             Assert(
                 actionDescription.Contains("200 characters") &&
                 actionDescription.Contains("no_effect") &&
                 actionDescription.Contains("redundant") &&
                 actionDescription.Contains("refused") &&
+                navigateDescription.Contains("bare domain") &&
                 request.temperature == 0.1 &&
                 request.parallel_tool_calls == false,
                 "The action tool must declare its provenance and safety contract.");
@@ -7065,6 +7070,7 @@ namespace GuardrailTests
                 system.Contains(
                     "Actions that buy") &&
                 system.Contains("browser_search_google") &&
+                system.Contains("bare user-supplied domain") &&
                 system.Contains("Write every user-facing reply in first person") &&
                 system.Contains("month-only request") &&
                 system.Contains("Dubai International (DXB)") &&

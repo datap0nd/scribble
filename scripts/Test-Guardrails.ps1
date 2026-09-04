@@ -1168,6 +1168,7 @@ foreach ($requiredBrowserBoundary in @(
     "never send email",
     "Actions that buy",
     "browser_search_google",
+    "bare user-supplied domain",
     "Write every user-facing reply in first person",
     "month-only request",
     "McpToolHost.IsMcpTool",

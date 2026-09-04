@@ -49,7 +49,11 @@ namespace Scribble.Chat
             "and submitted through its visible UI. Analyze the returned " +
             "results and click the chosen result by ref with browser_act; " +
             "never invent or construct a search-results or destination URL. " +
-            "browser_navigate accepts only a URL the user supplied literally. " +
+            "browser_navigate accepts only a URL or bare domain the user " +
+            "supplied literally. A bare user-supplied domain such as " +
+            "samsungtradein.ae is valid and is opened with HTTPS; when the " +
+            "user names a specific site, open it directly instead of claiming " +
+            "that a scheme or full path is required. " +
             "Use browser_snapshot to inspect controls and browser_act for one " +
             "atomic click, type, select, check, press, hover, scroll, or wait. " +
             "Request at most one state-changing browser tool in each response, " +

@@ -38,7 +38,7 @@ test("extension version status distinguishes current and stale installs", () => 
     newer: true
   });
   expect(html).toContain('id="reloadExtension"');
-  expect(manifest.version).toBe("1.5.1");
+  expect(manifest.version).toBe("1.5.2");
 });
 
 test("browser activity stays in Pixel Pal and public aliases stay bounded", () => {

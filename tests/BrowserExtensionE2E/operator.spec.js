@@ -216,7 +216,7 @@ test("selects, checkboxes, date controls, and popups remain observable fixtures"
 
 test("Google queries and direct URLs are limited to user-provided provenance", () => {
   const sandbox = {
-    currentRequestPrompt: "Scrape flight prices from Germany to Dubai, September. Use example.test",
+    currentRequestPrompt: "Scrape flight prices from Germany to Dubai, September. Use example.test or samsungtradein.ae",
     currentClarificationAnswers: ["2026"],
     MAX_TYPED_CHARS: 200,
     URL,
@@ -232,6 +232,7 @@ test("Google queries and direct URLs are limited to user-provided provenance", (
         role: "combobox", tagName: "textarea", htmlName: "q", name: "بحث"
       }),
       suppliedUrl: urlWasUserProvided("https://example.test/"),
+      bareDomain: urlWasUserProvided("samsungtradein.ae"),
       inventedUrl: urlWasUserProvided("https://provider.invalid/")
     };`, sandbox);
   expect(sandbox.result).toEqual({
@@ -241,6 +242,7 @@ test("Google queries and direct URLs are limited to user-provided provenance", (
     searchCombobox: true,
     localizedSearch: true,
     suppliedUrl: true,
+    bareDomain: true,
     inventedUrl: false
   });
 });

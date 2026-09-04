@@ -95,7 +95,8 @@ namespace Scribble.Chat
                     {
                         name = NavigatePage,
                         description =
-                            "Open an http or https URL in one of Scribble's own " +
+                            "Open a user-supplied http/https URL or bare domain " +
+                            "in one of Scribble's own " +
                             "work tabs (up to 5, background tabs next to the " +
                             "user's - their current tab is never navigated away) " +
                             "and return the loaded page. The URL must have appeared " +
@@ -119,7 +120,9 @@ namespace Scribble.Chat
                                             { "type", "string" },
                                             {
                                                 "description",
-                                                "Absolute http:// or https:// URL to open."
+                                                "An http:// or https:// URL, or a bare " +
+                                                "domain such as samsungtradein.ae, that " +
+                                                "appeared literally in the user's request."
                                             }
                                         }
                                     },
