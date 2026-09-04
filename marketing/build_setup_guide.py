@@ -235,7 +235,7 @@ def build_html(shots: list[Path]) -> str:
       <div>
         <p class="eyebrow">SCRIBBLE / QUICK START</p>
         <h1>From download to first prompt in about 5 minutes.</h1>
-        <p>Three short steps. One installer. No admin account required.</p>
+        <p>Four clear steps. One installer. No admin account required.</p>
       </div>
       <img class="pal" src="{data_uri(ASSET_DIR / 'pixel-pal.png')}" alt="Pixel Pal">
     </header>
