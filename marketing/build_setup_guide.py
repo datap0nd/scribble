@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import math
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -9,185 +10,123 @@ from PIL import Image, ImageDraw, ImageFont
 ROOT = Path(__file__).resolve().parent
 ASSET_DIR = ROOT / "assets"
 SHOT_DIR = ASSET_DIR / "setup-guide"
+RAW_DIR = SHOT_DIR / "raw"
 OUTPUT = ROOT / "setup-guide.html"
 FONT_DIR = Path(r"C:\Windows\Fonts")
 
-W, H = 1200, 675
-NAVY = "#17233b"
-TEXT = "#536177"
-MUTED = "#7b8798"
 BLUE = "#376fe8"
-BLUE_SOFT = "#eff5ff"
-GREEN = "#16845b"
-GREEN_SOFT = "#effaf5"
-LINE = "#dce4ef"
-PAGE = "#edf2f8"
+ORANGE = "#ff8a3d"
+WHITE = "#ffffff"
 
 
 def font(filename: str, size: int) -> ImageFont.FreeTypeFont:
     return ImageFont.truetype(str(FONT_DIR / filename), size)
 
 
-def regular(size: int) -> ImageFont.FreeTypeFont:
-    return font("segoeui.ttf", size)
+def arrow(
+    draw: ImageDraw.ImageDraw,
+    points: list[tuple[int, int]],
+    color: str = ORANGE,
+    width: int = 6,
+) -> None:
+    draw.line(points, fill=color, width=width, joint="curve")
+    start = points[-2]
+    end = points[-1]
+    angle = math.atan2(end[1] - start[1], end[0] - start[0])
+    size = 18
+    spread = 0.55
+    left = (
+        end[0] - size * math.cos(angle - spread),
+        end[1] - size * math.sin(angle - spread),
+    )
+    right = (
+        end[0] - size * math.cos(angle + spread),
+        end[1] - size * math.sin(angle + spread),
+    )
+    draw.polygon([end, left, right], fill=color)
 
 
-def semibold(size: int) -> ImageFont.FreeTypeFont:
-    return font("segoeuib.ttf", size)
+def badge(
+    draw: ImageDraw.ImageDraw,
+    center: tuple[int, int],
+    number: str,
+    radius: int = 23,
+) -> None:
+    x, y = center
+    draw.ellipse(
+        (x - radius, y - radius, x + radius, y + radius),
+        fill=BLUE,
+        outline=WHITE,
+        width=4,
+    )
+    number_font = font("segoeuib.ttf", 23)
+    box = draw.textbbox((0, 0), number, font=number_font)
+    width = box[2] - box[0]
+    height = box[3] - box[1]
+    draw.text(
+        (x - width / 2, y - height / 2 - 3),
+        number,
+        font=number_font,
+        fill=WHITE,
+    )
 
 
-def mono(size: int) -> ImageFont.FreeTypeFont:
-    return font("courbd.ttf", size)
+def save_installer() -> Path:
+    source = Image.open(RAW_DIR / "scribble-installer.jpg").convert("RGB")
+    output = SHOT_DIR / "01-choose-apps.png"
+    source.save(output, optimize=True)
+    return output
 
 
-def canvas() -> tuple[Image.Image, ImageDraw.ImageDraw]:
-    image = Image.new("RGB", (W, H), PAGE)
-    return image, ImageDraw.Draw(image)
+def save_chrome() -> Path:
+    image = Image.open(RAW_DIR / "chrome-extensions.jpg").convert("RGB")
+    draw = ImageDraw.Draw(image)
+
+    arrow(draw, [(1150, 183), (1200, 150), (1250, 115)])
+    badge(draw, (1150, 183), "1")
+
+    arrow(draw, [(205, 225), (150, 200), (90, 171)])
+    badge(draw, (205, 225), "2")
+
+    output = SHOT_DIR / "02-enable-chrome.png"
+    image.save(output, optimize=True)
+    return output
 
 
-def rounded(draw: ImageDraw.ImageDraw, box, radius: int, fill, outline=None, width=1) -> None:
-    draw.rounded_rectangle(box, radius=radius, fill=fill, outline=outline, width=width)
+def save_folder_picker() -> Path:
+    image = Image.open(RAW_DIR / "chrome-folder-picker.jpg").convert("RGB")
+    draw = ImageDraw.Draw(image)
+
+    arrow(draw, [(82, 410), (125, 410), (170, 410)], width=5)
+    badge(draw, (82, 410), "3", radius=21)
+    draw.rounded_rectangle(
+        (398, 425, 516, 464),
+        radius=6,
+        outline=ORANGE,
+        width=4,
+    )
+
+    output = SHOT_DIR / "03-select-extension-folder.png"
+    image.save(output, optimize=True)
+    return output
 
 
-def line_text(draw: ImageDraw.ImageDraw, xy, value: str, size: int, fill=TEXT, bold=False) -> None:
-    draw.text(xy, value, font=semibold(size) if bold else regular(size), fill=fill)
-
-
-def center_text(draw: ImageDraw.ImageDraw, box, value: str, text_font, fill) -> None:
-    bounds = draw.textbbox((0, 0), value, font=text_font)
-    tw, th = bounds[2] - bounds[0], bounds[3] - bounds[1]
-    x0, y0, x1, y1 = box
-    draw.text((x0 + (x1 - x0 - tw) / 2, y0 + (y1 - y0 - th) / 2 - 1), value, font=text_font, fill=fill)
-
-
-def window(draw: ImageDraw.ImageDraw, title: str) -> None:
-    rounded(draw, (54, 42, 1146, 632), 22, "#ffffff", "#ced8e6", 2)
-    draw.rounded_rectangle((54, 42, 1146, 96), radius=22, fill="#f8faff")
-    draw.rectangle((54, 74, 1146, 96), fill="#f8faff")
-    draw.line((54, 96, 1146, 96), fill=LINE, width=2)
-    rounded(draw, (76, 61, 94, 79), 9, BLUE)
-    line_text(draw, (108, 57), title, 22, NAVY, True)
-    for index, color in enumerate(("#f2c94c", "#62c88a", "#ef7373")):
-        rounded(draw, (1060 + index * 22, 62, 1073 + index * 22, 75), 7, color)
-
-
-def app_icon(name: str, size: int = 46) -> Image.Image:
-    return Image.open(ASSET_DIR / f"{name}.png").convert("RGBA").resize((size, size), Image.Resampling.LANCZOS)
-
-
-def screenshot_installer() -> Path:
-    image, draw = canvas()
-    window(draw, "Scribble Setup")
-    line_text(draw, (94, 128), "Choose where Scribble works", 34, NAVY, True)
-    line_text(draw, (94, 176), "All apps are selected by default. Clear anything you do not need.", 19, TEXT)
-
-    apps = [
-        ("outlook", "Outlook", "Mailbox chat and email drafts"),
-        ("excel", "Excel", "Workbook analysis, tables, and charts"),
-        ("powerpoint", "PowerPoint", "Executive-ready draft slides"),
-        ("word", "Word", "Structured draft documents"),
-        ("chrome", "Chrome", "Web research in dedicated work tabs"),
-    ]
-    for index, (icon_name, label, description) in enumerate(apps):
-        column = index % 2
-        row = index // 2
-        x = 94 + column * 500
-        y = 228 + row * 104
-        rounded(draw, (x, y, x + 468, y + 82), 12, "#f8faff", LINE)
-        rounded(draw, (x + 18, y + 26, x + 46, y + 54), 6, BLUE)
-        center_text(draw, (x + 18, y + 26, x + 46, y + 54), "✓", semibold(19), "#ffffff")
-        icon = app_icon(icon_name, 45)
-        image.paste(icon, (x + 60, y + 18), icon)
-        line_text(draw, (x + 120, y + 15), label, 20, NAVY, True)
-        line_text(draw, (x + 120, y + 45), description, 15, TEXT)
-
-    rounded(draw, (910, 551, 1108, 606), 9, BLUE)
-    center_text(draw, (910, 551, 1108, 606), "Install", semibold(19), "#ffffff")
-    path = SHOT_DIR / "01-choose-apps.png"
-    image.save(path, optimize=True)
-    return path
-
-
-def screenshot_chrome() -> Path:
-    image, draw = canvas()
-    window(draw, "Google Chrome")
-    rounded(draw, (170, 56, 880, 84), 14, "#edf1f6")
-    line_text(draw, (194, 59), "chrome://extensions", 15, "#667487")
-    line_text(draw, (92, 126), "Extensions", 34, NAVY, True)
-    line_text(draw, (888, 134), "Developer mode", 17, NAVY, True)
-    rounded(draw, (1040, 129, 1098, 157), 14, BLUE)
-    rounded(draw, (1071, 133, 1094, 153), 11, "#ffffff")
-
-    for index, label in enumerate(("Load unpacked", "Pack extension", "Update")):
-        x = 92 + index * 178
-        rounded(draw, (x, 190, x + 160, 235), 8, "#ffffff", "#bbc9dc", 2)
-        center_text(draw, (x, 190, x + 160, 235), label, semibold(15), "#35527f")
-
-    rounded(draw, (92, 275, 1108, 494), 16, "#ffffff", LINE, 2)
-    pal = Image.open(ASSET_DIR / "pixel-pal.png").convert("RGBA").resize((96, 90), Image.Resampling.NEAREST)
-    image.paste(pal, (125, 314), pal)
-    line_text(draw, (250, 305), "Scribble", 25, NAVY, True)
-    line_text(draw, (250, 347), "Your AI companion across Chrome and Office", 17, TEXT)
-    rounded(draw, (250, 393, 370, 430), 18, GREEN_SOFT, "#bee3d2")
-    center_text(draw, (250, 393, 370, 430), "Enabled", semibold(15), GREEN)
-    line_text(draw, (92, 530), "Choose Load unpacked, then select the folder opened by Scribble Setup.", 19, NAVY, True)
-    line_text(draw, (92, 570), r"Folder: %LOCALAPPDATA%\Programs\Scribble\BrowserExtension", 16, TEXT)
-
-    path = SHOT_DIR / "02-enable-chrome.png"
-    image.save(path, optimize=True)
-    return path
-
-
-def screenshot_settings() -> Path:
-    image, draw = canvas()
-    window(draw, "Scribble Settings")
-
-    tabs = ("Connection", "Topics", "Skills", "Writing soul", "Support")
-    x = 86
-    for index, label in enumerate(tabs):
-        width = 145 if label == "Writing soul" else 124
-        if index == 0:
-            rounded(draw, (x, 111, x + width, 153), 8, BLUE_SOFT, "#c5d8ff")
-            center_text(draw, (x, 111, x + width, 153), label, semibold(15), BLUE)
-        else:
-            center_text(draw, (x, 111, x + width, 153), label, regular(15), MUTED)
-        x += width + 8
-
-    fields = [
-        ("Endpoint URL", "https://your-endpoint.example/v1"),
-        ("API key", "••••••••••••••••••••••••"),
-        ("Model", "Select a compatible model"),
-    ]
-    y = 180
-    for label, value in fields:
-        line_text(draw, (92, y), label, 15, NAVY, True)
-        rounded(draw, (92, y + 26, 736, y + 72), 7, "#ffffff", "#bfcbdc", 2)
-        line_text(draw, (110, y + 37), value, 16, "#667487")
-        y += 98
-
-    rounded(draw, (782, 206, 1108, 261), 9, BLUE)
-    center_text(draw, (782, 206, 1108, 261), "Connect & load models", semibold(17), "#ffffff")
-    rounded(draw, (782, 304, 1108, 359), 9, "#ffffff", "#9db1cc", 2)
-    center_text(draw, (782, 304, 1108, 359), "Test selected model", semibold(17), "#35527f")
-    rounded(draw, (782, 402, 1108, 477), 12, GREEN_SOFT, "#bee3d2")
-    center_text(draw, (782, 410, 1108, 445), "Connection ready", semibold(18), GREEN)
-    center_text(draw, (782, 445, 1108, 474), "Authentication and tool calling passed", regular(13), TEXT)
-    rounded(draw, (962, 548, 1108, 604), 9, BLUE)
-    center_text(draw, (962, 548, 1108, 604), "Save", semibold(18), "#ffffff")
-
-    path = SHOT_DIR / "03-connect-model.png"
-    image.save(path, optimize=True)
-    return path
+def save_settings() -> Path:
+    source = Image.open(RAW_DIR / "scribble-settings.jpg").convert("RGB")
+    output = SHOT_DIR / "04-connect-model.png"
+    source.save(output, optimize=True)
+    return output
 
 
 def data_uri(path: Path) -> str:
     encoded = base64.b64encode(path.read_bytes()).decode("ascii")
-    return f"data:image/png;base64,{encoded}"
+    media_type = "image/jpeg" if path.suffix.lower() in {".jpg", ".jpeg"} else "image/png"
+    return f"data:{media_type};base64,{encoded}"
 
 
 def build_html(shots: list[Path]) -> str:
-    screenshot_one, screenshot_two, screenshot_three = [data_uri(path) for path in shots]
-    return f"""<!doctype html>
+    installer, chrome, picker, settings = [data_uri(path) for path in shots]
+    return fr"""<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -214,6 +153,12 @@ def build_html(shots: list[Path]) -> str:
     .copy {{ margin: 0 0 20px; color: #536177; font-size: 16px; line-height: 1.6; }}
     .shot {{ width: 100%; height: auto; display: block; border: 1px solid #d7e0ec; border-radius: 14px; background: #edf2f8; }}
     .optional {{ display: inline-block; margin-left: 8px; padding: 4px 8px; border-radius: 999px; background: #fff3dc; color: #9a5b16; font: 700 10px/14px "Courier New", monospace; vertical-align: 3px; }}
+    .mini-steps {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 0 0 18px; }}
+    .mini-step {{ min-height: 74px; padding: 13px; border: 1px solid #d7e0ec; border-radius: 11px; color: #405269; line-height: 1.35; background: #f8faff; }}
+    .mini-step b {{ display: inline-grid; place-items: center; width: 25px; height: 25px; margin-right: 7px; border-radius: 50%; background: #376fe8; color: #fff; }}
+    .path-card {{ margin: 22px 0 18px; padding: 17px 18px; border-radius: 12px; background: #17233b; color: #fff; }}
+    .path-card span {{ display: block; margin-bottom: 8px; color: #8ee0b9; font: 700 11px/16px "Courier New", monospace; letter-spacing: .7px; }}
+    .path-card code {{ display: block; overflow-wrap: anywhere; font: 700 15px/22px "Courier New", monospace; color: #fff; }}
     .done {{ margin-top: 30px; padding: 24px; text-align: center; background: #17233b; border-radius: 14px; color: #fff; }}
     .done h2 {{ margin-bottom: 7px; }}
     .done p {{ margin: 0; color: #b9c8df; line-height: 1.5; }}
@@ -225,6 +170,7 @@ def build_html(shots: list[Path]) -> str:
       h1 {{ font-size: 34px; }}
       .before {{ margin: 0 24px 8px; }}
       main {{ padding: 8px 24px 32px; }}
+      .mini-steps {{ grid-template-columns: 1fr; }}
     }}
   </style>
 </head>
@@ -235,7 +181,7 @@ def build_html(shots: list[Path]) -> str:
       <div>
         <p class="eyebrow">SCRIBBLE / QUICK START</p>
         <h1>From download to first prompt in about 5 minutes.</h1>
-        <p>Four clear steps. One installer. No admin account required.</p>
+        <p>Four clear stages. Real screens. No guesswork.</p>
       </div>
       <img class="pal" src="{data_uri(ASSET_DIR / 'pixel-pal.png')}" alt="Pixel Pal">
     </header>
@@ -246,22 +192,31 @@ def build_html(shots: list[Path]) -> str:
       <section class="step">
         <p class="step-number">01 / INSTALL</p>
         <h2>Download Scribble and choose your apps</h2>
-        <p class="copy">Run <a href="https://github.com/datap0nd/scribble/releases/latest/download/ScribbleSetup.exe">ScribbleSetup.exe</a>. Keep all five apps selected, or clear anything you do not need, then choose <strong>Install</strong>.</p>
-        <img class="shot" src="{screenshot_one}" alt="Scribble installer app selection screen">
+        <p class="copy">Run <a href="https://github.com/datap0nd/scribble/releases/latest/download/ScribbleSetup.exe">ScribbleSetup.exe</a>. Choose <strong>Next</strong> on the destination screen. Keep all five components checked, or clear anything you do not need, then continue through Setup.</p>
+        <img class="shot" src="{installer}" alt="Actual Scribble installer component-selection screen">
       </section>
 
       <section class="step">
         <p class="step-number">02 / CHROME <span class="optional">ONLY IF SELECTED</span></p>
         <h2>Approve the Chrome extension</h2>
-        <p class="copy">Leave <strong>Finish setting up Scribble in Google Chrome</strong> selected. On the Extensions page, turn on <strong>Developer mode</strong>, choose <strong>Load unpacked</strong>, and select the folder opened by Setup.</p>
-        <img class="shot" src="{screenshot_two}" alt="Chrome Extensions page with Scribble enabled">
+        <div class="mini-steps">
+          <div class="mini-step"><b>1</b>Turn on <strong>Developer mode</strong></div>
+          <div class="mini-step"><b>2</b>Choose <strong>Load unpacked</strong></div>
+          <div class="mini-step"><b>3</b>Paste the path and choose <strong>Select Folder</strong></div>
+        </div>
+        <img class="shot" src="{chrome}" alt="Actual Chrome Extensions page with numbered callouts for Developer mode and Load unpacked">
+        <div class="path-card">
+          <span>3 / COPY AND PASTE THIS PATH INTO THE FOLDER FIELD</span>
+          <code>%LOCALAPPDATA%\Programs\Scribble\BrowserExtension</code>
+        </div>
+        <img class="shot" src="{picker}" alt="Actual Chrome folder picker with the Scribble extension path entered">
       </section>
 
       <section class="step">
         <p class="step-number">03 / CONNECT</p>
         <h2>Connect your AI model</h2>
         <p class="copy">Open Scribble from any supported app. In <strong>Settings</strong>, enter your endpoint and API key. Choose <strong>Connect &amp; load models</strong>, select a model, run <strong>Test selected model</strong>, then save.</p>
-        <img class="shot" src="{screenshot_three}" alt="Scribble Settings connection screen">
+        <img class="shot" src="{settings}" alt="Actual Scribble Settings connection screen">
       </section>
 
       <section class="step">
@@ -284,7 +239,22 @@ def build_html(shots: list[Path]) -> str:
 
 def main() -> None:
     SHOT_DIR.mkdir(parents=True, exist_ok=True)
-    shots = [screenshot_installer(), screenshot_chrome(), screenshot_settings()]
+    required = [
+        RAW_DIR / "scribble-installer.jpg",
+        RAW_DIR / "chrome-extensions.jpg",
+        RAW_DIR / "chrome-folder-picker.jpg",
+        RAW_DIR / "scribble-settings.jpg",
+    ]
+    missing = [str(path) for path in required if not path.exists()]
+    if missing:
+        raise FileNotFoundError("Missing actual screenshot source: " + ", ".join(missing))
+
+    shots = [
+        save_installer(),
+        save_chrome(),
+        save_folder_picker(),
+        save_settings(),
+    ]
     OUTPUT.write_text(build_html(shots), encoding="utf-8")
     print(OUTPUT)
     for shot in shots:
