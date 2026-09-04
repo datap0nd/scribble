@@ -15,6 +15,7 @@ namespace Scribble.Chat
         public const string SearchGoogle = "browser_search_google";
         public const string SnapshotPage = "browser_snapshot";
         public const string ActOnPage = "browser_act";
+        public const string RecordEvidence = "browser_record_evidence";
         public const string AskUser = PromptHelperTool.Name;
         public const string OpenOutlookDraft = "open_outlook_draft";
         public const string OpenExcelTable = "open_excel_table";
@@ -27,6 +28,7 @@ namespace Scribble.Chat
                 SearchGoogle,
                 SnapshotPage,
                 ActOnPage,
+                RecordEvidence,
                 AskUser,
                 OpenOutlookDraft,
                 OpenExcelTable
@@ -55,6 +57,10 @@ namespace Scribble.Chat
                 string.Equals(
                     name,
                     ActOnPage,
+                    StringComparison.Ordinal) ||
+                string.Equals(
+                    name,
+                    RecordEvidence,
                     StringComparison.Ordinal) ||
                 string.Equals(
                     name,
@@ -276,8 +282,8 @@ namespace Scribble.Chat
                         description =
                             "Perform one bounded action in a Scribble-owned work tab, " +
                             "using a ref from the latest browser_snapshot, then return " +
-                            "a fresh snapshot including a changed/unchanged progress " +
-                            "marker. Verify the expected displayed value or state from " +
+                            "a fresh snapshot with a changed, no_effect, incomplete, " +
+                            "or blocked outcome. Verify the expected displayed value or state from " +
                             "this result before continuing; do not request a redundant " +
                             "snapshot. Actions: click, type, select, check, " +
                             "press, hover, scroll, wait. Typed text must be at most " +
@@ -338,7 +344,62 @@ namespace Scribble.Chat
                         }
                     }
                 },
-                PromptHelperTool.CreateDefinition()
+                new ChatToolDefinition
+                {
+                    type = "function",
+                    function = new ChatToolFunctionDefinition
+                    {
+                        name = RecordEvidence,
+                        description =
+                            "Record a completed research result only after the final " +
+                            "value and its qualifications are visible in the latest " +
+                            "work-tab snapshot. The extension validates every field " +
+                            "against the live page and prior verified action receipts. " +
+                            "Google result snippets cannot be final evidence.",
+                        parameters = new Dictionary<string, object>
+                        {
+                            { "type", "object" },
+                            { "additionalProperties", false },
+                            {
+                                "properties",
+                                new Dictionary<string, object>
+                                {
+                                    { "tab", new Dictionary<string, object> { { "type", "integer" } } },
+                                    { "revision", new Dictionary<string, object> { { "type", "string" } } },
+                                    { "purchased_product", new Dictionary<string, object> { { "type", "string" } } },
+                                    { "trade_in_product", new Dictionary<string, object> { { "type", "string" } } },
+                                    { "storage", new Dictionary<string, object> { { "type", "string" } } },
+                                    { "condition", new Dictionary<string, object> { { "type", "string" } } },
+                                    { "market", new Dictionary<string, object> { { "type", "string" } } },
+                                    { "amount", new Dictionary<string, object> { { "type", "string" } } },
+                                    { "currency", new Dictionary<string, object> { { "type", "string" } } },
+                                    { "caveat", new Dictionary<string, object> { { "type", "string" } } },
+                                    { "source_url", new Dictionary<string, object> { { "type", "string" } } },
+                                    {
+                                        "supporting_excerpts",
+                                        new Dictionary<string, object>
+                                        {
+                                            { "type", "array" },
+                                            { "maxItems", 3 },
+                                            { "items", new Dictionary<string, object> { { "type", "string" } } }
+                                        }
+                                    }
+                                }
+                            },
+                            {
+                                "required",
+                                new[]
+                                {
+                                    "tab", "revision", "purchased_product",
+                                    "trade_in_product", "storage", "condition",
+                                    "market", "amount", "currency", "caveat",
+                                    "source_url"
+                                }
+                            }
+                        }
+                    }
+                },
+                PromptHelperTool.CreateBrowserDefinition()
             };
 
             {

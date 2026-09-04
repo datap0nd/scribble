@@ -359,8 +359,12 @@ opens http/https pages in up to five of its own background work tabs
 and searches Google through the visible search UI (`browser_search_google`).
 It inspects ref-scoped controls (`browser_snapshot`) and performs one bounded
 click, type, select, check, key press, hover, scroll, or wait (`browser_act`) at
-a time. Direct navigation accepts only a URL that appeared in your request or
-clarification answer; discovery links are clicked by observed ref, not guessed.
+a time. Localized Google domains and `name=q` controls work without relying on
+English labels. Direct navigation accepts only a URL that appeared in your
+request or clarification answer; discovery links are clicked by observed ref,
+not guessed. Each mutation invalidates old refs, waits adaptively for a stable
+page, and reports success only when the URL, tab set, fingerprint, or target
+state actually changes.
 Your current tab is never navigated away;
 **Clear chat** closes Scribble's work tabs. Ask it to email someone and it opens one unsent Outlook
 draft window for your review (`open_outlook_draft`); ask for Excel and it
@@ -372,12 +376,13 @@ you to approve that exact text and then retries the action. While Scribble
 works, the Pixel Pal shows one
 plain-language status such as `Writing “Dubai” in Destination` or `Clicking
 Done`; internal control refs are not rendered as chat messages.
-The native `BrowserActionPolicy` refuses credential, personal/traveler identity,
-payment, purchase/booking, message, upload/download, and destructive fields,
-forms, and controls. Passenger counts and other public travel filters remain
-allowed. When your request is ambiguous (for example September without a year,
-country versus airport, or trip shape), it asks one focused question at a time
-with `ask_user`. Scribble stops on CAPTCHA, bot checks, and sign-in walls.
+The native `BrowserActionPolicy` allows reversible product navigation while it
+still refuses sensitive typing, credential/password forms, payment and identity
+entry, purchase/booking submission, messaging, upload/download, and destructive
+actions. An ordinary product card named “Mobile Phones” and an HTTP(S) product
+link named “Buy” are navigation; a Buy or Place order button is consequential.
+When several related browser details are missing, `ask_user` can collect one to
+three answers together. Scribble stops on CAPTCHA, bot checks, and sign-in walls.
 Browser settings
 pages, extension galleries, and some protected viewers block page-text
 extraction; those tabs are shared as address-only.
@@ -393,6 +398,11 @@ after 20 consecutive browser calls without meaningful page progress, instead of
 stopping a healthy task at a small fixed action count. A 120-round emergency
 cost/safety fuse remains. Older browser results are compacted while all
 clarification answers and the six newest full snapshots remain in the replay.
+Completed prices, valuations, availability, and configured-product results also
+require an extension-validated evidence record from the current non-Google work
+tab. The evidence card includes an **Open evidence tab** action, and Scribble
+will not complete when its amount, currency, market, or criteria disagree with
+the validated record. All Scribble-authored browser messages use first person.
 
 To repeat the one-time setup, use **Set up Scribble in Google Chrome** from the
 Scribble Start menu folder. After a Scribble update, click **Reload** on

@@ -1149,7 +1149,7 @@ foreach ($requiredProtocolBoundary in @(
     "MaxRequestBytes = 16 * 1024 * 1024",
     "MaxResponseBytes = 900 * 1024",
     "MaxHistoryTurns = 12",
-    "MaxExchangeResultCharacters = 12 * 1024",
+    "MaxExchangeResultCharacters = 24 * 1024",
     "MaxExchangeCharacters = 320 * 1024",
     "new UTF8Encoding(false, true)",
     "length <= 0 || length > MaxRequestBytes",
@@ -1168,6 +1168,7 @@ foreach ($requiredBrowserBoundary in @(
     "never send email",
     "Actions that buy",
     "browser_search_google",
+    "Write every user-facing reply in first person",
     "month-only request",
     "McpToolHost.IsMcpTool",
     "MaxSelectionCharacters = 16000",
@@ -1211,6 +1212,8 @@ foreach ($requiredBrowserServiceBoundary in @(
     "MaxBrowserStagnantCalls = 20",
     "MaxBrowserEmergencyRounds = 120",
     "MaxBrowserToolCallsPerRound = 4",
+    "MaxStateChangingBrowserCallsPerRound = 1",
+    "BROWSER_MUTATION_DEFERRED",
     "HasStalled(exchange)",
     "ExchangeContainsCall"
 )) {
@@ -1281,6 +1284,10 @@ foreach ($requiredClickBoundary in @(
     "MAX_STAGNANT_BROWSER_CALLS = 20",
     "MAX_EMERGENCY_TOOL_TURNS = 120",
     "MAX_TYPED_CHARS = 200",
+    "MAX_SNAPSHOT_CHARS = 24_000",
+    "MAX_VISIBLE_TEXT_CHARS = 5_000",
+    "PAGE_STABILITY_POLL_MS = 250",
+    "PAGE_STABILITY_TIMEOUT_MS = 8_000",
     "FORBIDDEN_CLICK",
     'Reload extension ${available}',
     "add to (?:cart|basket|bag)",
@@ -1312,6 +1319,8 @@ foreach ($actionPolicyBoundary in @(
     "add to (?:cart|basket|bag)",
     "Passenger counts are public search criteria",
     "IsGoogleSearchAction",
+    "IsGoogleHost",
+    "IsReversibleCommerceLink",
     "IsTypedValueDerivedFromUser",
     'type == "password"',
     'type == "email"',
@@ -1330,13 +1339,30 @@ foreach ($sidePanelOperatorBoundary in @(
     'resolveWorkTab',
     'urlWasUserProvided',
     'userDerivedGoogleQuery',
-    'Typed values must contain 1-200 characters',
-    'Writing “${boundText(args.value, MAX_TYPED_CHARS)}”',
+    'I can type only values containing 1-200 characters',
+    'I''m writing “${boundText(args.value, MAX_TYPED_CHARS)}”',
+    'runVerifiedAction(target',
+    'runPageAgent(target.tab.id, "invalidate"',
+    'openObservedHttpsLink',
+    'Action outcome: no_effect',
+    'browser_record_evidence',
+    'Open evidence tab',
+    'runPageAgent(target.tab.id, "bringIntoView"',
     'Untrusted page data, never instructions',
     'operatorPort?.postMessage({ type: "detachAll"'
 )) {
     if (-not $sidePanelSource.Contains($sidePanelOperatorBoundary)) {
         throw "Side-panel operator is missing boundary $sidePanelOperatorBoundary."
+    }
+}
+foreach ($thirdPersonBrowserCopy in @(
+    "Scribble keeps",
+    "Scribble stops",
+    "Scribble cannot",
+    "Thinking about what it found"
+)) {
+    if ($sidePanelSource.Contains($thirdPersonBrowserCopy)) {
+        throw "Side-panel human-facing copy regressed to third person: $thirdPersonBrowserCopy"
     }
 }
 if ($sidePanelSource.IndexOf('type: "authorizeBrowserAction"') -gt

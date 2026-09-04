@@ -15,6 +15,10 @@ const html = fs.readFileSync(
   path.join(extensionRoot, "sidepanel.html"),
   "utf8"
 );
+const manifest = JSON.parse(fs.readFileSync(
+  path.join(extensionRoot, "manifest.json"),
+  "utf8"
+));
 
 test("extension version status distinguishes current and stale installs", () => {
   const compareSource = source.slice(
@@ -34,6 +38,7 @@ test("extension version status distinguishes current and stale installs", () => 
     newer: true
   });
   expect(html).toContain('id="reloadExtension"');
+  expect(manifest.version).toBe("1.5.0");
 });
 
 test("browser activity stays in Pixel Pal and public aliases stay bounded", () => {
@@ -69,4 +74,27 @@ test("browser activity stays in Pixel Pal and public aliases stay bounded", () =
   });
   expect(source).not.toContain('appendMessage("audit"');
   expect(source).not.toContain('role === "audit"');
+});
+
+test("Scribble's live browser narration uses first person", () => {
+  expect(source).toContain("I'm thinking about what I found");
+  expect(source).toContain("I'm clicking ${label} in ${site}");
+  expect(source).toContain("I'm reviewing Google’s results");
+  expect(source).not.toContain("Thinking about what it found");
+  expect(source).not.toContain("Clicking ${label} in ${site}");
+  expect(source).not.toMatch(/Scribble (?:asks|keeps|stops|cannot)\b/);
+  expect(source).not.toMatch(
+    /(?:setActivity|setWorkStatus|throw new Error)\(\s*["`](?:The|That|A|An|No|Google)\b/
+  );
+});
+
+test("snapshot and evidence boundaries are explicit and complete-record based", () => {
+  expect(source).toContain("MAX_SNAPSHOT_CHARS = 24_000");
+  expect(source).toContain("MAX_VISIBLE_TEXT_CHARS = 5_000");
+  expect(source).toContain("controls omitted by snapshot budget");
+  expect(source).toContain("for (const line of controlLines)");
+  expect(source).toContain('runPageAgent(target.tab.id, "invalidate"');
+  expect(source).toContain("openObservedHttpsLink");
+  expect(source).toContain("browser_record_evidence");
+  expect(source).toContain("Open evidence tab");
 });

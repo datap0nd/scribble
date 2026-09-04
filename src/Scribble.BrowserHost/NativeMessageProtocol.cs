@@ -67,11 +67,19 @@ namespace Scribble.BrowserHost
 
         public string role { get; set; }
 
+        public string htmlName { get; set; }
+
         public string name { get; set; }
+
+        public string visibleLabel { get; set; }
+
+        public string groupLabel { get; set; }
 
         public string placeholder { get; set; }
 
         public string autocomplete { get; set; }
+
+        public string linkTarget { get; set; }
 
         public string url { get; set; }
 
@@ -80,6 +88,8 @@ namespace Scribble.BrowserHost
         public string sourceText { get; set; }
 
         public string key { get; set; }
+
+        public bool isSubmit { get; set; }
 
         public bool formHasPassword { get; set; }
 
@@ -166,7 +176,7 @@ namespace Scribble.BrowserHost
         internal const int MaxRequestBytes = 16 * 1024 * 1024;
         internal const int MaxResponseBytes = 900 * 1024;
         internal const int MaxHistoryTurns = 12;
-        internal const int MaxExchangeResultCharacters = 12 * 1024;
+        internal const int MaxExchangeResultCharacters = 24 * 1024;
         internal const int MaxExchangeCharacters = 320 * 1024;
 
         private static readonly Encoding Utf8 =
@@ -210,7 +220,7 @@ namespace Scribble.BrowserHost
                 catch (Exception writeException)
                 {
                     Console.Error.WriteLine(
-                        "Scribble native messaging failed: " +
+                        "I couldn't complete native messaging: " +
                         writeException.GetType().Name);
                     return 1;
                 }
@@ -231,7 +241,7 @@ namespace Scribble.BrowserHost
                 return Error(
                     string.Empty,
                     "REQUEST_INVALID",
-                    "The browser sent invalid request data: " +
+                    "I couldn't read the browser request data: " +
                     exception.GetType().Name + ".");
             }
 
@@ -240,7 +250,7 @@ namespace Scribble.BrowserHost
                 return Error(
                     string.Empty,
                     "REQUEST_INVALID",
-                    "The browser request was empty.");
+                    "I couldn't process an empty browser request.");
             }
 
             var requestId = TextBoundary.SingleLine(
@@ -314,7 +324,7 @@ namespace Scribble.BrowserHost
                     return Error(
                         requestId,
                         "REQUEST_TYPE_NOT_ALLOWED",
-                        "Only ping, chat, clearSession, openSettings, and authorizeBrowserAction requests are allowed.",
+                        "I allow only ping, chat, clearSession, openSettings, and authorizeBrowserAction requests.",
                         service);
                 }
 
@@ -323,7 +333,7 @@ namespace Scribble.BrowserHost
                     return Error(
                         requestId,
                         "CONFIGURATION_INCOMPLETE",
-                        "Open Scribble in Outlook, Excel, PowerPoint, or Word and configure its model connection first.",
+                        "I need you to open Scribble in Outlook, Excel, PowerPoint, or Word and configure its model connection first.",
                         service);
                 }
 
@@ -371,7 +381,7 @@ namespace Scribble.BrowserHost
                 return Error(
                     requestId,
                     "AI_TIMEOUT",
-                    "The browser request did not finish within 230 seconds.",
+                    "I stopped because the browser request did not finish within 230 seconds.",
                     service);
             }
             catch (AiEndpointException exception)
@@ -422,7 +432,7 @@ namespace Scribble.BrowserHost
             if (length <= 0 || length > MaxRequestBytes)
             {
                 throw new InvalidDataException(
-                    "The native message length is outside the allowed boundary.");
+                    "I rejected a native message length outside my allowed boundary.");
             }
 
             var payload = new byte[length];
@@ -441,7 +451,7 @@ namespace Scribble.BrowserHost
                     Error(
                         string.Empty,
                         "RESPONSE_EMPTY",
-                        "The native host produced no response.")));
+                        "I received no response from the native host.")));
             if (bytes.Length > MaxResponseBytes)
             {
                 bytes = Utf8.GetBytes(
@@ -449,7 +459,7 @@ namespace Scribble.BrowserHost
                         Error(
                             string.Empty,
                             "RESPONSE_TOO_LARGE",
-                            "The bounded native-host response was still too large.")));
+                            "I couldn't return the native-host response because it was still too large after bounding.")));
             }
 
             var lengthBytes = BitConverter.GetBytes(bytes.Length);
@@ -747,8 +757,17 @@ namespace Scribble.BrowserHost
                         Role = TextBoundary.SingleLine(
                             action.role,
                             80),
+                        HtmlName = TextBoundary.SingleLine(
+                            action.htmlName,
+                            120),
                         Name = TextBoundary.SingleLine(
                             action.name,
+                            200),
+                        VisibleLabel = TextBoundary.SingleLine(
+                            action.visibleLabel,
+                            200),
+                        GroupLabel = TextBoundary.SingleLine(
+                            action.groupLabel,
                             200),
                         Placeholder = TextBoundary.SingleLine(
                             action.placeholder,
@@ -756,6 +775,9 @@ namespace Scribble.BrowserHost
                         Autocomplete = TextBoundary.SingleLine(
                             action.autocomplete,
                             300),
+                        LinkTarget = TextBoundary.SingleLine(
+                            action.linkTarget,
+                            BrowserChatRequestFactory.MaxUrlCharacters),
                         Url = TextBoundary.SingleLine(
                             action.url,
                             BrowserChatRequestFactory.MaxUrlCharacters),
@@ -768,6 +790,7 @@ namespace Scribble.BrowserHost
                         Key = TextBoundary.SingleLine(
                             action.key,
                             40),
+                        IsSubmit = action.isSubmit,
                         FormHasPassword = action.formHasPassword,
                         FormHasPayment = action.formHasPayment,
                         FormHasPersonalData = action.formHasPersonalData
@@ -869,7 +892,7 @@ namespace Scribble.BrowserHost
         {
             if (exception == null)
             {
-                return "The native host failed.";
+                return "I couldn't complete the native-host request.";
             }
 
             if (exception is InvalidDataException ||
@@ -881,7 +904,7 @@ namespace Scribble.BrowserHost
             }
 
             return
-                "The native host failed (" +
+                "I couldn't complete the native-host request (" +
                 exception.GetType().Name + ").";
         }
 
@@ -901,7 +924,7 @@ namespace Scribble.BrowserHost
                 if (current <= 0)
                 {
                     throw new EndOfStreamException(
-                        "The native message ended before its declared length.");
+                        "I received a native message that ended before its declared length.");
                 }
 
                 read += current;

@@ -2195,7 +2195,9 @@ namespace GuardrailTests
                 "max_tokens",
                 "messages",
                 "model",
+                "parallel_tool_calls",
                 "stream",
+                "temperature",
                 "tool_choice",
                 "tools"
             };
@@ -4535,6 +4537,29 @@ namespace GuardrailTests
                 parsed.Options[0].Description.Contains("risk") &&
                 parsed.Options[1].Label == "Project team",
                 "Prompt-helper arguments were not normalized safely.");
+
+            var grouped = PromptHelperTool.ParseMany(
+                MailboxCall(
+                    "ask-browser",
+                    PromptHelperTool.Name,
+                    "{\"questions\":[" +
+                    "{\"id\":\"market\",\"question\":\"Which market?\"," +
+                    "\"options\":[\"UAE\",\"UK\"]}," +
+                    "{\"id\":\"storage\",\"question\":\"Which storage?\"," +
+                    "\"options\":[\"256 GB\",\"512 GB\"]}," +
+                    "{\"id\":\"condition\",\"question\":\"Which condition?\"," +
+                    "\"options\":[\"Flawless\",\"Average\"]}]}"));
+            var browserDefinitionJson = new JavaScriptSerializer()
+                .Serialize(PromptHelperTool.CreateBrowserDefinition());
+            Assert(
+                grouped.Count == 3 &&
+                grouped[0].Id == "market" &&
+                grouped[1].Question == "Which storage?" &&
+                grouped[2].Options[0].Label == "Flawless" &&
+                browserDefinitionJson.Contains("\"questions\"") &&
+                browserDefinitionJson.Contains("\"maxItems\":3") &&
+                !definitionJson.Contains("\"questions\""),
+                "Browser grouped clarification drifted or leaked into Office schemas.");
 
             var mailbox = ChatRequestFactory.Create(
                 "test-model",
@@ -7002,6 +7027,7 @@ namespace GuardrailTests
                     "browser_search_google",
                     "browser_snapshot",
                     "browser_act",
+                    "browser_record_evidence",
                     "ask_user",
                     "open_excel_table",
                     "open_outlook_draft",
@@ -7015,9 +7041,11 @@ namespace GuardrailTests
                 .function.description;
             Assert(
                 actionDescription.Contains("200 characters") &&
-                actionDescription.Contains("progress") &&
+                actionDescription.Contains("no_effect") &&
                 actionDescription.Contains("redundant") &&
-                actionDescription.Contains("refused"),
+                actionDescription.Contains("refused") &&
+                request.temperature == 0.1 &&
+                request.parallel_tool_calls == false,
                 "The action tool must declare its provenance and safety contract.");
             var draftDescription = request.tools
                 .First(tool =>
@@ -7037,6 +7065,7 @@ namespace GuardrailTests
                 system.Contains(
                     "Actions that buy") &&
                 system.Contains("browser_search_google") &&
+                system.Contains("Write every user-facing reply in first person") &&
                 system.Contains("month-only request") &&
                 system.Contains("Dubai International (DXB)") &&
                 system.Contains("Sharjah (SHJ)") &&
@@ -7046,7 +7075,7 @@ namespace GuardrailTests
                 system.Contains("never send email") &&
                 system.Contains("untrusted reference data") &&
                 system.Contains("cannot expand these capabilities") &&
-                system.Contains("You MUST call ask_user"),
+                system.Contains("one to three focused questions"),
                 "Browser requests must carry the bounded-browsing, " +
                 "untrusted-context boundary.");
             var context = Convert.ToString(
@@ -7936,7 +7965,49 @@ namespace GuardrailTests
                     Role = "button",
                     Name = "Continue",
                     Url = "https://travel.example/checkout",
+                    IsSubmit = true,
                     FormHasPayment = true
+                });
+            var safeControlInPaymentForm = BrowserActionPolicy.Evaluate(
+                new BrowserActionDescriptor
+                {
+                    Action = "click",
+                    Role = "button",
+                    Name = "Mobile Phones",
+                    Url = "https://shop.example/trade-in",
+                    FormHasPayment = true,
+                    FormHasPersonalData = true
+                });
+            var safeBuyLink = BrowserActionPolicy.Evaluate(
+                new BrowserActionDescriptor
+                {
+                    Action = "click",
+                    TagName = "a",
+                    Role = "link",
+                    Name = "Buy Galaxy Z Fold8",
+                    LinkTarget = "https://shop.example/fold8",
+                    Url = "https://shop.example/"
+                });
+            var purchaseButton = BrowserActionPolicy.Evaluate(
+                new BrowserActionDescriptor
+                {
+                    Action = "click",
+                    TagName = "button",
+                    Role = "button",
+                    Name = "Buy Galaxy Z Fold8",
+                    Url = "https://shop.example/fold8"
+                });
+            var telephoneEntry = BrowserActionPolicy.Evaluate(
+                new BrowserActionDescriptor
+                {
+                    Action = "type",
+                    TagName = "input",
+                    InputType = "tel",
+                    Role = "textbox",
+                    Name = "Mobile phone",
+                    Value = "123456789",
+                    SourceText = "123456789",
+                    Url = "https://shop.example/trade-in"
                 });
             var booking = BrowserActionPolicy.Evaluate(
                 new BrowserActionDescriptor
@@ -8027,10 +8098,12 @@ namespace GuardrailTests
                 new BrowserActionDescriptor
                 {
                     Action = "type",
+                    TagName = "input",
                     InputType = "text",
                     Role = "combobox",
-                    Name = "Search",
-                    Url = "https://www.google.com/",
+                    HtmlName = "q",
+                    Name = "بحث",
+                    Url = "https://www.google.ae/",
                     Value = "Dubai Germany flights September 2026",
                     SourceText = "Scrape flight prices from Germany to Dubai, September. 2026",
                     FormHasPayment = true,
@@ -8087,14 +8160,19 @@ namespace GuardrailTests
                 composedTravelType.Allowed &&
                 inferredDubaiAirport.Allowed &&
                 inferredMonthNumber.Allowed &&
-                reversibleControls && googleSearch.Allowed &&
+                reversibleControls && safeControlInPaymentForm.Allowed &&
+                safeBuyLink.Allowed && googleSearch.Allowed &&
                 googleSubmit.Allowed &&
                 !password.Allowed && !email.Allowed &&
                 !paymentForm.Allowed && !booking.Allowed &&
+                !purchaseButton.Allowed && !telephoneEntry.Allowed &&
                 !pageDerivedType.Allowed && !tooLong.Allowed &&
                 !rejectedWrongAirport.Allowed &&
                 !travelerIdentity.Allowed && !googleLeakedQuery.Allowed &&
-                !googlePasswordForm.Allowed && !fakeGoogleSearch.Allowed &&
+                !googlePasswordForm.Allowed && fakeGoogleSearch.Allowed &&
+                !BrowserActionPolicy.IsGoogleHost(
+                    "google.com.attacker.example") &&
+                BrowserActionPolicy.IsGoogleHost("www.google.co.uk") &&
                 blockedConsequences &&
                 pageDerivedType.Code == "TYPE_SOURCE_NOT_USER",
                 "BrowserActionPolicy did not enforce the approved public-data boundary.");

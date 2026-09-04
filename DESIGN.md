@@ -190,18 +190,24 @@ Controls use square native geometry. Text fields have fixed single borders; flat
 - **Context versus action:** The current Chrome tab is a clearly labelled,
   read-only context source. Every mutation occurs in one of five numbered,
   inactive Scribble work tabs.
-- **Clarification:** Materially ambiguous requests pause in the transcript for
-  one focused `ask_user` card before browsing begins. Public aliases with one
-  safe deterministic meaning can be inferred locally; any other typed
+- **Clarification:** Materially ambiguous browser requests pause for one
+  `ask_user` card containing one to three related questions. Public aliases
+  with one safe deterministic meaning can be inferred locally; any other typed
   inference triggers an exact-value confirmation and resumes after approval.
 - **Activity:** The Pixel Pal carries one live, plain-language description of
   the current operation, such as `Writing “Dubai” in Destination` or `Clicking
   Done`. Raw refs, work-tab IDs, and duplicate browser-activity cards stay out
   of the user-facing transcript. Typed text remains verbatim before dispatch.
-- **Progress:** Safe public-search field values and stable page-state
-  fingerprints let the model verify travel criteria and distinguish useful
-  progress from repeated inspection. Twenty unchanged browser calls stop as a
+- **Progress:** Lightweight probes wait for two stable page fingerprints
+  without rebuilding refs. A final scan creates the only refs returned to the
+  model; every mutation invalidates them immediately and returns a verified
+  outcome plus a refreshed snapshot. Twenty unchanged browser calls stop as a
   loop; progressing work continues behind a separate emergency fuse.
+- **Evidence:** Price and configuration claims render from an extension-
+  validated evidence record bound to the current tab, revision, fingerprint,
+  visible excerpts, and verified action receipts. The evidence tab remains
+  available until Clear chat, and every Scribble-authored message is first
+  person.
 - **Intervention:** CAPTCHA, bot defense, protected/cross-origin widgets,
   sign-in walls, unexpected debugger detach, and the debugger banner's Cancel
   action stop cleanly with a plain-language recovery message.

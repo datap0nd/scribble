@@ -13,6 +13,25 @@
     <button id="search">Search flights</button>
     <button id="hidden" style="display:none">Hidden action</button>
     <button id="disabled" disabled>Disabled action</button>
+    <section aria-label="Samsung trade-in fixture">
+      <textarea id="localized-google" name="q" role="combobox" aria-label="بحث"></textarea>
+      <button id="mobile-card" aria-label="Category option undefined">Mobile Phones</button>
+      <div id="fold-stage" hidden><button id="fold8" aria-label="Product option undefined">Galaxy Z Fold8</button></div>
+      <div id="brand-stage" hidden><button id="apple" aria-label="Brand option undefined">Apple</button></div>
+      <div id="phone-stage" hidden><button id="iphone16pro">iPhone 16 Pro</button></div>
+      <div id="storage-stage" hidden><button id="storage256">256 GB</button></div>
+      <div id="condition-stage" class="condition-card" hidden><span>Flawless</span><input id="flawless" type="checkbox"></div>
+      <div id="tradein-result" hidden>
+        <strong>AED 1,660</strong>
+        <span>Estimated trade-in value only</span>
+        <span>UAE · Galaxy Z Fold8 · iPhone 16 Pro · 256 GB · Flawless</span>
+      </div>
+      <p>Other market result: UK</p>
+      <a id="translated-no-effect" href="product.html">Translated Samsung result</a>
+      <a id="safe-buy-link" href="product.html">Buy</a>
+      <button id="purchase-button">Buy</button>
+      <div id="delayed-options" data-loading="true" aria-label="Loading trade-in options"></div>
+    </section>
     <form aria-label="Traveler details">
       <label>Passenger name <input id="traveler" autocomplete="name" value="Never expose this"></label>
       <label>Email <input id="email" type="email" value="secret@example.test"></label>
@@ -45,6 +64,26 @@
     done.textContent = "Done";
     crowdedCalendar.append(done);
     document.querySelector("main").append(crowdedCalendar);
+    window.finishDelayedOptions = () => {
+      const list = document.getElementById("delayed-options");
+      list.removeAttribute("data-loading");
+      list.textContent = "Apple iPhone 16 Pro 256 GB AED 1,660 Estimated value only";
+    };
+    const reveal = (from, to) => document.getElementById(from)
+      .addEventListener("click", () => {
+        document.getElementById(to).hidden = false;
+      });
+    reveal("mobile-card", "fold-stage");
+    reveal("fold8", "brand-stage");
+    reveal("apple", "phone-stage");
+    reveal("iphone16pro", "storage-stage");
+    reveal("storage256", "condition-stage");
+    document.getElementById("flawless").addEventListener("change", (event) => {
+      document.getElementById("tradein-result").hidden = !event.target.checked;
+    });
+    document.getElementById("translated-no-effect").addEventListener("click", (event) => {
+      event.preventDefault();
+    });
   </script>
 </body>
 </html>

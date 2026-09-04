@@ -554,6 +554,66 @@ p {
   text-align: left;
 }
 
+.ask-question + .ask-question {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.ask-question-text {
+  margin: 0;
+  font-weight: 650;
+}
+
+.ask-submit {
+  width: 100%;
+  margin-top: 12px;
+  padding: 7px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 9px;
+  background: var(--accent);
+  color: #ffffff;
+  cursor: pointer;
+  font-weight: 650;
+}
+
+.ask-submit:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.evidence-card {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+}
+
+.evidence-amount {
+  margin: 0 0 6px;
+  color: var(--accent);
+  font-size: 20px;
+  font-weight: 750;
+}
+
+.evidence-caveat {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.evidence-open {
+  padding: 6px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  cursor: pointer;
+  font-weight: 650;
+}
+
+.evidence-open:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .topic-panel {
   display: flex;
   align-items: center;

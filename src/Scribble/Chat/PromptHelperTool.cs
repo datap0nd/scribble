@@ -28,11 +28,23 @@ namespace Scribble.Chat
             string question,
             string reason,
             IReadOnlyList<PromptHelperOption> options)
+            : this("answer", question, reason, options)
         {
+        }
+
+        public PromptHelperQuestion(
+            string id,
+            string question,
+            string reason,
+            IReadOnlyList<PromptHelperOption> options)
+        {
+            Id = id ?? string.Empty;
             Question = question ?? string.Empty;
             Reason = reason ?? string.Empty;
             Options = options ?? new PromptHelperOption[0];
         }
+
+        public string Id { get; }
 
         public string Question { get; }
 
@@ -55,6 +67,7 @@ namespace Scribble.Chat
         public const int MaxOptionLabelCharacters = 80;
         public const int MaxOptionDescriptionCharacters = 140;
         public const int MaxAnswerCharacters = 240;
+        public const int MaxQuestions = 3;
 
         public const string SystemInstruction =
             " Before starting substantial work, check whether the request " +
@@ -75,6 +88,16 @@ namespace Scribble.Chat
             "outcome, or for greetings, simple factual questions, and trivial " +
             "choices. ask_user gathers missing requirements; it is never a " +
             "request for permission to proceed with an already-clear task.";
+
+        public const string BrowserSystemInstruction =
+            " Before browsing, check whether missing details could materially " +
+            "change the result. When several related product or research " +
+            "details are missing, call ask_user as the only tool call with " +
+            "one to three focused questions in a single questions array. " +
+            "Give each question a stable short id and 2-4 concrete options. " +
+            "After the answers arrive, continue the same browser journey. " +
+            "Ask again only for a field the user left unanswered. Do not use " +
+            "ask_user as permission for an already-clear task.";
 
         private static readonly Regex Whitespace =
             new Regex(@"\s+", RegexOptions.Compiled);
@@ -210,6 +233,159 @@ namespace Scribble.Chat
                     }
                 }
             };
+        }
+
+        public static ChatToolDefinition CreateBrowserDefinition()
+        {
+            return new ChatToolDefinition
+            {
+                type = "function",
+                function = new ChatToolFunctionDefinition
+                {
+                    name = Name,
+                    description =
+                        "Ask one to three related questions together when missing " +
+                        "research details would materially change the result. This " +
+                        "must be the only tool call in the response.",
+                    parameters = new Dictionary<string, object>
+                    {
+                        { "type", "object" },
+                        { "additionalProperties", false },
+                        {
+                            "properties",
+                            new Dictionary<string, object>
+                            {
+                                {
+                                    "questions",
+                                    new Dictionary<string, object>
+                                    {
+                                        { "type", "array" },
+                                        { "minItems", 1 },
+                                        { "maxItems", MaxQuestions },
+                                        {
+                                            "items",
+                                            new Dictionary<string, object>
+                                            {
+                                                { "type", "object" },
+                                                { "additionalProperties", false },
+                                                {
+                                                    "properties",
+                                                    new Dictionary<string, object>
+                                                    {
+                                                        { "id", new Dictionary<string, object> { { "type", "string" } } },
+                                                        { "question", new Dictionary<string, object> { { "type", "string" } } },
+                                                        { "reason", new Dictionary<string, object> { { "type", "string" } } },
+                                                        {
+                                                            "options",
+                                                            new Dictionary<string, object>
+                                                            {
+                                                                { "type", "array" },
+                                                                { "minItems", 2 },
+                                                                { "maxItems", MaxOptions },
+                                                                {
+                                                                    "items",
+                                                                    new Dictionary<string, object>
+                                                                    {
+                                                                        { "type", "object" },
+                                                                        { "additionalProperties", false },
+                                                                        {
+                                                                            "properties",
+                                                                            new Dictionary<string, object>
+                                                                            {
+                                                                                { "label", new Dictionary<string, object> { { "type", "string" } } },
+                                                                                { "description", new Dictionary<string, object> { { "type", "string" } } }
+                                                                            }
+                                                                        },
+                                                                        { "required", new[] { "label", "description" } }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                },
+                                                { "required", new[] { "id", "question", "options" } }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        { "required", new[] { "questions" } }
+                    }
+                }
+            };
+        }
+
+        public static IReadOnlyList<PromptHelperQuestion> ParseMany(
+            ChatToolCall call)
+        {
+            if (!IsTool(call?.function?.name))
+            {
+                throw new InvalidOperationException(
+                    "The requested tool is not the prompt helper.");
+            }
+
+            IDictionary<string, object> arguments;
+            try
+            {
+                arguments = new JavaScriptSerializer()
+                    .DeserializeObject(call.function.arguments ?? "{}")
+                    as IDictionary<string, object>;
+            }
+            catch (ArgumentException)
+            {
+                arguments = null;
+            }
+
+            object questionsValue = null;
+            var questionItems = arguments != null &&
+                arguments.TryGetValue("questions", out questionsValue)
+                    ? questionsValue as IEnumerable
+                    : null;
+            if (questionItems == null || questionsValue is string)
+            {
+                return new[] { Parse(call) };
+            }
+
+            var result = new List<PromptHelperQuestion>();
+            foreach (var item in questionItems)
+            {
+                var map = item as IDictionary<string, object>;
+                if (map == null)
+                {
+                    continue;
+                }
+                object idValue;
+                map.TryGetValue("id", out idValue);
+                var parsed = Parse(new ChatToolCall
+                {
+                    id = call.id,
+                    type = call.type,
+                    function = new ChatToolCallFunction
+                    {
+                        name = Name,
+                        arguments = new JavaScriptSerializer().Serialize(map)
+                    }
+                });
+                result.Add(new PromptHelperQuestion(
+                    TextBoundary.SingleLine(
+                        Convert.ToString(idValue) ?? string.Empty,
+                        40),
+                    parsed.Question,
+                    parsed.Reason,
+                    parsed.Options));
+                if (result.Count == MaxQuestions)
+                {
+                    break;
+                }
+            }
+
+            if (result.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    "The prompt helper did not provide any questions.");
+            }
+            return result;
         }
 
         public static object CreateRequiredChoice()

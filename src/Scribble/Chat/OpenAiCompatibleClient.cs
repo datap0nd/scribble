@@ -29,6 +29,9 @@ namespace Scribble.Chat
 
         private readonly GeminiCodeAssistGateway _gemini =
             new GeminiCodeAssistGateway();
+        private readonly object _optionalToolControlSync = new object();
+        private readonly HashSet<string> _optionalToolControlUnsupported =
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         public OpenAiCompatibleClient()
         {
@@ -160,8 +163,47 @@ namespace Scribble.Chat
                     "The configured endpoint is invalid.");
             }
 
+            var capabilityKey = endpoint.GetLeftPart(UriPartial.Authority);
+            var hasOptionalToolControls =
+                requestModel.temperature.HasValue ||
+                requestModel.parallel_tool_calls.HasValue;
+            var includeOptionalToolControls = hasOptionalToolControls &&
+                !OptionalToolControlsUnsupported(capabilityKey);
+            try
+            {
+                return await CompleteOpenAiAsync(
+                    settings,
+                    endpoint,
+                    requestModel,
+                    includeOptionalToolControls,
+                    cancellationToken).ConfigureAwait(true);
+            }
+            catch (AiEndpointException exception)
+                when (includeOptionalToolControls &&
+                      OptionalToolControlsRejected(exception))
+            {
+                MarkOptionalToolControlsUnsupported(capabilityKey);
+                return await CompleteOpenAiAsync(
+                    settings,
+                    endpoint,
+                    requestModel,
+                    false,
+                    cancellationToken).ConfigureAwait(true);
+            }
+        }
+
+        private async Task<ChatCompletionResponseMessage>
+            CompleteOpenAiAsync(
+                AppSettings settings,
+                Uri endpoint,
+                ChatCompletionRequest requestModel,
+                bool includeOptionalToolControls,
+                CancellationToken cancellationToken)
+        {
             var requestJson = _serializer.Serialize(
-                SerializablePayload(requestModel));
+                SerializablePayload(
+                    requestModel,
+                    includeOptionalToolControls));
 
             using (var request = new HttpRequestMessage(HttpMethod.Post, endpoint))
             {
@@ -767,7 +809,8 @@ namespace Scribble.Chat
         // carry "tools": [] or null tool fields with 400, so the
         // optional fields are included only when they carry a value.
         private static Dictionary<string, object> SerializablePayload(
-            ChatCompletionRequest requestModel)
+            ChatCompletionRequest requestModel,
+            bool includeOptionalToolControls = true)
         {
             var payload = new Dictionary<string, object>
             {
@@ -790,7 +833,55 @@ namespace Scribble.Chat
                 payload["max_tokens"] = requestModel.max_tokens.Value;
             }
 
+            if (includeOptionalToolControls &&
+                requestModel.temperature.HasValue)
+            {
+                payload["temperature"] = requestModel.temperature.Value;
+            }
+
+            if (includeOptionalToolControls &&
+                requestModel.parallel_tool_calls.HasValue)
+            {
+                payload["parallel_tool_calls"] =
+                    requestModel.parallel_tool_calls.Value;
+            }
+
             return payload;
+        }
+
+        private bool OptionalToolControlsUnsupported(string capabilityKey)
+        {
+            lock (_optionalToolControlSync)
+            {
+                return _optionalToolControlUnsupported.Contains(
+                    capabilityKey ?? string.Empty);
+            }
+        }
+
+        private static bool OptionalToolControlsRejected(
+            AiEndpointException exception)
+        {
+            if (exception == null || exception.HttpStatus != 400)
+            {
+                return false;
+            }
+
+            var detail = (
+                (exception.ProviderCode ?? string.Empty) + " " +
+                (exception.ResponseSnippet ?? string.Empty) + " " +
+                (exception.Message ?? string.Empty))
+                .ToLowerInvariant();
+            return detail.Contains("temperature") ||
+                detail.Contains("parallel_tool_calls");
+        }
+
+        private void MarkOptionalToolControlsUnsupported(string capabilityKey)
+        {
+            lock (_optionalToolControlSync)
+            {
+                _optionalToolControlUnsupported.Add(
+                    capabilityKey ?? string.Empty);
+            }
         }
 
         private static string BuildHttpCode(int status, string reason)

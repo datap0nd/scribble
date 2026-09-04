@@ -16,11 +16,19 @@ namespace Scribble.Security
 
         public string Role { get; set; }
 
+        public string HtmlName { get; set; }
+
         public string Name { get; set; }
+
+        public string VisibleLabel { get; set; }
+
+        public string GroupLabel { get; set; }
 
         public string Placeholder { get; set; }
 
         public string Autocomplete { get; set; }
+
+        public string LinkTarget { get; set; }
 
         public string Url { get; set; }
 
@@ -29,6 +37,8 @@ namespace Scribble.Security
         public string SourceText { get; set; }
 
         public string Key { get; set; }
+
+        public bool IsSubmit { get; set; }
 
         public bool FormHasPassword { get; set; }
 
@@ -100,7 +110,12 @@ namespace Scribble.Security
                 @"book now|continue to book|complete booking|confirm booking|reserve now|make reservation|" +
                 @"sign[ -]?in|log[ -]?in|sign[ -]?up|register|" +
                 @"subscribe|unsubscribe|send|post|upload|download|delete|remove account|" +
-                @"submit application|add to (?:cart|basket|bag))\b",
+                @"submit application|add to (?:cart|basket|bag)|agree|accept terms|consent)\b",
+                RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        private static readonly Regex ReversibleCommerceLinkText =
+            new Regex(
+                @"\b(buy|purchase)\b",
                 RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         public static BrowserActionDecision Evaluate(
@@ -110,7 +125,7 @@ namespace Scribble.Security
             {
                 return Deny(
                     "ACTION_DESCRIPTOR_MISSING",
-                    "The browser action did not include a control descriptor.");
+                    "I couldn't evaluate the browser action because it did not include a control descriptor.");
             }
 
             var action = Clean(descriptor.Action, 40).ToLowerInvariant();
@@ -118,7 +133,7 @@ namespace Scribble.Security
             {
                 return Deny(
                     "ACTION_NOT_ALLOWED",
-                    "That browser action is not in Scribble's allowlist.");
+                    "I can't run that browser action because it is not in my allowlist.");
             }
 
             Uri page;
@@ -128,7 +143,7 @@ namespace Scribble.Security
             {
                 return Deny(
                     "ACTION_URL_BLOCKED",
-                    "Browser actions are restricted to HTTP and HTTPS work tabs.");
+                    "I restrict browser actions to HTTP and HTTPS work tabs.");
             }
 
             if (action == "scroll" || action == "wait")
@@ -141,32 +156,38 @@ namespace Scribble.Security
                 page,
                 action);
 
-            if (IsSensitiveField(descriptor))
+            var valueEntryAction = action == "type" ||
+                action == "select" || action == "check";
+            var inputType = Clean(descriptor.InputType, 40)
+                .ToLowerInvariant();
+            if (inputType == "password" || inputType == "file" ||
+                (valueEntryAction && IsSensitiveField(descriptor)))
             {
                 return Deny(
                     "ACTION_SENSITIVE_FIELD",
-                    "Scribble cannot interact with credential, payment, or personal-data fields.");
+                    "I can't interact with credential, payment, or personal-data fields.");
             }
 
             if (descriptor.FormHasPassword ||
-                (!googleSearchAction &&
+                (!googleSearchAction && descriptor.IsSubmit &&
                  (descriptor.FormHasPayment ||
                   descriptor.FormHasPersonalData)))
             {
                 return Deny(
                     "ACTION_SENSITIVE_FORM",
-                    "The target is inside a credential, payment, or personal-data form.");
+                    "I can't use that target because it is inside a credential, payment, or personal-data form.");
             }
 
             var controlText = Clean(
                 (descriptor.Name ?? string.Empty) + " " +
                 (descriptor.Placeholder ?? string.Empty),
                 500);
-            if (ConsequentialControlText.IsMatch(controlText))
+            if (ConsequentialControlText.IsMatch(controlText) &&
+                !IsReversibleCommerceLink(descriptor, controlText))
             {
                 return Deny(
                     "ACTION_CONSEQUENTIAL",
-                    "Scribble stops before booking, payment, authentication, messaging, downloads, or destructive actions.");
+                    "I stop before booking, payment, authentication, messaging, downloads, or destructive actions.");
             }
 
             if (action == "type")
@@ -176,14 +197,14 @@ namespace Scribble.Security
                 {
                     return Deny(
                         "TYPE_VALUE_MISSING",
-                        "A non-empty typed value is required.");
+                        "I need a non-empty typed value.");
                 }
 
                 if (value.Length > MaxTypedCharacters)
                 {
                     return Deny(
                         "TYPE_VALUE_TOO_LONG",
-                        "Typed browser values are limited to 200 characters.");
+                        "I limit typed browser values to 200 characters.");
                 }
 
                 if (!IsTypedValueAuthorized(
@@ -192,7 +213,7 @@ namespace Scribble.Security
                 {
                     return Deny(
                         "TYPE_SOURCE_NOT_USER",
-                        "Typed text must come from the user's prompt, a locally validated public alias, or a clarification answer.");
+                        "I can type only text from your prompt, a locally validated public alias, or a clarification answer.");
                 }
             }
 
@@ -240,6 +261,33 @@ namespace Scribble.Security
             }
 
             return SensitiveFieldText.IsMatch(text);
+        }
+
+        private static bool IsReversibleCommerceLink(
+            BrowserActionDescriptor descriptor,
+            string controlText)
+        {
+            if (descriptor == null || descriptor.IsSubmit ||
+                !(string.Equals(
+                      Clean(descriptor.TagName, 40),
+                      "a",
+                      StringComparison.OrdinalIgnoreCase) ||
+                  string.Equals(
+                      Clean(descriptor.Role, 80),
+                      "link",
+                      StringComparison.OrdinalIgnoreCase)) ||
+                !ReversibleCommerceLinkText.IsMatch(controlText))
+            {
+                return false;
+            }
+
+            Uri destination;
+            return Uri.TryCreate(
+                    descriptor.LinkTarget,
+                    UriKind.Absolute,
+                    out destination) &&
+                (destination.Scheme == Uri.UriSchemeHttp ||
+                 destination.Scheme == Uri.UriSchemeHttps);
         }
 
         public static bool IsContiguousUserPhrase(
@@ -349,19 +397,18 @@ namespace Scribble.Security
             string action)
         {
             if (descriptor == null || page == null ||
-                !(page.Host.Equals(
-                      "google.com",
-                      StringComparison.OrdinalIgnoreCase) ||
-                  page.Host.EndsWith(
-                      ".google.com",
-                      StringComparison.OrdinalIgnoreCase)))
+                !IsGoogleHost(page.Host))
             {
                 return false;
             }
 
             var role = Clean(descriptor.Role, 80)
                 .ToLowerInvariant();
+            var tagName = Clean(descriptor.TagName, 40)
+                .ToLowerInvariant();
             var inputType = Clean(descriptor.InputType, 40)
+                .ToLowerInvariant();
+            var htmlName = Clean(descriptor.HtmlName, 120)
                 .ToLowerInvariant();
             var label = Clean(
                 (descriptor.Name ?? string.Empty) + " " +
@@ -372,10 +419,13 @@ namespace Scribble.Security
                  role == "textbox" ||
                  role == "combobox" ||
                  inputType == "search") &&
-                Regex.IsMatch(
-                    label,
-                    @"\b(search|google)\b",
-                    RegexOptions.IgnoreCase);
+                (tagName.Length == 0 || tagName == "input" ||
+                 tagName == "textarea") &&
+                (htmlName == "q" || inputType == "search" ||
+                 Regex.IsMatch(
+                     label,
+                     @"\b(search|google)\b",
+                     RegexOptions.IgnoreCase));
             if (!looksLikeSearch)
             {
                 return false;
@@ -390,6 +440,14 @@ namespace Scribble.Security
                 Clean(descriptor.Key, 40).Equals(
                     "Enter",
                     StringComparison.OrdinalIgnoreCase);
+        }
+
+        public static bool IsGoogleHost(string host)
+        {
+            return Regex.IsMatch(
+                Clean(host, 253),
+                @"^(?:[a-z0-9-]+\.)*google\.[a-z]{2,3}(?:\.[a-z]{2})?$",
+                RegexOptions.IgnoreCase);
         }
 
         private static IList<string> QueryTokens(string value)
@@ -439,7 +497,7 @@ namespace Scribble.Security
             return new BrowserActionDecision(
                 true,
                 "ACTION_ALLOWED",
-                "The bounded browser action is allowed.");
+                "I allowed the bounded browser action.");
         }
 
         private static BrowserActionDecision Deny(

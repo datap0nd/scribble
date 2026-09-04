@@ -28,6 +28,10 @@ namespace Scribble.Chat
         public object tool_choice { get; set; }
 
         public int? max_tokens { get; set; }
+
+        public double? temperature { get; set; }
+
+        public bool? parallel_tool_calls { get; set; }
     }
 
     public sealed class ChatCompletionInputMessage

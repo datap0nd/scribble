@@ -197,18 +197,20 @@ unless the user enters exact tool names and affirms that each is read-only.
     independently requires that exact origin argument, uses strict binary
     stdin/stdout framing, and returns no settings secrets or stack traces.
 21. `BrowserChatService` exposes the fixed browser tools (navigate, read,
-    Google UI search, snapshot, act, the shared `ask_user` prompt helper, one unsent Outlook draft per request, and one unsaved Excel
+    Google UI search, snapshot, act, extension-validated evidence, the shared
+    `ask_user` prompt helper, one unsent Outlook draft per request, and one unsaved Excel
     workbook per request) plus exact, case-sensitive MCP tool names the
     user separately allowlisted and affirmed as read-only. Progress is measured
     from stable page-state fingerprints. Twenty consecutive browser calls with
     no meaningful state change stop as a loop; progressing work may continue up
-    to a 120-round emergency cost/safety fuse, with four calls per round. It rejects every
+    to a 120-round emergency cost/safety fuse, with four calls but no more than
+    one state-changing browser call per round. It rejects every
     other requested tool and
     labels page, screenshot, and MCP results as untrusted data. Every page
     read returns a bounded link list so multi-step navigation follows exact
     URLs and ref-scoped controls instead of guessing. Older browser results are
-    compacted while clarification answers and the six newest snapshots remain
-    full. Its only
+    compacted while clarification answers, validated evidence, and the six
+    newest snapshots remain full. Its only
     Office capabilities are `OutlookDraftLauncher` (displays one unsent draft;
     no send, read, delete, or mailbox access) and `ExcelTableLauncher` (opens
     one brand-new unsaved workbook with a bounded table and optional chart; no
@@ -221,9 +223,11 @@ unless the user enters exact tool names and affirms that each is read-only.
     The Outlook mailbox pane deliberately does not get this tool, so
     attacker-authored email text can never choose a URL sink for mailbox
     data.
-21b. Every Scribble pane exposes the same `ask_user` definition. It pauses the
-    current model loop, renders one bounded question with at most four bounded
-    options plus free text, and resumes only with the user's answer. A local
+21b. Every Scribble pane exposes `ask_user`. Office panes advertise one bounded
+    question with at most four bounded options plus free text. Browser chat
+    advertises one to three related questions in one card and returns answers
+    keyed by question id. The shared parser accepts both shapes during version
+    skew and resumes only with the user's answer. A local
     structural preflight forces this tool for a narrow set of obviously vague
     prompts. Mixed `ask_user` plus action-tool rounds are rejected without
     running any of the requested actions; Stop cancels a pending question.
@@ -265,6 +269,22 @@ unless the user enters exact tool names and affirms that each is read-only.
     prompt or `ask_user` answer explicitly says replace, overwrite, or in place;
     that choice remains bound to the captured source range and the same final
     identity checks. No file is saved.
+21h. Browser action policy is operation-aware. Sensitive-name classification
+    applies to value entry rather than ordinary links or category-card clicks;
+    password and file controls remain denied regardless of operation. A safe
+    HTTP(S) anchor labelled Buy may navigate, while a button/submit with the
+    same text remains consequential. Password forms, sensitive fields,
+    personal/payment submits, authentication, upload, messaging, download,
+    destructive actions, and final purchase/trade-in submission are hard
+    denials with no model-controlled confirmation override.
+21i. A completed browser price, valuation, availability, or configured-product
+    claim requires `browser_record_evidence`. The extension validates the
+    bounded fields against its current work tab, revision, fingerprint, visible
+    DOM text, and verified action receipts, then sends the structured record to
+    the native host as untrusted data. Stale revisions, different tabs,
+    invented or Google result URLs, absent excerpts, unresolved actions, and
+    answer/record mismatches cannot complete. Work tabs survive until Clear chat
+    so **Open evidence tab** can reactivate the exact observed page.
 22. Model and webpage output is never parsed as HTML or evaluated as
     script. Assistant replies pass through a bounded local formatter that
     builds paragraph, list, table, bold, and code DOM nodes itself and

@@ -97,6 +97,7 @@ namespace Scribble.Chat
         // observed progress rather than a small fixed action allowance.
         public const int MaxBrowserEmergencyRounds = 120;
         public const int MaxBrowserToolCallsPerRound = 4;
+        public const int MaxStateChangingBrowserCallsPerRound = 1;
 
         private readonly AppSettings _settings;
         private readonly OpenAiCompatibleClient _client;
@@ -182,7 +183,7 @@ namespace Scribble.Chat
             {
                 throw new AiEndpointException(
                     "CONFIGURATION_INCOMPLETE",
-                    "Open Scribble Settings and configure the endpoint, model, and API key first.");
+                    "I need you to open Scribble Settings and configure the endpoint, model, and API key first.");
             }
 
             var safePrompt = TextBoundary.PlainText(
@@ -203,7 +204,7 @@ namespace Scribble.Chat
             {
                 throw new AiEndpointException(
                     "SCREENSHOT_INVALID",
-                    "The attached screenshot was not a valid bounded JPEG, PNG, or WebP image.");
+                    "I couldn't use the attached screenshot because it was not a valid bounded JPEG, PNG, or WebP image.");
             }
             var activeModel = ModelRouting.ResolveForRequest(
                 _settings,
@@ -265,7 +266,7 @@ namespace Scribble.Chat
             {
                 throw new AiEndpointException(
                     "BROWSER_STALLED",
-                    "The last 20 browser steps did not meaningfully change the page.");
+                    "I stopped because my last 20 browser steps did not meaningfully change the page.");
             }
             var draftOpened = false;
             var tableOpened = false;
@@ -283,7 +284,7 @@ namespace Scribble.Chat
                     {
                         throw new AiEndpointException(
                             "RESPONSE_MISSING_CONTENT",
-                            "The model stopped without returning text.");
+                            "I stopped because the model did not return text.");
                     }
 
                     topicTools?.CompleteSession();
@@ -297,14 +298,14 @@ namespace Scribble.Chat
                 {
                     throw new AiEndpointException(
                         "TOOL_ROUND_LIMIT",
-                        "The model exceeded the emergency browser safety limit.");
+                        "I stopped because the model exceeded my emergency browser safety limit.");
                 }
 
                 if (toolCalls.Count > MaxBrowserToolCallsPerRound)
                 {
                     throw new AiEndpointException(
                         "TOOL_CALL_LIMIT",
-                        "The model requested too many tools in one round.");
+                        "I stopped because the model requested too many tools in one round.");
                 }
 
                 if (PromptHelperTool.Contains(toolCalls) &&
@@ -329,6 +330,27 @@ namespace Scribble.Chat
                     continue;
                 }
 
+                var deferredMutationResults =
+                    new List<MailboxToolResult>();
+                var mutationCount = 0;
+                foreach (var call in toolCalls)
+                {
+                    if (IsStateChangingBrowserCall(call))
+                    {
+                        mutationCount++;
+                        if (mutationCount >
+                            MaxStateChangingBrowserCallsPerRound)
+                        {
+                            deferredMutationResults.Add(
+                                new MailboxToolResult(
+                                    call.id,
+                                    "[BROWSER_MUTATION_DEFERRED] I ran only one state-changing browser action from this model round. Inspect the fresh result before requesting another action.",
+                                    "I deferred an extra browser action"));
+                            continue;
+                        }
+                    }
+
+                }
                 totalRoundsUsed++;
                 var needsBrowser = false;
                 foreach (var call in toolCalls)
@@ -341,7 +363,8 @@ namespace Scribble.Chat
                     }
                 }
 
-                var hostResults = new List<MailboxToolResult>();
+                var hostResults = new List<MailboxToolResult>(
+                    deferredMutationResults);
                 foreach (var call in toolCalls)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
@@ -483,7 +506,7 @@ namespace Scribble.Chat
             {
                 throw new AiEndpointException(
                     "TOPIC_CHANGED",
-                    "The active Topic was removed or its folder changed. Clear chat before continuing.");
+                    "I can't continue because the active Topic was removed or its folder changed. Clear chat first.");
             }
 
             string resolvedRoot;
@@ -495,7 +518,7 @@ namespace Scribble.Chat
             {
                 throw new AiEndpointException(
                     "TOPIC_UNAVAILABLE",
-                    "The active Topic is unavailable: " +
+                    "I can't use the active Topic: " +
                     validationError);
             }
 
@@ -541,6 +564,57 @@ namespace Scribble.Chat
             }
 
             return count;
+        }
+
+        private static bool IsStateChangingBrowserCall(
+            ChatToolCall call)
+        {
+            var name = call?.function?.name ?? string.Empty;
+            if (string.Equals(
+                    name,
+                    BrowserToolCatalog.NavigatePage,
+                    StringComparison.Ordinal) ||
+                string.Equals(
+                    name,
+                    BrowserToolCatalog.SearchGoogle,
+                    StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            if (!string.Equals(
+                    name,
+                    BrowserToolCatalog.ActOnPage,
+                    StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            try
+            {
+                var arguments = new JavaScriptSerializer()
+                    .DeserializeObject(
+                        call.function.arguments ?? "{}")
+                    as IDictionary<string, object>;
+                object action;
+                if (arguments != null &&
+                    arguments.TryGetValue("action", out action) &&
+                    string.Equals(
+                        Convert.ToString(action),
+                        "wait",
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
+            }
+            catch (ArgumentException)
+            {
+                // Invalid arguments remain state-changing until the
+                // extension rejects them; never use malformed JSON to
+                // bypass the per-round mutation boundary.
+            }
+
+            return true;
         }
 
         public static bool HasStalled(

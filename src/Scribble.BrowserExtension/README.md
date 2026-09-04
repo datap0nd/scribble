@@ -43,7 +43,10 @@ viewers) are shared as address-only.
 Scribble can also browse for you. When you ask it to look something up, the
 model opens http/https pages in up to five of its own background work tabs
 (numbered 1-5, so it can compare sites side by side), searches through Google's
-visible UI, inspects ref-scoped controls, and performs bounded trusted input.
+visible UI (including localized Google ccTLDs and `name=q` fields), inspects
+ref-scoped controls, and performs bounded trusted input. Each mutation expires
+the old refs, waits for a stable page, and returns a fresh snapshot with an
+observed outcome instead of assuming that a click worked.
 Your current tab is never navigated away, and **Clear chat** closes Scribble's
 work tabs. Public search and travel criteria can be typed, selected, clicked,
 scrolled, and filtered. Typed values are capped at 200 characters and may come
@@ -51,11 +54,12 @@ from your request, a locally validated public alias such as Dubai to DXB, or a
 clarification answer. Scribble asks you to approve the exact text before using
 an unfamiliar inferred public term. Values appear verbatim in
 one plain-language status beside the Pixel Pal. Raw control refs stay in the
-internal tool transcript rather than appearing as duplicate chat cards. A native policy refuses credential, personal/traveler
-identity, booking, payment, message, upload/download, and destructive fields,
-forms, and controls. When
-something important is ambiguous, it asks you one clarifying question with
-clickable options and waits. When
+internal tool transcript rather than appearing as duplicate chat cards. A
+native operation-aware policy permits reversible product cards and HTTP(S)
+product links while refusing sensitive typing, credential/password forms,
+purchase/booking submits, payment, identity, message, upload/download, and
+destructive actions. When several related details are ambiguous, it asks one
+to three questions together with clickable options and waits. When
 you ask Scribble to email someone, it opens one unsent Outlook draft window
 for your review; ask for Excel and it opens one unsaved workbook. It can never
 send or save either.
@@ -65,6 +69,12 @@ stops after 20 consecutive browser calls with no meaningful state change, with
 a separate 120-round emergency cost/safety fuse. Public travel inputs expose
 safe displayed values so the model can verify airport codes and dates before
 submitting; sensitive field values remain unreadable.
+
+Completed price, valuation, availability, and configured-product answers need
+a structured evidence record validated by the extension against the final DOM,
+work tab, revision, and action receipts. The evidence card can reopen that same
+tab until **Clear chat**. Scribble-authored browser messages use first person;
+page text, evidence quotations, error codes, and protocol markers stay verbatim.
 
 Chrome displays its normal “Scribble is debugging this browser” banner during
 trusted input. Scribble attaches only for an atomic action and detaches in a
