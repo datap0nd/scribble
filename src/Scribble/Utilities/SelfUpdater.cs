@@ -14,7 +14,7 @@ namespace Scribble.Utilities
     public static class SelfUpdater
     {
         public const string InstallerUrl =
-            "https://github.sec.samsung.net/r-cunha/scribble/releases/latest/download/ScribbleSetup.exe";
+            "https://github.com/datap0nd/scribble/releases/latest/download/ScribbleSetup.exe";
 
         public const int MaxInstallerBytes = 100 * 1024 * 1024;
         public const int MinInstallerBytes = 200 * 1024;
