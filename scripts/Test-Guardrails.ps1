@@ -1342,6 +1342,8 @@ foreach ($sidePanelOperatorBoundary in @(
     'I can type only values containing 1-200 characters',
     'I''m writing “${boundText(args.value, MAX_TYPED_CHARS)}”',
     'runVerifiedAction(target',
+    'resolveBeforeActionSnapshot',
+    'lastSnapshotBySlot.get(target.slot)',
     'runPageAgent(target.tab.id, "invalidate"',
     'openObservedHttpsLink',
     'Action outcome: no_effect',

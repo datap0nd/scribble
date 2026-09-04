@@ -1164,6 +1164,10 @@ async function actOnWorkTab(toolRequest) {
     }
     args.sourceText = await typedValueSource(value, args.source);
   }
+  const cachedSnapshot = lastSnapshotBySlot.get(target.slot);
+  const knownSnapshot = cachedSnapshot?.workTabId === target.tab.id
+    ? cachedSnapshot
+    : null;
   const observed = await runVerifiedAction(target, {
     action,
     ref: String(args.ref || ""),
@@ -1172,7 +1176,7 @@ async function actOnWorkTab(toolRequest) {
     key: String(args.key || ""),
     direction: String(args.direction || ""),
     amount: Number(args.amount)
-  });
+  }, knownSnapshot);
   const status = observed.outcome === "changed"
     ? `Action outcome: changed. I verified ${observed.effect}.`
     : observed.outcome === "incomplete"
@@ -1394,8 +1398,45 @@ async function openObservedHttpsLink(target, descriptor) {
   return true;
 }
 
+async function resolveBeforeActionSnapshot(target, args, knownSnapshot) {
+  if (knownSnapshot) return knownSnapshot;
+  if (!args.ref || args.action === "scroll" || args.action === "wait") {
+    return inspectWorkTab(target.tab.id);
+  }
+
+  // Do not run a new full snapshot before resolving the ref supplied by the
+  // model. A full snapshot intentionally creates a new revision, so doing it
+  // here made every otherwise-current Google result ref stale immediately.
+  const revision = String(args.ref).split(":")[0];
+  const resolved = await runPageAgent(target.tab.id, "resolve", {
+    ref: args.ref,
+    revision
+  });
+  if (resolved?.error) {
+    throw new Error(`${resolved.error} I'll need to inspect again before acting.`);
+  }
+  const probe = await runPageAgent(target.tab.id, "probe", {});
+  const currentTab = await chrome.tabs.get(target.tab.id);
+  return {
+    revision: resolved.revision,
+    stateFingerprint: probe?.stateFingerprint || "",
+    title: currentTab.title || "",
+    url: currentTab.url || target.tab.url,
+    visibleText: "",
+    controls: [{
+      ref: args.ref,
+      revision: resolved.revision,
+      ...resolved.descriptor
+    }],
+    settled: true
+  };
+}
+
 async function runVerifiedAction(target, args, knownSnapshot = null, allowRetry = true) {
-  const beforeSnapshot = knownSnapshot || await inspectWorkTab(target.tab.id);
+  const beforeSnapshot = await resolveBeforeActionSnapshot(
+    target,
+    args,
+    knownSnapshot);
   const beforeUrl = beforeSnapshot.url || target.tab.url;
   let execution = await performAction(target, args, beforeSnapshot);
   if (args.action !== "wait") {

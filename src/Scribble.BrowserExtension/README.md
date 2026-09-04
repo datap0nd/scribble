@@ -47,6 +47,8 @@ visible UI (including localized Google ccTLDs and `name=q` fields), inspects
 ref-scoped controls, and performs bounded trusted input. Each mutation expires
 the old refs, waits for a stable page, and returns a fresh snapshot with an
 observed outcome instead of assuming that a click worked.
+Version 1.5.1 fixes a pre-action rescan that could invalidate a freshly returned
+Google result ref immediately before Scribble tried to click it.
 Your current tab is never navigated away, and **Clear chat** closes Scribble's
 work tabs. Public search and travel criteria can be typed, selected, clicked,
 scrolled, and filtered. Typed values are capped at 200 characters and may come

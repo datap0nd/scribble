@@ -38,7 +38,7 @@ test("extension version status distinguishes current and stale installs", () => 
     newer: true
   });
   expect(html).toContain('id="reloadExtension"');
-  expect(manifest.version).toBe("1.5.0");
+  expect(manifest.version).toBe("1.5.1");
 });
 
 test("browser activity stays in Pixel Pal and public aliases stay bounded", () => {
@@ -97,4 +97,53 @@ test("snapshot and evidence boundaries are explicit and complete-record based", 
   expect(source).toContain("openObservedHttpsLink");
   expect(source).toContain("browser_record_evidence");
   expect(source).toContain("Open evidence tab");
+});
+
+test("browser actions resolve the supplied ref before any fresh snapshot", async () => {
+  const helperSource = source.slice(
+    source.indexOf("async function resolveBeforeActionSnapshot("),
+    source.indexOf("async function runVerifiedAction(")
+  );
+  const calls = [];
+  const sandbox = {
+    calls,
+    chrome: {
+      tabs: {
+        get: async () => ({
+          id: 7,
+          title: "Google results",
+          url: "https://www.google.ae/search?q=samsung"
+        })
+      }
+    },
+    runPageAgent: async (_tabId, command) => {
+      calls.push(command);
+      if (command === "resolve") {
+        return {
+          revision: "r1",
+          descriptor: {
+            role: "link",
+            name: "Samsung trade-in",
+            linkTarget: "https://samsungtradein.ae/ae-en/"
+          }
+        };
+      }
+      return { stateFingerprint: "stable-google-results" };
+    },
+    inspectWorkTab: async () => {
+      calls.push("snapshot");
+      throw new Error("A ref-scoped action must not snapshot first.");
+    },
+    result: null
+  };
+  vm.createContext(sandbox);
+  await vm.runInContext(`${helperSource}
+    resolveBeforeActionSnapshot(
+      { tab: { id: 7, url: "https://www.google.ae/search?q=samsung" } },
+      { action: "click", ref: "r1:e4" },
+      null).then(value => { result = value; });`, sandbox);
+
+  expect(calls).toEqual(["resolve", "probe"]);
+  expect(sandbox.result.controls[0].linkTarget)
+    .toBe("https://samsungtradein.ae/ae-en/");
 });

@@ -1,5 +1,14 @@
 # Release notes
 
+## Google result ref hotfix (extension 1.5.1)
+
+Scribble now resolves the exact ref returned by Google before taking any new
+full snapshot. Previously, `browser_act` performed a full rescan first; that
+created a new document revision and made the requested result ref stale before
+the click could occur. The action now uses the already returned snapshot, or a
+non-mutating resolve-and-probe fallback, and retains the observed-link fallback
+for a verified no-effect click.
+
 ## Verifiable browser results (extension 1.5.0)
 
 Scribble now completes price and valuation research only after the extension
