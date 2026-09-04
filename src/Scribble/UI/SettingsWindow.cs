@@ -539,7 +539,7 @@ namespace Scribble.UI
             _updateStatus.Text =
                 "Update downloads the latest Scribble release and installs " +
                 "silently once Outlook, Excel, PowerPoint, and Word are closed. " +
-                "One update refreshes all four add-ins.";
+                "One update refreshes Scribble across all five apps.";
             _updateStatus.AccessibleRole = AccessibleRole.StatusBar;
             layout.Controls.Add(_updateStatus, 0, 13);
             page.Controls.Add(layout);
@@ -567,7 +567,7 @@ namespace Scribble.UI
                 (_outlookApplication != null
                     ? ", and Outlook reopens with the new version"
                     : string.Empty) +
-                ". One update refreshes all four Scribble add-ins. " +
+                ". One update refreshes Scribble across all five apps. " +
                 "Continue?",
                 "Update Scribble",
                 MessageBoxButtons.YesNo,

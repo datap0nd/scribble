@@ -14,7 +14,7 @@ namespace Scribble.Utilities
     public static class SelfUpdater
     {
         public const string InstallerUrl =
-            "https://github.com/datap0nd/scribble/releases/latest/download/ScribbleSetup.exe";
+            "https://github.sec.samsung.net/r-cunha/scribble/releases/latest/download/ScribbleSetup.exe";
 
         public const int MaxInstallerBytes = 100 * 1024 * 1024;
         public const int MinInstallerBytes = 200 * 1024;
@@ -102,8 +102,8 @@ namespace Scribble.Utilities
 
         // The script receives the installer path as %1 so the file itself
         // stays pure ASCII regardless of the user's profile path. One
-        // installer carries all four add-ins (Outlook, Excel,
-        // PowerPoint, and Word share a single assembly); the script
+        // installer carries all five integrations (Chrome plus the Outlook,
+        // Excel, PowerPoint, and Word add-ins); the script
         // waits only for the Office hosts whose Scribble component is
         // actually installed, since only those loaded the DLL.
         public static string BuildUpdateScript()

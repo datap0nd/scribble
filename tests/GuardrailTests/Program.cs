@@ -5468,9 +5468,9 @@ namespace GuardrailTests
         {
             Assert(
                 SelfUpdater.InstallerUrl.StartsWith(
-                    "https://github.com/datap0nd/scribble/releases/",
+                    "https://github.sec.samsung.net/r-cunha/scribble/releases/",
                     StringComparison.Ordinal),
-                "The updater must download only the official release installer over HTTPS.");
+                "The updater must download only the internal release installer over HTTPS.");
 
             var script = SelfUpdater.BuildUpdateScript();
             Assert(
