@@ -48,7 +48,15 @@ namespace Scribble.Office
                 throw new InvalidOperationException("SLIDE_CITATION_REQUIRED");
         }
         private static IEnumerable<string> Numbers(string text)
-        { return Regex.Matches(text ?? "", @"(?<![A-Za-z])[-+]?\d+(?:[,.]\d+)*%?").Cast<Match>().Select(m => m.Value.Replace(",", "").TrimStart('+').TrimEnd('%')); }
+        {
+            return Regex.Matches(text ?? "", @"(?<![A-Za-z0-9])[-+]?(?:\d+(?:[,.]\d+)*|\.\d+)(?:[eE][-+]?\d+)?%?").Cast<Match>().Select(m =>
+            {
+                var raw = m.Value.Replace(",", "").TrimStart('+').TrimEnd('%');
+                double value;
+                return double.TryParse(raw, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out value)
+                    ? value.ToString("R", System.Globalization.CultureInfo.InvariantCulture) : raw;
+            });
+        }
 
         public static void ValidatePlan(string[] plan, string[] batch, string[] completed)
         {

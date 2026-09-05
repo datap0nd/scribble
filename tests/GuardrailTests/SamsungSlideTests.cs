@@ -56,6 +56,7 @@ namespace GuardrailTests
             var json = new JavaScriptSerializer();
             var slide = new { title = "Sales increased 20%", subtitle = "Sales increased 20%", sources = "Report, page 1", evidence = "Sales increased 20%." };
             SamsungPresentationReview.ValidateEvidence(json.Serialize(slide), "Source: Sales increased 20%.");
+            SamsungPresentationReview.ValidateEvidence(json.Serialize(new { title = "Value 1000", subtitle = "Rate 0.4", sources = "Report", evidence = "Value 1,000.0; rate .4" }), "Value 1,000.0; rate .4");
             ExpectFailure(() => SamsungPresentationReview.ValidateEvidence(json.Serialize(slide), "No such result"));
             ExpectFailure(() => SamsungPresentationReview.ValidateEvidence(json.Serialize(new { title = "Sales increased 30%", subtitle = "Growth", sources = "Report", evidence = "Sales increased 20%." }), "Sales increased 20%."));
         }
