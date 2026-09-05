@@ -68,9 +68,10 @@ namespace Scribble.Office
                     if (measured.Height <= area.Height - 3 && measured.Width <= area.Width) return size;
                 }
             }
-            throw new InvalidOperationException("SLIDE_OVERFLOW: Content cannot fit at the minimum font size. Split this content across slides; no source text was dropped.");
+            throw new InvalidOperationException("SLIDE_OVERFLOW: " + (text ?? "").Substring(0, Math.Min(80, (text ?? "").Length)) +
+                " [" + font + ", minimum " + minimum + "pt, box " + area.Width + " x " + area.Height + "]. Split this content across slides; no source text was dropped.");
         }
         public static int RowsPerPage(int columns, float height = 281.34f)
-        { return Math.Max(1, (int)(height / 15f) - 1); }
+        { return Math.Max(1, (int)(height / 19f) - 1); }
     }
 }

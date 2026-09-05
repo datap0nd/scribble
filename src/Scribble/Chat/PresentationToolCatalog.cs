@@ -208,6 +208,7 @@ namespace Scribble.Chat
                     { "caption", ToolSchema.String("Short table caption; use with matrix/table layouts.") },
                     { "sources", ToolSchema.String("Exact source references and supporting evidence for claims and numbers. Retained in speaker notes.") },
                     { "evidence", ToolSchema.String("Verbatim source excerpt supporting this slide, copied from user input or a read-tool receipt. Required for data slides. Preserve numbers and units. Never invent an excerpt.") },
+                    { "image_names", new Dictionary<string, object> { { "type", "array" }, { "items", new { type = "string" } }, { "description", "Up to four exact filenames of images explicitly attached to this task. Use source figures for visual layouts; never supply file paths or URLs. Charts with available data should use editable chart fields." } } },
                     { "highlight_rows", new Dictionary<string, object> { { "type", "array" }, { "items", new { type = "integer", minimum = 1 } }, { "description", "1-based primary table rows or chart categories supporting the action title. The host draws red frames." } } },
                     {
                         "unit",

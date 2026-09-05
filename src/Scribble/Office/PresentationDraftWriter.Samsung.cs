@@ -82,8 +82,11 @@ namespace Scribble.Office
             internal string Text = "", Font = "Arial", Fill, Color = "#000000";
             internal float Size = 18, Minimum = 14;
             internal bool Bold, Hollow;
+            internal bool Circle, Connector;
+            internal int Alignment = 1;
             internal DraftTable Table;
             internal DraftChart Chart;
+            internal string ImageData;
         }
         internal sealed class SamsungPage
         {
@@ -136,7 +139,7 @@ namespace Scribble.Office
                     {
                         if (!SamsungSlideDesign.InBounds(element.Box)) throw new InvalidOperationException("SLIDE_GEOMETRY_INVALID");
                         if (element.Table != null) FitTable(element);
-                        else if (element.Chart == null && !element.Hollow && element.Text.Length > 0)
+                        else if (element.Chart == null && element.ImageData == null && !element.Hollow && element.Text.Length > 0)
                             element.Size = SamsungSlideDesign.Fit(element.Text, element.Font, element.Box, element.Size, element.Minimum, element.Bold);
                     }
                     pages.Add(page);
@@ -172,6 +175,8 @@ namespace Scribble.Office
                 if (draft.Chart != null) queue.Enqueue(new SamsungElement { Chart = draft.Chart });
                 if (secondaryTable != null) queue.Enqueue(new SamsungElement { Table = secondaryTable });
                 if (draft.SecondaryChart != null) queue.Enqueue(new SamsungElement { Chart = draft.SecondaryChart });
+                foreach (var image in draft.ImageData) queue.Enqueue(new SamsungElement { ImageData = image });
+                if (draft.ImageNames.Count != draft.ImageData.Count) throw new InvalidOperationException("SLIDE_IMAGE_UNRESOLVED: Attach the named source images before drafting.");
                 if (draft.Cards.Count > 0 && (draft.Layout == "roadmap" || draft.Layout == "stack" || draft.Layout == "cards" || draft.Layout == "action_list"))
                 {
                     if (queue.Count > 0) throw new InvalidOperationException("Use two_pane or visual_grid to combine card commentary with data.");
@@ -202,7 +207,7 @@ namespace Scribble.Office
                     }
                 }
                 if (draft.Caption.Length > 0) elements.Add(TextElement(draft.Caption, SamsungSlideDesign.Percent(15.6f, 21f, 57, 3.5f), 14, 11, "Arial Narrow", true));
-                if (draft.Unit.Length > 0) elements.Add(TextElement(draft.Unit, SamsungSlideDesign.Percent(80, 21.5f, 16.2f, 3.1f), 8, 8, "Calibri"));
+                if (draft.Unit.Length > 0) { var unit = TextElement(draft.Unit, SamsungSlideDesign.Percent(80, 21.5f, 16.2f, 3.1f), 8, 8, "Calibri"); unit.Alignment = 3; elements.Add(unit); }
                 if (draft.Takeaway.Length > 0) elements.Add(TextElement(draft.Takeaway, SamsungSlideDesign.Takeaway, 14, 11, "Arial Narrow", true, SamsungSlideDesign.Blue, "#FFFFFF"));
                 // Semantic row references, never model-supplied coordinates.
                 var primary = elements.FirstOrDefault(e => e.Table != null || e.Chart != null);
@@ -219,10 +224,27 @@ namespace Scribble.Office
                     { var w = primary.Box.Width * .8f / total; box = new RectangleF(primary.Box.X + primary.Box.Width * .15f + (row - 1) * w, primary.Box.Y + primary.Box.Height * .2f, w, primary.Box.Height * .6f); }
                     elements.Add(new SamsungElement { Box = box, Hollow = true });
                 }
+                foreach (var data in elements.Where(e => e.Table != null).ToArray())
+                {
+                    var rows = data.Table.Rows; var columns = Math.Max(1, data.Table.Headers.Count);
+                    for (var r = 0; r < rows.Count; r++)
+                    for (var c = 0; c < rows[r].Count; c++)
+                    {
+                        // An explicit semantic status is safe to render. Never infer
+                        // that an increase/decrease is intrinsically good or bad.
+                        var value = rows[r][c].Trim().ToLowerInvariant();
+                        if (value != "strong" && value != "weak" && value != "neutral") continue;
+                        var cellW = data.Box.Width / columns; var cellH = data.Box.Height / (rows.Count + 1);
+                        var statusBox = new RectangleF(data.Box.X + (c + 1) * cellW - 8, data.Box.Y + (r + 1) * cellH + 2, 6, 6);
+                        elements.Add(new SamsungElement { Box = statusBox, Circle = true, Fill = value == "strong" ? SamsungSlideDesign.Green : value == "weak" ? SamsungSlideDesign.Red : "#7F7F7F" });
+                    }
+                }
+                if (draft.HighlightRows.Count > 0 && draft.Takeaway.Length > 0 && draft.Layout == "annotated_chart")
+                    elements.Add(new SamsungElement { Box = SamsungSlideDesign.Percent(50.8f, 80.2f, 5.3f, 4.5f), Connector = true });
             }
             var source = string.Join("; ", new[] { draft.Footnote, draft.Sources }.Where(s => !string.IsNullOrWhiteSpace(s)));
             if (source.Length > 0) elements.Add(TextElement(source.Length > 240 ? "Source references and evidence: see speaker notes." : source, SamsungSlideDesign.Footer, 7, 7, "Arial Narrow"));
-            elements.Add(TextElement("- " + index + " -", SamsungSlideDesign.Page, 10.5f, 8, "Calibri"));
+            var pageNumber = TextElement("- " + index + " -", SamsungSlideDesign.Page, 10.5f, 8, "Calibri"); pageNumber.Alignment = 3; elements.Add(pageNumber);
             elements.Add(TextElement(DraftMarker, SamsungSlideDesign.Percent(3.8f, 97, 32, 2.8f), 7, 7, "Arial", false, null, "#7F7F7F"));
             return page;
         }
@@ -275,7 +297,29 @@ namespace Scribble.Office
             {
                 var box = element.Box;
                 dynamic shape;
-                if (element.Chart != null)
+                if (element.ImageData != null)
+                {
+                    var path = Path.Combine(Path.GetTempPath(), "scribble-source-" + Guid.NewGuid().ToString("N") + ".png");
+                    try
+                    {
+                        var bytes = Convert.FromBase64String(element.ImageData.Substring(element.ImageData.IndexOf(',') + 1));
+                        using (var stream = new MemoryStream(bytes))
+                        using (var image = Image.FromStream(stream))
+                        {
+                            image.Save(path, System.Drawing.Imaging.ImageFormat.Png);
+                            var ratio = Math.Min(box.Width / image.Width, box.Height / image.Height);
+                            var width = image.Width * ratio; var height = image.Height * ratio;
+                            shape = slide.Shapes.AddPicture(path, 0, -1, box.X + (box.Width - width) / 2, box.Y + (box.Height - height) / 2, width, height);
+                        }
+                    }
+                    finally { if (File.Exists(path)) File.Delete(path); }
+                }
+                else if (element.Connector)
+                {
+                    shape = slide.Shapes.AddConnector(2, box.Left, box.Top, box.Right, box.Bottom);
+                    shape.Line.Weight = .5f; shape.Line.ForeColor.RGB = MetoTheme.Rgb("#7F7F7F");
+                }
+                else if (element.Chart != null)
                 {
                     if (!AddChartToSlide(slide, element.Chart, box.X, box.Y, box.Width, box.Height))
                         throw new InvalidOperationException("SLIDE_CHART_FAILED: Native chart could not be created; the draft remains incomplete.");
@@ -300,7 +344,7 @@ namespace Scribble.Office
                 else
                 {
                     shape = element.Fill != null || element.Hollow
-                        ? slide.Shapes.AddShape(1, box.X, box.Y, box.Width, box.Height)
+                        ? slide.Shapes.AddShape(element.Circle ? 9 : 1, box.X, box.Y, box.Width, box.Height)
                         : slide.Shapes.AddTextbox(1, box.X, box.Y, box.Width, box.Height);
                     shape.Line.Visible = element.Hollow ? -1 : 0;
                     if (element.Hollow) { shape.Fill.Visible = 0; shape.Line.ForeColor.RGB = MetoTheme.Rgb(SamsungSlideDesign.Red); shape.Line.Weight = 1f; }
@@ -327,10 +371,12 @@ namespace Scribble.Office
             shape.TextFrame2.AutoSize = 0;
             dynamic range = frame.TextRange;
             range.Text = element.Text;
+            if (element.Text.Length == 0) return;
             range.Font.Name = SamsungSlideDesign.FontFor(element.Text, element.Font);
             range.Font.Size = element.Size; range.Font.Bold = element.Bold ? -1 : 0;
             range.Font.Color.RGB = MetoTheme.Rgb(element.Color);
             range.ParagraphFormat.SpaceAfter = 0; range.ParagraphFormat.SpaceBefore = 0;
+            range.ParagraphFormat.Alignment = element.Alignment;
             range.ParagraphFormat.LineRuleWithin = -1; range.ParagraphFormat.SpaceWithin = 1f;
             // Bounded native repair. Never let AutoFit shrink below design minima.
             while (((double)range.BoundHeight > element.Box.Height - 2 || (double)range.BoundWidth > element.Box.Width - 3) && (float)range.Font.Size > element.Minimum)
@@ -357,9 +403,9 @@ namespace Scribble.Office
                 if ((int)shape.Id != output.ShapeIds[i] || (string)shape.Tags["ScribbleTask"] != output.Owner)
                     throw new InvalidOperationException("SLIDE_OWNERSHIP_CHANGED");
                 var element = output.Page.Elements[i];
-                if (element.Chart == null && element.Table == null && !element.Hollow)
+                if (element.Chart == null && element.Table == null && element.ImageData == null && !element.Hollow && !element.Connector && !element.Circle)
                 {
-                    if ((string)shape.TextFrame.TextRange.Text != element.Text) throw new InvalidOperationException("SLIDE_CONTENT_CHANGED: User edits are preserved.");
+                    if (((string)shape.TextFrame.TextRange.Text).Replace("\r\n", "\n").Replace("\r", "\n") != element.Text.Replace("\r\n", "\n").Replace("\r", "\n")) throw new InvalidOperationException("SLIDE_CONTENT_CHANGED: User edits are preserved.");
                     element.Size = Math.Max(element.Minimum, element.Size - 1f);
                     ApplySamsungText(shape, element);
                 }

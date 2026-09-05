@@ -36,7 +36,7 @@ namespace Scribble.Office
             if (special) return;
             // Metadata is not a numeric claim. Layout indices and outline levels
             // are not facts either. Inspect displayed content recursively.
-            var content = string.Join(" ", data.Where(p => !new[] { "sources", "evidence", "layout", "highlight_rows" }.Contains(p.Key)).Select(p => json.Serialize(p.Value)));
+            var content = string.Join(" ", data.Where(p => !new[] { "sources", "evidence", "layout", "highlight_rows", "image_names" }.Contains(p.Key)).Select(p => json.Serialize(p.Value)));
             var allowed = new HashSet<string>(Numbers(evidence));
             var missing = Numbers(content).Where(n => !allowed.Contains(n)).Distinct().ToArray();
             if (missing.Length > 0) throw new InvalidOperationException("SLIDE_NUMBERS_UNVERIFIED: Values absent from cited evidence: " + string.Join(", ", missing));
