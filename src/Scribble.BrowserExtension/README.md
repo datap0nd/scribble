@@ -112,7 +112,7 @@ There are no content scripts, no remote scripts, and no background page collecti
 
 ## Troubleshooting
 
-Version 1.7.0 adds generic transparent/clipped control proxies, short card labels, additional ARIA roles, browser-provided click-listener/accessibility observations, and screenshots for unresolved visual surfaces. These paths contain no trade-in-site selectors or condition-name dictionary. A control without a verified DOM binding is explicitly reported as unbound; closed-root or canvas actions are not falsely claimed as supported. After updating Scribble Setup, use the extension reload button to activate 1.7.0. Task recovery, pagination and destination safeguards remain in place.
+Version 1.7.1 adds distinct inspection failure reasons and a single retry for a destroyed navigation context, on top of the generic control observations introduced in 1.7.0. These paths contain no trade-in-site selectors or condition-name dictionary. A control without a verified DOM binding is explicitly reported as unbound; closed-root or canvas actions are not falsely claimed as supported. After updating Scribble Setup, use the extension reload button to activate 1.7.1. Task recovery, pagination and destination safeguards remain in place.
 
 - **Browser support is not installed:** rerun Scribble Setup with browser support enabled, then restart the browser.
 - **The extension is not authorized:** the extension and Scribble bridge are from different builds, or the native-host manifest does not contain the stable origin above. Reinstall matching versions.
