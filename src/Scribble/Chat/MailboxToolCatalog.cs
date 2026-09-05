@@ -146,7 +146,7 @@ namespace Scribble.Chat
                             "Load bounded messages in the Outlook conversation containing " +
                             "a searched or selected message, subject to the " +
                             MailboxWorkingSet.MaxMessages +
-                            "-message request-wide context cap.",
+                            "-message per-call page size. Use search_mailbox pagination for complete mailbox or time-window reviews.",
                         parameters = ObjectSchema(
                             new Dictionary<string, object>
                             {

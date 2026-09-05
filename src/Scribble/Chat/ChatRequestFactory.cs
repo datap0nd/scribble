@@ -277,7 +277,7 @@ namespace Scribble.Chat
                       " emails is locked for this request. Use only read_messages with its supplied context handles. Do not search the mailbox or expand conversation threads."
                     : " At most " +
                       MailboxWorkingSet.MaxMessages +
-                      " unique message bodies may be loaded in one request. Perform no more than one mailbox search.");
+                      " message bodies may be read per batch. Continue as many cursor pages and body batches as the task requires.");
             var boundedTone = TextBoundary.PlainText(
                 toneProfile,
                 TextBoundary.MaxToneProfileCharacters);

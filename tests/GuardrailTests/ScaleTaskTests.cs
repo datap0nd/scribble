@@ -20,6 +20,10 @@ namespace GuardrailTests
 
         public static void MailboxPagination()
         {
+            var request = ChatRequestFactory.Create("test", null, new List<ChatTurn>(), "Review all messages");
+            var instructions = new JavaScriptSerializer().Serialize(request);
+            Check(!instructions.Contains("one mailbox search") && instructions.Contains("next_cursor"),
+                "Obsolete mailbox scope instructions override pagination.");
             foreach (var count in new[] { 500, 1000 })
             {
                 var now = DateTime.Now;
