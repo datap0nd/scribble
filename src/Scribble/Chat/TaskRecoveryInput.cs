@@ -115,6 +115,9 @@ namespace Scribble.Chat
 
     internal static class OfficeTaskBinding
     {
+        private sealed class DocumentIdentity { internal readonly string Value = Guid.NewGuid().ToString("N"); }
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<object, DocumentIdentity> UnsavedIdentities =
+            new System.Runtime.CompilerServices.ConditionalWeakTable<object, DocumentIdentity>();
         internal static TaskSourceBinding Capture(string host, object application)
         {
             if (host == "outlook") return null;
@@ -127,9 +130,9 @@ namespace Scribble.Chat
             var saved = !string.IsNullOrEmpty(path);
             return new TaskSourceBinding
             {
-                Id = host + ":" + (saved ? fullName.ToUpperInvariant() : name),
+                Id = host + ":" + (saved ? fullName.ToUpperInvariant() : UnsavedIdentities.GetValue((object)document, key => new DocumentIdentity()).Value),
                 Location = saved ? fullName : name, Saved = saved, SessionId = TaskRecoveryInput.ProcessSession,
-                Fingerprint = saved && File.Exists(fullName) ?
+                Fingerprint = host == "word" ? TaskCheckpointStore.Fingerprint(Convert.ToString((object)document.Content.Text)) : saved && File.Exists(fullName) ?
                     TaskCheckpointStore.Fingerprint(new FileInfo(fullName).Length + ":" + File.GetLastWriteTimeUtc(fullName).Ticks) :
                     TaskCheckpointStore.Fingerprint(name + TaskRecoveryInput.ProcessSession)
             };

@@ -52,6 +52,7 @@
     <Compile Include="Program.cs" />
     <Compile Include="ScaleTaskTests.cs" />
     <Compile Include="DurableTransformTests.cs" />
+    <Compile Include="TaskContinuationTests.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Scribble\Scribble.csproj">

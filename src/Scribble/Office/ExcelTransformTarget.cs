@@ -33,6 +33,8 @@ namespace Scribble.Office
                 var first = ExcelSelectionOutputPolicy.ColumnNumberToName(number) + (_selection.StartRow + offset);
                 var last = ExcelSelectionOutputPolicy.ColumnNumberToName(number) + (_selection.StartRow + offset + count - 1);
                 dynamic range = sheet.Range(first + ":" + last);
+                try
+                {
                 object values = range.Value2;
                 object formulas = range.Formula;
                 object hasFormula = range.HasFormula;
@@ -46,20 +48,30 @@ namespace Scribble.Office
                         Sheet = _selection.WorksheetName, Address = address, Value = Text(At(values, i)),
                         Formula = formula ? Text(At(formulas, i)) : "", HasFormula = formula, Merged = merge });
                 }
+                }
+                finally { Release((object)range); Release((object)sheet); }
             }
             else
             {
                 dynamic workbook = WorkbookSelectionOutputWriter.ResolveWorkbook(_application, _korean);
+                try
+                {
                 for (var i = 0; i < count; i++)
                 {
                     var original = _korean.Cells[offset + i];
                     dynamic sheet = WorkbookSelectionOutputWriter.FindWorksheet(workbook, original.WorksheetName);
                     dynamic cell = sheet.Range(original.Address);
+                    try
+                    {
                     bool formula = Convert.ToBoolean(cell.HasFormula);
                     result.Add(new ExcelTaskCell { Id = "excel:" + original.WorksheetName + "!" + original.Address,
                         Sheet = original.WorksheetName, Address = original.Address, Value = Text((object)cell.Value2),
                         Formula = formula ? Text((object)cell.Formula) : "", HasFormula = formula, Merged = Convert.ToBoolean(cell.MergeCells) });
+                    }
+                    finally { Release((object)cell); Release((object)sheet); }
                 }
+                }
+                finally { Release((object)workbook); }
             }
             return result;
         }
@@ -72,22 +84,30 @@ namespace Scribble.Office
                 var number = replaceSource ? _selection.StartColumn : ExcelSelectionOutputPolicy.ColumnNameToNumber(column);
                 var letter = ExcelSelectionOutputPolicy.ColumnNumberToName(number);
                 dynamic range = sheet.Range(letter + (_selection.StartRow + offset) + ":" + letter + (_selection.StartRow + offset + values.Count - 1));
+                try
+                {
                 var grid = new object[values.Count, 1];
                 for (var i = 0; i < values.Count; i++) grid[i, 0] = values[i];
                 range.NumberFormat = "@";
                 range.Value2 = grid;
+                }
+                finally { Release((object)range); Release((object)sheet); }
             }
             else
             {
                 dynamic workbook = WorkbookSelectionOutputWriter.ResolveWorkbook(_application, _korean);
+                try
+                {
                 for (var i = 0; i < values.Count; i++)
                 {
                     var original = _korean.Cells[offset + i];
                     dynamic sheet = WorkbookSelectionOutputWriter.FindWorksheet(workbook, original.WorksheetName);
                     dynamic cell = sheet.Range(original.Address);
-                    cell.NumberFormat = "@";
-                    cell.Value2 = values[i];
+                    try { cell.NumberFormat = "@"; cell.Value2 = values[i]; }
+                    finally { Release((object)cell); Release((object)sheet); }
                 }
+                }
+                finally { Release((object)workbook); }
             }
         }
 
@@ -99,6 +119,10 @@ namespace Scribble.Office
         private static string Text(object value)
         {
             return value == null ? "" : Convert.ToString(value, CultureInfo.InvariantCulture);
+        }
+        private static void Release(object value)
+        {
+            if (value != null && System.Runtime.InteropServices.Marshal.IsComObject(value)) System.Runtime.InteropServices.Marshal.ReleaseComObject(value);
         }
     }
 }

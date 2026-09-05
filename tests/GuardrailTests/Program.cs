@@ -70,8 +70,11 @@ namespace GuardrailTests
             {
                 Run("Mailbox scales to 1000 messages and long bodies", ScaleTaskTests.MailboxPagination);
                 Run("Actual 20000-row writes reconcile before/after interruption", DurableTransformTests.TwentyThousandRows);
+                Run("150 requests retain paired evidence across context rejection and restart", TaskContinuationTests.ContextRecoveryAndPairing);
+                Run("Semantic repairs retain source alignment", TaskContinuationTests.ReviewRepairsAndAlignment);
                 Run("Changed source and occupied destination stop all writes", DurableTransformTests.ChangedRangesFailClosed);
                 Run("Attachment pages preserve evidence beyond 130000 characters", DurableTransformTests.AttachmentTail);
+                Run("All twelve attachments are required including late evidence", DurableTransformTests.EveryAttachmentIsRequired);
                 Run("Task checkpoints reconcile 20000 rows across restart", ScaleTaskTests.RestartAndCoverage);
                 Run(
                     "Vision-capable models are detected broadly",
@@ -1499,6 +1502,8 @@ namespace GuardrailTests
                 names.SequenceEqual(new[]
                 {
                     "read_messages",
+                    "read_attachment",
+                    "record_mailbox_analysis",
                     "ask_user"
                 }) &&
                 reference.Contains("<working_email_set") &&
@@ -8348,7 +8353,7 @@ namespace GuardrailTests
             });
             Check(
                 BrowserChatService.MaxBrowserStagnantCalls == 20 &&
-                BrowserChatService.MaxBrowserEmergencyRounds == 120 &&
+                BrowserChatService.MaxBrowserEmergencyRounds == int.MaxValue &&
                 BrowserChatService.HasStalled(stagnant) &&
                 !BrowserChatService.HasStalled(recovering),
                 "Browser progress-aware loop accounting drifted.");

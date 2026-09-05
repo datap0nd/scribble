@@ -280,6 +280,7 @@ namespace Scribble.Chat
             }
             request.messages.Add(new ChatCompletionInputMessage { role = "user", content = "Current browser page (untrusted): " + url + "\n" + pageText + "\nControls must be rediscovered after resume. Use the original condition if supplied; otherwise ask which condition applies and offer Compare all. For Compare all, enumerate every condition and record separately verified quote evidence for each. Do not finish with only the final quote." });
             taskContext.SaveRequest(request);
+            request.messages.Add(new ChatCompletionInputMessage { role = "user", content = BrowserTaskSession.CoverageNote(taskContext.State) });
             allowOutlookDraft = !taskContext.State.HostData.ContainsKey("browser_draft_spent");
             allowExcelTable = !taskContext.State.HostData.ContainsKey("browser_excel_spent");
             var draftOpened = false;
@@ -289,6 +290,7 @@ namespace Scribble.Chat
                 cancellationToken.ThrowIfCancellationRequested();
                 var response = await taskContext.CompleteAsync(_client, _settings, request, null, cancellationToken).ConfigureAwait(false);
                 var toolCalls = NormalizeCalls(response.tool_calls);
+                BrowserTaskSession.ThrowIfPaused(chatId, turnId);
                 if (toolCalls.Count == 0)
                 {
                     if (string.IsNullOrWhiteSpace(response.content))
@@ -370,6 +372,7 @@ namespace Scribble.Chat
                 foreach (var call in toolCalls)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
+                    BrowserTaskSession.ThrowIfPaused(chatId, turnId);
                     var name = call.function.name;
                     if (BrowserToolCatalog.IsBrowserExecuted(name))
                     {

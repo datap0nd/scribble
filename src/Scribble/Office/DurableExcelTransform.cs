@@ -111,6 +111,9 @@ namespace Scribble.Office
                 throw new InvalidOperationException("The captured output destination cannot change between batches.");
             State.Destination = destination;
             State.ReplaceSource = replaceSource;
+            if (!_task.State.Authorizations.Any(a => a.Operation == "transform-selection"))
+                _task.State.Authorizations.Add(new TaskAuthorization { OriginalInstruction = _task.State.Objective,
+                    Operation = "transform-selection", Source = SourceBinding(), Destination = DestinationBinding() });
             State.Outputs.Add(new ExcelTransformPart { Offset = offset, Count = literals.Length, Evidence = Put(literals), Status = "reviewed" });
             _values.AddRange(literals);
             State.Staged += literals.Length;
@@ -121,6 +124,8 @@ namespace Scribble.Office
         {
             if (State.Staged != State.Expected || State.Outputs.Any(p => p.Status != "reviewed"))
                 throw new InvalidOperationException("Every source row must be staged and reviewed before writing.");
+            if (!_task.State.Authorizations.Any(a => a.OriginalInstruction == _task.State.Objective && a.Allows("transform-selection", SourceBinding(), DestinationBinding())))
+                throw new InvalidOperationException("The original transformation authorization no longer matches this source and destination.");
             // Validate the entire range before the first mutation, including cells
             // already written before interruption. Reopening an unsaved output file
             // restores missing writes only when its original source still matches.
@@ -203,5 +208,15 @@ namespace Scribble.Office
         }
         private string Put(object value) { return _task.Store.PutEvidence(_task.State.Id, _json.Serialize(value)); }
         private string Read(string id) { return _task.Store.ReadEvidence(_task.State.Id, id); }
+        private TaskSourceBinding SourceBinding()
+        {
+            return new TaskSourceBinding { Id = _task.State.Id + ":source", Location = _sources.First().Id + ".." + _sources.Last().Id + ":" + _sources.Count,
+                Fingerprint = TaskCheckpointStore.Fingerprint(string.Join(";", State.Sources.Select(p => p.Evidence))), Saved = true };
+        }
+        private TaskSourceBinding DestinationBinding()
+        {
+            return new TaskSourceBinding { Id = _task.State.Id + ":destination", Location = State.Destination + ":" + State.ReplaceSource,
+                Fingerprint = SourceBinding().Fingerprint, Saved = true };
+        }
     }
 }

@@ -45,11 +45,14 @@ namespace Scribble.Outlook
         private TaskContextManager _task;
         private MailboxTaskCheckpoint _ledger;
         private bool _reviewAll;
+        private bool _requiresEnumeration;
 
         public async Task BindTaskAsync(TaskContextManager task, CancellationToken token)
         {
             _task = task;
             _reviewAll = Regex.IsMatch(task.State.Objective ?? "", @"\b(all|every|entire|unread|morning)\b", RegexOptions.IgnoreCase);
+            _requiresEnumeration = !_workingSetOnly && _reviewAll &&
+                !Regex.IsMatch(task.State.Objective ?? "", @"\b(selected|this email|this message)\b", RegexOptions.IgnoreCase);
             string saved;
             _ledger = task.State.HostData.TryGetValue("mailbox_ledger", out saved)
                 ? _serializer.Deserialize<MailboxTaskCheckpoint>(saved) : new MailboxTaskCheckpoint();
@@ -120,7 +123,7 @@ namespace Scribble.Outlook
             get
             {
                 if (_task == null) return null;
-                if (_reviewAll && !_workingSetOnly && _ledger.Searches.Count == 0)
+                if (_requiresEnumeration && _ledger.Searches.Count == 0)
                     return "Mailbox coverage is incomplete: enumerate the user's requested mailbox/time window with search_mailbox before answering.";
                 var cursor = _ledger.Searches.FirstOrDefault(s => !s.Complete);
                 if (cursor != null) return "Mailbox enumeration is incomplete. Continue search_mailbox with cursor " + cursor.Id + " (empty pages do not mean completion).";
@@ -153,6 +156,10 @@ namespace Scribble.Outlook
             }
             else
             {
+                var current = new MessageReader(_application).CaptureById(entry.Source.EntryId, entry.Source.StoreId);
+                if ((entry.BodyEvidence != null && TaskCheckpointStore.Fingerprint(current.Body) != entry.BodyEvidence) ||
+                    (entry.AttachmentCount >= 0 && MailboxAttachmentPages.Count(_application, current) != entry.AttachmentCount))
+                    return Error(callId, "MAILBOX_SOURCE_CHANGED", "The message body or attachment collection changed during analysis. Its old coverage cannot be used.");
                 if (entry.BodyLength < 0 || entry.ReadUntil < entry.BodyLength || entry.AttachmentCount < 0 ||
                     entry.CompleteAttachments.Count != entry.AttachmentCount)
                     return Error(callId, "MAILBOX_COVERAGE_INCOMPLETE", "Read the complete body and every attachment before recording analysis. Body offset " + entry.ReadUntil + "; attachments complete " + entry.CompleteAttachments.Count + " of " + entry.AttachmentCount + ".");

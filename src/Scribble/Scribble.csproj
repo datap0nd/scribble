@@ -102,6 +102,7 @@
     <Compile Include="Office\WorkbookDraftWriter.cs" />
     <Compile Include="Office\ExcelSelectionOutputPolicy.cs" />
     <Compile Include="Office\DurableExcelTransform.cs" />
+    <Compile Include="Office\ExcelReviewValidator.cs" />
     <Compile Include="Office\ExcelTransformTarget.cs" />
     <Compile Include="Office\WorkbookSelectionOutputWriter.cs" />
     <Compile Include="Office\PresentationToolHost.cs" />

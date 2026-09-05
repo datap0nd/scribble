@@ -87,6 +87,46 @@ namespace GuardrailTests
             finally { File.Delete(path); }
         }
 
+        public static void EveryAttachmentIsRequired()
+        {
+            var root = Path.Combine(Path.GetTempPath(), "scribble-mail-attachments-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(root);
+            try
+            {
+                var shortFile = Path.Combine(root, "short.txt"); File.WriteAllText(shortFile, "Short evidence");
+                var longFile = Path.Combine(root, "long.txt"); File.WriteAllText(longFile, new string('a', 65000) + "CRITICAL TWELFTH ATTACHMENT");
+                var mail = new FakeSelectedMailItem("attachments", "Attachment review");
+                for (var i = 1; i <= 12; i++) mail.Attachments.Add(new FakeOutlookAttachment("file" + i + ".txt", i == 12 ? longFile : shortFile));
+                var app = new FakeOutlookApplication(); app.Session.RegisterFolder(6, new FakeMailFolder { Items = new FakeSearchItems(new[] { mail }) });
+                var selected = new MessageReader(app).CaptureById(mail.EntryID, "store", true);
+                var task = new TaskContextManager(Request(), "outlook", "Review this selected email and all attachments", new TaskCheckpointStore(root));
+                var json = new System.Web.Script.Serialization.JavaScriptSerializer();
+                using (var host = new MailboxToolHost(app, selected))
+                {
+                    host.BindTaskAsync(task, CancellationToken.None).GetAwaiter().GetResult();
+                    Func<string, object, MailboxToolResult> call = (name, args) => host.ExecuteAsync(new ChatToolCall { id = Guid.NewGuid().ToString("N"), type = "function", function = new ChatToolCallFunction { name = name, arguments = json.Serialize(args) } }, CancellationToken.None).GetAwaiter().GetResult();
+                    var body = call(MailboxToolCatalog.ReadMessages, new { handles = new[] { "selected" }, body_offset = 0 });
+                    Check(body.Content.Contains("\"attachment_count\":12"), "Attachment enumeration was capped at ten.");
+                    Check(call(MailboxToolCatalog.RecordAnalysis, new { handle = "selected", summary = "Premature" }).Content.Contains("MAILBOX_COVERAGE_INCOMPLETE"), "Unread attachments were marked reviewed.");
+                    var tail = false;
+                    for (var index = 1; index <= 12; index++)
+                    {
+                        int? offset = 0;
+                        do
+                        {
+                            var page = call(MailboxToolCatalog.ReadAttachment, new { handle = "selected", attachment_index = index, offset = offset.Value });
+                            var data = json.Deserialize<Dictionary<string, object>>(page.Content);
+                            Check(!data.ContainsKey("error_code"), page.Content);
+                            tail |= Convert.ToString(data["content"]).Contains("CRITICAL TWELFTH ATTACHMENT");
+                            offset = data["next_offset"] == null ? null : (int?)Convert.ToInt32(data["next_offset"]);
+                        } while (offset.HasValue);
+                    }
+                    Check(tail && !call(MailboxToolCatalog.RecordAnalysis, new { handle = "selected", summary = "CRITICAL TWELFTH ATTACHMENT" }).Content.Contains("error_code") && host.CompletionBlocker == null, "Full attachment review did not reconcile.");
+                }
+            }
+            finally { Directory.Delete(root, true); }
+        }
+
         private sealed class Target : IExcelTransformTarget
         {
             public ExcelTaskCell[] Source, Destination;

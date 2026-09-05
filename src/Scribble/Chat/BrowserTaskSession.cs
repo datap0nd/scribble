@@ -43,5 +43,27 @@ namespace Scribble.Chat
                 state = first == null ? null : first.HostData["browser_ui"] });
         }
         public static void Discard(string chat, string turn) { new TaskCheckpointStore().Discard(Id(chat, turn)); }
+        public static void Pause(string chat, string turn)
+        {
+            var state = Load(chat, turn);
+            if (state == null) return;
+            state.UserPaused = true; state.Lifecycle = TaskLifecycle.Paused;
+            state.Blocker = "Paused by user. Resume from the saved browser state.";
+            new TaskCheckpointStore().Save(state);
+        }
+        public static void ThrowIfPaused(string chat, string turn)
+        {
+            if (Load(chat, turn)?.UserPaused == true) throw new OperationCanceledException("Browser task paused by user.");
+        }
+        public static string CoverageNote(DurableTaskState state)
+        {
+            string data;
+            if (!state.HostData.TryGetValue("browser_ui", out data)) return "";
+            var ui = new JavaScriptSerializer { MaxJsonLength = 900000 }.Deserialize<Dictionary<string, object>>(data);
+            object conditions, evidence, complete, answers;
+            ui.TryGetValue("conditions", out conditions); ui.TryGetValue("evidence", out evidence);
+            ui.TryGetValue("conditionEnumerationComplete", out complete); ui.TryGetValue("answers", out answers);
+            return "Host browser coverage receipt (original answers remain authoritative): " + new JavaScriptSerializer { MaxJsonLength = 900000 }.Serialize(new { conditions, evidence, enumeration_complete = complete, answers });
+        }
     }
 }

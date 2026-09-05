@@ -451,3 +451,34 @@ test("actionability detects overlays instead of clicking through them", async ({
   const ready=await callAgent(page,"actionability",{ref:control.ref,revision:control.revision});
   expect(ready.receivesEvents).toBe(true);
 });
+
+test("cross-origin frame discovery routes fresh refs and translates click coordinates", async ({page}) => {
+  const http=require("http");
+  const child=http.createServer((req,res)=>res.end('<button id="choice">Frame condition</button>'));
+  await new Promise(resolve=>child.listen(0,"127.0.0.1",resolve));
+  const childUrl=`http://127.0.0.1:${child.address().port}/frame`;
+  const parent=http.createServer((req,res)=>res.end(`<iframe style="margin:40px" src="${childUrl}"></iframe>`));
+  await new Promise(resolve=>parent.listen(0,"127.0.0.1",resolve));
+  try {
+    await page.goto(`http://127.0.0.1:${parent.address().port}`);
+    await page.frameLocator("iframe").locator("button").waitFor();
+    const runSource=extensionSource.slice(extensionSource.indexOf("async function runPageAgent("),extensionSource.indexOf("function pageAgent("));
+    const sandbox={pageAgent:null,chrome:{scripting:{executeScript:async({target,func,args=[]})=>{
+      const frames=page.frames(); const ids=target.allFrames?frames.map((_,index)=>index):(target.frameIds||[0]);
+      return Promise.all(ids.map(async frameId=>({frameId,result:await frames[frameId].evaluate(({source,args})=>(0,eval)(`(${source})`)(...args),{source:func.toString(),args})})));
+    }}}};
+    vm.runInNewContext(`${pageAgentSource}\n${runSource}`,sandbox);
+    const top=await sandbox.runPageAgent(1,"snapshot",{});
+    expect(top.frames[0].url).toBe(childUrl);
+    const nested=await sandbox.runPageAgent(1,"snapshot",{frame:1});
+    const ref=nested.controls[0].ref;
+    expect(ref).toMatch(/^f1@/);
+    const resolved=await sandbox.runPageAgent(1,"resolve",{ref,revision:nested.revision});
+    expect(resolved.x).toBeGreaterThan(40);
+    const ready=await sandbox.runPageAgent(1,"actionability",{ref,revision:nested.revision});
+    expect(ready.receivesEvents).toBe(true);
+    await page.evaluate(()=>{const overlay=document.createElement("div");Object.assign(overlay.style,{position:"fixed",inset:"0",zIndex:"9999"});document.body.append(overlay);});
+    const blocked=await sandbox.runPageAgent(1,"actionability",{ref,revision:nested.revision});
+    expect(blocked.receivesEvents).toBe(false);
+  } finally { await Promise.all([new Promise(resolve=>parent.close(resolve)),new Promise(resolve=>child.close(resolve))]); }
+});

@@ -323,6 +323,11 @@ namespace Scribble.BrowserHost
                     return Success(service, requestId, "Saved", service.Model, false);
                 }
                 if (request.type == "loadTask") return Success(service, requestId, BrowserTaskSession.RecoverUi(), service.Model, false);
+                if (request.type == "pauseTask")
+                {
+                    BrowserTaskSession.Pause(request.chatId, request.turnId);
+                    return Success(service, requestId, "Paused", service.Model, false);
+                }
                 if (request.type == "discardTask")
                 {
                     BrowserTaskSession.Discard(request.chatId, request.turnId);
