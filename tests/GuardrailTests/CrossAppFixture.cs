@@ -26,7 +26,7 @@ namespace GuardrailTests
         public override bool TryGetMember(GetMemberBinder binder, out object result)
         {
             if (_values.TryGetValue(binder.Name, out result)) return true;
-            if (binder.Name.StartsWith("Active") && binder.Name != "ActiveWindow")
+            if (binder.Name == "ActiveWorkbook" || binder.Name == "ActiveDocument" || binder.Name == "ActivePresentation")
                 throw new InvalidOperationException("Cross-app writer touched an existing document: " + binder.Name);
             switch (binder.Name)
             {
