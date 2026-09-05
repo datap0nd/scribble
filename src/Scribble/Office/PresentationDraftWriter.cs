@@ -99,6 +99,7 @@ namespace Scribble.Office
             internal string Caption { get; set; } = "";
             internal string Sources { get; set; } = "";
             internal string Evidence { get; set; } = "";
+            internal string Id { get; set; } = "";
             internal IReadOnlyList<string> ImageNames { get; set; } = new string[0];
             internal List<string> ImageData { get; } = new List<string>();
             internal DraftTable SecondaryTable { get; set; }
@@ -1849,6 +1850,7 @@ namespace Scribble.Office
                     Caption = SamsungString(map, "caption", 180),
                     Sources = SamsungString(map, "sources", 2000),
                     Evidence = SamsungString(map, "evidence", 12000),
+                    Id = SamsungString(map, "id", 80),
                     ImageNames = ValidateArray(SamsungValue(map, "image_names"), 4, 250).Select(Convert.ToString).ToArray(),
                     SecondaryTable = ParseTable(new Dictionary<string, object> { { "table", SamsungValue(map, "secondary_table") } }),
                     SecondaryChart = ParseChart(new Dictionary<string, object> { { "chart", SamsungValue(map, "secondary_chart") } }),

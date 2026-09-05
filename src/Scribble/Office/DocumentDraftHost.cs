@@ -74,6 +74,7 @@ namespace Scribble.Office
             new HashSet<string>(StringComparer.Ordinal)
             {
                 "slides",
+                "plan",
                 "after_slide"
             };
 

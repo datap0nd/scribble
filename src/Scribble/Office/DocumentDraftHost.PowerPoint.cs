@@ -25,6 +25,14 @@ namespace Scribble.Office
                 var args = ToolArguments.Parse(_serializer, call.function.arguments);
                 RequireAllowedArguments(args, call.function.name);
                 var slides = ParsedSlides(args);
+                object planValue;
+                var suppliedPlan = args.TryGetValue("plan", out planValue) ? ((IEnumerable)planValue).Cast<object>().Select(Convert.ToString).ToArray() : null;
+                string savedPlan;
+                var plan = _taskContext != null && _taskContext.State.HostData.TryGetValue("samsung_plan", out savedPlan)
+                    ? _serializer.Deserialize<string[]>(savedPlan) : suppliedPlan;
+                if (suppliedPlan != null && plan != null && !suppliedPlan.SequenceEqual(plan)) throw new InvalidOperationException("SLIDE_PLAN_CHANGED: Preserve the original storyline IDs.");
+                var completed = _taskContext == null ? new string[0] : _taskContext.State.Batches.SelectMany(b => b.CoveredSourceIds).Where(id => id.StartsWith("ppt:")).Select(id => id.Substring(4)).ToArray();
+                SamsungPresentationReview.ValidatePlan(plan, slides.Select(s => s.Id).ToArray(), completed);
                 foreach (var slide in slides)
                     foreach (var name in slide.ImageNames)
                     {
@@ -58,7 +66,13 @@ namespace Scribble.Office
                     if (_taskContext == null || !_taskContext.State.HostData.ContainsKey("samsung_authorized"))
                         return Error(call.id, authorization, "DRAFT_PERMISSION_NOT_AVAILABLE", "No task-bound presentation authorization is available.");
                 }
-                if (_taskContext != null) { _taskContext.State.HostData["samsung_authorized"] = "true"; _taskContext.Checkpoint(); }
+                if (_taskContext != null)
+                {
+                    _taskContext.State.HostData["samsung_authorized"] = "true";
+                    _taskContext.State.HostData["samsung_plan"] = _serializer.Serialize(plan);
+                    foreach (var id in plan) if (!_taskContext.State.ExpectedSourceIds.Contains("ppt:" + id)) _taskContext.State.ExpectedSourceIds.Add("ppt:" + id);
+                    _taskContext.Checkpoint();
+                }
                 token.ThrowIfCancellationRequested();
                 if (_hostKind == "powerpoint" && _taskContext != null) OfficeTaskBinding.Validate(_taskContext.State, _hostKind, _hostApplication);
                 written = true;
@@ -122,6 +136,11 @@ namespace Scribble.Office
                     if (!approved) throw new InvalidOperationException("SLIDE_REVIEW_INCOMPLETE");
                 }
                 authorization.MarkCreated();
+                if (_taskContext != null)
+                {
+                    foreach (var slide in slides) _taskContext.State.Batches.Add(new TaskBatchResult { Id = "ppt:" + slide.Id, CoveredSourceIds = new List<string> { "ppt:" + slide.Id }, Output = "Source and rendered review passed" });
+                    _taskContext.Checkpoint();
+                }
                 return new MailboxToolResult(call.id, _serializer.Serialize(new { ok = true, saved = false, sent = false,
                     status, rendered_and_reviewed = outputs.Count, theme = SamsungSlideDesign.Version }), status);
             }

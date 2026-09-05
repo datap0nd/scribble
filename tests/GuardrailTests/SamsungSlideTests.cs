@@ -49,6 +49,10 @@ namespace GuardrailTests
         }
         public static void EvidenceAndNumbers()
         {
+            SamsungPresentationReview.ValidatePlan(new[] { "intro", "evidence", "decision" }, new[] { "evidence" }, new[] { "intro" });
+            ExpectFailure(() => SamsungPresentationReview.ValidatePlan(new[] { "intro", "intro" }, new[] { "intro" }, new string[0]));
+            ExpectFailure(() => SamsungPresentationReview.ValidatePlan(new[] { "intro", "decision" }, new[] { "decision" }, new string[0]));
+            ExpectFailure(() => SamsungPresentationReview.ValidatePlan(new[] { "intro" }, new[] { "intro" }, new[] { "intro" }));
             var json = new JavaScriptSerializer();
             var slide = new { title = "Sales increased 20%", subtitle = "Sales increased 20%", sources = "Report, page 1", evidence = "Sales increased 20%." };
             SamsungPresentationReview.ValidateEvidence(json.Serialize(slide), "Source: Sales increased 20%.");

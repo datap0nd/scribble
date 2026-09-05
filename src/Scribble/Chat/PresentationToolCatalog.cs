@@ -112,6 +112,7 @@ namespace Scribble.Chat
                     parameters = ToolSchema.Build(
                         new Dictionary<string, object>
                         {
+                            { "plan", new Dictionary<string, object> { { "type", "array" }, { "items", new { type = "string" } }, { "description", "Required on the first batch: ordered unique slide IDs for the complete storyline. Later batches retain this plan and supply only remaining slide IDs. Continuation pages are host-generated." } } },
                             {
                                 "slides",
                                 new Dictionary<string, object>
@@ -147,6 +148,7 @@ namespace Scribble.Chat
             return ToolSchema.Build(
                 new Dictionary<string, object>
                 {
+                    { "id", ToolSchema.String("Stable ID from the complete deck plan; retain across batches.") },
                     {
                         "title",
                         ToolSchema.String(

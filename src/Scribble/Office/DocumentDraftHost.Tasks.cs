@@ -56,6 +56,12 @@ namespace Scribble.Office
         {
             get
             {
+                if (_taskContext != null && _taskContext.State.HostData.ContainsKey("samsung_plan"))
+                {
+                    var covered = new HashSet<string>(_taskContext.State.Batches.SelectMany(b => b.CoveredSourceIds));
+                    var pending = _taskContext.State.ExpectedSourceIds.Where(id => id.StartsWith("ppt:") && !covered.Contains(id)).ToArray();
+                    if (pending.Length > 0) return "The planned deck is incomplete. Continue these original slide IDs in order: " + string.Join(", ", pending.Select(id => id.Substring(4)));
+                }
                 if (_durableExcel == null || _durableExcel.State.Committed) return null;
                 return "The Excel transformation is not complete. " + RecoveryNote;
             }

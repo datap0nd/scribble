@@ -2495,7 +2495,7 @@ namespace Scribble.UI
                                 "The model stopped without returning text.");
                         }
 
-                        var blocker = mailboxTools.CompletionBlocker;
+                        var blocker = mailboxTools.CompletionBlocker ?? _crossAppTools?.CompletionBlocker;
                         if (!string.IsNullOrEmpty(blocker))
                         {
                             request.messages.Add(new ChatCompletionInputMessage { role = "user", content = blocker });

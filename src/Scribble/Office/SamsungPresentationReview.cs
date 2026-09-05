@@ -14,6 +14,7 @@ namespace Scribble.Office
             "For substantial slide decks, establish the brief before drafting: audience, intended decision, depth, and source completeness. " +
             "Use ask_user for two or three relevant missing details; do not repeat answers already supplied. If the user asks you to proceed, make explicit assumptions. " +
             "Read sources fully, then outline the storyline and choose a Samsung layout for each slide. " +
+            "The first batch must include plan, an ordered list of IDs for the whole deck; each slide must have its matching id. Complete every planned ID across batches. " +
             "A slide needs a concise title and a separate single-line action title in subtitle. " +
             "Use sources for exact citations and evidence for one contiguous verbatim source passage supporting all numbers on that slide. " +
             "Split slides whose evidence spans unrelated sources. Never invent numbers or quotes. " +
@@ -36,7 +37,8 @@ namespace Scribble.Office
             if (special) return;
             // Metadata is not a numeric claim. Layout indices and outline levels
             // are not facts either. Inspect displayed content recursively.
-            var content = string.Join(" ", data.Where(p => !new[] { "sources", "evidence", "layout", "highlight_rows", "image_names" }.Contains(p.Key)).Select(p => json.Serialize(p.Value)));
+            var content = string.Join(" ", data.Where(p => !new[] { "id", "sources", "evidence", "layout", "highlight_rows", "image_names" }.Contains(p.Key)).Select(p => json.Serialize(p.Value)));
+            if (content.Length > 36000) throw new InvalidOperationException("Slide content must be split into smaller review batches.");
             var allowed = new HashSet<string>(Numbers(evidence));
             var missing = Numbers(content).Where(n => !allowed.Contains(n)).Distinct().ToArray();
             if (missing.Length > 0) throw new InvalidOperationException("SLIDE_NUMBERS_UNVERIFIED: Values absent from cited evidence: " + string.Join(", ", missing));
@@ -47,6 +49,16 @@ namespace Scribble.Office
         }
         private static IEnumerable<string> Numbers(string text)
         { return Regex.Matches(text ?? "", @"(?<![A-Za-z])[-+]?\d+(?:[,.]\d+)*%?").Cast<Match>().Select(m => m.Value.Replace(",", "").TrimStart('+').TrimEnd('%')); }
+
+        public static void ValidatePlan(string[] plan, string[] batch, string[] completed)
+        {
+            if (plan == null || plan.Length == 0 || plan.Any(string.IsNullOrWhiteSpace) || plan.Any(p => p.Length > 80) || plan.Distinct().Count() != plan.Length)
+                throw new InvalidOperationException("SLIDE_PLAN_REQUIRED: Provide ordered unique IDs for the complete storyline.");
+            if (batch.Length == 0 || batch.Any(id => !plan.Contains(id) || completed.Contains(id)) || batch.Distinct().Count() != batch.Length)
+                throw new InvalidOperationException("SLIDE_PLAN_MISMATCH: Each batch must contain unique outstanding IDs from the original plan.");
+            var pending = plan.Where(id => !completed.Contains(id)).Take(batch.Length).ToArray();
+            if (!pending.SequenceEqual(batch)) throw new InvalidOperationException("SLIDE_PLAN_ORDER: Complete the next planned slides in storyline order.");
+        }
 
         internal static string SourceCorpus(TaskContextManager task, string prompt)
         {
