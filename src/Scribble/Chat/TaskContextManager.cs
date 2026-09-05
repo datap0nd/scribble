@@ -287,7 +287,9 @@ namespace Scribble.Chat
             while (EstimateRequestCost(request) > _budget)
             {
                 var suffix = request.messages.Skip(_prefixCount).ToList();
-                if (suffix.Count == 0)
+                var prefixExceedsBudget = ImageAdjustedLength(_json.Serialize(request.messages.Take(_prefixCount).ToArray())) +
+                    (request.max_tokens ?? 8192) > _budget;
+                if (suffix.Count == 0 || prefixExceedsBudget)
                 {
                     var largest = request.messages.Take(_prefixCount).OfType<ChatCompletionInputMessage>()
                         .Where(m => m.role != "system" && ImageAdjustedLength(_json.Serialize(m)) > 6000)
