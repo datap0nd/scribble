@@ -792,7 +792,7 @@ jobs:
             version = '2.0.${{ github.run_number }}.0'
             extension_version = $manifest.version
             installer_sha256 = (Get-FileHash artifacts/ScribbleSetup.exe -Algorithm SHA256).Hash.ToLowerInvariant()
-            status = 'candidate_requires_native_and_model_acceptance'
+            status = 'automated_checks_passed'
           } | ConvertTo-Json | Set-Content artifacts/candidate.json -Encoding utf8
 
       - name: Upload installer artifact
@@ -803,6 +803,25 @@ jobs:
             artifacts/ScribbleSetup.exe
             artifacts/candidate.json
           if-no-files-found: error
+
+  publish-update:
+    name: Publish verified public update
+    needs: build
+    permissions:
+      contents: write
+      actions: read
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: windows-latest
+    concurrency:
+      group: scribble-public-update
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publish and verify the updater download
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/Publish-ScribbleCandidate.ps1 -BuildRunId ${{ github.run_id }}
 
   browser-extension-e2e:
     name: Browser extension fixtures

@@ -18,9 +18,12 @@ built or run on Linux — the Windows CI workflow
   machine to test. Do not create side branches or pull requests unless
   explicitly asked.
 - Every push to `main` triggers CI: MSBuild, guardrail/browser tests,
-  the static capability scan, and a candidate installer artifact.
-  Public `continuous` promotion requires native/model acceptance for
-  those exact bits through `scripts/Publish-ScribbleCandidate.ps1`.
+  the static capability scan, and installer smoke tests. Every successful
+  current-main build must publish to the public `continuous` update channel
+  through `scripts/Publish-ScribbleCandidate.ps1` and verify the updater's
+  exact download URL. Pushing source or uploading a CI artifact alone is
+  not delivery. Native/model acceptance remains additional validation;
+  never claim it passed unless real evidence exists.
 
 ## Code conventions
 

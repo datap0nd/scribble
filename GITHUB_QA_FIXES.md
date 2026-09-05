@@ -1,6 +1,6 @@
 # GitHub QA follow-up — 5 September 2026
 
-Reports: https://github.com/datap0nd/scribble/issues/1 through /8. The reported installed build was 2.0.118.0. These changes produce a new candidate; they do not retroactively change that installation or promote the public update channel.
+Reports: https://github.com/datap0nd/scribble/issues/1 through /8. The reported installed build was 2.0.118.0. Following the user's release instruction, successful current-main builds now publish to the public updater automatically after automated tests and installer checks. Source pushes and CI artifacts alone do not count as delivery.
 
 | Report | Cause and implemented change | Regression evidence |
 | --- | --- | --- |
@@ -14,4 +14,4 @@ Reports: https://github.com/datap0nd/scribble/issues/1 through /8. The reported 
 
 ExcelDataReader documentation and license: https://github.com/ExcelDataReader/ExcelDataReader. The dependency and its MIT notice are included in the installer.
 
-These are production-code changes with automated regression coverage, not a claim of perfect local-model behavior. Native Office acceptance on the work PC and the configured Qwen endpoint, the actual three private attachments, and the specific live product-page journey still require retesting. No issue is closed on the basis of simulated Office objects. The existing candidate promotion gate remains in force.
+These are production-code changes with automated regression coverage, not a claim of perfect local-model behavior. Native Office acceptance on the work PC and the configured Qwen endpoint, the actual three private attachments, and the specific live product-page journey still require retesting. No issue is closed on the basis of simulated Office objects. Native acceptance is additional validation; public release notes must distinguish it from the automated checks.
