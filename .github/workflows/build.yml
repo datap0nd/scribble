@@ -226,6 +226,13 @@ jobs:
       - name: Run guardrail tests
         run: tests\GuardrailTests\bin\Release\GuardrailTests.exe
 
+      - name: Upload interconnectivity test matrix
+        uses: actions/upload-artifact@v4
+        with:
+          name: CrossApplicationResults
+          path: tests/GuardrailTests/bin/Release/CrossApplicationResults.json
+          if-no-files-found: error
+
       - name: Upload Samsung layout fixtures
         uses: actions/upload-artifact@v4
         with:

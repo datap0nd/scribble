@@ -84,7 +84,6 @@ namespace Scribble.Office
                 token.ThrowIfCancellationRequested();
                 stage = "WRITE";
                 if (_hostKind == "powerpoint" && _taskContext != null) OfficeTaskBinding.Validate(_taskContext.State, _hostKind, _hostApplication);
-                written = true;
                 var app = call.function.name == PresentationToolCatalog.AddDraftSlides ? _hostApplication : GetSiblingApplication("PowerPoint.Application");
                 if (call.function.name == CrossAppToolCatalog.SendToPowerPoint && _samsungPresentation == null &&
                     _taskContext != null && _taskContext.State.HostData.ContainsKey("samsung_destination"))
@@ -100,6 +99,7 @@ namespace Scribble.Office
                     if (matches.Count != 1) throw new InvalidOperationException("SLIDE_DESTINATION_MISSING: Reopen the uniquely identified original draft deck. No replacement deck was created.");
                     _samsungPresentation = matches[0];
                 }
+                written = true;
                 var status = PresentationDraftWriter.AddDraftSlides(app, slides, ParsedAfterSlide(args),
                     call.function.name == CrossAppToolCatalog.SendToPowerPoint, output =>
                     {

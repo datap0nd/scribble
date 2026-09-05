@@ -24,7 +24,8 @@ namespace Scribble.Office
             IReadOnlyList<string> columns,
             IReadOnlyList<IReadOnlyList<string>> rows,
             string chartKind,
-            string chartTitle)
+            string chartTitle,
+            Func<string, object> applicationResolver = null)
         {
             var safeColumns = BoundCells(columns, MaxColumns);
             if (safeColumns.Count == 0)
@@ -55,7 +56,7 @@ namespace Scribble.Office
             object workbook = null;
             try
             {
-                application = ResolveExcelApplication();
+                application = applicationResolver == null ? ResolveExcelApplication() : applicationResolver("Excel.Application");
                 dynamic excel = application;
                 excel.Visible = true;
                 workbooks = excel.Workbooks;

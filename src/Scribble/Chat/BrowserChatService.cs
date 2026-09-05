@@ -391,6 +391,11 @@ namespace Scribble.Chat
                     }
 
                     if (name == TaskContextManager.ReadEvidenceTool) { hostResults.Add(taskContext.ReadEvidence(call)); continue; }
+                    if (toolCalls.Count != 1 && (name == BrowserToolCatalog.OpenOutlookDraft || name == BrowserToolCatalog.OpenExcelTable))
+                    {
+                        hostResults.Add(new MailboxToolResult(call.id, "{\"error_code\":\"DRAFT_TOOL_MUST_BE_EXCLUSIVE\",\"permission_consumed\":false}", "Call the Office draft tool alone."));
+                        continue;
+                    }
                     if (name == CrossAppToolCatalog.SendToPowerPoint || name == CrossAppToolCatalog.SendToWord)
                     {
                         if (toolCalls.Count != 1)
@@ -792,7 +797,7 @@ namespace Scribble.Chat
             return false;
         }
 
-        private static MailboxToolResult ExecuteExcelTable(
+        private MailboxToolResult ExecuteExcelTable(
             ChatToolCall call,
             bool allowed)
         {
@@ -819,7 +824,7 @@ namespace Scribble.Chat
                     StringListArgument(arguments, "columns"),
                     RowsArgument(arguments, "rows"),
                     Argument(arguments, "chart_kind"),
-                    Argument(arguments, "chart_title"));
+                    Argument(arguments, "chart_title"), _officeResolver);
                 return new MailboxToolResult(
                     call.id,
                     status,
@@ -903,7 +908,7 @@ namespace Scribble.Chat
                     Argument(arguments, "to"),
                     Argument(arguments, "cc"),
                     Argument(arguments, "subject"),
-                    Argument(arguments, "body"));
+                    Argument(arguments, "body"), _officeResolver);
                 return new MailboxToolResult(
                     call.id,
                     status,

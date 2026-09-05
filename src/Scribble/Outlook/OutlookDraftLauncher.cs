@@ -17,7 +17,8 @@ namespace Scribble.Outlook
             string to,
             string cc,
             string subject,
-            string body)
+            string body,
+            Func<string, object> applicationResolver = null)
         {
             var safeBody = TextBoundary.PlainText(
                 body,
@@ -42,7 +43,7 @@ namespace Scribble.Outlook
             object draftItem = null;
             try
             {
-                application = ResolveOutlookApplication();
+                application = applicationResolver == null ? ResolveOutlookApplication() : applicationResolver("Outlook.Application");
                 dynamic outlook = application;
                 draftItem = outlook.CreateItem(0);
                 dynamic mail = draftItem;

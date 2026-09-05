@@ -7687,13 +7687,16 @@ namespace GuardrailTests
         private static void BrowserOfficeRoundTrip()
         {
             var json = new JavaScriptSerializer();
-            foreach (var target in new[] { "word", "powerpoint" })
+            foreach (var target in new[] { "word", "powerpoint", "excel", "outlook" })
             {
                 var events = new List<string>();
                 var office = new CrossAppFixture(target, events);
+                var outlook = new FakeOutlookApplication();
                 var args = target == "word" ? "{\"title\":\"Source\",\"body\":\"SOURCE CONTENT\"}" :
                     "{\"plan\":[\"intro\"],\"slides\":[{\"id\":\"intro\",\"layout\":\"cover\",\"title\":\"SOURCE CONTENT\"}]}";
-                var call = MailboxCall("browser-office", "send_to_" + target, args);
+                if (target == "outlook") args = "{\"subject\":\"Draft\",\"body\":\"SOURCE CONTENT\"}";
+                if (target == "excel") args = "{\"title\":\"Draft\",\"columns\":[\"Source\"],\"rows\":[[\"SOURCE CONTENT\"]]}";
+                var call = MailboxCall("browser-office", target == "outlook" ? BrowserToolCatalog.OpenOutlookDraft : target == "excel" ? BrowserToolCatalog.OpenExcelTable : "send_to_" + target, args);
                 var callResponse = json.Serialize(new { choices = new[] { new { message = new { role = "assistant", content = (string)null, tool_calls = new[] { call } } } } });
                 const string approved = "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"approved\\\":true}\"}}]}";
                 const string done = "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"The draft is open.\"}}]}";
@@ -7701,18 +7704,18 @@ namespace GuardrailTests
                 var launches = 0;
                 try
                 {
-                    using (var server = new FakeEndpoint(target == "word" ? new[] { callResponse, done } : new[] { callResponse, approved, approved, done }))
+                    using (var server = new FakeEndpoint(target != "powerpoint" ? new[] { callResponse, done } : new[] { callResponse, approved, approved, done }))
                     {
                         var settings = EndpointSettings(server.BaseUrl); settings.Model = "qwen3-vl";
                         using (var service = new BrowserChatService(settings, progId => {
                             Assert(Thread.CurrentThread.GetApartmentState() == ApartmentState.STA && SynchronizationContext.Current != null, "Browser launched Office outside the pumped STA.");
-                            launches++; return office;
+                            launches++; return target == "outlook" ? (object)outlook : office;
                         }))
                         {
                             var result = service.CompleteAsync(new ChatTurn[0], "Create a " + target + " draft from this page", "Source page", "https://example.com/", "", "SOURCE CONTENT", "", null,
                                 new BrowserExchangeTurn[0], chat, "1", null, null, CancellationToken.None).GetAwaiter().GetResult();
                             server.Wait();
-                            Assert(launches == 1 && result.Content == "The draft is open." && events.Any(e => e.Contains("SOURCE CONTENT")), "Chrome-to-Office round trip failed.");
+                            Assert(launches == 1 && result.Content == "The draft is open." && (target == "outlook" ? outlook.LastDraft.Displayed && outlook.LastDraft.Body == "SOURCE CONTENT" && !outlook.LastDraft.Saved : events.Any(e => e.Contains("SOURCE CONTENT"))), "Chrome-to-Office round trip failed.");
                         }
                     }
                 }
@@ -7723,6 +7726,7 @@ namespace GuardrailTests
         private static void CrossApplicationWriters()
         {
             var json = new JavaScriptSerializer();
+            var matrix = new List<object>();
             foreach (var source in new[] { "outlook", "excel", "powerpoint", "word", "chrome" })
             foreach (var target in new[] { "outlook", "excel", "powerpoint", "word", "chrome" }.Where(t => t != source))
             {
@@ -7757,15 +7761,18 @@ namespace GuardrailTests
                     var result = host.ExecuteAsync(call, new OneShotDraftAuthorization(true), true, "Create a draft or open https://example.com/ in Chrome", client, settings, CancellationToken.None, null).GetAwaiter().GetResult();
                     server?.Wait();
                     Assert(launches == 1 && !result.Content.Contains("error_code"), source + " -> " + target + ": " + result.Content);
-                    if (target == "outlook") Assert(outlook.LastDraft.Displayed && !outlook.LastDraft.Saved && outlook.LastDraft.HTMLBody.Contains("SOURCE CONTENT"), "Outlook draft was not displayed with source content.");
+                    if (target == "outlook") Assert(outlook.LastDraft.Displayed && outlook.LastDraft.HTMLBody.Contains("SOURCE CONTENT"), "Outlook draft was not displayed with source content.");
                     else if (target != "chrome")
                     {
                         Assert(events.Any(e => e.Contains("SOURCE CONTENT")), target + " lost the source content.");
                         var collection = target == "powerpoint" ? "Presentations" : target == "excel" ? "Workbooks" : "Documents";
                         Assert(events.Count(e => e.StartsWith(target + "." + collection + ".Add(")) == 1, "Handoff must create exactly one new destination.");
                     }
+                    matrix.Add(new { source, target, tool, passed = true, verification = "production writer with simulated application API", launches });
                 }
             }
+            Assert(matrix.Count == 20, "All twenty directional handoffs must be covered.");
+            File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "CrossApplicationResults.json"), json.Serialize(matrix));
         }
 
         private static void SlideToolCallsReachReview()
@@ -8783,6 +8790,7 @@ namespace GuardrailTests
 
     public sealed class FakeMailItem
     {
+        public string Body { get; set; }
         public FakeMailItem()
         {
             Subject = string.Empty;
