@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
+using System.IO;
 using System.Web.Script.Serialization;
 using Scribble.Office;
 
@@ -13,6 +14,7 @@ namespace GuardrailTests
         public static void LayoutsAndOverflow()
         {
             var json = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
+            var previews = new List<object>();
             foreach (var layout in SamsungSlideDesign.Layouts)
             {
                 foreach (var region in SamsungSlideDesign.Regions(layout))
@@ -22,11 +24,15 @@ namespace GuardrailTests
                     slide["cards"] = new[] { new { heading = "Prepare", points = new[] { "Review evidence", "This week" } }, new { heading = "Execute", points = new[] { "Apply changes", "Next week" } } };
                 else if (!new[] { "cover", "divider", "closing" }.Contains(layout))
                     slide["bullets"] = new[] { "Review the evidence", "Confirm the next action" };
-                var plan = json.Serialize(SamsungPresentationReview.InspectPlan(json.Serialize(new[] { slide })));
+                var inspected = SamsungPresentationReview.InspectPlan(json.Serialize(new[] { slide }));
+                previews.Add(inspected);
+                var plan = json.Serialize(inspected);
                 if (!plan.Contains("[Scribble draft]")) throw new Exception("Missing draft marker " + layout);
             }
             var rows = Enumerable.Range(1, 40).Select(i => new[] { "Item " + i, "100" }).ToArray();
             var pages = (IEnumerable)SamsungPresentationReview.InspectPlan(json.Serialize(new[] { new { title = "Data", layout = "matrix", subtitle = "Review every row", table = new { headers = new[] { "Item", "Value" }, rows } } }));
+            previews.Add(pages);
+            File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "SamsungPlans.json"), json.Serialize(previews));
             var data = (IEnumerable)json.DeserializeObject(json.Serialize(pages));
             var covered = 0; var count = 0;
             foreach (Dictionary<string, object> page in data)

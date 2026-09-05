@@ -1313,6 +1313,7 @@ namespace Scribble.Office
                      series < chart.Series.Count;
                      series++)
                 {
+                    dataSheet.Cells[1, series + 2].NumberFormat = "@";
                     dataSheet.Cells[1, series + 2].Value2 =
                         TextBoundary.SingleLine(
                             chart.Series[series].Name,
@@ -1323,6 +1324,7 @@ namespace Scribble.Office
                      category < chart.Categories.Count;
                      category++)
                 {
+                    dataSheet.Cells[category + 2, 1].NumberFormat = "@";
                     dataSheet.Cells[category + 2, 1].Value2 =
                         TextBoundary.SingleLine(
                             chart.Categories[category],
@@ -1389,6 +1391,8 @@ namespace Scribble.Office
                 {
                     var actual = ((IEnumerable)slideChart.SeriesCollection(s + 1).Values).Cast<object>().Select(Convert.ToDouble).ToArray();
                     if (!actual.SequenceEqual(chart.Series[s].Values)) throw new InvalidOperationException("Chart data readback failed.");
+                    var labels = ((IEnumerable)slideChart.SeriesCollection(s + 1).XValues).Cast<object>().Select(Convert.ToString).ToArray();
+                    if (!labels.SequenceEqual(chart.Categories)) throw new InvalidOperationException("Chart category readback failed.");
                 }
                 StyleChart(slideChart, chart);
 

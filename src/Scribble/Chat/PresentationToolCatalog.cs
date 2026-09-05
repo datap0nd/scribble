@@ -88,14 +88,7 @@ namespace Scribble.Chat
                         "applied automatically - supply CONTENT " +
                         "ONLY and never mention fonts, colors, or " +
                         "positions. " +
-                        "BUILD A DENSE EXECUTIVE DECK, not an " +
-                        "outline: every content slide must carry a " +
-                        "table, a chart, or a numbered card grid, " +
-                        "and one slide can carry a table AND a " +
-                        "chart AND its takeaway bullets at once - " +
-                        "combine them, that is what a real deck " +
-                        "looks like. Bullets alone belong only on " +
-                        "an agenda page. Carry the actual numbers, " +
+                        SamsungPresentationReview.AuthoringInstructions + " Carry the actual numbers, " +
                         "names, dates, and table rows from the " +
                         "source material; never thin a rich source " +
                         "down to headings, and never invent " +
@@ -106,9 +99,8 @@ namespace Scribble.Chat
                         "S/I, S/O, YTD, MP) and the markers " +
                         "\u2191 growth, \u2193 decline, " +
                         "\u25B3 negative or deficit, " +
-                        "\u2192 transition - table cells carrying " +
-                        "those markers are highlighted " +
-                        "automatically. " +
+                        "\u2192 transition. Select supporting rows with highlight_rows; " +
+                        "explicit Strong/Neutral/Weak status cells receive indicators. " +
                         "At most " +
                         PresentationDraftWriter.MaxDraftSlides +
                         " slides per call, and you may call this " +

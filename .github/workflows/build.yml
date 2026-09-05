@@ -226,6 +226,13 @@ jobs:
       - name: Run guardrail tests
         run: tests\GuardrailTests\bin\Release\GuardrailTests.exe
 
+      - name: Upload Samsung layout fixtures
+        uses: actions/upload-artifact@v4
+        with:
+          name: SamsungLayoutFixtures
+          path: tests/GuardrailTests/bin/Release/SamsungPlans.json
+          if-no-files-found: error
+
       - name: Run static capability scan
         shell: pwsh
         run: ./scripts/Test-Guardrails.ps1

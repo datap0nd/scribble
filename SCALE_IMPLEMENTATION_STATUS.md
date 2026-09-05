@@ -1,8 +1,10 @@
 # Scale and quality implementation status
 
-The non-PowerPoint implementation is in the repository. Samsung slide generation remains deferred until `SAMSUNG_SLIDE_DESIGN_SPEC.md` is supplied.
+The scale implementation and Samsung slide generation are in the repository. The supplied `SAMSUNG_SLIDE_DESIGN_SPEC.md` is preserved as the design reference; see `SAMSUNG_IMPLEMENTATION_NOTES.md` for measurement reconciliation and acceptance boundaries.
 
 ## Implemented
+
+- Added Samsung MD 1.0 with 20 named layout families, measured 960 x 540 geometry, explicit font fallback, editable native tables/charts/diagrams, attached source visuals, continuation slides, captions, source notes, highlights and conclusion banners. The PowerPoint workflow establishes the brief, checks source excerpts and numbers, renders slides, reviews the images and applies bounded repairs to owned draft shapes. Cross-app batches continue the same task-bound deck.
 
 - Saved the implementation plan and copyable Gemini extraction instructions; marked the old context plan superseded.
 - Added shared task/source/authorization/batch/write-state contracts, exact source coverage reconciliation, and an asynchronous sequential batch coordinator.
@@ -27,7 +29,7 @@ Windows Application Control blocks local execution of `GuardrailTests.exe`, so .
 
 Automated Office tests use fake COM surfaces and write targets. Live Outlook/Excel behavior and translation quality still need normal work-PC testing with the deployed installer; no private 1,000-mail mailbox or live 20,000-row workbook was available in this workspace. The local `/search` selection command retains its separate bounded preview. Attachment byte/archive safety limits remain explicit blockers, not silent coverage limits. Missing unsaved documents and uncertain generic writes are reported rather than blindly rebound or repeated. Scribble still does not save user workbooks/documents or send email.
 
-PowerPoint themes, measured layouts and slide render/review/repair improvements are excluded as requested. They require the returned Markdown specification and work-PC visual acceptance.
+PowerPoint themes, measured layouts and slide render/review/repair are now implemented from the returned Markdown. Native rendering, installed font behavior and comparison against the original private decks still require work-PC visual acceptance. Unresolved review defects leave an explicitly incomplete draft. A vision-capable configured model is required for rendered review.
 
 ## Browser design references
 

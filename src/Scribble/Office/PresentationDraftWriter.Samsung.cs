@@ -87,6 +87,8 @@ namespace Scribble.Office
             internal DraftTable Table;
             internal DraftChart Chart;
             internal string ImageData;
+            internal DraftChart HighlightChart;
+            internal int HighlightCategory;
         }
         internal sealed class SamsungPage
         {
@@ -113,6 +115,11 @@ namespace Scribble.Office
             var pages = new List<SamsungPage>();
             foreach (var draft in drafts)
             {
+                var highlightCount = draft.Table != null ? draft.Table.Rows.Count : draft.Chart?.Categories.Count ?? 0;
+                if (draft.HighlightRows.Any(i => i < 1 || i > highlightCount)) throw new InvalidOperationException("SLIDE_HIGHLIGHT_INVALID: Reference an existing data row or chart category.");
+                if (draft.HighlightRows.Count > 0 && draft.Table == null && draft.Chart != null &&
+                    new[] { DraftChartTypes.Pie, DraftChartTypes.Scatter }.Contains(draft.Chart.TypeCode))
+                    throw new InvalidOperationException("SLIDE_HIGHLIGHT_UNSUPPORTED: Use a bar, column or line chart for category highlight frames.");
                 var rows = draft.Table?.Rows.Count ?? 0;
                 var perPage = SamsungSlideDesign.RowsPerPage(draft.Table?.Headers.Count ?? 1);
                 var secondaryRows = draft.SecondaryTable?.Rows.Count ?? 0;
@@ -164,7 +171,7 @@ namespace Scribble.Office
                     MetoTheme.TitleFont, true, null, draft.Layout == "closing" ? "#FFFFFF" : "#000000"));
                 if (draft.Subtitle.Length > 0) elements.Add(TextElement(draft.Subtitle, SamsungSlideDesign.Percent(4.6f, 78, 84.4f, 8), 22, 18));
                 if (draft.Layout == "cover") elements.Add(TextElement("", SamsungSlideDesign.Percent(0, 94.7f, 100, 2.1f), fill: SamsungSlideDesign.Blue));
-                if (draft.Bullets.Count > 0 || draft.Cards.Count > 0 || table != null || draft.Chart != null)
+                if (draft.Bullets.Count > 0 || draft.Cards.Count > 0 || table != null || draft.Chart != null || draft.SecondaryTable != null || draft.SecondaryChart != null || draft.ImageNames.Count > 0 || draft.Takeaway.Length > 0 || draft.Caption.Length > 0 || draft.Unit.Length > 0)
                     throw new InvalidOperationException("Cover/divider/closing accepts title and subtitle only; put supporting content on a content slide.");
             }
             else
@@ -223,7 +230,7 @@ namespace Scribble.Office
                     { var h = primary.Box.Height / (total + 1); box = new RectangleF(primary.Box.X, primary.Box.Y + row * h, primary.Box.Width, h); }
                     else
                     { var w = primary.Box.Width * .8f / total; box = new RectangleF(primary.Box.X + primary.Box.Width * .15f + (row - 1) * w, primary.Box.Y + primary.Box.Height * .2f, w, primary.Box.Height * .6f); }
-                    elements.Add(new SamsungElement { Box = box, Hollow = true });
+                    elements.Add(new SamsungElement { Box = box, Hollow = true, HighlightChart = primary.Chart, HighlightCategory = row });
                 }
                 foreach (var data in elements.Where(e => e.Table != null).ToArray())
                 {
@@ -295,9 +302,27 @@ namespace Scribble.Office
             slide.Tags.Add("ScribbleTask", owner);
             PaintBackground(slide, MetoTheme.Rgb(page.Background));
             var output = new SamsungOutput { Slide = slideObject, Page = page, Owner = owner };
+            var chartIndices = new Dictionary<DraftChart, int>();
             foreach (var element in page.Elements)
             {
                 var box = element.Box;
+                if (element.HighlightChart != null)
+                {
+                    dynamic chartShape = slide.Shapes[chartIndices[element.HighlightChart]];
+                    dynamic plot = chartShape.Chart.PlotArea;
+                    var area = new RectangleF((float)chartShape.Left + (float)plot.InsideLeft, (float)chartShape.Top + (float)plot.InsideTop, (float)plot.InsideWidth, (float)plot.InsideHeight);
+                    var count = element.HighlightChart.Categories.Count;
+                    if (element.HighlightChart.TypeCode == DraftChartTypes.BarClustered || element.HighlightChart.TypeCode == DraftChartTypes.BarStacked)
+                    {
+                        var reverse = (bool)chartShape.Chart.Axes(1).ReversePlotOrder;
+                        var slot = reverse ? element.HighlightCategory - 1 : count - element.HighlightCategory;
+                        box = new RectangleF(area.X, area.Y + slot * area.Height / count, area.Width, area.Height / count);
+                    }
+                    else box = new RectangleF(area.X + (element.HighlightCategory - 1) * area.Width / count, area.Y, area.Width / count, area.Height);
+                    if (!SamsungSlideDesign.InBounds(box)) throw new InvalidOperationException("SLIDE_CHART_GEOMETRY_INVALID");
+                    element.Box = box;
+                    ReleaseSamsungCom((object)chartShape);
+                }
                 dynamic shape;
                 if (element.ImageData != null)
                 {
@@ -327,6 +352,7 @@ namespace Scribble.Office
                     if (!AddChartToSlide(slide, element.Chart, box.X, box.Y, box.Width, box.Height))
                         throw new InvalidOperationException("SLIDE_CHART_FAILED: Native chart could not be created; the draft remains incomplete.");
                     shape = slide.Shapes[slide.Shapes.Count];
+                    chartIndices[element.Chart] = (int)slide.Shapes.Count;
                 }
                 else if (element.Table != null)
                 {

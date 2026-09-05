@@ -299,9 +299,8 @@ namespace Scribble.Chat
                     "Make it DENSE and specific - carry the real numbers, names, " +
                     "dates, and table rows from the source into the output; never " +
                     "reduce a rich source to a thin outline of headings and " +
-                    "one-line bullets, and never invent filler. For slides, every " +
-                    "content slide must carry a table, a chart, or a numbered card " +
-                    "grid; bullets alone belong only on an agenda page. When the " +
+                    "one-line bullets, and never invent filler. For slides, choose " +
+                    "tables, charts, diagrams or concise summary lists to match the content. When the " +
                     "user asks for tables or charts, put one on most slides, give " +
                     "each data slide its unit indicator and source footnote, and " +
                     "mark performance with the growth and deficit markers so the " +
