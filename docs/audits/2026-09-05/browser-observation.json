@@ -1,0 +1,51 @@
+{
+  "observed_on": "2026-09-05",
+  "code_commit": "3ad74ba31c97cb71634a96fdb0c4e60e78dd83a7",
+  "source_url": "https://www.samsungtradein.ae/ae-en/",
+  "method": "Live Chrome navigation and read-only DOM inspection through Codex browser tooling; not a Scribble-driven run",
+  "navigation": [
+    "Mobile Phones",
+    "Galaxy Z Fold8 | Flip8",
+    "Galaxy Z Fold 8",
+    "Mobile Phone",
+    "Apple",
+    "iPhone 16 Pro (2024)",
+    "256 GB"
+  ],
+  "storage_note": "256 GB was selected solely as a reproducible test variant, not as an assertion about the user's device.",
+  "condition_observations": [
+    { "name": "Flawless", "current_selector_candidates": 1, "survive_current_visibility_filter": 0 },
+    { "name": "Average", "current_selector_candidates": 1, "survive_current_visibility_filter": 0 },
+    { "name": "Below Average", "current_selector_candidates": 1, "survive_current_visibility_filter": 0 }
+  ],
+  "shared_input": {
+    "html": "<input type=\"checkbox\" class=\"ant-checkbox-input\" value=\"\">",
+    "display": "block",
+    "visibility": "visible",
+    "opacity": "0",
+    "width": 16,
+    "height": 16,
+    "associated_label_text": "",
+    "visible_checkmark": "Sibling span.ant-checkbox-inner",
+    "text_label": "Separate span inside the same card",
+    "card": "div.custom-store-drop-off-item",
+    "card_cursor": "pointer",
+    "card_role": null,
+    "card_tabindex": null,
+    "card_matches_current_control_selector": false,
+    "ancestor_condition_hint_present": true
+  },
+  "positive_control": {
+    "action": "Click the exact visible text Flawless",
+    "result": "The site displayed an estimated trade-in value of AED 1,660 for the selected iPhone 16 Pro 256 GB variant",
+    "other_conditions_clicked": false,
+    "final_trade_in_button_clicked": false,
+    "personal_information_entered": false,
+    "price_note": "An observed estimate, not a guaranteed valuation or a hard-coded future test expectation"
+  },
+  "additional_observations": [
+    "The bare https://samsungtradein.ae/ address returned a CloudFront 504 during this audit; the www /ae-en/ address loaded successfully.",
+    "Purchased-device category cards exposed Category option undefined as their accessible names while visible text named the categories.",
+    "Several selections briefly produced an empty loading list before the next set of options appeared."
+  ]
+}
