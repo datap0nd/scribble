@@ -252,6 +252,10 @@ test("zero-sized and clipped controls use visible labels while hidden and disabl
 test("text queries search beyond the initial page text budget", async ({page})=>{
   await page.setContent('<p>'+ 'Earlier text '.repeat(1000)+'</p><p>Late source fact</p>');
   expect((await callAgent(page,'snapshot',{query:'Late source fact'})).visibleText).toContain('Late source fact');
+  await page.setContent('<p>'+ 'Earlier text '.repeat(1000)+'Late source fact</p>');
+  const sameParagraph = await callAgent(page,'snapshot',{query:'Late source fact'});
+  expect(sameParagraph.visibleText).toContain('Late source fact');
+  expect(sameParagraph.visibleText.length).toBeLessThanOrEqual(5000);
 });
 
 test("browser DOM and AX observations discover JavaScript listeners and report closed roots", async ({ page, context }) => {

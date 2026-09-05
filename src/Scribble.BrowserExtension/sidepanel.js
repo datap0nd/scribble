@@ -2481,9 +2481,14 @@ function pageAgent(command, payload) {
     const controls = scanned.output;
     // Preserve lines until filtering. Normalizing first used to turn the whole
     // page into one line, making targeted text queries silently miss later text.
-    const rawLines = String(document.body?.innerText || "").split(/\n+/);
-    const bodyText = (query ? rawLines.filter(line => line.toLowerCase().includes(query)) : rawLines)
-      .map(line => normalize(line, maxVisibleTextCharacters)).join("\n").slice(0, maxVisibleTextCharacters);
+    const rawLines = String(document.body?.innerText || "").split(/\n+/)
+      .map(line => line.replace(/\s+/g, ' ').trim());
+    const bodyText = (query ? rawLines.filter(line => line.toLowerCase().includes(query)).map(line => {
+      // A match can be beyond the budget even within one long paragraph.
+      // Return its surrounding passage, rather than that paragraph's beginning.
+      const start = Math.max(0, line.toLowerCase().indexOf(query) - 160);
+      return (start ? '…' : '') + line.slice(start, start + maxVisibleTextCharacters - 1);
+    }) : rawLines).join("\n").slice(0, maxVisibleTextCharacters);
     const unresolved = Array.from(document.querySelectorAll('*')).filter(element =>
       /^(CANVAS|OBJECT|EMBED|IFRAME)$/.test(element.tagName) || (element.localName.includes('-') && !element.shadowRoot && !element.children.length))
       .filter(painted).map(element => ({ kind: element.tagName.toLowerCase(),
