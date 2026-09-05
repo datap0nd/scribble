@@ -2,7 +2,7 @@ const { test, expect, chromium } = require('@playwright/test');
 const http = require('http');
 const path = require('path');
 
-test('installed extension observes generic controls and uses its real trusted-input broker', async ({}, testInfo) => {
+test('installed extension observes generic controls and uses its real trusted-input broker', async () => {
   test.setTimeout(60000);
   const server = http.createServer((request, response) => {
     response.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -22,7 +22,6 @@ test('installed extension observes generic controls and uses its real trusted-in
       channel: 'chromium', headless: true, viewport: {width:1000,height:800},
       args: [`--disable-extensions-except=${extensionPath}`, `--load-extension=${extensionPath}`]
     });
-    await context.tracing.start({screenshots:true,snapshots:true,sources:true});
     const worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
     const extensionId = worker.url().split('/')[2];
     const panel = await context.newPage();
@@ -59,14 +58,9 @@ test('installed extension observes generic controls and uses its real trusted-in
     expect(after.controls.find(c => c.name === 'Include supporting details').selected).toBe(true);
     await expect(panel.evaluate(() => sendOperatorMessage({type:'inspectSemantics',tabId:999999}))).rejects.toThrow(/registered work tab/);
   } finally {
-    try {
-      if (context) {
-        if (testInfo.status !== testInfo.expectedStatus) await context.tracing.stop({path:testInfo.outputPath('installed-extension-trace.zip')});
-        else await context.tracing.stop();
-      }
-    } finally {
-      try { if (context) await context.close(); }
-      finally { await new Promise(resolve => server.close(resolve)); }
-    }
+    // Playwright Test owns tracing for every context, including persistent
+    // extension contexts. Stopping it manually conflicts with runner teardown.
+    try { if (context) await context.close(); }
+    finally { await new Promise(resolve => server.close(resolve)); }
   }
 });
