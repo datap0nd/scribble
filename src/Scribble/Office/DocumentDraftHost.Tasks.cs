@@ -98,7 +98,7 @@ namespace Scribble.Office
                 await _durableExcel.CommitAsync(_excelTarget, token, progress);
         }
 
-        internal async Task<MailboxToolResult> ExecuteAsync(ChatToolCall call, OneShotDraftAuthorization authorization,
+        public async Task<MailboxToolResult> ExecuteAsync(ChatToolCall call, OneShotDraftAuthorization authorization,
             bool exclusive, string prompt, OpenAiCompatibleClient client, AppSettings settings,
             CancellationToken token, Action<int, int> progress)
         {

@@ -198,7 +198,8 @@ namespace Scribble.Chat
                 Uri endpoint,
                 ChatCompletionRequest requestModel,
                 bool includeOptionalToolControls,
-                CancellationToken cancellationToken)
+                CancellationToken cancellationToken,
+                bool retryEmptyResponse = true)
         {
             var requestJson = _serializer.Serialize(
                 SerializablePayload(
@@ -316,9 +317,19 @@ namespace Scribble.Chat
                         (!hasToolCalls &&
                          string.IsNullOrWhiteSpace(message.content)))
                     {
+                        // No assistant message or tool action was delivered, so
+                        // retry this inference once without replaying any tools.
+                        // Persistent empty responses remain a resumable failure.
+                        if (retryEmptyResponse)
+                        {
+                            cancellationToken.ThrowIfCancellationRequested();
+                            return await CompleteOpenAiAsync(settings, endpoint,
+                                requestModel, includeOptionalToolControls,
+                                cancellationToken, false).ConfigureAwait(true);
+                        }
                         throw new AiEndpointException(
                             "RESPONSE_MISSING_CONTENT",
-                            "The AI endpoint returned neither message text nor tool calls.",
+                            "The AI endpoint returned an empty response twice. No new tool actions ran. The task is preserved; resume or choose another model.",
                             httpStatus: (int)response.StatusCode,
                             requestId: requestId,
                             responseSnippet: responseText);

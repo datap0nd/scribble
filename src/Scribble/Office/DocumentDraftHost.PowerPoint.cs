@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Scribble.Chat;
 using Scribble.Configuration;
 using Scribble.Security;
+using Scribble.Utilities;
 
 namespace Scribble.Office
 {
@@ -17,6 +18,7 @@ namespace Scribble.Office
             bool exclusive, string prompt, OpenAiCompatibleClient client, AppSettings settings, CancellationToken token)
         {
             var written = false;
+            var stage = "ARGUMENTS";
             var outputs = new List<PresentationDraftWriter.SamsungOutput>();
             try
             {
@@ -25,14 +27,18 @@ namespace Scribble.Office
                 var args = ToolArguments.Parse(_serializer, call.function.arguments);
                 RequireAllowedArguments(args, call.function.name);
                 var slides = ParsedSlides(args);
-                object planValue;
-                var suppliedPlan = args.TryGetValue("plan", out planValue) ? ((IEnumerable)planValue).Cast<object>().Select(Convert.ToString).ToArray() : null;
+                var planValue = ParsedArray(args, "plan", false);
+                if (planValue != null && planValue.Any(id => !(id is string)))
+                    throw new InvalidOperationException("SLIDE_PLAN_INVALID: Each plan ID must be a string.");
+                var suppliedPlan = planValue == null ? null : planValue.Cast<string>().ToArray();
                 string savedPlan;
                 var plan = _taskContext != null && _taskContext.State.HostData.TryGetValue("samsung_plan", out savedPlan)
                     ? _serializer.Deserialize<string[]>(savedPlan) : suppliedPlan;
                 if (suppliedPlan != null && plan != null && !suppliedPlan.SequenceEqual(plan)) throw new InvalidOperationException("SLIDE_PLAN_CHANGED: Preserve the original storyline IDs.");
                 var completed = _taskContext == null ? new string[0] : _taskContext.State.Batches.SelectMany(b => b.CoveredSourceIds).Where(id => id.StartsWith("ppt:")).Select(id => id.Substring(4)).ToArray();
+                stage = "PLAN";
                 SamsungPresentationReview.ValidatePlan(plan, slides.Select(s => s.Id).ToArray(), completed);
+                stage = "SOURCE_IMAGES";
                 foreach (var slide in slides)
                     foreach (var name in slide.ImageNames)
                     {
@@ -44,6 +50,7 @@ namespace Scribble.Office
                 if (slides.Count == 0) throw new InvalidOperationException("At least one slide is required.");
                 var source = SamsungPresentationReview.SourceCorpus(_taskContext, prompt);
                 var rawSlides = ((IEnumerable)args["slides"]).Cast<object>().ToArray();
+                stage = "SOURCE_REVIEW";
                 foreach (var raw in rawSlides)
                 {
                     token.ThrowIfCancellationRequested();
@@ -58,6 +65,7 @@ namespace Scribble.Office
                     if (!ReviewApproved(review)) throw new InvalidOperationException("SLIDE_SOURCE_REVIEW: " + review);
                 }
                 // Layout preflight is before permission consumption and any COM mutation.
+                stage = "LAYOUT";
                 PresentationDraftWriter.ComposeSamsung(slides);
                 if (!ModelCatalog.IsVisionCapable(settings.Model))
                     throw new InvalidOperationException("SLIDE_VISION_REQUIRED: Select a vision-capable configured model so the rendered slides can be reviewed before completion.");
@@ -74,6 +82,7 @@ namespace Scribble.Office
                     _taskContext.Checkpoint();
                 }
                 token.ThrowIfCancellationRequested();
+                stage = "WRITE";
                 if (_hostKind == "powerpoint" && _taskContext != null) OfficeTaskBinding.Validate(_taskContext.State, _hostKind, _hostApplication);
                 written = true;
                 var app = call.function.name == PresentationToolCatalog.AddDraftSlides ? _hostApplication : GetSiblingApplication("PowerPoint.Application");
@@ -112,6 +121,7 @@ namespace Scribble.Office
                     }, _samsungPresentation);
                 for (var i = 0; i < outputs.Count; i++)
                 {
+                    stage = "VISUAL_REVIEW";
                     var output = outputs[i];
                     var approved = false;
                     for (var attempt = 0; attempt < 3; attempt++)
@@ -147,10 +157,15 @@ namespace Scribble.Office
             catch (OperationCanceledException) { throw; }
             catch (Exception exception)
             {
+                // Metadata only: diagnostic exports identify the failing host
+                // and stage without recording slide or mailbox content.
+                Log.Error("SamsungDraft_" + _hostKind,
+                    new AiEndpointException("SAMSUNG_" + stage + "_FAILED", "Slide operation failed.", exception));
                 // A preflight failure spent no write permission. After mutation,
                 // the shared journal blocks blind duplication of the open draft.
                 return new MailboxToolResult(call.id, _serializer.Serialize(new { error_code = "SAMSUNG_DRAFT_FAILED",
-                    message = exception.Message, permission_consumed = written }), "Samsung slide review needs attention");
+                    stage, message = exception.Message, permission_consumed = written }),
+                    (written ? "Slide review: " : "Slide preflight: ") + TextBoundary.SingleLine(exception.Message, 240));
             }
             finally
             {

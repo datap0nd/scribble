@@ -1002,9 +1002,35 @@ namespace Scribble.Office
             IReadOnlyList<PresentationDraftWriter.DraftSlide>
             ParsedSlides(IDictionary<string, object> arguments)
         {
-            object slidesValue;
-            arguments.TryGetValue("slides", out slidesValue);
+            var slidesValue = ParsedArray(arguments, "slides", true);
             return PresentationDraftWriter.ParseSlides(slidesValue);
+        }
+
+        // Some compatible endpoints encode structured arguments a second time.
+        // Decode only a JSON array, once, before any validation or review. Keep
+        // the normalized value in the arguments so all downstream stages agree.
+        private static object[] ParsedArray(IDictionary<string, object> arguments,
+            string name, bool required)
+        {
+            object value;
+            if (!arguments.TryGetValue(name, out value) && !required) return null;
+            if (value is string)
+            {
+                var text = ((string)value).Trim();
+                if (text.StartsWith("[", StringComparison.Ordinal))
+                {
+                    try { value = new JavaScriptSerializer().DeserializeObject(text); }
+                    catch (ArgumentException) { }
+                }
+            }
+            var array = value as IList;
+            if (array == null)
+                throw new InvalidOperationException("SLIDE_ARGUMENT_INVALID: '" + name +
+                    "' must be a JSON array; received " + (value == null ? "missing/null" : value.GetType().Name) +
+                    ". Supply {\"plan\":[\"intro\"],\"slides\":[{\"id\":\"intro\",\"layout\":\"cover\",\"title\":\"Introduction\"}]}. No slides were written.");
+            var result = array.Cast<object>().ToArray();
+            arguments[name] = result;
+            return result;
         }
 
         // Null when the model omitted after_slide, so the writer

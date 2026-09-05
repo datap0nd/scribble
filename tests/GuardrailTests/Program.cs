@@ -70,6 +70,8 @@ namespace GuardrailTests
             {
                 Run("Samsung layouts preserve content and enforce overflow bounds", SamsungSlideTests.LayoutsAndOverflow);
                 Run("Samsung slide numbers require verified source evidence", SamsungSlideTests.EvidenceAndNumbers);
+                Run("PowerPoint and Outlook slide tool calls reach independent review", SlideToolCallsReachReview);
+                Run("Empty endpoint responses retry once without replaying tools", EmptyEndpointResponsesRecover);
                 Run("Semantic repairs retain source alignment", TaskContinuationTests.ReviewRepairsAndAlignment);
                 Run("Changed source and occupied destination stop all writes", DurableTransformTests.ChangedRangesFailClosed);
                 Run("Attachment pages preserve evidence beyond 130000 characters", DurableTransformTests.AttachmentTail);
@@ -7673,15 +7675,82 @@ namespace GuardrailTests
             }
         }
 
+        private static void SlideToolCallsReachReview()
+        {
+            var json = new JavaScriptSerializer();
+            foreach (var hostKind in new[] { "powerpoint", "outlook" })
+            foreach (var encoded in new[] { false, true })
+            {
+                var slides = new[] { new { id = "intro", layout = "cover", title = "Launch" } };
+                var plan = new[] { "intro" };
+                var arguments = json.Serialize(new Dictionary<string, object> {
+                    { "slides", encoded ? (object)json.Serialize(slides) : slides },
+                    { "plan", encoded ? (object)json.Serialize(plan) : plan } });
+                var call = MailboxCall("slides-1", hostKind == "powerpoint"
+                    ? PresentationToolCatalog.AddDraftSlides : CrossAppToolCatalog.SendToPowerPoint, arguments);
+                var response = json.Serialize(new { choices = new[] { new { message = new {
+                    role = "assistant", content = (string)null, tool_calls = new[] { call } } } } });
+                var review = json.Serialize(new { choices = new[] { new { message = new {
+                    role = "assistant", content = "{\"approved\":false,\"issues\":\"REVIEW_REACHED\"}" } } } });
+                using (var server = new FakeEndpoint(response, review))
+                using (var client = new OpenAiCompatibleClient())
+                using (var host = new DocumentDraftHost(hostKind, new object()))
+                {
+                    var settings = EndpointSettings(server.BaseUrl);
+                    var message = client.CompleteAsync(settings, MakeRequest(new List<ChatTurn>()), CancellationToken.None).GetAwaiter().GetResult();
+                    var authorization = new OneShotDraftAuthorization(true);
+                    var result = host.ExecuteAsync(message.tool_calls.Single(), authorization, true,
+                        "Create a launch presentation", client, settings, CancellationToken.None, null).GetAwaiter().GetResult();
+                    server.Wait();
+                    Assert(result.Content.Contains("REVIEW_REACHED") && result.Content.Contains("\"permission_consumed\":false") && authorization.RemainingCalls == 1,
+                        hostKind + " did not reach source review through the real tool argument boundary: " + result.Content);
+                    Assert(server.Body.Contains("Launch") && server.Body.Contains("Proposed slide"), "Review lost the normalized slide payload.");
+                }
+            }
+            using (var host = new DocumentDraftHost("powerpoint", new object()))
+            {
+                foreach (var bad in new[] { "{}", "{\"slides\":null}", "{\"slides\":{}}", "{\"slides\":\"invalid\"}" })
+                {
+                    var authorization = new OneShotDraftAuthorization(true);
+                    var result = host.ExecuteAsync(MailboxCall("bad", PresentationToolCatalog.AddDraftSlides, bad),
+                        authorization, true, "Create a deck", null, null, CancellationToken.None, null).GetAwaiter().GetResult();
+                    Assert(result.Content.Contains("SLIDE_ARGUMENT_INVALID") && authorization.RemainingCalls == 1,
+                        "Malformed slide arguments must fail before review or mutation.");
+                }
+            }
+        }
+
+        private static void EmptyEndpointResponsesRecover()
+        {
+            const string empty = "{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":null}}],\"usage\":{\"completion_tokens\":1}}";
+            const string success = "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"Recovered\"}}]}";
+            foreach (var persistent in new[] { false, true })
+            using (var server = new FakeEndpoint(empty, persistent ? empty : success))
+            using (var client = new OpenAiCompatibleClient())
+            {
+                try
+                {
+                    var result = client.CompleteAsync(EndpointSettings(server.BaseUrl), MakeRequest(new List<ChatTurn>()), CancellationToken.None).GetAwaiter().GetResult();
+                    Assert(!persistent && result.content == "Recovered", "Empty response recovery failed.");
+                }
+                catch (AiEndpointException exception)
+                {
+                    Assert(persistent && exception.Code == "RESPONSE_MISSING_CONTENT", "Unexpected recovery error: " + exception.Message);
+                }
+                server.Wait();
+                Assert(server.Bodies.Count == 2 && server.Bodies[0] == server.Bodies[1], "Recovery must retry the identical inference once.");
+            }
+        }
+
         private sealed class FakeEndpoint : IDisposable
         {
             private readonly TcpListener _listener;
             private readonly Task _requestTask;
-            private readonly string _responseBody;
+            private readonly string[] _responseBodies;
 
-            public FakeEndpoint(string responseBody)
+            public FakeEndpoint(params string[] responseBodies)
             {
-                _responseBody = responseBody;
+                _responseBodies = responseBodies;
                 _listener = new TcpListener(
                     IPAddress.Loopback,
                     0);
@@ -7692,7 +7761,7 @@ namespace GuardrailTests
                 BaseUrl = "http://127.0.0.1:" +
                     port + "/v1";
                 _requestTask = Task.Run(
-                    (Action)HandleRequest);
+                    () => { foreach (var responseBody in _responseBodies) HandleRequest(responseBody); });
             }
 
             public string BaseUrl { get; }
@@ -7705,6 +7774,7 @@ namespace GuardrailTests
 
             public string Body { get; private set; } =
                 string.Empty;
+            public List<string> Bodies { get; } = new List<string>();
 
             public void Wait()
             {
@@ -7735,7 +7805,7 @@ namespace GuardrailTests
                 }
             }
 
-            private void HandleRequest()
+            private void HandleRequest(string responseBody)
             {
                 using (var client = _listener.AcceptTcpClient())
                 using (var stream = client.GetStream())
@@ -7810,9 +7880,10 @@ namespace GuardrailTests
                             offset);
                     }
 
+                    Bodies.Add(Body);
                     var responseBytes =
                         Encoding.UTF8.GetBytes(
-                            _responseBody);
+                            responseBody);
                     var headers = Encoding.ASCII.GetBytes(
                         "HTTP/1.1 200 OK\r\n" +
                         "Content-Type: application/json\r\n" +
