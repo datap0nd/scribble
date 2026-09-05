@@ -45,6 +45,8 @@ namespace Scribble.Office
         }
         public static bool InBounds(RectangleF rectangle)
         { return rectangle.Width > 0 && rectangle.Height > 0 && rectangle.Left >= 0 && rectangle.Top >= 0 && rectangle.Right <= Width + .01 && rectangle.Bottom <= Height + .01; }
+        public static bool SameOwner(string tag, string owner)
+        { return !string.IsNullOrEmpty(owner) && string.Equals(tag, owner, StringComparison.OrdinalIgnoreCase); }
         public static string FontFor(string text, string preferred)
         {
             if ((text ?? "").Any(c => (c >= '\uAC00' && c <= '\uD7AF') || (c >= '\u1100' && c <= '\u11FF'))) return "Malgun Gothic";

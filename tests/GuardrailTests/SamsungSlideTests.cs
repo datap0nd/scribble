@@ -39,6 +39,7 @@ namespace GuardrailTests
             ExpectFailure(() => SamsungSlideDesign.Fit(new string('X', 5000), "Arial", new RectangleF(0, 0, 100, 20), 18, 14));
             ExpectFailure(() => SamsungPresentationReview.InspectPlan("[{\"title\":\"Bad chart\",\"chart\":{\"categories\":[\"A\",\"B\"],\"series\":[{\"name\":\"Sales\",\"values\":[1]}]}}]"));
             if (SamsungSlideDesign.FontFor("한글", "Arial") != "Malgun Gothic") throw new Exception("Korean font mapping lost.");
+            if (!SamsungSlideDesign.SameOwner("ABCDEF", "abcdef") || SamsungSlideDesign.SameOwner("", "")) throw new Exception("PowerPoint tag normalization broke ownership checks.");
         }
         public static void EvidenceAndNumbers()
         {

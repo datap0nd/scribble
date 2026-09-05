@@ -17,6 +17,11 @@ namespace Scribble.Office
 
         internal async Task BindTaskAsync(TaskContextManager task, CancellationToken token)
         {
+            if (_taskContext != null && _taskContext.State.Id != task.State.Id)
+            {
+                if (_samsungPresentation != null && System.Runtime.InteropServices.Marshal.IsComObject(_samsungPresentation)) System.Runtime.InteropServices.Marshal.ReleaseComObject(_samsungPresentation);
+                _samsungPresentation = null;
+            }
             _taskContext = task;
             _durableExcel = null;
             _excelTarget = null;

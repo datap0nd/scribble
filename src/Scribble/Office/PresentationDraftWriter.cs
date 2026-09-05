@@ -235,7 +235,8 @@ namespace Scribble.Office
             IReadOnlyList<DraftSlide> slides,
             int? afterSlide,
             bool inNewPresentation,
-            Action<SamsungOutput> onRendered = null)
+            Action<SamsungOutput> onRendered = null,
+            object boundPresentation = null)
         {
             if (slides == null || slides.Count == 0)
             {
@@ -245,8 +246,8 @@ namespace Scribble.Office
 
             dynamic application = powerPointApplication;
             var planned = ComposeSamsung(slides);
-            dynamic presentation = null;
-            if (!inNewPresentation)
+            dynamic presentation = boundPresentation;
+            if (presentation == null && !inNewPresentation)
             {
                 try
                 {
@@ -1381,6 +1382,14 @@ namespace Scribble.Office
                 {
                 }
 
+                slideChart.SetSourceData("='" + ((string)dataSheet.Name).Replace("'", "''") + "'!$A$1:$" +
+                    (char)('A' + chart.Series.Count) + "$" + (chart.Categories.Count + 1), 2);
+                if ((int)slideChart.SeriesCollection().Count != chart.Series.Count) throw new InvalidOperationException("Chart source series were not applied.");
+                for (var s = 0; s < chart.Series.Count; s++)
+                {
+                    var actual = ((IEnumerable)slideChart.SeriesCollection(s + 1).Values).Cast<object>().Select(Convert.ToDouble).ToArray();
+                    if (!actual.SequenceEqual(chart.Series[s].Values)) throw new InvalidOperationException("Chart data readback failed.");
+                }
                 StyleChart(slideChart, chart);
 
                 try

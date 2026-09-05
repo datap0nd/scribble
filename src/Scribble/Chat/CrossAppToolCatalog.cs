@@ -107,12 +107,12 @@ namespace Scribble.Chat
                             "Create a brand-new unsaved PowerPoint draft " +
                             "presentation with clearly marked [Scribble " +
                             "draft] slides. PowerPoint starts if needed, " +
-                            "a fresh deck opens every time, existing " +
+                            "a fresh deck opens for this task and later batches continue it, existing " +
                             "files are never touched, and nothing is " +
                             "saved. Use it for any request to create a " +
                             "powerpoint, deck, or slides. At most " +
                             PresentationDraftWriter.MaxDraftSlides +
-                            " slides per call.",
+                            " slides per call. " + SamsungPresentationReview.AuthoringInstructions,
                         parameters =
                             PresentationToolCatalog.DraftDefinition()
                                 .function.parameters as

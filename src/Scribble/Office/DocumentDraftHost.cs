@@ -416,6 +416,9 @@ namespace Scribble.Office
 
         public void Dispose()
         {
+            if (_samsungPresentation != null && System.Runtime.InteropServices.Marshal.IsComObject(_samsungPresentation))
+                System.Runtime.InteropServices.Marshal.ReleaseComObject(_samsungPresentation);
+            _samsungPresentation = null;
             _emailDraft?.Dispose();
             _emailDraft = null;
             EndExcelSelectionRequest();

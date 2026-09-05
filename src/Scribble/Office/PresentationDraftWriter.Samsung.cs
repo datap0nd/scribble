@@ -93,6 +93,7 @@ namespace Scribble.Office
             internal DraftSlide Source;
             internal List<SamsungElement> Elements = new List<SamsungElement>();
             internal string Background = "#FFFFFF";
+            internal SamsungElement PageNumber;
         }
         internal sealed class SamsungOutput
         {
@@ -244,7 +245,7 @@ namespace Scribble.Office
             }
             var source = string.Join("; ", new[] { draft.Footnote, draft.Sources }.Where(s => !string.IsNullOrWhiteSpace(s)));
             if (source.Length > 0) elements.Add(TextElement(source.Length > 240 ? "Source references and evidence: see speaker notes." : source, SamsungSlideDesign.Footer, 7, 7, "Arial Narrow"));
-            var pageNumber = TextElement("- " + index + " -", SamsungSlideDesign.Page, 10.5f, 8, "Calibri"); pageNumber.Alignment = 3; elements.Add(pageNumber);
+            var pageNumber = TextElement("- " + index + " -", SamsungSlideDesign.Page, 10.5f, 8, "Calibri"); pageNumber.Alignment = 3; elements.Add(pageNumber); page.PageNumber = pageNumber;
             elements.Add(TextElement(DraftMarker, SamsungSlideDesign.Percent(3.8f, 97, 32, 2.8f), 7, 7, "Arial", false, null, "#7F7F7F"));
             return page;
         }
@@ -271,7 +272,7 @@ namespace Scribble.Office
                 var text = card.Heading + "\n" + string.Join("\n", card.Points);
                 elements.Add(TextElement(text, box, 18, 14, "Arial", false, SamsungSlideDesign.Gray));
                 if (draft.Layout == "roadmap" && i < count - 1)
-                    elements.Add(TextElement("\u2192", new RectangleF(box.Right, box.Top + box.Height / 2, gap, 18), 14, 14, "Arial", true));
+                    elements.Add(new SamsungElement { Box = new RectangleF(box.Right, box.Top + box.Height / 2, gap, 1), Connector = true });
             }
         }
 
@@ -290,6 +291,7 @@ namespace Scribble.Office
         internal static SamsungOutput DrawSamsungPage(object slideObject, SamsungPage page, string owner)
         {
             dynamic slide = slideObject;
+            page.PageNumber.Text = "- " + (int)slide.SlideIndex + " -";
             slide.Tags.Add("ScribbleTask", owner);
             PaintBackground(slide, MetoTheme.Rgb(page.Background));
             var output = new SamsungOutput { Slide = slideObject, Page = page, Owner = owner };
@@ -318,6 +320,7 @@ namespace Scribble.Office
                 {
                     shape = slide.Shapes.AddConnector(2, box.Left, box.Top, box.Right, box.Bottom);
                     shape.Line.Weight = .5f; shape.Line.ForeColor.RGB = MetoTheme.Rgb("#7F7F7F");
+                    shape.Line.EndArrowheadStyle = 3;
                 }
                 else if (element.Chart != null)
                 {
@@ -387,7 +390,7 @@ namespace Scribble.Office
         internal static string ExportSamsung(SamsungOutput output)
         {
             dynamic slide = output.Slide;
-            if ((string)slide.Tags["ScribbleTask"] != output.Owner) throw new InvalidOperationException("SLIDE_OWNERSHIP_CHANGED");
+            if (!SamsungSlideDesign.SameOwner((string)slide.Tags["ScribbleTask"], output.Owner)) throw new InvalidOperationException("SLIDE_OWNERSHIP_CHANGED");
             var path = Path.Combine(Path.GetTempPath(), "scribble-slide-" + Guid.NewGuid().ToString("N") + ".png");
             try { slide.Export(path, "PNG", 1600, 900); return "data:image/png;base64," + Convert.ToBase64String(File.ReadAllBytes(path)); }
             finally { if (File.Exists(path)) File.Delete(path); }
@@ -395,12 +398,12 @@ namespace Scribble.Office
         internal static void RepairSamsung(SamsungOutput output)
         {
             dynamic slide = output.Slide;
-            if ((string)slide.Tags["ScribbleTask"] != output.Owner || (int)slide.Shapes.Count != output.ShapeIds.Count)
+            if (!SamsungSlideDesign.SameOwner((string)slide.Tags["ScribbleTask"], output.Owner) || (int)slide.Shapes.Count != output.ShapeIds.Count)
                 throw new InvalidOperationException("SLIDE_OWNERSHIP_CHANGED: The draft was edited during review.");
             for (var i = 0; i < output.ShapeIds.Count; i++)
             {
                 dynamic shape = slide.Shapes[i + 1];
-                if ((int)shape.Id != output.ShapeIds[i] || (string)shape.Tags["ScribbleTask"] != output.Owner)
+                if ((int)shape.Id != output.ShapeIds[i] || !SamsungSlideDesign.SameOwner((string)shape.Tags["ScribbleTask"], output.Owner))
                     throw new InvalidOperationException("SLIDE_OWNERSHIP_CHANGED");
                 var element = output.Page.Elements[i];
                 if (element.Chart == null && element.Table == null && element.ImageData == null && !element.Hollow && !element.Connector && !element.Circle)
