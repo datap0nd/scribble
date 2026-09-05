@@ -237,6 +237,30 @@ function collectPerception(snapshot, accessibility, query = "", offset = 0) {
   for (const [documentIndex, doc] of (snapshot.documents || []).entries()) {
     const nodes = doc.nodes || {}, layout = doc.layout || {};
     const clickable = new Set(nodes.isClickable?.index || []);
+    const children = new Map(), renderedText = new Map();
+    for (let index = 0; index < (nodes.parentIndex || []).length; index++) {
+      const parent = nodes.parentIndex[index];
+      if (!children.has(parent)) children.set(parent, []);
+      children.get(parent).push(index);
+    }
+    for (let row = 0; row < (layout.nodeIndex || []).length; row++) {
+      const index = layout.nodeIndex[row], styles = (layout.styles?.[row] || []).map(i => strings[i]);
+      if (strings[nodes.nodeName?.[index]] === '#text' && styles[0] !== 'none' &&
+          !['hidden','collapse'].includes(styles[1]) && styles[2] !== '0')
+        renderedText.set(index, strings[layout.text?.[row]] || strings[nodes.nodeValue?.[index]] || '');
+    }
+    const textLabel = index => {
+      const queue = [index], pieces = [];
+      let visited = 0, size = 0;
+      while (queue.length && visited++ < 128 && size < 220) {
+        const node = queue.shift(), tag = strings[nodes.nodeName?.[node]];
+        if (/^(INPUT|TEXTAREA|SELECT|SCRIPT|STYLE|NOSCRIPT)$/.test(tag)) continue;
+        const value = renderedText.get(node);
+        if (value) {pieces.push(value);size += value.length;}
+        queue.push(...(children.get(node) || []).slice(0,128-visited));
+      }
+      return pieces.join(' ').replace(/\s+/g,' ').trim().slice(0,220);
+    };
     for (let row = 0; row < (layout.nodeIndex || []).length; row++) {
       const index = layout.nodeIndex[row], backendId = nodes.backendNodeId?.[index], ax = axByNode.get(backendId);
       const role = ax?.role?.value || "", listener = clickable.has(index);
@@ -248,7 +272,7 @@ function collectPerception(snapshot, accessibility, query = "", offset = 0) {
       const attrs = nodes.attributes?.[index] || [], attributes = {};
       for (let i = 0; i < attrs.length; i += 2) attributes[strings[attrs[i]]] = strings[attrs[i + 1]];
       if (["hidden", "password"].includes(attributes.type)) continue;
-      const name = String(ax?.name?.value || attributes["aria-label"] || attributes.title || attributes.alt || "").slice(0, 220);
+      const name = String(ax?.name?.value || attributes["aria-label"] || attributes.title || attributes.alt || textLabel(index)).slice(0, 220);
       if (filter && !`${role} ${name}`.toLowerCase().includes(filter)) continue;
       output.push({ backendId, role, name, tag: strings[nodes.nodeName?.[index]], listener,
         topDocument: documentIndex === 0, frameId: strings[doc.frameId],

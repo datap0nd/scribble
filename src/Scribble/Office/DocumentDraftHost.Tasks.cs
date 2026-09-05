@@ -136,7 +136,7 @@ namespace Scribble.Office
             var reviewedCall = new ChatToolCall { id = call.id, type = call.type,
                 function = new ChatToolCallFunction { name = name, arguments = _serializer.Serialize(args) } };
             var result = Execute(reviewedCall, authorization, exclusive, prompt);
-            if (result.Content.Contains("\"error_code\"")) return result;
+            if (result.Outcome.Failed) return result;
             var column = _selectionRequest != null ? _selectionOutput.DestinationColumn : "sparse";
             var replacement = _selectionRequest == null || _selectionReplaceSource;
             _durableExcel.StageReviewed(offset, corrected, column, replacement);

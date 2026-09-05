@@ -1709,6 +1709,7 @@ async function performAction(target, args, knownSnapshot = null) {
     let previous = null, ready = false;
     for (let attempt = 0; attempt < 12; attempt++) {
       const check = await runPageAgent(target.tab.id, "actionability", { ref: args.ref, revision: resolved.revision });
+      if (check?.error) throw new Error(check.error);
       if (check?.enabled && check.receivesEvents && (action !== "type" || check.editable) && previous && Math.abs(check.x - previous.x) < 1 && Math.abs(check.y - previous.y) < 1) { ready = true; break; }
       previous = check;
       await delay(100);
@@ -2023,10 +2024,10 @@ async function runPageAgent(tabId, command, payload) {
     for (const control of result.controls || []) { control.ref = `f${frameId}@${control.ref}`; control.revision = result.revision; }
     if (Number.isFinite(result.x)) {
       const frameUrl = await chrome.scripting.executeScript({target:{tabId,frameIds:[frameId]},func:() => location.href});
-      const rects = await chrome.scripting.executeScript({target:{tabId,frameIds:[0]},func:pageAgent,args:["frameRect",{url:frameUrl[0].result}]});
+      const rects = await chrome.scripting.executeScript({target:{tabId,frameIds:[0]},func:pageAgent,args:["frameRect",{url:frameUrl[0].result,x:result.x,y:result.y}]});
       const rect = rects?.[0]?.result;
       if (!rect || rect.error) return {error:rect?.error || "Cannot uniquely locate this frame in the visible page."};
-      result.x += rect.x; result.y += rect.y;
+      result.x = rect.x; result.y = rect.y;
       if (result.receivesEvents !== undefined) result.receivesEvents = result.receivesEvents && rect.receivesEvents;
     }
   }
@@ -2144,7 +2145,6 @@ function pageAgent(command, payload) {
     const legend = fieldset?.querySelector?.(":scope > legend");
     if (legend) return usableLabel(legend.innerText || legend.textContent);
     const card = cardLabelOf(element);
-    if (element.closest('[class*="condition"], [id*="condition"]')) return usableLabel(`Condition ${card}`);
     const group = element.closest?.('[role="group"], [role="radiogroup"], [aria-label]');
     if (group && group !== element) {
       return usableLabel(`${group.getAttribute("aria-label") || ""} ${card}`);
@@ -2163,19 +2163,39 @@ function pageAgent(command, payload) {
       usableLabel(safeButtonValue) || usableLabel(element.title) ||
       cardLabelOf(element) || groupLabelOf(element), 200);
   };
-  const frameOffset = (doc) => {
-    let x = 0;
-    let y = 0;
-    let current = doc;
+  const hitAt = (element, x, y) => {
+    const root = element.getRootNode();
+    return (root.elementFromPoint ? root : element.ownerDocument).elementFromPoint(x, y);
+  };
+  const throughFrame = (frame, point) => {
+    const view = frame.ownerDocument.defaultView;
+    // Bounding rectangles support translation and positive axis-aligned scaling.
+    // Refuse geometry that would require guessing through a rotated/skewed frame.
+    let supported = point.supported !== false;
+    for (let parent = frame; parent; parent = parent.parentElement || parent.getRootNode()?.host) {
+      const transform = view.getComputedStyle(parent).transform;
+      if (transform && transform !== 'none') {
+        const matrix = new view.DOMMatrixReadOnly(transform);
+        if (!matrix.is2D || matrix.b !== 0 || matrix.c !== 0 || matrix.a <= 0 || matrix.d <= 0) supported = false;
+      }
+    }
+    const rect = frame.getBoundingClientRect(), style = view.getComputedStyle(frame);
+    const scaleX = rect.width / frame.offsetWidth, scaleY = rect.height / frame.offsetHeight;
+    const x = rect.left + (frame.clientLeft + (parseFloat(style.paddingLeft) || 0) + point.x) * scaleX;
+    const y = rect.top + (frame.clientTop + (parseFloat(style.paddingTop) || 0) + point.y) * scaleY;
+    supported = supported && Number.isFinite(x) && Number.isFinite(y);
+    return {x, y, supported, receivesEvents: supported && point.receivesEvents !== false &&
+      renderedTree(frame) && painted(frame) && hitAt(frame, x, y) === frame};
+  };
+  const projectPoint = (doc, point) => {
+    let current = doc, projected = {...point};
     while (current && current !== document) {
       const frame = current.defaultView?.frameElement;
-      if (!frame) break;
-      const rect = frame.getBoundingClientRect();
-      x += rect.left;
-      y += rect.top;
+      if (!frame) return {...projected, supported:false, receivesEvents:false};
+      projected = throughFrame(frame, projected);
       current = frame.ownerDocument;
     }
-    return { x, y };
+    return projected;
   };
   const isPassengerCountText = (text) =>
     /\b(passengers?|travell?ers?|adults?|children|infants?)\b.*\b(count|number|how many)\b|\b(count|number|how many)\b.*\b(passengers?|travell?ers?|adults?|children|infants?)\b/i.test(text);
@@ -2228,9 +2248,9 @@ function pageAgent(command, payload) {
   const describe = (element, ref, revision) => {
     const target = actionTarget(element);
     const rect = target.getBoundingClientRect();
-    const offset = frameOffset(element.ownerDocument);
-    const topLeft = offset.x + rect.left;
-    const topTop = offset.y + rect.top;
+    const top = projectPoint(element.ownerDocument, {x:rect.left,y:rect.top});
+    const bottom = projectPoint(element.ownerDocument, {x:rect.right,y:rect.bottom});
+    const center = projectPoint(element.ownerDocument, {x:rect.left+rect.width/2,y:rect.top+rect.height/2});
     const role = roleOf(element);
     const tagName = element.tagName.toLowerCase();
     const inputType = normalize(element.getAttribute("type"), 40).toLowerCase();
@@ -2254,6 +2274,7 @@ function pageAgent(command, payload) {
       ref,
       revision,
       proxy: target !== element,
+      geometryLimitation: center.supported === false ? "The frame uses unsupported rotated, skewed or reflected geometry." : "",
       expanded: element.getAttribute("aria-expanded"),
       description: normalize(element.getAttribute("aria-description") || "", 200),
       tagName,
@@ -2274,10 +2295,9 @@ function pageAgent(command, payload) {
       optionCount: element.tagName === "SELECT" ? element.options.length : undefined,
       valueState,
       linkTarget: tagName === "a" ? normalize(element.href, 500) : "",
-      inViewport: topTop + rect.height > 0 && topLeft + rect.width > 0 &&
-        topTop < window.innerHeight && topLeft < window.innerWidth,
-      x: Math.round(topLeft + rect.width / 2),
-      y: Math.round(topTop + rect.height / 2),
+      inViewport: bottom.y > 0 && bottom.x > 0 && top.y < window.innerHeight && top.x < window.innerWidth,
+      x: Math.round(center.x),
+      y: Math.round(center.y),
       ...fieldFlags
     };
   };
@@ -2439,9 +2459,10 @@ function pageAgent(command, payload) {
     };
     visit(document);
     if (matches.length !== 1) return {error:"The frame cannot be uniquely rebound by its observed URL. Reopen or inspect its parent frame."};
-    const frame = matches[0], rect = frame.getBoundingClientRect(), offset = frameOffset(frame.ownerDocument);
-    const hit = frame.ownerDocument.elementFromPoint(rect.left + rect.width/2, rect.top + rect.height/2);
-    return {x:offset.x+rect.left+frame.clientLeft,y:offset.y+rect.top+frame.clientTop,receivesEvents:hit===frame};
+    const frame = matches[0];
+    const point = projectPoint(frame.ownerDocument, throughFrame(frame, {x:payload.x || 0,y:payload.y || 0}));
+    if (!point.supported) return {error:"This frame's transformed geometry cannot be safely projected. Inspect its parent page."};
+    return point;
   }
   if (command === "probe") {
     const ordered = orderCandidates(collectCandidates());
@@ -2496,9 +2517,11 @@ function pageAgent(command, payload) {
   if (command === "actionability") {
     const target = actionTarget(element);
     const rect = target.getBoundingClientRect();
-    const root = target.getRootNode();
-    const hit = (root.elementFromPoint ? root : element.ownerDocument).elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
-    return { receivesEvents: hit === element || element.contains(hit) || hit === target || target.contains(hit), enabled: descriptor.enabled, x: descriptor.x, y: descriptor.y, editable: !element.readOnly && element.getAttribute("aria-readonly") !== "true" };
+    const x = rect.left + rect.width / 2, y = rect.top + rect.height / 2;
+    const hit = hitAt(target, x, y);
+    const projected = projectPoint(element.ownerDocument, {x,y,receivesEvents:hit === element || element.contains(hit) || hit === target || target.contains(hit)});
+    if (projected.supported === false) return {receivesEvents:false,error:"This frame's transformed geometry cannot be safely projected. Inspect its parent page."};
+    return { receivesEvents: projected.receivesEvents !== false, enabled: descriptor.enabled, x: descriptor.x, y: descriptor.y, editable: !element.readOnly && element.getAttribute("aria-readonly") !== "true" };
   }
   if (command === "resolve") {
     return {
@@ -2602,6 +2625,7 @@ function serializeSnapshot(slot, snapshot, status) {
       control.selected ? "selected" : "",
       control.expanded !== null && control.expanded !== undefined ? `expanded=${control.expanded}` : "",
       control.proxy ? "visible proxy" : "",
+      control.geometryLimitation ? `action limitation=${control.geometryLimitation}` : "",
       control.isSubmit ? "submit" : "",
       control.valueState ? `state=${control.valueState}` : "",
       control.linkTarget ? `href=${control.linkTarget}` : "",

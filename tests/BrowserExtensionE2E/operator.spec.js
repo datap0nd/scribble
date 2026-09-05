@@ -65,6 +65,48 @@ test("snapshot queries filter before the output cap in crowded calendars", async
   expect(snapshot.controls[0].name).toBe("Done");
 });
 
+test("nested frame controls project through borders and scaling and reject parent overlays", async ({page,context}) => {
+  await page.setContent('<iframe style="position:absolute;left:90px;top:70px;width:400px;height:300px;border:7px solid;transform:scale(1.2);transform-origin:top left"></iframe>');
+  await page.evaluate(() => {
+    const outer = document.querySelector('iframe').contentDocument;
+    outer.body.innerHTML = '<iframe style="position:absolute;left:25px;top:35px;width:240px;height:160px;border:5px solid;transform:scale(.8);transform-origin:top left"></iframe>';
+    outer.querySelector('iframe').contentDocument.body.innerHTML = '<button style="position:absolute;left:20px;top:25px;width:130px;height:35px" onclick="this.textContent=\'Options loaded\'">Show options</button>';
+  });
+  const button = page.frameLocator('iframe').frameLocator('iframe').getByRole('button');
+  const bounds = await button.boundingBox();
+  const snapshot = await callAgent(page,'snapshot',{query:'Show options'});
+  const control = snapshot.controls.find(c => c.name === 'Show options');
+  const args = {ref:control.ref,revision:control.revision};
+  const resolved = await callAgent(page,'actionability',args);
+  expect(resolved.receivesEvents).toBe(true);
+  expect(Math.abs(resolved.x - (bounds.x + bounds.width/2))).toBeLessThanOrEqual(1);
+  expect(Math.abs(resolved.y - (bounds.y + bounds.height/2))).toBeLessThanOrEqual(1);
+  await page.evaluate(({x,y}) => {
+    const cover=document.createElement('div'); cover.id='cover';
+    cover.style.cssText=`position:fixed;left:${x-12}px;top:${y-12}px;width:24px;height:24px;background:red;z-index:1000`;
+    document.body.append(cover);
+  }, resolved);
+  expect((await callAgent(page,'actionability',args)).receivesEvents).toBe(false);
+  await page.locator('#cover').evaluate(element => element.remove());
+  const cdp = await context.newCDPSession(page);
+  await cdp.send('Input.dispatchMouseEvent',{type:'mousePressed',x:resolved.x,y:resolved.y,button:'left',clickCount:1});
+  await cdp.send('Input.dispatchMouseEvent',{type:'mouseReleased',x:resolved.x,y:resolved.y,button:'left',clickCount:1});
+  await expect(button).toHaveText('Options loaded');
+  await cdp.detach();
+  await page.locator('iframe').evaluate(frame => frame.style.transform='rotate(10deg)');
+  const rotated = await callAgent(page,'snapshot',{query:'Options loaded'});
+  expect((await callAgent(page,'actionability',{ref:rotated.controls[0].ref,revision:rotated.revision})).receivesEvents).toBe(false);
+});
+
+test("control group names come from semantic headings, independently of page class names", async ({page}) => {
+  await page.setContent('<section class="condition-panel"><h2>Delivery service</h2><div><input type="checkbox" aria-label="Express"></div></section>');
+  const first = await callAgent(page,'snapshot');
+  expect(first.controls[0].groupLabel).toBe('Delivery service');
+  await page.locator('section').evaluate(element => element.className='random-widget');
+  const renamed = await callAgent(page,'snapshot');
+  expect(renamed.controls[0].groupLabel).toBe(first.controls[0].groupLabel);
+});
+
 test("fresh snapshots invalidate old refs and controlled inputs receive trusted-style input events", async ({ page, context }) => {
   const first = await callAgent(page, "snapshot");
   const origin = first.controls.find((control) => control.name === "Origin");
@@ -231,6 +273,8 @@ test("browser DOM and AX observations discover JavaScript listeners and report c
   const observation = vm.runInContext('collectPerception(snapshot,accessibility)', sandbox);
   expect(observation.controls.some(c => c.name === 'Closed-root choice')).toBe(true);
   expect(JSON.stringify(observation)).not.toContain('private-password');
+  const queried = vm.runInContext('collectPerception(snapshot,accessibility,"delivery region")', sandbox);
+  expect(queried.controls.some(c => c.name === 'Choose a delivery region')).toBe(true);
   const adopted = await callAgent(page, 'adoptPerception', {controls:observation.controls});
   expect(adopted.adopted).toBeGreaterThan(0);
   const snapshot = await callAgent(page,'snapshot');
