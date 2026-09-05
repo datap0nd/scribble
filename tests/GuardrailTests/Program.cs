@@ -7712,8 +7712,18 @@ namespace GuardrailTests
                             launches++; return target == "outlook" ? (object)outlook : office;
                         }))
                         {
-                            var result = service.CompleteAsync(new ChatTurn[0], "Create a " + target + " draft from this page", "Source page", "https://example.com/", "", "SOURCE CONTENT", "", null,
-                                new BrowserExchangeTurn[0], chat, "1", null, null, CancellationToken.None).GetAwaiter().GetResult();
+                            BrowserChatResult result;
+                            try
+                            {
+                                result = service.CompleteAsync(new ChatTurn[0], "Create a " + target + " draft from this page", "Source page", "https://example.com/", "", "SOURCE CONTENT", "", null,
+                                    new BrowserExchangeTurn[0], chat, "1", null, null, CancellationToken.None).GetAwaiter().GetResult();
+                            }
+                            catch (Exception exception)
+                            {
+                                var state = BrowserTaskSession.Load(chat, "1");
+                                var receipts = state == null ? "" : string.Join("\n", state.EvidenceIds.Select(id => new TaskCheckpointStore().ReadEvidence(state.Id, id)).Where(text => text.Contains("ToolCallId")));
+                                throw new InvalidOperationException("Chrome -> " + target + ": " + exception.Message + "\n" + receipts, exception);
+                            }
                             server.Wait();
                             Assert(launches == 1 && result.Content == "The draft is open." && (target == "outlook" ? outlook.LastDraft.Displayed && outlook.LastDraft.Body == "SOURCE CONTENT" && !outlook.LastDraft.Saved : events.Any(e => e.Contains("SOURCE CONTENT"))), "Chrome-to-Office round trip failed.");
                         }
