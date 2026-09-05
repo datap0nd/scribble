@@ -62,6 +62,8 @@ namespace Scribble.Outlook
                 var current = new MessageReader(_application).CaptureById(entry.Source.EntryId, entry.Source.StoreId);
                 if (entry.BodyEvidence != null && TaskCheckpointStore.Fingerprint(current.Body) != entry.BodyEvidence)
                     throw new InvalidOperationException("Message content changed since checkpoint: " + entry.Source.Subject);
+                if (entry.AttachmentCount >= 0 && MailboxAttachmentPages.Count(_application, current) != entry.AttachmentCount)
+                    throw new InvalidOperationException("The attachment collection changed since checkpoint: " + entry.Source.Subject);
                 _handles[entry.Handle] = current;
                 foreach (var attachment in entry.AttachmentHashes)
                 {

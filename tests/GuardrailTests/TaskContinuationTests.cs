@@ -50,6 +50,25 @@ namespace GuardrailTests
                     if (endpoint.Failure != null) throw endpoint.Failure;
                     if (endpoint.RequestCount <= 150 || context.State.ContextBudget >= 96000 || context.State.EvidenceIds.Count < 150)
                         throw new Exception("Context rejection, compaction or durable evidence did not execute.");
+                    var imageUrl = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jY1sAAAAASUVORK5CYII=";
+                    var images = Enumerable.Range(0, 20).Select(i => (object)new ChatMultimodalImagePart { type = "image_url", image_url = new ChatMultimodalImageUrl { url = imageUrl } }).ToArray();
+                    var imageRequest = Request(); ((ChatCompletionInputMessage)imageRequest.messages[0]).content = images;
+                    var imageTask = new TaskContextManager(imageRequest, "test", "Review the images", store);
+                    imageTask.CompleteAsync(client, settings, imageRequest, null, CancellationToken.None).GetAwaiter().GetResult();
+                    var imageResult = imageTask.ReadEvidence(new ChatToolCall { id = "image", function = new ChatToolCallFunction {
+                        name = TaskContextManager.ReadEvidenceTool, arguments = "{\"id\":\"" + TaskCheckpointStore.Fingerprint(imageUrl) + "\",\"offset\":0}" } });
+                    if (imageResult.VisionImages.Count != 1 || imageResult.VisionImages[0].DataUrl != imageUrl)
+                        throw new Exception("Compaction lost retrievable image input.");
+
+                    var minimum = Request(); ((ChatCompletionInputMessage)minimum.messages[0]).content = new string('x', 8000);
+                    var smallTask = new TaskContextManager(minimum, "test", new string('x', 8000), store);
+                    smallTask.State.ContextBudget = 12000; store.Save(smallTask.State);
+                    minimum = Request();
+                    smallTask = new TaskContextManager(minimum, "test", smallTask.State.Objective, store, store.Load(smallTask.State.Id));
+                    var rejected = false;
+                    try { smallTask.CompleteAsync(client, settings, minimum, null, CancellationToken.None).GetAwaiter().GetResult(); }
+                    catch (AiEndpointException ex) { rejected = ex.Code == "TASK_INPUT_TOO_LARGE"; }
+                    if (!rejected) throw new Exception("An irreducible original instruction did not produce a concrete context blocker.");
                 }
             }
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }

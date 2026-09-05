@@ -62,6 +62,8 @@ namespace Scribble.Chat
                 RestoreInto(request);
                 _prefixCount = _state.PrefixCount;
                 _budget = _state.ContextBudget;
+                string previousModel;
+                if (_state.HostData.TryGetValue("context_model", out previousModel) && previousModel != request.model) _budget = 96000;
                 foreach (var id in _state.EvidenceIds) _evidence.Add(id);
             }
             _state.Lifecycle = TaskLifecycle.Running;
@@ -76,6 +78,7 @@ namespace Scribble.Chat
         {
             _state.PrefixCount = _prefixCount;
             _state.ContextBudget = _budget;
+            _state.HostData["context_model"] = request.model;
             _state.EvidenceIds = _evidence.ToList();
             _state.Cursor = _store.PutEvidence(_state.Id, _json.Serialize(request));
             _store.Save(_state);
@@ -183,8 +186,11 @@ namespace Scribble.Chat
                 if (!_evidence.Contains(id) || offset < 0) throw new ArgumentException("Unknown evidence or invalid offset.");
                 var source = _store.ReadEvidence(_state.Id, id);
                 if (source.StartsWith("data:image/", StringComparison.Ordinal))
+                {
+                    if (offset != 0) throw new ArgumentException("Read an archived image at offset zero.");
                     return new MailboxToolResult(call.id, _json.Serialize(new { untrusted_evidence = true, id, kind = "image", complete = true }),
                         "Retrieved archived image", new[] { new VisionImagePayload("Archived task image", source) });
+                }
                 if (offset > source.Length) throw new ArgumentException("Offset exceeds evidence length.");
                 var count = Math.Min(12000, source.Length - offset);
                 return new MailboxToolResult(call.id, _json.Serialize(new
@@ -284,13 +290,16 @@ namespace Scribble.Chat
                 if (suffix.Count == 0)
                 {
                     var largest = request.messages.Take(_prefixCount).OfType<ChatCompletionInputMessage>()
-                        .Where(m => m.role != "system" && _json.Serialize(m).Length > 6000)
-                        .OrderByDescending(m => _json.Serialize(m).Length).FirstOrDefault();
+                        .Where(m => m.role != "system" && ImageAdjustedLength(_json.Serialize(m)) > 6000)
+                        .OrderByDescending(m => ImageAdjustedLength(_json.Serialize(m))).FirstOrDefault();
                     if (largest == null) throw new AiEndpointException("TASK_INPUT_TOO_LARGE", "The model context cannot fit the original instructions and tool definitions. Select a model with a larger context to resume.");
+                    var previousCost = ImageAdjustedLength(_json.Serialize(largest));
                     var sourceId = _store.PutEvidence(_state.Id, _json.Serialize(largest));
                     var imageReferences = ArchiveImages(_json.Serialize(largest));
                     _evidence.Add(sourceId);
                     largest.content = "Original task: " + _state.Objective + "\nFull original input and reference material are archived as " + sourceId + ". Use read_task_evidence in pages to inspect every relevant source. " + imageReferences + " Earlier original decisions: " + string.Join("\n", _state.OriginalDecisions);
+                    if (ImageAdjustedLength(_json.Serialize(largest)) >= previousCost)
+                        throw new AiEndpointException("TASK_INPUT_TOO_LARGE", "The original task instructions and tool definitions cannot fit this model context. Select a larger-context model to resume.");
                     SaveRequest(request);
                     continue;
                 }
@@ -337,9 +346,12 @@ namespace Scribble.Chat
             var serialized = new JavaScriptSerializer { MaxJsonLength = int.MaxValue }.Serialize(request);
             // Base64 bytes are not text tokens. Reserve a conservative image
             // allowance per image while counting all text/tool schema characters.
-            var text = System.Text.RegularExpressions.Regex.Replace(serialized,
-                @"data:image/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=]+", match => new string('i', 8192));
-            return text.Length + (request.max_tokens ?? 8192);
+            return ImageAdjustedLength(serialized) + (request.max_tokens ?? 8192);
+        }
+        private static int ImageAdjustedLength(string serialized)
+        {
+            return System.Text.RegularExpressions.Regex.Replace(serialized,
+                @"data:image/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=]+", match => new string('i', 8192)).Length;
         }
         private string ArchiveImages(string serialized)
         {
