@@ -6978,9 +6978,9 @@ namespace GuardrailTests
             Assert(
                 authorizedSystem.Contains("read it to the END") &&
                 authorizedSystem.Contains(
-                    "must carry a table, a chart, or a numbered card") &&
+                    "tables, charts, diagrams or concise summary lists") &&
                 authorizedSystem.Contains("never invent"),
-                "The authorized boundary lost its density contract.");
+                "The authorized boundary lost its content-appropriate layout contract.");
 
             var wordAuthorized = DocumentChatRequestFactory.Create(
                 "test-model",
