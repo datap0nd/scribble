@@ -1749,8 +1749,10 @@ namespace GuardrailTests
             {
                 "ask_user",
                 "create_draft",
+                "read_attachment",
                 "read_messages",
                 "read_thread",
+                "record_mailbox_analysis",
                 "search_mailbox",
                 "send_to_excel",
                 "send_to_powerpoint",
