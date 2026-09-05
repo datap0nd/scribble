@@ -127,4 +127,7 @@ test("Enter dispatch includes browser-compatible keyboard metadata", () => {
   expect(validated.key).toBe("Enter");
   expect(validated.code).toBe("Enter");
   expect(validated.windowsVirtualKeyCode).toBe(13);
+  expect(validated.text).toBe('\r');
+  expect(harness.validateKey({type:'keyUp',key:'Enter',text:'arbitrary caller text'}).text).toBe('');
+  expect(harness.validateKey({type:'keyDown',key:' ',text:'arbitrary caller text'}).text).toBe(' ');
 });

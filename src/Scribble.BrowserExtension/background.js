@@ -307,11 +307,16 @@ function validateCdpParams(command, raw) {
       throw new Error("The requested keyboard event is not allowlisted.");
     }
     const details = KEY_DETAILS[key];
+    // Native activation relies on the character-bearing keyDown event, not
+    // just key/code. Derive text from this allowlist; never forward caller text.
+    const text = type === 'keyDown' && modifiers === 0 ? (key === 'Enter' ? '\r' : key === ' ' ? ' ' : '') : '';
     return {
       type,
       key,
       code: details.code,
       windowsVirtualKeyCode: details.windowsVirtualKeyCode,
+      text,
+      unmodifiedText: text,
       modifiers
     };
   }

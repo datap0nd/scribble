@@ -39,6 +39,31 @@ async function callAgent(page, command, payload = {}) {
   }, { source: pageAgentSource, command, payload });
 }
 
+// Exercise production discovery/action/key code with Chromium's trusted input.
+// Native authorization is an explicit fixture double; the installed-extension
+// test covers the real worker, and native acceptance remains a separate gate.
+async function actionDispatcher(page, context) {
+  const cdp = await context.newCDPSession(page);
+  const sandbox = {
+    stopRequested:false, operatorDetachError:"", currentRequestPrompt:"Select a delivery option", currentClarificationAnswers:[],
+    FORBIDDEN_CLICK: /purchase|delete|submit/i, comparisonRequested:()=>false, setWorkStatus:()=>{},
+    describeBrowserAction:()=>"Test action", registerOperatorWorkTabs:async()=>{},
+    createRequestId:()=>"fixture", PING_TIMEOUT_MS:1000,
+    sendNativeMessage:async()=>({ok:true,actionAllowed:true}),
+    runPageAgent:async(id,command,payload)=>callAgent(page,command,payload),
+    delay:ms=>new Promise(resolve=>setTimeout(resolve,ms)),
+    withPopupAdoption:async(id,action)=>{await action();return 0;},
+    dispatchCdpBatch:async(id,commands)=>{for(const item of commands) await cdp.send(item.command,sandbox.validateCdpParams(item.command,item.params));}
+  };
+  vm.createContext(sandbox);
+  const brokerSource=fs.readFileSync(path.resolve(__dirname,'../../src/Scribble.BrowserExtension/background.js'),'utf8');
+  vm.runInContext(brokerSource.slice(brokerSource.indexOf('const ALLOWED_KEYS'),brokerSource.indexOf('const operatorStates')) +
+    brokerSource.slice(brokerSource.indexOf('function validateCdpParams('),brokerSource.indexOf('async function detachForPort(')),sandbox);
+  vm.runInContext(extensionSource.slice(extensionSource.indexOf('function keyCommand('),extensionSource.indexOf('async function dispatchCdpBatch(')) +
+    extensionSource.slice(extensionSource.indexOf('async function performAction('),extensionSource.indexOf('async function withPopupAdoption(')),sandbox);
+  return sandbox;
+}
+
 test.beforeEach(async ({ page }) => {
   await page.goto(`file://${path.resolve(__dirname, "fixtures/operator.html")}`);
   await page.locator("#same-origin").contentFrame().locator("body").waitFor();
@@ -182,25 +207,7 @@ test("generic styled choices remain actionable through the production action dis
     </style><fieldset><legend>Delivery option</legend>
     ${["Standard", "Priority", "Express"].map(name=>`<div class="choice"><div><label><input type="checkbox"><span class="mark"></span></label></div><div><span class="title">${name}</span><ul><li>Details for this option</li></ul></div></div>`).join("")}
     </fieldset><button hidden>Hidden choice</button>`);
-  const cdp = await context.newCDPSession(page);
-  const start = extensionSource.indexOf("async function performAction(");
-  const end = extensionSource.indexOf("async function withPopupAdoption(");
-  const sandbox = {
-    stopRequested:false, operatorDetachError:"", currentRequestPrompt:"Select a delivery option", currentClarificationAnswers:[],
-    FORBIDDEN_CLICK: /purchase|delete|submit/i, comparisonRequested:()=>false, setWorkStatus:()=>{},
-    describeBrowserAction:()=>"Test action", registerOperatorWorkTabs:async()=>{},
-    createRequestId:()=>"fixture", PING_TIMEOUT_MS:1000,
-    sendNativeMessage:async()=>({ok:true,actionAllowed:true}),
-    runPageAgent:async(id,command,payload)=>callAgent(page,command,payload),
-    delay:ms=>new Promise(resolve=>setTimeout(resolve,ms)),
-    withPopupAdoption:async(id,action)=>{await action();return 0;},
-    dispatchCdpBatch:async(id,commands)=>{for(const item of commands) await cdp.send(item.command,sandbox.validateCdpParams(item.command,item.params));}
-  };
-  vm.createContext(sandbox);
-  const brokerSource=fs.readFileSync(path.resolve(__dirname,'../../src/Scribble.BrowserExtension/background.js'),'utf8');
-  vm.runInContext(brokerSource.slice(brokerSource.indexOf('const ALLOWED_KEYS'),brokerSource.indexOf('const operatorStates')) +
-    brokerSource.slice(brokerSource.indexOf('function validateCdpParams('),brokerSource.indexOf('async function detachForPort(')),sandbox);
-  vm.runInContext(extensionSource.slice(start,end),sandbox);
+  const sandbox = await actionDispatcher(page,context);
   for (const name of ["Standard", "Priority", "Express"]) {
     const snapshot = await callAgent(page,"snapshot",{query:name});
     const control = snapshot.controls.find(c=>c.role==="checkbox" && c.name===name);
@@ -212,6 +219,27 @@ test("generic styled choices remain actionable through the production action dis
     expect(after.controls.find(c=>c.name===name).selected).toBe(true);
     const repeated=await sandbox.performAction(target,{action:"check",ref:after.controls[0].ref},after);
     expect(repeated.verifiedState).toContain("already checked");
+  }
+});
+
+test("keyboard actions update native ranges, spinbuttons, switches and disclosure state", async ({page,context}) => {
+  await page.setContent(`<input type="range" min="0" max="10" value="3" aria-label="Volume">
+    <input type="number" value="2" aria-label="Guests">
+    <div role="switch" aria-label="Notifications" aria-checked="false" tabindex="0"
+      onkeydown="if(event.key===' '){event.preventDefault();this.setAttribute('aria-checked','true')}">Notifications</div>
+    <details><summary>Advanced options</summary><p>Extra details</p></details>`);
+  const dispatcher = await actionDispatcher(page,context);
+  for (const [name,key,property,value] of [
+    ['Volume','ArrowRight','valueState','4'], ['Guests','ArrowUp','valueState','3'],
+    ['Notifications','Space','selected',true], ['Advanced options','Enter','expanded','true']]) {
+    const snapshot=await callAgent(page,'snapshot',{query:name});
+    const control=snapshot.controls.find(c=>c.name===name);
+    expect(control).toBeTruthy();
+    await dispatcher.performAction({tab:{id:1,url:'https://fixture.test/'}},{action:'press',ref:control.ref,key},snapshot);
+    await expect.poll(async () => (await callAgent(page,'snapshot',{query:name})).controls.find(c=>c.name===name)[property], {timeout:1000}).toBe(value);
+    const after=await callAgent(page,'snapshot',{query:name});
+    expect(after.controls.find(c=>c.name===name)[property]).toBe(value);
+    expect(after.stateFingerprint).not.toBe(snapshot.stateFingerprint);
   }
 });
 

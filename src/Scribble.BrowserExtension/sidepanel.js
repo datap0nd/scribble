@@ -2275,7 +2275,8 @@ function pageAgent(command, payload) {
       revision,
       proxy: target !== element,
       geometryLimitation: center.supported === false ? "The frame uses unsupported rotated, skewed or reflected geometry." : "",
-      expanded: element.getAttribute("aria-expanded"),
+      expanded: tagName === 'summary' && element.parentElement?.tagName === 'DETAILS'
+        ? String(element.parentElement.open) : element.getAttribute("aria-expanded"),
       description: normalize(element.getAttribute("aria-description") || "", 200),
       tagName,
       inputType,
@@ -2390,7 +2391,7 @@ function pageAgent(command, payload) {
         control.enabled ? "1" : "0",
         control.selected ? "1" : "0",
         control.valueState,
-        element.getAttribute("aria-expanded") || "",
+        control.expanded || "",
         control.linkTarget,
         control.inViewport ? "1" : "0"
       ].join("|");

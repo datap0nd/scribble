@@ -10,6 +10,7 @@ test('installed extension observes generic controls and uses its real trusted-in
       <style>label{display:inline-block;padding:12px;border:1px solid}input{position:absolute;opacity:0;width:18px;height:18px}</style>
       <label><input type="checkbox"> Include supporting details</label>
       <div id="listener" style="width:180px;height:40px">View delivery options</div>
+      <details><summary>More options</summary><p>Additional details</p></details>
       <canvas width="150" height="50" aria-label="Diagram"></canvas>
       <script>document.querySelector('#listener').addEventListener('click', event => event.currentTarget.textContent='Delivery options loaded');</script>`);
   });
@@ -56,6 +57,15 @@ test('installed extension observes generic controls and uses its real trusted-in
     }, {tabId,control:checkbox});
     const after = await panel.evaluate(tabId => inspectWorkTab(tabId),tabId);
     expect(after.controls.find(c => c.name === 'Include supporting details').selected).toBe(true);
+    await panel.evaluate(async ({tabId,control}) => {
+      await runPageAgent(tabId,'focus',{ref:control.ref,revision:control.revision});
+      await dispatchCdpBatch(tabId,[
+        {command:'Input.dispatchKeyEvent',params:{type:'keyDown',key:'Enter'}},
+        {command:'Input.dispatchKeyEvent',params:{type:'keyUp',key:'Enter'}}
+      ]);
+    },{tabId,control:after.controls.find(c=>c.name==='More options')});
+    const expanded = await panel.evaluate(tabId => inspectWorkTab(tabId),tabId);
+    expect(expanded.controls.find(c=>c.name==='More options').expanded).toBe('true');
     await expect(panel.evaluate(() => sendOperatorMessage({type:'inspectSemantics',tabId:999999}))).rejects.toThrow(/registered work tab/);
   } finally {
     // Playwright Test owns tracing for every context, including persistent
