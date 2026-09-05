@@ -489,6 +489,7 @@ $crossAppToolNames = [regex]::Matches(
 ) | ForEach-Object { $_.Groups[1].Value } | Sort-Object
 if (Compare-Object $crossAppToolNames (@(
     "create_email_draft",
+    "open_in_chrome",
     "send_to_powerpoint",
     "send_to_excel",
     "send_to_word") | Sort-Object)) {
@@ -1293,6 +1294,8 @@ foreach ($requiredBrowserServiceBoundary in @(
     "MaxStateChangingBrowserCallsPerRound = 1",
     "BROWSER_MUTATION_DEFERRED",
     "taskContext.RecordExchange",
+    "OfficeThread.RunAsync",
+    'new DocumentDraftHost("chrome", new object(), _officeResolver)',
     "ExchangeContainsCall"
 )) {
     if (-not $browserServiceSource.Contains($requiredBrowserServiceBoundary)) {
@@ -1306,7 +1309,6 @@ if ($browserServiceSource -notmatch
 foreach ($forbiddenBrowserServiceCapability in @(
     "DraftService",
     "DraftToolHost",
-    "DocumentDraftHost",
     "MailboxContextService",
     "System.Diagnostics.Process",
     "Process.Start",

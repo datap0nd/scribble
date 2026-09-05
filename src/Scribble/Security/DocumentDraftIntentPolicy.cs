@@ -12,6 +12,9 @@ namespace Scribble.Security
         private static readonly string[] DraftPhrases =
         {
             "create a draft",
+            "open in chrome",
+            "open chrome",
+            "in chrome",
             "create draft",
             "draft sheet",
             "draft slide",

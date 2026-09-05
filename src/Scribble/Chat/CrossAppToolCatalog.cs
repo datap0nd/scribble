@@ -17,6 +17,7 @@ namespace Scribble.Chat
         public const string SendToPowerPoint = "send_to_powerpoint";
         public const string SendToExcel = "send_to_excel";
         public const string SendToWord = "send_to_word";
+        public const string OpenInChrome = "open_in_chrome";
 
         public static List<ChatToolDefinition> CreateDefinitions(
             string hostKind)
@@ -178,12 +179,19 @@ namespace Scribble.Chat
                 });
             }
 
+            if (hostKind != "chrome") definitions.Add(new ChatToolDefinition {
+                type = "function", function = new ChatToolFunctionDefinition {
+                    name = OpenInChrome,
+                    description = "Open an HTTP or HTTPS webpage explicitly requested by the user in a new Chrome window. Chrome starts if needed. Supply the exact URL from the user's request; this does not upload the Office document or execute scripts.",
+                    parameters = ToolSchema.Build(new Dictionary<string, object> { { "url", ToolSchema.String("Exact HTTP/HTTPS URL supplied in the user request.") } }, "url")
+                }
+            });
             return definitions;
         }
 
         public static bool IsCrossAppTool(string name)
         {
-            return string.Equals(
+            return name == OpenInChrome || string.Equals(
                        name,
                        CreateEmailDraft,
                        StringComparison.Ordinal) ||

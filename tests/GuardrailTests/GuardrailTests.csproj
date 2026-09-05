@@ -50,6 +50,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Program.cs" />
+    <Compile Include="CrossAppFixture.cs" />
     <Compile Include="ScaleTaskTests.cs" />
     <Compile Include="DurableTransformTests.cs" />
     <Compile Include="TaskContinuationTests.cs" />

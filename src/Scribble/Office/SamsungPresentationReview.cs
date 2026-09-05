@@ -86,6 +86,8 @@ namespace Scribble.Office
                 catch (ArgumentException) { /* A browser UI recovery record is a different DTO. */ }
             }
             var json = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
+            string browserSource;
+            if (task.State.HostData.TryGetValue("browser_source_text", out browserSource)) sources.Add(browserSource);
             foreach (var id in task.State.EvidenceIds)
             {
                 var raw = task.Store.ReadEvidence(task.State.Id, id);
@@ -96,7 +98,9 @@ namespace Scribble.Office
                 var response = json.Deserialize<ChatCompletionResponseMessage>(json.Serialize(responseValue));
                 var allowed = new HashSet<string>((response.tool_calls ?? new List<ChatToolCall>()).Where(c =>
                     (c.function.name.StartsWith("read_") && c.function.name != TaskContextManager.ReadEvidenceTool) ||
-                    c.function.name == "fetch_web_page" || c.function.name == "search_mailbox").Select(c => c.id));
+                    c.function.name == "fetch_web_page" || c.function.name == "search_mailbox" ||
+                    c.function.name == BrowserToolCatalog.ReadPage || c.function.name == BrowserToolCatalog.SnapshotPage ||
+                    c.function.name == BrowserToolCatalog.RecordEvidence).Select(c => c.id));
                 foreach (Dictionary<string, object> result in (IEnumerable)resultsValue)
                 {
                     object callId, content;

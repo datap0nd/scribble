@@ -88,6 +88,8 @@ namespace Scribble.Office
 
         private readonly string _hostKind;
         private readonly object _hostApplication;
+        private readonly Func<string, object> _applicationResolver;
+        private readonly Action<string> _chromeLauncher;
         private readonly JavaScriptSerializer _serializer =
             new JavaScriptSerializer();
         private DraftSession _emailDraft;
@@ -102,7 +104,15 @@ namespace Scribble.Office
         public DocumentDraftHost(
             string hostKind,
             object hostApplication)
+            : this(hostKind, hostApplication, null)
         {
+        }
+
+        public DocumentDraftHost(string hostKind, object hostApplication,
+            Func<string, object> applicationResolver, Action<string> chromeLauncher = null)
+        {
+            _applicationResolver = applicationResolver ?? ResolveSiblingApplication;
+            _chromeLauncher = chromeLauncher ?? ChromeLauncher.Open;
             _hostKind = hostKind ?? string.Empty;
             _hostApplication = hostApplication ??
                 throw new ArgumentNullException(
@@ -113,6 +123,8 @@ namespace Scribble.Office
             string hostKind,
             string name)
         {
+            if (name == CrossAppToolCatalog.OpenInChrome)
+                return hostKind == "outlook" || hostKind == "excel" || hostKind == "powerpoint" || hostKind == "word";
             if (CrossAppToolCatalog.IsCrossAppTool(name))
             {
                 if (string.Equals(
@@ -122,7 +134,7 @@ namespace Scribble.Office
                 {
                     return hostKind == "excel" ||
                            hostKind == "word" ||
-                           hostKind == "outlook";
+                           hostKind == "outlook" || hostKind == "chrome";
                 }
 
                 if (string.Equals(
@@ -132,7 +144,7 @@ namespace Scribble.Office
                 {
                     return hostKind == "powerpoint" ||
                            hostKind == "word" ||
-                           hostKind == "outlook";
+                           hostKind == "outlook" || hostKind == "chrome";
                 }
 
                 if (string.Equals(
@@ -142,7 +154,7 @@ namespace Scribble.Office
                 {
                     return hostKind == "excel" ||
                            hostKind == "powerpoint" ||
-                           hostKind == "outlook";
+                           hostKind == "outlook" || hostKind == "chrome";
                 }
 
                 // create_email_draft: the Outlook pane has its own
@@ -150,7 +162,7 @@ namespace Scribble.Office
                 // route email drafts through here.
                 return hostKind == "excel" ||
                        hostKind == "powerpoint" ||
-                       hostKind == "word";
+                       hostKind == "word" || hostKind == "chrome";
             }
 
             if (hostKind == "excel")
@@ -265,7 +277,16 @@ namespace Scribble.Office
             try
             {
                 string status;
-                if (string.Equals(
+                if (name == CrossAppToolCatalog.OpenInChrome)
+                {
+                    var url = ToolArguments.GetString(arguments, "url", "");
+                    ChromeLauncher.ValidateUrl(url);
+                    if (!BrowserActionPolicy.IsContiguousUserPhrase(url, _latestUserPrompt))
+                        throw new InvalidOperationException("Supply the exact webpage URL in the user request before opening Chrome.");
+                    _chromeLauncher(url);
+                    status = "Opened the requested webpage in Chrome.";
+                }
+                else if (string.Equals(
                     name,
                     CrossAppToolCatalog.CreateEmailDraft,
                     StringComparison.Ordinal))
@@ -1161,25 +1182,29 @@ namespace Scribble.Office
         // Reuses the running sibling Office application when there
         // is one; otherwise starts it visibly so the draft opens in
         // front of the user.
-        private static object GetSiblingApplication(string progId)
+        private object GetSiblingApplication(string progId)
         {
+            return _applicationResolver(progId);
+        }
+
+        private static object ResolveSiblingApplication(string progId)
+        {
+            object application = null;
             try
             {
-                return Marshal.GetActiveObject(progId);
+                application = Marshal.GetActiveObject(progId);
             }
             catch
             {
             }
 
-            var type = Type.GetTypeFromProgID(progId);
-            if (type == null)
+            if (application == null)
             {
-                throw new InvalidOperationException(
-                    progId.Split('.')[0] +
-                    " is not installed on this computer.");
+                var type = Type.GetTypeFromProgID(progId);
+                if (type == null)
+                    throw new InvalidOperationException(progId.Split('.')[0] + " is not installed on this computer.");
+                application = Activator.CreateInstance(type);
             }
-
-            var application = Activator.CreateInstance(type);
             try
             {
                 dynamic visible = application;
@@ -1199,7 +1224,9 @@ namespace Scribble.Office
             string name)
         {
             ISet<string> allowed;
-            if (string.Equals(
+            if (name == CrossAppToolCatalog.OpenInChrome)
+                allowed = new HashSet<string>(StringComparer.Ordinal) { "url" };
+            else if (string.Equals(
                 name,
                 CrossAppToolCatalog.CreateEmailDraft,
                 StringComparison.Ordinal))

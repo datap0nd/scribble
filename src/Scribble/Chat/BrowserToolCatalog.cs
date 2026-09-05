@@ -31,7 +31,9 @@ namespace Scribble.Chat
                 RecordEvidence,
                 AskUser,
                 OpenOutlookDraft,
-                OpenExcelTable
+                OpenExcelTable,
+                CrossAppToolCatalog.SendToPowerPoint,
+                CrossAppToolCatalog.SendToWord
             };
 
         // Tools the extension itself must execute with chrome APIs
@@ -586,6 +588,8 @@ namespace Scribble.Chat
                 });
             }
 
+            definitions.AddRange(CrossAppToolCatalog.CreateDefinitions("chrome").FindAll(t =>
+                t.function.name == CrossAppToolCatalog.SendToPowerPoint || t.function.name == CrossAppToolCatalog.SendToWord));
             return definitions;
         }
     }

@@ -72,6 +72,8 @@ namespace GuardrailTests
                 Run("Samsung slide numbers require verified source evidence", SamsungSlideTests.EvidenceAndNumbers);
                 Run("PowerPoint and Outlook slide tool calls reach independent review", SlideToolCallsReachReview);
                 Run("Empty endpoint responses retry once without replaying tools", EmptyEndpointResponsesRecover);
+                Run("Every Office source launches the requested sibling draft and preserves content", CrossApplicationWriters);
+                Run("Chrome model tool calls create Office drafts on a pumped STA", BrowserOfficeRoundTrip);
                 Run("Semantic repairs retain source alignment", TaskContinuationTests.ReviewRepairsAndAlignment);
                 Run("Changed source and occupied destination stop all writes", DurableTransformTests.ChangedRangesFailClosed);
                 Run("Attachment pages preserve evidence beyond 130000 characters", DurableTransformTests.AttachmentTail);
@@ -1753,6 +1755,7 @@ namespace GuardrailTests
             {
                 "ask_user",
                 "create_draft",
+                "open_in_chrome",
                 "read_attachment",
                 "read_messages",
                 "read_thread",
@@ -6854,6 +6857,7 @@ namespace GuardrailTests
             Assert(
                 outlookCross.SequenceEqual(new[]
                 {
+                    "open_in_chrome",
                     "send_to_excel",
                     "send_to_powerpoint",
                     "send_to_word"
@@ -6869,6 +6873,7 @@ namespace GuardrailTests
                 excelCross.SequenceEqual(new[]
                 {
                     "create_email_draft",
+                    "open_in_chrome",
                     "send_to_powerpoint",
                     "send_to_word"
                 }),
@@ -6882,6 +6887,7 @@ namespace GuardrailTests
                 powerPointCross.SequenceEqual(new[]
                 {
                     "create_email_draft",
+                    "open_in_chrome",
                     "send_to_excel",
                     "send_to_word"
                 }),
@@ -6895,6 +6901,7 @@ namespace GuardrailTests
                 wordCross.SequenceEqual(new[]
                 {
                     "create_email_draft",
+                    "open_in_chrome",
                     "send_to_excel",
                     "send_to_powerpoint"
                 }),
@@ -7143,6 +7150,8 @@ namespace GuardrailTests
                     "ask_user",
                     "open_excel_table",
                     "open_outlook_draft",
+                    "send_to_powerpoint",
+                    "send_to_word",
                     "mcp_demo_lookup"
                 }),
                 "The browser request must expose exactly the approved " +
@@ -7672,6 +7681,90 @@ namespace GuardrailTests
             if (!condition)
             {
                 throw new InvalidOperationException(message);
+            }
+        }
+
+        private static void BrowserOfficeRoundTrip()
+        {
+            var json = new JavaScriptSerializer();
+            foreach (var target in new[] { "word", "powerpoint" })
+            {
+                var events = new List<string>();
+                var office = new CrossAppFixture(target, events);
+                var args = target == "word" ? "{\"title\":\"Source\",\"body\":\"SOURCE CONTENT\"}" :
+                    "{\"plan\":[\"intro\"],\"slides\":[{\"id\":\"intro\",\"layout\":\"cover\",\"title\":\"SOURCE CONTENT\"}]}";
+                var call = MailboxCall("browser-office", "send_to_" + target, args);
+                var callResponse = json.Serialize(new { choices = new[] { new { message = new { role = "assistant", content = (string)null, tool_calls = new[] { call } } } } });
+                const string approved = "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"approved\\\":true}\"}}]}";
+                const string done = "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"The draft is open.\"}}]}";
+                var chat = "crossapp-test-" + Guid.NewGuid().ToString("N");
+                var launches = 0;
+                try
+                {
+                    using (var server = new FakeEndpoint(target == "word" ? new[] { callResponse, done } : new[] { callResponse, approved, approved, done }))
+                    {
+                        var settings = EndpointSettings(server.BaseUrl); settings.Model = "qwen3-vl";
+                        using (var service = new BrowserChatService(settings, progId => {
+                            Assert(Thread.CurrentThread.GetApartmentState() == ApartmentState.STA && SynchronizationContext.Current != null, "Browser launched Office outside the pumped STA.");
+                            launches++; return office;
+                        }))
+                        {
+                            var result = service.CompleteAsync(new ChatTurn[0], "Create a " + target + " draft from this page", "Source page", "https://example.com/", "", "SOURCE CONTENT", "", null,
+                                new BrowserExchangeTurn[0], chat, "1", null, null, CancellationToken.None).GetAwaiter().GetResult();
+                            server.Wait();
+                            Assert(launches == 1 && result.Content == "The draft is open." && events.Any(e => e.Contains("SOURCE CONTENT")), "Chrome-to-Office round trip failed.");
+                        }
+                    }
+                }
+                finally { BrowserTaskSession.Discard(chat, "1"); }
+            }
+        }
+
+        private static void CrossApplicationWriters()
+        {
+            var json = new JavaScriptSerializer();
+            foreach (var source in new[] { "outlook", "excel", "powerpoint", "word", "chrome" })
+            foreach (var target in new[] { "outlook", "excel", "powerpoint", "word", "chrome" }.Where(t => t != source))
+            {
+                var events = new List<string>();
+                var office = new CrossAppFixture(target, events);
+                var outlook = new FakeOutlookApplication();
+                var tool = target == "chrome" ? CrossAppToolCatalog.OpenInChrome : target == "outlook" ? CrossAppToolCatalog.CreateEmailDraft : "send_to_" + target;
+                var expectedProgId = target == "powerpoint" ? "PowerPoint.Application" : char.ToUpperInvariant(target[0]) + target.Substring(1) + ".Application";
+                var launches = 0;
+                Func<string, object> resolve = progId => {
+                    Assert(progId == expectedProgId, source + " launched the wrong app: " + progId);
+                    launches++; return target == "outlook" ? (object)outlook : office;
+                };
+                var args = target == "powerpoint"
+                    ? json.Serialize(new { plan = new[] { "intro" }, slides = new[] { new { id = "intro", layout = "cover", title = "SOURCE CONTENT" } } })
+                    : target == "excel" ? "{\"title\":\"Draft\",\"rows\":[[\"SOURCE CONTENT\"]]}"
+                    : "{\"title\":\"Draft\",\"body\":\"SOURCE CONTENT\"}";
+                if (target == "outlook") args = "{\"subject\":\"Draft\",\"body\":\"SOURCE CONTENT\"}";
+                if (target == "chrome") args = "{\"url\":\"https://example.com/\"}";
+                const string approved = "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"approved\\\":true}\"}}]}";
+                using (var server = target == "powerpoint" ? new FakeEndpoint(approved, approved) : null)
+                using (var client = new OpenAiCompatibleClient())
+                using (var host = new DocumentDraftHost(source, new object(), resolve, url => { Assert(url == "https://example.com/", "Wrong Chrome URL"); launches++; }))
+                {
+                    var settings = EndpointSettings(server == null ? "http://127.0.0.1:1/v1" : server.BaseUrl);
+                    settings.Model = "qwen3-vl";
+                    var call = MailboxCall("handoff", tool, args);
+                    var denied = host.ExecuteAsync(call, new OneShotDraftAuthorization(false), true, "Create a draft", client, settings, CancellationToken.None, null).GetAwaiter().GetResult();
+                    Assert(launches == 0 && denied.Content.Contains("error_code"), "Denied handoff launched an app.");
+                    var mixed = host.ExecuteAsync(call, new OneShotDraftAuthorization(true), false, "Create a draft", client, settings, CancellationToken.None, null).GetAwaiter().GetResult();
+                    Assert(launches == 0 && mixed.Content.Contains("error_code"), "Mixed handoff launched an app.");
+                    var result = host.ExecuteAsync(call, new OneShotDraftAuthorization(true), true, "Create a draft or open https://example.com/ in Chrome", client, settings, CancellationToken.None, null).GetAwaiter().GetResult();
+                    server?.Wait();
+                    Assert(launches == 1 && !result.Content.Contains("error_code"), source + " -> " + target + ": " + result.Content);
+                    if (target == "outlook") Assert(outlook.LastDraft.Displayed && !outlook.LastDraft.Saved && outlook.LastDraft.HTMLBody.Contains("SOURCE CONTENT"), "Outlook draft was not displayed with source content.");
+                    else if (target != "chrome")
+                    {
+                        Assert(events.Any(e => e.Contains("SOURCE CONTENT")), target + " lost the source content.");
+                        var collection = target == "powerpoint" ? "Presentations" : target == "excel" ? "Workbooks" : "Documents";
+                        Assert(events.Count(e => e.StartsWith(target + "." + collection + ".Add(")) == 1, "Handoff must create exactly one new destination.");
+                    }
+                }
             }
         }
 

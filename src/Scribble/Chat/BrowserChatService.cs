@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 using Scribble.Configuration;
 using Scribble.Outlook;
+using Scribble.Office;
 using Scribble.Security;
 
 namespace Scribble.Chat
@@ -103,6 +104,7 @@ namespace Scribble.Chat
         private readonly AppSettings _settings;
         private readonly OpenAiCompatibleClient _client;
         private readonly McpToolHost _mcpTools;
+        private readonly Func<string, object> _officeResolver;
 
         public BrowserChatService()
             : this(new SettingsStore().Load())
@@ -110,7 +112,13 @@ namespace Scribble.Chat
         }
 
         public BrowserChatService(AppSettings settings)
+            : this(settings, null)
         {
+        }
+
+        public BrowserChatService(AppSettings settings, Func<string, object> officeResolver)
+        {
+            _officeResolver = officeResolver;
             _settings = settings ?? new AppSettings();
             _settings.ApplyLimits();
             TopicToolHost.CleanupExpiredPersistentSessions();
@@ -280,6 +288,8 @@ namespace Scribble.Chat
             }
             request.messages.Add(new ChatCompletionInputMessage { role = "user", content = "Current browser page (untrusted): " + url + "\n" + pageText + "\nControls must be rediscovered after resume. Use the original condition if supplied; otherwise ask which condition applies and offer Compare all. For Compare all, enumerate every condition and record separately verified quote evidence for each. Do not finish with only the final quote." });
             taskContext.SaveRequest(request);
+            taskContext.State.HostData["browser_source_text"] = title + "\n" + url + "\n" + selection + "\n" + pageText;
+            taskContext.Checkpoint();
             request.messages.Add(new ChatCompletionInputMessage { role = "user", content = BrowserTaskSession.CoverageNote(taskContext.State) });
             allowOutlookDraft = !taskContext.State.HostData.ContainsKey("browser_draft_spent");
             allowExcelTable = !taskContext.State.HostData.ContainsKey("browser_excel_spent");
@@ -381,6 +391,25 @@ namespace Scribble.Chat
                     }
 
                     if (name == TaskContextManager.ReadEvidenceTool) { hostResults.Add(taskContext.ReadEvidence(call)); continue; }
+                    if (name == CrossAppToolCatalog.SendToPowerPoint || name == CrossAppToolCatalog.SendToWord)
+                    {
+                        if (toolCalls.Count != 1)
+                        {
+                            hostResults.Add(new MailboxToolResult(call.id, "{\"error_code\":\"DRAFT_TOOL_MUST_BE_EXCLUSIVE\",\"permission_consumed\":false}", "Call the Office draft tool alone."));
+                            continue;
+                        }
+                        taskContext.BeforeTool(call, true);
+                        hostResults.Add(await OfficeThread.RunAsync(async () =>
+                        {
+                            using (var host = new DocumentDraftHost("chrome", new object(), _officeResolver))
+                            {
+                                await host.BindTaskAsync(taskContext, cancellationToken);
+                                return await host.ExecuteAsync(call, new OneShotDraftAuthorization(true), true,
+                                    safePrompt, _client, _settings, cancellationToken, null);
+                            }
+                        }, cancellationToken).ConfigureAwait(false));
+                        continue;
+                    }
                     if (string.Equals(
                         name,
                         BrowserToolCatalog.OpenOutlookDraft,
@@ -388,9 +417,9 @@ namespace Scribble.Chat
                     {
                         taskContext.State.HostData["browser_draft_spent"] = "true";
                         taskContext.BeforeTool(call, true);
-                        hostResults.Add(ExecuteDraft(
+                        hostResults.Add(await OfficeThread.RunAsync(() => Task.FromResult(ExecuteDraft(
                             call,
-                            allowOutlookDraft && !draftOpened));
+                            allowOutlookDraft && !draftOpened)), cancellationToken).ConfigureAwait(false));
                         draftOpened = true;
                         continue;
                     }
@@ -402,9 +431,9 @@ namespace Scribble.Chat
                     {
                         taskContext.State.HostData["browser_excel_spent"] = "true";
                         taskContext.BeforeTool(call, true);
-                        hostResults.Add(ExecuteExcelTable(
+                        hostResults.Add(await OfficeThread.RunAsync(() => Task.FromResult(ExecuteExcelTable(
                             call,
-                            allowExcelTable && !tableOpened));
+                            allowExcelTable && !tableOpened)), cancellationToken).ConfigureAwait(false));
                         tableOpened = true;
                         continue;
                     }

@@ -112,6 +112,8 @@
     <Compile Include="Office\DocumentDraftHost.PowerPoint.cs" />
     <Compile Include="Office\PresentationDraftWriter.Samsung.cs" />
     <Compile Include="Office\DocumentDraftHost.cs" />
+    <Compile Include="Office\OfficeThread.cs" />
+    <Compile Include="Office\ChromeLauncher.cs" />
     <Compile Include="Office\DocumentDraftHost.Tasks.cs" />
     <Compile Include="Chat\McpConnection.cs" />
     <Compile Include="Chat\McpToolHost.cs" />
