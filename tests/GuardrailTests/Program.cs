@@ -68,6 +68,8 @@ namespace GuardrailTests
 
             try
             {
+                Run("Mailbox scales to 1000 messages and long bodies", ScaleTaskTests.MailboxPagination);
+                Run("Task checkpoints reconcile 20000 rows across restart", ScaleTaskTests.RestartAndCoverage);
                 Run(
                     "Vision-capable models are detected broadly",
                     VisionCapableModelsAreDetectedBroadly);
@@ -156,7 +158,7 @@ namespace GuardrailTests
                     "Attached Excel selections satisfy only the reference gate",
                     ExcelSelectionIntentIsStillActionBound);
                 Run(
-                    "Excel selection output stages bounded literal values",
+                    "Excel selection output stages unlimited sequential values",
                     ExcelSelectionOutputIsBoundedAndLiteral);
                 Run(
                     "Workbook and presentation catalogs stay read only",
@@ -1156,6 +1158,10 @@ namespace GuardrailTests
                     translateKorean.Prompt.Contains(
                         "write_selection_output") &&
                     translateKorean.Prompt.Contains(
+                        "write_korean_translations") &&
+                    translateKorean.Prompt.Contains(
+                        "throughout the workbook") &&
+                    translateKorean.Prompt.Contains(
                         "preserve the source"),
                     "The packaged Korean translation skill is incomplete.");
 
@@ -1361,10 +1367,10 @@ namespace GuardrailTests
                         { "max_results", 2 }
                     });
                 var result = new MailboxToolHost(application, null)
-                    .Execute(MailboxCall(
+                    .ExecuteAsync(MailboxCall(
                         "unread-window",
                         MailboxToolCatalog.SearchMailbox,
-                        arguments));
+                        arguments), CancellationToken.None).GetAwaiter().GetResult();
                 Assert(
                     result.Content.Contains("\"result_count\":2") &&
                     result.Content.Contains("\"truncated\":true") &&
@@ -1392,10 +1398,10 @@ namespace GuardrailTests
                     "\"max_results\":2",
                     "\"max_results\":10");
                 var complete = new MailboxToolHost(application, null)
-                    .Execute(MailboxCall(
+                    .ExecuteAsync(MailboxCall(
                         "complete-unread-window",
                         MailboxToolCatalog.SearchMailbox,
-                        completeArguments));
+                        completeArguments), CancellationToken.None).GetAwaiter().GetResult();
                 Assert(
                     complete.Content.Contains("\"result_count\":4") &&
                     complete.Content.Contains("\"truncated\":false") &&
@@ -1408,11 +1414,11 @@ namespace GuardrailTests
                     complete.Content);
 
                 var invalid = new MailboxToolHost(application, null)
-                    .Execute(MailboxCall(
+                    .ExecuteAsync(MailboxCall(
                         "invalid-unread-window",
                         MailboxToolCatalog.SearchMailbox,
                         "{\"query\":\"\",\"folder\":\"inbox\"," +
-                        "\"received_after\":\"2026-09-01T17:00:00\"}"));
+                        "\"received_after\":\"2026-09-01T17:00:00\"}"), CancellationToken.None).GetAwaiter().GetResult();
                 Assert(
                     invalid.Content.Contains("MAILBOX_TIME_INVALID"),
                     "A timestamp without an explicit offset was accepted.");
@@ -2423,8 +2429,7 @@ namespace GuardrailTests
                 .Select(method => method.Name)
                 .ToArray();
             Assert(
-                methods.Length == 1 &&
-                methods[0] == "Execute",
+                methods.OrderBy(n => n).SequenceEqual(new[] { "Dispose", "Execute", "ExecuteAsync" }),
                 "Mailbox tool host public capabilities changed: " +
                 string.Join(", ", methods));
         }
@@ -6220,6 +6225,7 @@ namespace GuardrailTests
                 !unauthorizedNames.Contains("write_selection_output") &&
                 selectionToolJson.Contains("replace_source") &&
                 selectionToolJson.Contains("next_start_offset") &&
+                !selectionToolJson.Contains("maxItems") &&
                 Convert.ToString(
                     ((ChatCompletionInputMessage)
                         request.messages[0]).content)
@@ -6227,9 +6233,45 @@ namespace GuardrailTests
                 Convert.ToString(
                     ((ChatCompletionInputMessage)
                         request.messages[0]).content)
-                    .Contains("never claim the workbook is read-only"),
+                    .Contains("never claim the workbook is read-only") &&
+                Convert.ToString(
+                    ((ChatCompletionInputMessage)
+                        request.messages[0]).content)
+                    .Contains("no overall selection-size"),
                 "An eligible selection request must expose the " +
                 "source-preserving output tool and instructions.");
+
+            var koreanWorkbookRequest =
+                DocumentChatRequestFactory.Create(
+                    "test-model",
+                    "excel",
+                    "Workbook: Book1",
+                    new List<ChatTurn>(),
+                    "translate Korean text throughout the workbook",
+                    true,
+                    new List<ExternalContextDocument>
+                    {
+                        new ExternalContextDocument(
+                            "Detected Korean workbook cells",
+                            "Workbook handle: korean-h1")
+                    },
+                    null,
+                    null,
+                    false,
+                    true);
+            var koreanNames = koreanWorkbookRequest.tools
+                .Select(tool => tool.function.name)
+                .ToArray();
+            var koreanSystem = Convert.ToString(
+                ((ChatCompletionInputMessage)
+                    koreanWorkbookRequest.messages[0]).content);
+            Assert(
+                koreanNames.Contains("write_korean_translations") &&
+                !koreanNames.Contains("write_selection_output") &&
+                koreanSystem.Contains("replacing exactly the detected") &&
+                koreanSystem.Contains("never saved"),
+                "Workbook-wide Korean mode must expose only its " +
+                "snapshot-bound translation write tool.");
         }
 
         private static void ExcelSelectionOutputIsBoundedAndLiteral()
@@ -6246,7 +6288,10 @@ namespace GuardrailTests
                 ExcelSelectionOutputPolicy.SanitizeLiteral("plain") ==
                     "plain" &&
                 ExcelSelectionOutputPolicy.SanitizeLiteral(
-                    new string('x', 501)).Length ==
+                    new string(
+                        'x',
+                        ExcelSelectionOutputPolicy.MaxCellCharacters + 1))
+                    .Length ==
                     ExcelSelectionOutputPolicy.MaxCellCharacters &&
                 ExcelSelectionOutputPolicy.ColumnNameToNumber("XFD") ==
                     ExcelSelectionOutputPolicy.MaxExcelColumns &&
@@ -6260,10 +6305,50 @@ namespace GuardrailTests
                 !ExcelSelectionOutputPolicy.AllowsSourceReplacement(
                     "do not replace; keep the source") &&
                 ExcelSelectionOutputPolicy.PreferredBatchValues == 100 &&
-                ExcelSelectionOutputPolicy.MaxBatches == 5 &&
-                ExcelSelectionOutputPolicy.MaxRequestToolRounds ==
-                    LimitOverrides.MaxToolRoundsLimit,
+                ExcelSelectionOutputPolicy.MaxExcelRows == 1048576,
                 "Formula-like selection output must become inert text.");
+
+            Assert(
+                ExcelSelectionOutputPolicy.ContainsKorean("Hello 한국") &&
+                ExcelSelectionOutputPolicy.ContainsKorean("ㄱㅏ") &&
+                !ExcelSelectionOutputPolicy.ContainsKorean("English only"),
+                "Korean text detection must recognize Hangul only.");
+
+            var korean = new KoreanWorkbookOutputSession(
+                "korean-handle",
+                3);
+            Assert(
+                !korean.Stage(
+                    "korean-handle",
+                    0,
+                    new[] { "Hello", "World" },
+                    false) &&
+                korean.Stage(
+                    "korean-handle",
+                    2,
+                    new[] { "Done" },
+                    true) &&
+                korean.StagedCount == 3,
+                "Workbook-wide Korean translations must stage " +
+                "sequentially without changing Excel early.");
+
+            var rejectedKoreanOutput = false;
+            try
+            {
+                new KoreanWorkbookOutputSession("reject", 1).Stage(
+                    "reject",
+                    0,
+                    new[] { "still 한국어" },
+                    true);
+            }
+            catch (InvalidOperationException)
+            {
+                rejectedKoreanOutput = true;
+            }
+            Assert(
+                rejectedKoreanOutput,
+                "Workbook translation must reject output that still " +
+                "contains Korean text.");
 
             Assert(
                 ExcelSelectionOutputPolicy.IsDestinationWritable(
@@ -6436,8 +6521,8 @@ namespace GuardrailTests
                     true),
                 "The first accepted batch must lock the destination column.");
 
-            var batches = new ExcelSelectionOutputSession("batches", 5);
-            for (var offset = 0; offset < 4; offset++)
+            var batches = new ExcelSelectionOutputSession("batches", 492);
+            for (var offset = 0; offset < 491; offset++)
             {
                 batches.Stage(
                     "batches",
@@ -6447,50 +6532,41 @@ namespace GuardrailTests
                     false);
             }
 
-            var acceptedFifthBatch = batches.Stage(
+            var acceptedUnlimitedBatches = batches.Stage(
                 "batches",
                 "E",
-                4,
-                new[] { "four" },
+                491,
+                new[] { "last" },
                 true);
 
-            var rejectedLargeBatch = false;
-            try
-            {
-                new ExcelSelectionOutputSession("large", 126).Stage(
+            var largeBatch = new ExcelSelectionOutputSession(
+                "large",
+                492);
+            var acceptedLargeBatch = largeBatch.Stage(
                     "large",
                     "F",
                     0,
-                    Enumerable.Repeat("x", 126).ToArray(),
+                    Enumerable.Repeat("x", 492).ToArray(),
                     true);
-            }
-            catch (InvalidOperationException)
-            {
-                rejectedLargeBatch = true;
-            }
 
-            var rejectedLargePayload = false;
-            try
-            {
-                new ExcelSelectionOutputSession("payload", 21).Stage(
+            var payload = new ExcelSelectionOutputSession("payload", 21);
+            var acceptedLargePayload = payload.Stage(
                     "payload",
                     "F",
                     0,
                     Enumerable.Repeat(
-                        new string('x', 500),
+                        new string('x', 1000),
                         21).ToArray(),
                     true);
-            }
-            catch (InvalidOperationException)
-            {
-                rejectedLargePayload = true;
-            }
 
             Assert(
-                acceptedFifthBatch &&
-                rejectedLargeBatch &&
-                rejectedLargePayload,
-                "Selection output batch-count and value-count caps failed.");
+                acceptedUnlimitedBatches &&
+                batches.Values.Count == 492 &&
+                acceptedLargeBatch &&
+                largeBatch.Values.Count == 492 &&
+                acceptedLargePayload,
+                "Selection output must not impose batch-count, " +
+                "value-count, or payload scope caps.");
 
             var snapshot = new ExcelSelectionSnapshot(
                 "a1",
@@ -6585,10 +6661,9 @@ namespace GuardrailTests
                     .TranslationSelectionError(largeTable)
                     .Contains("50000 cells") &&
                 ExcelSelectionOutputPolicy
-                    .TranslationSelectionError(longColumn)
-                    .Contains("up to 500 rows"),
-                "The Korean translation skill must reject oversized or " +
-                "multi-column selections before sending a model request.");
+                    .TranslationSelectionError(longColumn).Length == 0,
+                "The Korean translation skill must reject multi-column " +
+                "selections but allow full columns sequentially.");
         }
 
         private static void WorkbookAndPresentationCatalogsStayReadOnly()
@@ -6596,12 +6671,20 @@ namespace GuardrailTests
             var workbookNames = WorkbookToolCatalog.ApprovedNames
                 .OrderBy(name => name, StringComparer.Ordinal)
                 .ToArray();
+            var readCellsJson = new JavaScriptSerializer().Serialize(
+                WorkbookToolCatalog.CreateDefinitions().Single(tool =>
+                    tool.function.name == "read_cells"));
             Assert(
                 workbookNames.SequenceEqual(new[]
                 {
                     "list_worksheets",
                     "read_cells"
-                }),
+                }) &&
+                readCellsJson.Contains("row_offset") &&
+                readCellsJson.Contains("column_offset") &&
+                readCellsJson.Contains("max_rows") &&
+                readCellsJson.Contains("max_columns") &&
+                readCellsJson.Contains("until complete=true"),
                 "The workbook read catalog gained an unexpected capability.");
             var presentationNames = PresentationToolCatalog
                 .ApprovedNames
@@ -6711,6 +6794,9 @@ namespace GuardrailTests
                 DocumentDraftHost.IsDraftTool(
                     "excel",
                     WorkbookToolCatalog.WriteSelectionOutput) &&
+                DocumentDraftHost.IsDraftTool(
+                    "excel",
+                    WorkbookToolCatalog.WriteKoreanTranslations) &&
                 !DocumentDraftHost.IsDraftTool(
                     "word",
                     WorkbookToolCatalog.WriteCells) &&
@@ -6721,16 +6807,26 @@ namespace GuardrailTests
                     WorkbookToolCatalog.WriteCells) &&
                 !WorkbookToolCatalog.IsApproved(
                     WorkbookToolCatalog.WriteSelectionOutput) &&
+                !WorkbookToolCatalog.IsApproved(
+                    WorkbookToolCatalog.WriteKoreanTranslations) &&
                 WorkbookToolCatalog.IsDraftTool(
                     WorkbookToolCatalog.WriteCells) &&
                 WorkbookToolCatalog.IsDraftTool(
                     WorkbookToolCatalog.WriteSelectionOutput) &&
+                WorkbookToolCatalog.IsDraftTool(
+                    WorkbookToolCatalog.WriteKoreanTranslations) &&
                 !DocumentDraftHost.IsDraftTool(
                     "word",
                     WorkbookToolCatalog.WriteSelectionOutput) &&
                 !DocumentDraftHost.IsDraftTool(
                     "powerpoint",
-                    WorkbookToolCatalog.WriteSelectionOutput),
+                    WorkbookToolCatalog.WriteSelectionOutput) &&
+                !DocumentDraftHost.IsDraftTool(
+                    "word",
+                    WorkbookToolCatalog.WriteKoreanTranslations) &&
+                !DocumentDraftHost.IsDraftTool(
+                    "powerpoint",
+                    WorkbookToolCatalog.WriteKoreanTranslations),
                 "Excel write tools must stay locally authorized and " +
                 "host-specific.");
 
@@ -7782,7 +7878,7 @@ namespace GuardrailTests
 
         public string To { get; } = "recipient@example.test";
 
-        public string Body { get; } = "Message body";
+        public string Body { get; set; } = "Message body";
 
         public string HTMLBody { get; set; } = string.Empty;
 
@@ -7878,11 +7974,27 @@ namespace GuardrailTests
         public string StoreID { get; } = "store";
 
         public object Items { get; set; }
+
+        public object GetTable(string filter) { return new FakeMailTable(((FakeSearchItems)Items).AllItems); }
+    }
+
+    public sealed class FakeMailTable
+    {
+        private readonly FakeSelectedMailItem[] _items;
+        private int _offset;
+        public FakeMailTable(FakeSelectedMailItem[] items) { _items = items; }
+        public bool EndOfTable { get { return _offset >= _items.Length; } }
+        public object GetNextRow()
+        {
+            var item = _items[_offset++];
+            return new Dictionary<string, object> { { "EntryID", item.EntryID }, { "MessageClass", item.MessageClass } };
+        }
     }
 
     public sealed partial class FakeSearchItems
     {
         private readonly FakeSelectedMailItem[] _items;
+        public FakeSelectedMailItem[] AllItems { get { return _items; } }
 
         public FakeSearchItems(
             IEnumerable<FakeSelectedMailItem> items)
@@ -8403,6 +8515,9 @@ namespace GuardrailTests
         public void RegisterFolder(int kind, object folder)
         {
             _folders[kind] = folder;
+            var mailFolder = folder as FakeMailFolder;
+            var searchItems = mailFolder?.Items as FakeSearchItems;
+            if (searchItems != null) foreach (var item in searchItems.AllItems) Register(item.EntryID, mailFolder.StoreID, item);
         }
 
         public object GetDefaultFolder(int kind)

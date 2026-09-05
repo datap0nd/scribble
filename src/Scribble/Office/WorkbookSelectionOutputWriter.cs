@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using Scribble.Security;
+using Scribble.Utilities;
 
 namespace Scribble.Office
 {
@@ -28,6 +30,114 @@ namespace Scribble.Office
     // and Scribble never saves the file.
     internal static class WorkbookSelectionOutputWriter
     {
+        internal static IReadOnlyList<Dictionary<string, string>>
+            ReadKoreanSourceWindow(
+                KoreanWorkbookSnapshot snapshot,
+                int startOffset,
+                int count)
+        {
+            if (snapshot == null ||
+                startOffset < 0 ||
+                startOffset > snapshot.Cells.Count ||
+                count < 0)
+            {
+                throw new ArgumentOutOfRangeException();
+            }
+
+            var actual = Math.Min(
+                count,
+                snapshot.Cells.Count - startOffset);
+            var result = new List<Dictionary<string, string>>();
+            var characters = 0;
+            var characterWindow = Math.Max(
+                ExcelSelectionOutputPolicy.MaxCellCharacters,
+                ContextScale.Scaled(
+                    TextBoundary.MaxToolResultCharacters) / 3);
+            for (var index = 0; index < actual; index++)
+            {
+                var cell = snapshot.Cells[startOffset + index];
+                var addition = cell.WorksheetName.Length +
+                    cell.Address.Length + cell.SourceText.Length;
+                if (result.Count > 0 &&
+                    characters + addition > characterWindow)
+                {
+                    break;
+                }
+
+                result.Add(new Dictionary<string, string>
+                {
+                    { "worksheet", cell.WorksheetName },
+                    { "address", cell.Address },
+                    { "source", cell.SourceText }
+                });
+                characters += addition;
+            }
+
+            return result;
+        }
+
+        internal static IReadOnlyList<string> ReadSourceValues(
+            object excelApplication,
+            ExcelSelectionSnapshot snapshot,
+            int startOffset,
+            int count)
+        {
+            if (startOffset < 0 ||
+                startOffset > snapshot.RowCount ||
+                count < 0)
+            {
+                throw new ArgumentOutOfRangeException();
+            }
+
+            var actual = Math.Min(
+                count,
+                snapshot.RowCount - startOffset);
+            var values = new List<string>(actual);
+            if (actual == 0)
+            {
+                return values;
+            }
+
+            dynamic sheet = ResolveSheet(excelApplication, snapshot);
+            dynamic page = sheet.Range(
+                sheet.Cells[
+                    snapshot.StartRow + startOffset,
+                    snapshot.StartColumn],
+                sheet.Cells[
+                    snapshot.StartRow + startOffset + actual - 1,
+                    snapshot.StartColumn]);
+            object raw = page.Value2;
+            var grid = raw as object[,];
+            if (grid == null)
+            {
+                values.Add(SourceText(raw));
+                return values;
+            }
+
+            var rowBase = grid.GetLowerBound(0);
+            var columnBase = grid.GetLowerBound(1);
+            var characters = 0;
+            var characterWindow = Math.Max(
+                ExcelSelectionOutputPolicy.MaxCellCharacters,
+                ContextScale.Scaled(
+                    TextBoundary.MaxToolResultCharacters) / 3);
+            for (var row = 0; row < actual; row++)
+            {
+                var text = SourceText(
+                    grid[rowBase + row, columnBase]);
+                if (values.Count > 0 &&
+                    characters + text.Length > characterWindow)
+                {
+                    break;
+                }
+
+                values.Add(text);
+                characters += text.Length;
+            }
+
+            return values;
+        }
+
         internal static void ValidateDestination(
             object excelApplication,
             ExcelSelectionSnapshot snapshot,
@@ -127,6 +237,95 @@ namespace Scribble.Office
                 "Nothing was saved.";
         }
 
+        internal static string CommitKoreanTranslations(
+            object excelApplication,
+            KoreanWorkbookSnapshot snapshot,
+            IReadOnlyList<string> translations)
+        {
+            if (snapshot == null ||
+                translations == null ||
+                translations.Count != snapshot.Cells.Count)
+            {
+                throw new InvalidOperationException(
+                    "Complete output requires one translation per " +
+                    "detected Korean cell.");
+            }
+
+            dynamic workbook = ResolveWorkbook(
+                excelApplication,
+                snapshot);
+            var targets = new List<object>();
+            var formats = new List<object>();
+            foreach (var source in snapshot.Cells)
+            {
+                dynamic sheet = FindWorksheet(
+                    workbook,
+                    source.WorksheetName);
+                dynamic cell = sheet.Range(source.Address);
+                object hasFormula = cell.HasFormula;
+                object merged = cell.MergeCells;
+                if (!(hasFormula is bool) ||
+                    (bool)hasFormula ||
+                    !(merged is bool) ||
+                    (bool)merged ||
+                    !string.Equals(
+                        SourceText(cell.Value2),
+                        source.SourceText,
+                        StringComparison.Ordinal))
+                {
+                    throw new InvalidOperationException(
+                        "Korean source cell " + source.WorksheetName +
+                        "!" + source.Address +
+                        " changed after discovery. No cells were written.");
+                }
+
+                targets.Add((object)cell);
+                formats.Add(cell.NumberFormat);
+            }
+
+            var written = 0;
+            try
+            {
+                for (var index = 0; index < targets.Count; index++)
+                {
+                    dynamic target = targets[index];
+                    target.NumberFormat = "@";
+                    target.Value2 = ExcelSelectionOutputPolicy
+                        .SanitizeLiteral(translations[index]);
+                    written++;
+                }
+            }
+            catch
+            {
+                // Multi-sheet sparse writes cannot be one Excel bulk
+                // assignment. Roll back every completed cell before
+                // surfacing the failure, so the operation remains
+                // all-or-nothing from the user's perspective.
+                for (var index = written - 1; index >= 0; index--)
+                {
+                    try
+                    {
+                        dynamic target = targets[index];
+                        target.NumberFormat = formats[index];
+                        target.Value2 = snapshot.Cells[index].SourceText;
+                    }
+                    catch (Exception rollbackException)
+                    {
+                        Log.Error(
+                            "KoreanWorkbookTranslationRollback",
+                            rollbackException);
+                    }
+                }
+
+                throw;
+            }
+
+            return "Translated and replaced " + translations.Count +
+                " Korean text cells across the active workbook. " +
+                "Formula and merged cells were left unchanged. " +
+                "Nothing was saved.";
+        }
+
         private static dynamic ResolveSheet(
             object excelApplication,
             ExcelSelectionSnapshot snapshot)
@@ -213,6 +412,103 @@ namespace Scribble.Office
             }
 
             return sheet;
+        }
+
+        private static dynamic ResolveWorkbook(
+            object excelApplication,
+            KoreanWorkbookSnapshot snapshot)
+        {
+            dynamic application = excelApplication;
+            dynamic workbook = application.ActiveWorkbook;
+            if (workbook == null)
+            {
+                throw new InvalidOperationException(
+                    "The captured workbook is no longer active.");
+            }
+
+            var path = string.Empty;
+            var fullName = string.Empty;
+            try
+            {
+                path = Convert.ToString(workbook.Path) ?? string.Empty;
+                fullName = Convert.ToString(workbook.FullName) ??
+                    string.Empty;
+            }
+            catch
+            {
+            }
+
+            var workbookName = Convert.ToString(workbook.Name) ??
+                string.Empty;
+            var windowHandle = 0;
+            try
+            {
+                windowHandle = (int)application.ActiveWindow.Hwnd;
+            }
+            catch
+            {
+            }
+
+            var saved = path.Length > 0;
+            var identityMatches =
+                snapshot.Saved == saved &&
+                snapshot.WindowHandle == windowHandle &&
+                (saved
+                    ? string.Equals(
+                        snapshot.WorkbookIdentity,
+                        fullName,
+                        StringComparison.OrdinalIgnoreCase)
+                    : string.Equals(
+                        snapshot.WorkbookName,
+                        workbookName,
+                        StringComparison.OrdinalIgnoreCase));
+            if (!identityMatches)
+            {
+                throw new InvalidOperationException(
+                    "The captured workbook or window changed before " +
+                    "translation. No Korean cells were changed.");
+            }
+
+            return workbook;
+        }
+
+        private static dynamic FindWorksheet(
+            dynamic workbook,
+            string worksheetName)
+        {
+            foreach (dynamic sheet in workbook.Worksheets)
+            {
+                if (string.Equals(
+                    Convert.ToString(sheet.Name),
+                    worksheetName,
+                    StringComparison.Ordinal))
+                {
+                    return sheet;
+                }
+            }
+
+            throw new InvalidOperationException(
+                "Worksheet '" + worksheetName +
+                "' changed after Korean text discovery.");
+        }
+
+        private static string SourceText(object value)
+        {
+            if (value == null)
+            {
+                return string.Empty;
+            }
+
+            var text = value is double
+                ? ((double)value).ToString(
+                    "0.############",
+                    CultureInfo.InvariantCulture)
+                : Convert.ToString(
+                    value,
+                    CultureInfo.InvariantCulture) ?? string.Empty;
+            return TextBoundary.SingleLine(
+                text,
+                ExcelSelectionOutputPolicy.MaxCellCharacters);
         }
 
         private static dynamic DestinationRange(

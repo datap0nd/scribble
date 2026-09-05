@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 using Scribble.Chat;
 using Scribble.Security;
@@ -11,7 +12,7 @@ using Scribble.Utilities;
 
 namespace Scribble.Outlook
 {
-    public sealed class MailboxToolHost
+    public sealed class MailboxToolHost : IDisposable
     {
         private const int MaxDirectMessageBodyCharacters = 6000;
         private const int MaxThreadMessageBodyCharacters = 2000;
@@ -34,7 +35,10 @@ namespace Scribble.Outlook
         private readonly HashSet<string> _loadedBodyHandles =
             new HashSet<string>(StringComparer.Ordinal);
         private readonly bool _workingSetOnly;
-        private bool _searchExecuted;
+        private readonly object _application;
+        private readonly Dictionary<string, MailboxPageCursor> _cursors =
+            new Dictionary<string, MailboxPageCursor>(StringComparer.Ordinal);
+        private readonly HashSet<string> _metadataHandles = new HashSet<string>(StringComparer.Ordinal);
         private int _nextHandle = 1;
 
         public MailboxToolHost(
@@ -52,6 +56,7 @@ namespace Scribble.Outlook
             MessageSnapshot selectedMessage,
             IReadOnlyList<MessageSnapshot> workingMessages)
         {
+            _application = outlookApplication;
             _mailbox = new MailboxContextService(outlookApplication);
             var workingSet = MailboxWorkingSet.Normalize(
                 workingMessages);
@@ -107,7 +112,9 @@ namespace Scribble.Outlook
                 switch (name)
                 {
                     case MailboxToolCatalog.SearchMailbox:
-                        return Search(call.id, arguments);
+                        return _workingSetOnly
+                            ? Error(call.id, "MAILBOX_WORKING_SET_LOCKED", "Search is disabled for the user-approved working set.")
+                            : Error(call.id, "MAILBOX_ASYNC_REQUIRED", "Use the asynchronous mailbox dispatcher for paginated search.");
                     case MailboxToolCatalog.ReadMessages:
                         return ReadMessages(
                             call.id,
@@ -152,27 +159,35 @@ namespace Scribble.Outlook
                 : null;
         }
 
-        private MailboxToolResult Search(
-            string callId,
-            IDictionary<string, object> arguments)
+        public async Task<MailboxToolResult> ExecuteAsync(ChatToolCall call, CancellationToken cancellationToken)
         {
-            if (_workingSetOnly)
+            cancellationToken.ThrowIfCancellationRequested();
+            if (call?.function?.name != MailboxToolCatalog.SearchMailbox) return Execute(call, cancellationToken);
+            if (string.IsNullOrWhiteSpace(call.id)) return Error(call.id, "MAILBOX_TOOL_CALL_INVALID", "A call ID is required.");
+            try { return await SearchAsync(call.id, ParseArguments(call.function.arguments), cancellationToken); }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
             {
-                return Error(
-                    callId,
-                    "MAILBOX_WORKING_SET_LOCKED",
-                    "A user-approved working set is active. Search and thread expansion are disabled for this request.");
+                Dispose();
+                return Error(call.id, "MAILBOX_SEARCH_FAILED", "Enumeration failed; restart and reconcile source IDs. " + ex.Message);
             }
+        }
 
-            if (_searchExecuted)
-            {
-                return Error(
-                    callId,
-                    "MAILBOX_SEARCH_LIMIT_REACHED",
-                    "Only one mailbox search is allowed per request. Use /search to refine the working set.");
-            }
+        public void Dispose()
+        {
+            foreach (var cursor in _cursors.Values) cursor.Dispose();
+            _cursors.Clear();
+        }
 
-            _searchExecuted = true;
+        private async Task<MailboxToolResult> SearchAsync(
+            string callId, IDictionary<string, object> arguments, CancellationToken cancellationToken)
+        {
+            if (_workingSetOnly) return Error(callId, "MAILBOX_WORKING_SET_LOCKED",
+                "Search is disabled for the user-approved working set.");
+            var cursorId = GetString(arguments, "cursor", string.Empty);
+            MailboxPageCursor cursor = null;
+            if (cursorId.Length > 0 && !_cursors.TryGetValue(cursorId, out cursor))
+                return Error(callId, "MAILBOX_CURSOR_EXPIRED", "Restart enumeration and reconcile stable source IDs.");
             var query = GetString(arguments, "query", string.Empty);
             var folder = GetString(arguments, "folder", "all")
                 .ToLowerInvariant();
@@ -192,9 +207,9 @@ namespace Scribble.Outlook
             var maxResults = GetInteger(
                 arguments,
                 "max_results",
-                MailboxWorkingSet.MaxMessages,
+                50,
                 1,
-                MailboxWorkingSet.MaxMessages);
+                100);
             DateTime? receivedAfter;
             DateTime? receivedBefore;
             if (!TryGetLocalTimestamp(
@@ -226,22 +241,24 @@ namespace Scribble.Outlook
                 arguments,
                 "unread_only",
                 false);
-            var hits = _mailbox.Search(
-                query,
-                folder,
-                daysBack,
-                maxResults + 1,
-                receivedAfter,
-                receivedBefore,
-                unreadOnly);
-            var truncated = hits.Count > maxResults;
+            if (cursor == null)
+            {
+                cursorId = Guid.NewGuid().ToString("N");
+                cursor = new MailboxPageCursor(_application, query, folder,
+                    receivedAfter ?? DateTime.Now.AddDays(-daysBack), receivedBefore ?? DateTime.Now, unreadOnly);
+                _cursors.Add(cursorId, cursor);
+            }
+            var hits = await cursor.ReadAsync(maxResults, cancellationToken);
+            var truncated = !cursor.Complete;
 
             var results = new List<object>();
             foreach (var hit in hits.Take(maxResults))
             {
                 var handle = Register(hit.Message);
+                _metadataHandles.Add(handle);
                 results.Add(new Dictionary<string, object>
                 {
+                    { "source_id", hit.Message.StoreId + "\n" + hit.Message.EntryId },
                     { "handle", handle },
                     { "folder", hit.FolderName },
                     { "subject", hit.Message.Subject },
@@ -275,6 +292,8 @@ namespace Scribble.Outlook
                     },
                     { "result_count", results.Count },
                     { "truncated", truncated },
+                    { "next_cursor", truncated ? cursorId : string.Empty },
+                    { "enumeration_complete", !truncated },
                     { "results", results }
                 },
                 "Mailbox search loaded " +
@@ -299,6 +318,7 @@ namespace Scribble.Outlook
                     "At least one message handle is required.");
             }
 
+            var bodyOffset = GetInteger(arguments, "body_offset", 0, 0, int.MaxValue);
             var messages = new List<object>();
             var visionImages = new List<VisionImagePayload>();
             var attachmentBudget = new AttachmentReadBudget();
@@ -317,7 +337,7 @@ namespace Scribble.Outlook
                     continue;
                 }
 
-                if (_loadedBodyHandles.Contains(handle))
+                if (_loadedBodyHandles.Contains(handle) && !arguments.ContainsKey("body_offset"))
                 {
                     messages.Add(new Dictionary<string, object>
                     {
@@ -332,15 +352,11 @@ namespace Scribble.Outlook
                     continue;
                 }
 
-                if (_loadedBodyHandles.Count >=
-                    MailboxWorkingSet.MaxMessages)
+                if (_metadataHandles.Contains(handle))
                 {
-                    messages.Add(new Dictionary<string, object>
-                    {
-                        { "handle", handle },
-                        { "error_code", "MAILBOX_CONTEXT_LIMIT_REACHED" }
-                    });
-                    continue;
+                    message = new MessageReader(_application).CaptureById(message.EntryId, message.StoreId);
+                    _handles[handle] = message;
+                    _metadataHandles.Remove(handle);
                 }
 
                 messages.Add(
@@ -350,7 +366,7 @@ namespace Scribble.Outlook
                         MaxDirectMessageBodyCharacters,
                         visionImages,
                         cancellationToken,
-                        attachmentBudget));
+                        attachmentBudget, bodyOffset));
                 _loadedBodyHandles.Add(handle);
                 loadedCount++;
             }
@@ -397,8 +413,7 @@ namespace Scribble.Outlook
                     "The message handle is unknown or expired.");
             }
 
-            var remaining = MailboxWorkingSet.MaxMessages -
-                _loadedBodyHandles.Count;
+            var remaining = MailboxWorkingSet.MaxMessages;
             if (remaining <= 0)
             {
                 return Error(
@@ -424,8 +439,7 @@ namespace Scribble.Outlook
                     continue;
                 }
 
-                if (_loadedBodyHandles.Count >=
-                    MailboxWorkingSet.MaxMessages)
+                if (messages.Count >= MailboxWorkingSet.MaxMessages)
                 {
                     break;
                 }
@@ -468,11 +482,17 @@ namespace Scribble.Outlook
             int maximumBodyCharacters,
             IList<VisionImagePayload> visionImages,
             CancellationToken cancellationToken,
-            AttachmentReadBudget attachmentBudget)
+            AttachmentReadBudget attachmentBudget, int bodyOffset = 0)
         {
+            if (bodyOffset > message.Body.Length) throw new ArgumentOutOfRangeException(nameof(bodyOffset));
+            var bodyLength = Math.Min(maximumBodyCharacters, message.Body.Length - bodyOffset);
             var payload = new Dictionary<string, object>
             {
                 { "handle", handle },
+                { "source_id", message.StoreId + "\n" + message.EntryId },
+                { "body_offset", bodyOffset },
+                { "next_body_offset", bodyOffset + bodyLength < message.Body.Length ? (object)(bodyOffset + bodyLength) : null },
+                { "body_complete", bodyOffset + bodyLength == message.Body.Length },
                 { "subject", message.Subject },
                 { "from", message.Sender },
                 { "to", message.Recipients },
@@ -484,7 +504,7 @@ namespace Scribble.Outlook
                 {
                     "body",
                     TextBoundary.PlainText(
-                        message.Body,
+                        message.Body.Substring(bodyOffset, bodyLength),
                         maximumBodyCharacters)
                 }
             };

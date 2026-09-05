@@ -59,7 +59,8 @@ namespace Scribble.Chat
             IReadOnlyList<ExternalContextDocument> externalContext = null,
             IReadOnlyList<ChatToolDefinition> extraTools = null,
             Scribble.Configuration.TopicConfig activeTopic = null,
-            bool hasExcelSelection = false)
+            bool hasExcelSelection = false,
+            bool hasKoreanWorkbook = false)
         {
             List<ChatToolDefinition> tools;
             if (hostKind == "excel")
@@ -91,6 +92,12 @@ namespace Scribble.Chat
                         tools.Add(
                             WorkbookToolCatalog
                                 .SelectionOutputDefinition());
+                    }
+                    if (hasKoreanWorkbook)
+                    {
+                        tools.Add(
+                            WorkbookToolCatalog
+                                .KoreanTranslationDefinition());
                     }
                 }
                 else if (hostKind == "word")
@@ -129,7 +136,8 @@ namespace Scribble.Chat
                         hostKind,
                         allowDraftCreate,
                         extraTools != null && extraTools.Count > 0,
-                        hasExcelSelection) +
+                        hasExcelSelection,
+                        hasKoreanWorkbook) +
                         BuildTopicBoundary(activeTopic) +
                         PromptHelperTool.SystemInstruction
                 },
@@ -204,7 +212,8 @@ namespace Scribble.Chat
             string hostKind,
             bool allowDraftCreate,
             bool hasExternalTools,
-            bool hasExcelSelection)
+            bool hasExcelSelection,
+            bool hasKoreanWorkbook)
         {
             var hostName = hostKind == "excel"
                 ? "Excel"
@@ -236,9 +245,13 @@ namespace Scribble.Chat
                       "The captured address is the complete scope: transform " +
                       "EVERY selected cell, including the first cell or header, " +
                       "and never ask whether to include the header. Keep exact " +
-                      "row alignment and send ordered batches of exactly " +
-                      ExcelSelectionOutputPolicy.PreferredBatchValues +
-                      " values except for the final remainder. Follow the " +
+                      "row alignment. The attached authoritative source window " +
+                      "starts at offset zero; after every accepted batch, use " +
+                      "next_source_values from the tool result as the exact input " +
+                      "for the next batch. Never invent, skip, or repeat a row. " +
+                      "There is no overall selection-size, batch-count, or " +
+                      "tool-round limit: continue sequentially while progress is " +
+                      "being made. Follow the " +
                       "next_start_offset, next_batch_size, and complete_next " +
                       "fields returned after every batch. Set complete=true " +
                       "only when every selected row has one output value. Unless " +
@@ -252,7 +265,26 @@ namespace Scribble.Chat
                       "is read-only. Ask only if the adjacent destination is " +
                       "occupied, using the returned empty-column candidates."
                     : string.Empty;
+                var koreanWorkbookInstruction = hasKoreanWorkbook
+                    ? " The built-in Korean skill found literal Korean text " +
+                      "cells across the active workbook before this request. " +
+                      "Use write_korean_translations and no other write tool. " +
+                      "Translate ONLY the supplied source cells into English, " +
+                      "preserving meaning, punctuation, numbers, and line " +
+                      "structure. Return exactly one English value per source " +
+                      "entry in order. After every accepted call, continue from " +
+                      "next_source_cells and next_start_offset until " +
+                      "complete_next=true, then submit that final window with " +
+                      "complete=true. For the initial window, use the attached " +
+                      "complete value. Do not ask for confirmation or a " +
+                      "destination: the user's skill click explicitly " +
+                      "authorized replacing exactly the detected literal " +
+                      "Korean cells in memory throughout the workbook. Formula " +
+                      "and merged cells remain unchanged, and the workbook is " +
+                      "never saved."
+                    : string.Empty;
                 return boundary + selectionInstruction +
+                    koreanWorkbookInstruction +
                     " The local host recognized an explicit draft request in the " +
                     "user's latest prompt and authorized ONE deliverable for this " +
                     "request, which you may build over several bounded draft calls " +

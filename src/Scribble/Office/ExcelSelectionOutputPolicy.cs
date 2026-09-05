@@ -71,7 +71,9 @@ namespace Scribble.Office
         {
             var header = "Selected Excel cells " + WorksheetName + "!" +
                 Address +
-                (PreviewTruncated ? " (preview truncated)" : string.Empty);
+                (PreviewTruncated
+                    ? " (first sequential window shown below)"
+                    : string.Empty);
             if (!string.IsNullOrWhiteSpace(requestHandle))
             {
                 header += ":\nSelection handle for this request: " +
@@ -102,6 +104,80 @@ namespace Scribble.Office
         public bool AllowSourceReplacement { get; }
     }
 
+    public sealed class KoreanWorkbookCellSnapshot
+    {
+        public KoreanWorkbookCellSnapshot(
+            string worksheetName,
+            string address,
+            string sourceText)
+        {
+            WorksheetName = worksheetName ?? string.Empty;
+            Address = address ?? string.Empty;
+            SourceText = sourceText ?? string.Empty;
+        }
+
+        public string WorksheetName { get; }
+
+        public string Address { get; }
+
+        public string SourceText { get; }
+    }
+
+    // Immutable sparse snapshot used only by the built-in Korean
+    // skill when no explicit Excel context was attached. It contains
+    // every literal Hangul-bearing cell in the active workbook, but
+    // never retains COM objects.
+    public sealed class KoreanWorkbookSnapshot
+    {
+        public KoreanWorkbookSnapshot(
+            bool saved,
+            string workbookIdentity,
+            string workbookName,
+            int windowHandle,
+            IReadOnlyList<KoreanWorkbookCellSnapshot> cells,
+            int skippedFormulaCells,
+            int skippedMergedCells)
+        {
+            Saved = saved;
+            WorkbookIdentity = workbookIdentity ?? string.Empty;
+            WorkbookName = workbookName ?? string.Empty;
+            WindowHandle = windowHandle;
+            Cells = cells ?? new KoreanWorkbookCellSnapshot[0];
+            SkippedFormulaCells = skippedFormulaCells;
+            SkippedMergedCells = skippedMergedCells;
+        }
+
+        public bool Saved { get; }
+
+        public string WorkbookIdentity { get; }
+
+        public string WorkbookName { get; }
+
+        public int WindowHandle { get; }
+
+        public IReadOnlyList<KoreanWorkbookCellSnapshot> Cells { get; }
+
+        public int SkippedFormulaCells { get; }
+
+        public int SkippedMergedCells { get; }
+    }
+
+    public sealed class KoreanWorkbookRequestContext
+    {
+        public KoreanWorkbookRequestContext(
+            string handle,
+            KoreanWorkbookSnapshot snapshot)
+        {
+            Handle = handle ?? string.Empty;
+            Snapshot = snapshot ??
+                throw new ArgumentNullException(nameof(snapshot));
+        }
+
+        public string Handle { get; }
+
+        public KoreanWorkbookSnapshot Snapshot { get; }
+    }
+
     public sealed class ExcelDestinationCellState
     {
         public ExcelDestinationCellState(
@@ -123,14 +199,30 @@ namespace Scribble.Office
 
     public static class ExcelSelectionOutputPolicy
     {
-        public const int MaxSelectedCells = 500;
-        public const int MaxBatchValues = 125;
+        // These are Excel's format limits, not Scribble scope limits.
+        // A selected column can span the entire worksheet and is
+        // processed over as many sequential tool turns as required.
+        public const int MaxExcelRows = 1048576;
         public const int PreferredBatchValues = 100;
-        public const int MaxBatchCharacters = 10000;
-        public const int MaxBatches = 5;
-        public const int MaxRequestToolRounds = 8;
-        public const int MaxCellCharacters = 500;
+        public const int MaxCellCharacters = 32767;
         public const int MaxExcelColumns = 16384;
+
+        public static bool ContainsKorean(string value)
+        {
+            foreach (var character in value ?? string.Empty)
+            {
+                if ((character >= '\uAC00' && character <= '\uD7A3') ||
+                    (character >= '\u1100' && character <= '\u11FF') ||
+                    (character >= '\u3130' && character <= '\u318F') ||
+                    (character >= '\uA960' && character <= '\uA97F') ||
+                    (character >= '\uD7B0' && character <= '\uD7FF'))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
 
         public static string TranslationSelectionError(
             ExcelSelectionSnapshot snapshot)
@@ -148,18 +240,7 @@ namespace Scribble.Office
                     "time. The current selection contains " +
                     snapshot.ColumnCount + " columns and " + cells +
                     " cells. Select only the Korean column in one " +
-                    "contiguous block of up to " + MaxSelectedCells +
-                    " rows, then run the skill again.";
-            }
-
-            if (snapshot.RowCount > MaxSelectedCells ||
-                snapshot.PreviewTruncated)
-            {
-                return "Translate from Korean supports up to " +
-                    MaxSelectedCells + " rows at a time. The current " +
-                    "selection contains " + snapshot.RowCount +
-                    " rows. Select a contiguous chunk of the Korean " +
-                    "column and run the skill again.";
+                    "contiguous block, then run the skill again.";
             }
 
             return string.Empty;
@@ -342,7 +423,6 @@ namespace Scribble.Office
         private readonly int _expectedValues;
         private readonly List<string> _values = new List<string>();
         private string _destinationColumn = string.Empty;
-        private int _batches;
         private bool _complete;
 
         public ExcelSelectionOutputSession(
@@ -358,7 +438,7 @@ namespace Scribble.Office
 
             if (expectedValues < 1 ||
                 expectedValues >
-                    ExcelSelectionOutputPolicy.MaxSelectedCells)
+                    ExcelSelectionOutputPolicy.MaxExcelRows)
             {
                 throw new ArgumentOutOfRangeException(
                     nameof(expectedValues));
@@ -434,62 +514,23 @@ namespace Scribble.Office
                     "All batches must use the same destination column.");
             }
 
-            if (_batches >= ExcelSelectionOutputPolicy.MaxBatches)
-            {
-                throw new InvalidOperationException(
-                    "The selection output exceeded the batch limit.");
-            }
-
             if (startOffset != _values.Count)
             {
                 throw new InvalidOperationException(
                     "Selection output batches must be contiguous and ordered.");
             }
 
-            if (values == null || values.Count == 0 ||
-                values.Count > ExcelSelectionOutputPolicy.MaxBatchValues)
+            if (values == null || values.Count == 0)
             {
                 throw new InvalidOperationException(
-                    "A batch must contain between 1 and " +
-                    ExcelSelectionOutputPolicy.MaxBatchValues +
-                    " values.");
-            }
-
-            var batchesAfterThis = _batches + 1;
-            var remainingAfterThis = _expectedValues -
-                (_values.Count + values.Count);
-            var remainingBatchCapacity =
-                (ExcelSelectionOutputPolicy.MaxBatches -
-                 batchesAfterThis) *
-                ExcelSelectionOutputPolicy.MaxBatchValues;
-            if (!complete &&
-                remainingAfterThis > remainingBatchCapacity)
-            {
-                var minimumCount = _expectedValues -
-                    _values.Count - remainingBatchCapacity;
-                throw new InvalidOperationException(
-                    "This batch is too small to finish within the " +
-                    "remaining batch limit. Retry start_offset " +
-                    _values.Count + " with at least " + minimumCount +
-                    " values; " +
-                    ExcelSelectionOutputPolicy.PreferredBatchValues +
-                    " values per non-final batch is preferred.");
+                    "A batch must contain at least one value.");
             }
 
             var bounded = new List<string>();
-            var characters = 0;
             foreach (var value in values)
             {
                 var sanitized =
                     ExcelSelectionOutputPolicy.SanitizeLiteral(value);
-                characters += sanitized.Length;
-                if (characters >
-                    ExcelSelectionOutputPolicy.MaxBatchCharacters)
-                {
-                    throw new InvalidOperationException(
-                        "The selection output batch is too large.");
-                }
-
                 bounded.Add(sanitized);
             }
 
@@ -519,7 +560,130 @@ namespace Scribble.Office
             }
 
             _values.AddRange(bounded);
-            _batches++;
+            _complete = complete;
+            return _complete;
+        }
+    }
+
+    // COM-free sparse assembler for workbook-wide Korean translation.
+    // The writer receives nothing until every detected source cell has
+    // exactly one staged English value.
+    public sealed class KoreanWorkbookOutputSession
+    {
+        private readonly string _handle;
+        private readonly int _expectedValues;
+        private readonly List<string> _values = new List<string>();
+        private bool _complete;
+
+        public KoreanWorkbookOutputSession(
+            string handle,
+            int expectedValues)
+        {
+            if (string.IsNullOrWhiteSpace(handle))
+            {
+                throw new ArgumentException(
+                    "A request-scoped workbook handle is required.",
+                    nameof(handle));
+            }
+
+            if (expectedValues < 1)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(expectedValues));
+            }
+
+            _handle = handle;
+            _expectedValues = expectedValues;
+        }
+
+        public int StagedCount
+        {
+            get { return _values.Count; }
+        }
+
+        public IReadOnlyList<string> Values
+        {
+            get
+            {
+                return new ReadOnlyCollection<string>(
+                    new List<string>(_values));
+            }
+        }
+
+        public bool Stage(
+            string handle,
+            int startOffset,
+            IReadOnlyList<string> values,
+            bool complete)
+        {
+            if (_complete)
+            {
+                throw new InvalidOperationException(
+                    "The Korean workbook output is already complete.");
+            }
+
+            if (!string.Equals(
+                _handle,
+                handle ?? string.Empty,
+                StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    "The workbook translation handle is unknown or expired.");
+            }
+
+            if (startOffset != _values.Count)
+            {
+                throw new InvalidOperationException(
+                    "Workbook translation batches must be contiguous and ordered.");
+            }
+
+            if (values == null || values.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    "A workbook translation batch must contain at least one value.");
+            }
+
+            var bounded = new List<string>();
+            foreach (var value in values)
+            {
+                var sanitized = ExcelSelectionOutputPolicy
+                    .SanitizeLiteral(value);
+                if (sanitized.Length == 0)
+                {
+                    throw new InvalidOperationException(
+                        "A Korean cell translation cannot be empty.");
+                }
+
+                if (ExcelSelectionOutputPolicy.ContainsKorean(sanitized))
+                {
+                    throw new InvalidOperationException(
+                        "A translated value still contains Korean text.");
+                }
+
+                bounded.Add(sanitized);
+            }
+
+            if (_values.Count + bounded.Count > _expectedValues)
+            {
+                throw new InvalidOperationException(
+                    "The output contains more translations than detected cells.");
+            }
+
+            if (!complete &&
+                _values.Count + bounded.Count == _expectedValues)
+            {
+                throw new InvalidOperationException(
+                    "The final workbook translation batch must set complete=true.");
+            }
+
+            if (complete &&
+                _values.Count + bounded.Count != _expectedValues)
+            {
+                throw new InvalidOperationException(
+                    "Complete output requires one translation per detected Korean cell.");
+            }
+
+            _values.AddRange(bounded);
             _complete = complete;
             return _complete;
         }

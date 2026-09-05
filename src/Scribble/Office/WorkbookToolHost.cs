@@ -16,9 +16,11 @@ namespace Scribble.Office
     // one-shot authorization.
     public sealed class WorkbookToolHost
     {
+        // Per-call transport windows. They never limit the selected
+        // range: read_cells returns the next offsets until complete.
         public const int MaxReadRows = 500;
         public const int MaxReadColumns = 50;
-        public const int MaxCellCharacters = 500;
+        public const int MaxCellCharacters = 32767;
         public const int MaxSheets = 100;
 
         private readonly object _excelApplication;
@@ -334,6 +336,180 @@ namespace Scribble.Office
                 truncated);
         }
 
+        // Deterministically discovers literal Korean text throughout
+        // the active workbook for the built-in translation skill.
+        // Values are bulk-read in transport tiles; only sparse matching
+        // cells are retained and no workbook content is changed here.
+        public KoreanWorkbookSnapshot CaptureKoreanWorkbook()
+        {
+            dynamic application = _excelApplication;
+            dynamic workbook = application.ActiveWorkbook;
+            if (workbook == null)
+            {
+                throw new InvalidOperationException(
+                    "Open an Excel workbook first.");
+            }
+
+            var workbookName = TextBoundary.SingleLine(
+                Convert.ToString(workbook.Name),
+                180);
+            var workbookPath = string.Empty;
+            var workbookFullName = string.Empty;
+            try
+            {
+                workbookPath = Convert.ToString(workbook.Path) ??
+                    string.Empty;
+                workbookFullName = Convert.ToString(
+                    workbook.FullName) ?? string.Empty;
+            }
+            catch
+            {
+            }
+
+            var windowHandle = 0;
+            try
+            {
+                windowHandle = (int)application.ActiveWindow.Hwnd;
+            }
+            catch
+            {
+            }
+
+            var cells = new List<KoreanWorkbookCellSnapshot>();
+            var skippedFormulaCells = 0;
+            var skippedMergedCells = 0;
+            foreach (dynamic sheet in workbook.Worksheets)
+            {
+                dynamic used = sheet.UsedRange;
+                var totalRows = (int)used.Rows.Count;
+                var totalColumns = (int)used.Columns.Count;
+                var firstRow = (int)used.Row;
+                var firstColumn = (int)used.Column;
+                var sheetName = TextBoundary.SingleLine(
+                    Convert.ToString(sheet.Name),
+                    120);
+                for (var rowOffset = 0;
+                     rowOffset < totalRows;
+                     rowOffset += MaxReadRows)
+                {
+                    var rows = Math.Min(
+                        MaxReadRows,
+                        totalRows - rowOffset);
+                    for (var columnOffset = 0;
+                         columnOffset < totalColumns;
+                         columnOffset += MaxReadColumns)
+                    {
+                        var columns = Math.Min(
+                            MaxReadColumns,
+                            totalColumns - columnOffset);
+                        dynamic tile = sheet.Range(
+                            sheet.Cells[
+                                firstRow + rowOffset,
+                                firstColumn + columnOffset],
+                            sheet.Cells[
+                                firstRow + rowOffset + rows - 1,
+                                firstColumn + columnOffset + columns - 1]);
+                        object raw = tile.Value2;
+                        var grid = raw as object[,];
+                        if (grid == null)
+                        {
+                            AddKoreanWorkbookCell(
+                                sheet,
+                                sheetName,
+                                firstRow + rowOffset,
+                                firstColumn + columnOffset,
+                                raw,
+                                cells,
+                                ref skippedFormulaCells,
+                                ref skippedMergedCells);
+                            continue;
+                        }
+
+                        var rowBase = grid.GetLowerBound(0);
+                        var columnBase = grid.GetLowerBound(1);
+                        for (var row = 0; row < rows; row++)
+                        {
+                            for (var column = 0;
+                                 column < columns;
+                                 column++)
+                            {
+                                AddKoreanWorkbookCell(
+                                    sheet,
+                                    sheetName,
+                                    firstRow + rowOffset + row,
+                                    firstColumn + columnOffset + column,
+                                    grid[
+                                        rowBase + row,
+                                        columnBase + column],
+                                    cells,
+                                    ref skippedFormulaCells,
+                                    ref skippedMergedCells);
+                            }
+                        }
+                    }
+                }
+            }
+
+            return new KoreanWorkbookSnapshot(
+                workbookPath.Length > 0,
+                workbookPath.Length > 0
+                    ? workbookFullName
+                    : workbookName,
+                workbookName,
+                windowHandle,
+                cells,
+                skippedFormulaCells,
+                skippedMergedCells);
+        }
+
+        private static void AddKoreanWorkbookCell(
+            dynamic sheet,
+            string sheetName,
+            int row,
+            int column,
+            object rawValue,
+            ICollection<KoreanWorkbookCellSnapshot> cells,
+            ref int skippedFormulaCells,
+            ref int skippedMergedCells)
+        {
+            var text = CellText(rawValue);
+            if (!ExcelSelectionOutputPolicy.ContainsKorean(text))
+            {
+                return;
+            }
+
+            dynamic cell = sheet.Cells[row, column];
+            try
+            {
+                object hasFormula = cell.HasFormula;
+                if (!(hasFormula is bool) || (bool)hasFormula)
+                {
+                    skippedFormulaCells++;
+                    return;
+                }
+
+                object merged = cell.MergeCells;
+                if (!(merged is bool) || (bool)merged)
+                {
+                    skippedMergedCells++;
+                    return;
+                }
+            }
+            catch
+            {
+                // Ambiguous cell state must never broaden an
+                // automatic workbook-wide overwrite.
+                skippedFormulaCells++;
+                return;
+            }
+
+            cells.Add(new KoreanWorkbookCellSnapshot(
+                sheetName,
+                ExcelSelectionOutputPolicy.ColumnNumberToName(column) +
+                    row.ToString(CultureInfo.InvariantCulture),
+                text));
+        }
+
         private MailboxToolResult ListWorksheets(string callId)
         {
             dynamic application = _excelApplication;
@@ -475,8 +651,67 @@ namespace Scribble.Office
                 range = sheet.UsedRange;
             }
 
-            bool truncated;
-            var text = ReadRangeText(range, out truncated);
+            var totalRows = (int)range.Rows.Count;
+            var totalColumns = (int)range.Columns.Count;
+            var rowOffset = ToolArguments.GetInteger(
+                arguments,
+                "row_offset",
+                0,
+                0,
+                Math.Max(0, totalRows - 1));
+            var columnOffset = ToolArguments.GetInteger(
+                arguments,
+                "column_offset",
+                0,
+                0,
+                Math.Max(0, totalColumns - 1));
+            var requestedRows = ToolArguments.GetInteger(
+                arguments,
+                "max_rows",
+                MaxReadRows,
+                1,
+                MaxReadRows);
+            var requestedColumns = ToolArguments.GetInteger(
+                arguments,
+                "max_columns",
+                MaxReadColumns,
+                1,
+                MaxReadColumns);
+            var rows = Math.Min(requestedRows, totalRows - rowOffset);
+            var columns = Math.Min(
+                requestedColumns,
+                totalColumns - columnOffset);
+            // When columns require more than one page, keep each
+            // tile to one row. That makes (row, column) a complete
+            // cursor and prevents a later column page from changing
+            // row height and skipping cells.
+            if (columnOffset > 0 || requestedColumns < totalColumns)
+            {
+                rows = 1;
+            }
+            dynamic page = range.Worksheet.Range(
+                range.Cells[rowOffset + 1, columnOffset + 1],
+                range.Cells[rowOffset + rows, columnOffset + columns]);
+            bool pageTruncated;
+            var text = ReadRangeText(page, out pageTruncated);
+            if (pageTruncated)
+            {
+                return Error(
+                    callId,
+                    "WORKBOOK_PAGE_TOO_LARGE",
+                    "This transport page is too large. Retry the same " +
+                    "row_offset and column_offset with smaller max_rows " +
+                    "or max_columns; the selected range remains available.");
+            }
+
+            var nextRowOffset = rowOffset;
+            var nextColumnOffset = columnOffset + columns;
+            if (nextColumnOffset >= totalColumns)
+            {
+                nextColumnOffset = 0;
+                nextRowOffset = rowOffset + rows;
+            }
+            var complete = nextRowOffset >= totalRows;
             return Success(
                 callId,
                 new Dictionary<string, object>
@@ -495,7 +730,15 @@ namespace Scribble.Office
                                 range.Address(false, false)),
                             60)
                     },
-                    { "truncated", truncated },
+                    { "total_rows", totalRows },
+                    { "total_columns", totalColumns },
+                    { "row_offset", rowOffset },
+                    { "column_offset", columnOffset },
+                    { "returned_rows", rows },
+                    { "returned_columns", columns },
+                    { "complete", complete },
+                    { "next_row_offset", complete ? 0 : nextRowOffset },
+                    { "next_column_offset", complete ? 0 : nextColumnOffset },
                     { "cells_tsv", text }
                 },
                 "Read cells from " +

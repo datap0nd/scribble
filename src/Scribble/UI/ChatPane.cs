@@ -2326,220 +2326,210 @@ namespace Scribble.UI
             _diagnostics.SetExposedTools(exposedNames);
             _diagnostics.RecordEvent(
                 "resolved model: " + activeModel);
-            var mailboxTools = new MailboxToolHost(
+            using (var mailboxTools = new MailboxToolHost(
                 _outlookApplication,
                 selectedMessage,
-                workingMessages);
-            var topicTools = activeTopic == null
-                ? null
-                : new TopicToolHost(
-                    activeTopic,
-                    chatId,
-                    turnId,
-                    false);
-            if (VisionImagePrefetch.TryInject(
-                    request,
-                    activeModel,
-                    mailboxTools,
-                    selectedMessage,
-                    workingMessages))
+                workingMessages))
             {
-                SetStatus("Images attached for vision", false);
-            }
-
-            if (externalImages.Count > 0)
-            {
-                VisionAttachmentExchange.AppendVisionContext(
-                    request,
-                    activeModel,
-                    new[]
-                    {
-                        new MailboxToolResult(
-                            "external_files",
-                            string.Empty,
-                            string.Empty,
-                            externalImages)
-                    });
-            }
-
-            for (var round = 0;
-                 round <= TextBoundary.MaxToolRounds;
-                 round++)
-            {
-                var response =
-                    await _client.CompleteStreamingAsync(
-                        _settings,
+                var topicTools = activeTopic == null
+                    ? null
+                    : new TopicToolHost(
+                        activeTopic,
+                        chatId,
+                        turnId,
+                        false);
+                if (VisionImagePrefetch.TryInject(
                         request,
-                        PostStreamDelta,
-                        cancellationToken);
-                var toolCalls = response.tool_calls;
-                if (toolCalls == null || toolCalls.Count == 0)
+                        activeModel,
+                        mailboxTools,
+                        selectedMessage,
+                        workingMessages))
                 {
-                    if (string.IsNullOrWhiteSpace(response.content))
+                    SetStatus("Images attached for vision", false);
+                }
+
+                if (externalImages.Count > 0)
+                {
+                    VisionAttachmentExchange.AppendVisionContext(
+                        request,
+                        activeModel,
+                        new[]
+                        {
+                            new MailboxToolResult(
+                                "external_files",
+                                string.Empty,
+                                string.Empty,
+                                externalImages)
+                        });
+                }
+
+                var taskContext = new TaskContextManager(request, "outlook", prompt);
+                for (var round = 0; ; round++)
+                {
+                    var response =
+                        await taskContext.CompleteAsync(
+                            _client,
+                            _settings,
+                            request,
+                            PostStreamDelta,
+                            cancellationToken);
+                    var toolCalls = response.tool_calls;
+                    if (toolCalls == null || toolCalls.Count == 0)
                     {
-                        throw new AiEndpointException(
-                            "RESPONSE_MISSING_CONTENT",
-                            "The model stopped without returning text.");
+                        if (string.IsNullOrWhiteSpace(response.content))
+                        {
+                            throw new AiEndpointException(
+                                "RESPONSE_MISSING_CONTENT",
+                                "The model stopped without returning text.");
+                        }
+
+                        return response.content;
                     }
 
-                    return response.content;
-                }
+                    // A round that continues into tool calls clears any
+                    // preamble text that streamed to the page.
+                    PostStreamEnd();
 
-                // A round that continues into tool calls clears any
-                // preamble text that streamed to the page.
-                PostStreamEnd();
-
-                if (round == TextBoundary.MaxToolRounds)
-                {
-                    throw new AiEndpointException(
-                        "TOOL_ROUND_LIMIT",
-                        "The model exceeded the maximum number of bounded tool rounds.");
-                }
-
-                if (toolCalls.Count >
-                    TextBoundary.MaxToolCallsPerRound)
-                {
-                    throw new AiEndpointException(
-                        "TOOL_CALL_LIMIT",
-                        "The model requested too many tools in one round.");
-                }
-
-                if (PromptHelperTool.Contains(toolCalls) &&
-                    toolCalls.Count != 1)
-                {
-                    var rejected = new List<MailboxToolResult>();
-                    foreach (var rejectedCall in toolCalls)
+                    if (PromptHelperTool.Contains(toolCalls) &&
+                        toolCalls.Count != 1)
                     {
-                        rejected.Add(
-                            PromptHelperTool.MixedCallResult(
-                                rejectedCall));
+                        var rejected = new List<MailboxToolResult>();
+                        foreach (var rejectedCall in toolCalls)
+                        {
+                            rejected.Add(
+                                PromptHelperTool.MixedCallResult(
+                                    rejectedCall));
+                        }
+
+                        taskContext.RecordExchange(request, response, rejected);
+                        ChatRequestFactory.AppendToolExchange(
+                            request,
+                            response,
+                            rejected,
+                            activeModel);
+                        request.tool_choice =
+                            PromptHelperTool.CreateRequiredChoice();
+                        SetStatus(
+                            "Clarification must come before other work",
+                            false);
+                        continue;
                     }
 
+                    var results = new List<MailboxToolResult>();
+                    foreach (var toolCall in toolCalls)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        var isDraftCall =
+                            DraftToolCatalog.IsDraftTool(
+                                toolCall?.function?.name);
+                        var isCrossAppCall =
+                            CrossAppToolCatalog.IsCrossAppTool(
+                                toolCall?.function?.name);
+                        MailboxToolResult result;
+                        if (toolCall?.function?.name == TaskContextManager.ReadEvidenceTool)
+                        {
+                            result = taskContext.ReadEvidence(toolCall);
+                        }
+                        else if (PromptHelperTool.IsTool(
+                                toolCall?.function?.name))
+                        {
+                            result = await _promptHelper.AskAsync(
+                                toolCall,
+                                cancellationToken);
+                            request.tool_choice = "auto";
+                        }
+                        else if (isDraftCall)
+                        {
+                            result = _draftTools.Execute(
+                                toolCall,
+                                mailboxTools.ResolveHandle,
+                                draftAuthorization,
+                                toolCalls.Count == 1);
+                        }
+                        else if (isCrossAppCall &&
+                                 _crossAppTools != null)
+                        {
+                            // Mailbox content handed to Excel/
+                            // PowerPoint/Word as a clearly marked
+                            // draft, on the same one-shot permission.
+                            result = _crossAppTools.Execute(
+                                toolCall,
+                                crossAppAuthorization,
+                                toolCalls.Count == 1,
+                                prompt);
+                        }
+                        else if (McpToolHost.IsMcpTool(
+                            toolCall?.function?.name))
+                        {
+                            // MCP calls run off the UI thread; the
+                            // host bounds the result and marks it
+                            // untrusted.
+                            result = await Task.Run(
+                                () => mcpHost != null
+                                    ? mcpHost.Execute(toolCall)
+                                    : mailboxTools.Execute(
+                                        toolCall,
+                                        cancellationToken),
+                                cancellationToken);
+                        }
+                        else if (TopicToolCatalog.IsTopicTool(
+                                     toolCall?.function?.name) &&
+                                 topicTools != null)
+                        {
+                            result = await Task.Run(
+                                () => topicTools.Execute(
+                                    toolCall,
+                                    cancellationToken),
+                                cancellationToken);
+                        }
+                        else
+                        {
+                            result = await mailboxTools.ExecuteAsync(
+                                toolCall,
+                                cancellationToken);
+                        }
+                        results.Add(result);
+                        _diagnostics.RecordEvent(
+                            "tool " +
+                            (toolCall?.function?.name ?? "(null)") +
+                            " -> " + result.StatusText);
+                        if (isDraftCall || isCrossAppCall)
+                        {
+                            AppendDraftAction(result.StatusText);
+                        }
+                        else
+                        {
+                            AppendContext(result.StatusText);
+                        }
+
+                        SetStatus(result.StatusText, false);
+                    }
+
+                    activeModel = ModelRouting.ResolveForRequest(
+                        _settings,
+                        imagesExpected,
+                        results);
+                    request.model = TextBoundary.PlainText(
+                        activeModel,
+                        200);
+                    if (ModelRouting.IsTemporaryVisionSwitch(
+                            _settings,
+                            activeModel))
+                    {
+                        SetStatus(
+                            "Using " + activeModel + " for images",
+                            false);
+                    }
+
+                    taskContext.RecordExchange(request, response, results);
                     ChatRequestFactory.AppendToolExchange(
                         request,
                         response,
-                        rejected,
+                        results,
                         activeModel);
-                    request.tool_choice =
-                        PromptHelperTool.CreateRequiredChoice();
-                    SetStatus(
-                        "Clarification must come before other work",
-                        false);
-                    continue;
                 }
 
-                var results = new List<MailboxToolResult>();
-                foreach (var toolCall in toolCalls)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    var isDraftCall =
-                        DraftToolCatalog.IsDraftTool(
-                            toolCall?.function?.name);
-                    var isCrossAppCall =
-                        CrossAppToolCatalog.IsCrossAppTool(
-                            toolCall?.function?.name);
-                    MailboxToolResult result;
-                    if (PromptHelperTool.IsTool(
-                            toolCall?.function?.name))
-                    {
-                        result = await _promptHelper.AskAsync(
-                            toolCall,
-                            cancellationToken);
-                        request.tool_choice = "auto";
-                    }
-                    else if (isDraftCall)
-                    {
-                        result = _draftTools.Execute(
-                            toolCall,
-                            mailboxTools.ResolveHandle,
-                            draftAuthorization,
-                            toolCalls.Count == 1);
-                    }
-                    else if (isCrossAppCall &&
-                             _crossAppTools != null)
-                    {
-                        // Mailbox content handed to Excel/
-                        // PowerPoint/Word as a clearly marked
-                        // draft, on the same one-shot permission.
-                        result = _crossAppTools.Execute(
-                            toolCall,
-                            crossAppAuthorization,
-                            toolCalls.Count == 1,
-                            prompt);
-                    }
-                    else if (McpToolHost.IsMcpTool(
-                        toolCall?.function?.name))
-                    {
-                        // MCP calls run off the UI thread; the
-                        // host bounds the result and marks it
-                        // untrusted.
-                        result = await Task.Run(
-                            () => mcpHost != null
-                                ? mcpHost.Execute(toolCall)
-                                : mailboxTools.Execute(
-                                    toolCall,
-                                    cancellationToken),
-                            cancellationToken);
-                    }
-                    else if (TopicToolCatalog.IsTopicTool(
-                                 toolCall?.function?.name) &&
-                             topicTools != null)
-                    {
-                        result = await Task.Run(
-                            () => topicTools.Execute(
-                                toolCall,
-                                cancellationToken),
-                            cancellationToken);
-                    }
-                    else
-                    {
-                        result = mailboxTools.Execute(
-                            toolCall,
-                            cancellationToken);
-                    }
-                    results.Add(result);
-                    _diagnostics.RecordEvent(
-                        "tool " +
-                        (toolCall?.function?.name ?? "(null)") +
-                        " -> " + result.StatusText);
-                    if (isDraftCall || isCrossAppCall)
-                    {
-                        AppendDraftAction(result.StatusText);
-                    }
-                    else
-                    {
-                        AppendContext(result.StatusText);
-                    }
-
-                    SetStatus(result.StatusText, false);
-                }
-
-                activeModel = ModelRouting.ResolveForRequest(
-                    _settings,
-                    imagesExpected,
-                    results);
-                request.model = TextBoundary.PlainText(
-                    activeModel,
-                    200);
-                if (ModelRouting.IsTemporaryVisionSwitch(
-                        _settings,
-                        activeModel))
-                {
-                    SetStatus(
-                        "Using " + activeModel + " for images",
-                        false);
-                }
-
-                ChatRequestFactory.AppendToolExchange(
-                    request,
-                    response,
-                    results,
-                    activeModel);
             }
-
-            throw new AiEndpointException(
-                "TOOL_ROUND_LIMIT",
-                "The model did not finish after bounded tool use.");
         }
 
         // ------------------------------------------------------------------

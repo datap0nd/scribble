@@ -75,7 +75,8 @@ namespace Scribble.Outlook
 
         public MessageSnapshot CaptureById(
             string entryId,
-            string storeId)
+            string storeId,
+            bool metadataOnly = false)
         {
             if (string.IsNullOrWhiteSpace(entryId))
             {
@@ -94,7 +95,7 @@ namespace Scribble.Outlook
                 item = string.IsNullOrWhiteSpace(storeId)
                     ? outlookSession.GetItemFromID(entryId)
                     : outlookSession.GetItemFromID(entryId, storeId);
-                return CaptureItem(item);
+                return CaptureItem(item, metadataOnly, true);
             }
             finally
             {
@@ -212,7 +213,7 @@ namespace Scribble.Outlook
             }
         }
 
-        internal static MessageSnapshot CaptureItem(object item)
+        internal static MessageSnapshot CaptureItem(object item, bool metadataOnly = false, bool fullBody = false)
         {
             if (item == null)
             {
@@ -270,13 +271,13 @@ namespace Scribble.Outlook
                         2000),
                     receivedAt,
                     TextBoundary.PlainText(
-                        meetingDetails +
-                        SafeString(() => mail.Body),
-                        ContextScale.Scaled(
+                        metadataOnly ? string.Empty : meetingDetails +
+                        (fullBody ? Convert.ToString(mail.Body) : SafeString(() => mail.Body)),
+                        fullBody ? int.MaxValue : ContextScale.Scaled(
                             TextBoundary
                                 .MaxMessageBodyCharacters)),
-                    CaptureAttachmentNames(mail),
-                    CountRemoteImages(
+                    metadataOnly ? new string[0] : CaptureAttachmentNames(mail),
+                    metadataOnly ? 0 : CountRemoteImages(
                         SafeString(() => mail.HTMLBody)),
                     !isAppointment &&
                     SafeBoolean(() => mail.UnRead));
@@ -287,7 +288,7 @@ namespace Scribble.Outlook
             }
         }
 
-        private static bool IsReadableItemClass(string messageClass)
+        internal static bool IsReadableItemClass(string messageClass)
         {
             var value = messageClass ?? string.Empty;
             return value.StartsWith(

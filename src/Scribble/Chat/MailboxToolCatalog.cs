@@ -32,11 +32,14 @@ namespace Scribble.Chat
                         description =
                             "Search the user's local primary Outlook Inbox and Sent Items. " +
                             "Returns bounded metadata, snippets, and temporary message " +
-                            "handles, newest first. Only one search is allowed per request, " +
-                            "so choose the query carefully before calling.",
+                            "handles. Follow next_cursor until enumeration_complete is true, even for empty pages. " +
+                            "For review all or summaries of a time window, read every matching message and every body part.",
                         parameters = ObjectSchema(
                             new Dictionary<string, object>
                             {
+                                {
+                                    "cursor", StringSchema("Opaque next_cursor from the previous page. Continue the same search; other filters are ignored for an existing cursor.")
+                                },
                                 {
                                     "query",
                                     StringSchema(
@@ -78,9 +81,9 @@ namespace Scribble.Chat
                                 {
                                     "max_results",
                                     IntegerSchema(
-                                        "Maximum number of result summaries to return.",
+                                        "Page size; this never limits total coverage.",
                                         1,
-                                        MailboxWorkingSet.MaxMessages)
+                                        100)
                                 }
                             },
                             "query")
@@ -98,7 +101,7 @@ namespace Scribble.Chat
                             "working set. At most " +
                             MailboxWorkingSet.MaxMessages +
                             " unique message bodies " +
-                            "can be loaded in one request. Attachments are included as " +
+                            "can be loaded per batch, with unlimited batches. Use body_offset with next_body_offset until body_complete. Attachments are included as " +
                             "extracted text where possible (Excel, PDF, PowerPoint, " +
                             "Word including legacy formats, RTF, and text files); " +
                             "unreadable types are noted. Image attachments are " +
@@ -108,6 +111,9 @@ namespace Scribble.Chat
                         parameters = ObjectSchema(
                             new Dictionary<string, object>
                             {
+                                {
+                                    "body_offset", IntegerSchema("Character offset into each body; zero explicitly rereads a body. Follow next_body_offset for long messages.", 0, int.MaxValue)
+                                },
                                 {
                                     "handles",
                                     new Dictionary<string, object>

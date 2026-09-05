@@ -40,6 +40,7 @@ namespace Scribble.UI
 
         private const int MaxTranscriptEvents = 400;
         private const int MaxExternalImages = 4;
+        private const int MaxConsecutiveNoProgressToolRounds = 20;
 
         private sealed class ExternalImageContext
         {
@@ -742,21 +743,27 @@ namespace Scribble.UI
                 HandleNewChat();
             }
 
+            KoreanWorkbookSnapshot koreanWorkbookSnapshot = null;
             if (_hostKind == "excel" &&
                 string.Equals(
                     skill.Id,
                     TranslateKoreanSkillId,
                     StringComparison.OrdinalIgnoreCase) &&
-                !EnsureExcelSelectionForTranslation())
+                !EnsureExcelSelectionForTranslation(
+                    out koreanWorkbookSnapshot))
             {
                 return;
             }
 
-            HandleSendMessage(SkillStore.ExpandPrompt(skill.Prompt));
+            HandleSendMessage(
+                SkillStore.ExpandPrompt(skill.Prompt),
+                koreanWorkbookSnapshot);
         }
 
-        private bool EnsureExcelSelectionForTranslation()
+        private bool EnsureExcelSelectionForTranslation(
+            out KoreanWorkbookSnapshot koreanWorkbookSnapshot)
         {
+            koreanWorkbookSnapshot = null;
             var attached = _externalContext
                 .Where(entry => entry.ExcelSelection != null)
                 .ToArray();
@@ -772,16 +779,6 @@ namespace Scribble.UI
 
             if (attached.Length == 1)
             {
-                if (attached[0].Warn)
-                {
-                    SetStatus(
-                        "The attached Excel selection was clipped to the " +
-                        "context budget. Select a smaller contiguous chunk " +
-                        "of the Korean column and run the skill again.",
-                        true);
-                    return false;
-                }
-
                 var attachedError =
                     ExcelSelectionOutputPolicy.TranslationSelectionError(
                         attached[0].ExcelSelection);
@@ -796,34 +793,30 @@ namespace Scribble.UI
 
             try
             {
-                var snapshot = new WorkbookToolHost(
-                    _hostApplication).CaptureSelection();
-                var error =
-                    ExcelSelectionOutputPolicy.TranslationSelectionError(
-                        snapshot);
-                if (error.Length > 0)
+                SetStatus(
+                    "Finding Korean text throughout the workbook...",
+                    false);
+                koreanWorkbookSnapshot = new WorkbookToolHost(
+                    _hostApplication).CaptureKoreanWorkbook();
+                if (koreanWorkbookSnapshot.Cells.Count == 0)
                 {
-                    SetStatus(error, true);
-                    return false;
-                }
-
-                if (!AddExcelSelection(snapshot))
-                {
-                    return false;
-                }
-
-                var added = _externalContext.LastOrDefault(entry =>
-                    ReferenceEquals(entry.ExcelSelection, snapshot));
-                if (added != null && added.Warn)
-                {
+                    var skipped =
+                        koreanWorkbookSnapshot.SkippedFormulaCells +
+                        koreanWorkbookSnapshot.SkippedMergedCells;
                     SetStatus(
-                        "The selected Excel cells were clipped to the " +
-                        "context budget. Select a smaller contiguous chunk " +
-                        "of the Korean column and run the skill again.",
-                        true);
+                        skipped > 0
+                            ? "No replaceable Korean text cells were found. " +
+                              skipped + " formula or merged cells were left " +
+                              "unchanged"
+                            : "No Korean text was found in the workbook",
+                        false);
                     return false;
                 }
 
+                SetStatus(
+                    "Found " + koreanWorkbookSnapshot.Cells.Count +
+                    " Korean text cells. Translating...",
+                    false);
                 return true;
             }
             catch (Exception exception)
@@ -1072,14 +1065,18 @@ namespace Scribble.UI
                 return false;
             }
 
+            var selectionContext =
+                "Selected Excel cells " + snapshot.WorksheetName + "!" +
+                snapshot.Address + " are the complete scope (" +
+                snapshot.RowCount + " rows x " + snapshot.ColumnCount +
+                " columns). Scribble can read every cell sequentially; " +
+                "use read_cells with this exact sheet and range until " +
+                "complete=true.";
             var added = AddContextDocument(
                 "Excel " + snapshot.WorksheetName + "!" +
                     snapshot.Address,
-                snapshot.BuildContextText(string.Empty),
-                "from Excel" +
-                    (snapshot.PreviewTruncated
-                        ? " - preview truncated"
-                        : string.Empty),
+                selectionContext,
+                "from Excel - full selection available sequentially",
                 snapshot);
             if (!added)
             {
@@ -1087,21 +1084,20 @@ namespace Scribble.UI
             }
 
             FocusComposer();
-            if (snapshot.ColumnCount != 1 ||
-                snapshot.RowCount >
-                    ExcelSelectionOutputPolicy.MaxSelectedCells ||
-                snapshot.PreviewTruncated)
+            if (snapshot.ColumnCount != 1)
             {
                 SetStatus(
-                    "Selection added. For adjacent output, select one " +
-                    "contiguous column in chunks of at most " +
-                    ExcelSelectionOutputPolicy.MaxSelectedCells +
-                    " fully captured cells",
+                    "Selection added. One-to-one adjacent output requires " +
+                    "one contiguous column; analysis can read the full " +
+                    "selection sequentially",
                     false);
             }
             else
             {
-                SetStatus("Selection added to context", false);
+                SetStatus(
+                    "Selection added. Scribble will process all " +
+                    snapshot.RowCount + " rows sequentially",
+                    false);
             }
 
             return true;
@@ -1498,7 +1494,9 @@ namespace Scribble.UI
             SetStatus("Stopped", false);
         }
 
-        private async void HandleSendMessage(string rawText)
+        private async void HandleSendMessage(
+            string rawText,
+            KoreanWorkbookSnapshot koreanWorkbookSnapshot = null)
         {
             if (_busy)
             {
@@ -1570,11 +1568,7 @@ namespace Scribble.UI
             ExcelSelectionRequestContext selectionRequest = null;
             if (selectionCount == 1 &&
                 eligibleSelection != null &&
-                !eligibleSelection.Warn &&
-                !eligibleSelection.ExcelSelection.PreviewTruncated &&
-                eligibleSelection.ExcelSelection.ColumnCount == 1 &&
-                eligibleSelection.ExcelSelection.RowCount <=
-                    ExcelSelectionOutputPolicy.MaxSelectedCells)
+                eligibleSelection.ExcelSelection.ColumnCount == 1)
             {
                 selectionRequest = new ExcelSelectionRequestContext(
                     "excel_selection_" +
@@ -1583,6 +1577,12 @@ namespace Scribble.UI
                     ExcelSelectionOutputPolicy
                         .AllowsSourceReplacement(prompt));
             }
+            var koreanWorkbookRequest = koreanWorkbookSnapshot == null
+                ? null
+                : new KoreanWorkbookRequestContext(
+                    "korean_workbook_" +
+                        Guid.NewGuid().ToString("N"),
+                    koreanWorkbookSnapshot);
 
             var requestExternalContext =
                 new List<ExternalContextDocument>();
@@ -1591,16 +1591,64 @@ namespace Scribble.UI
                 if (selectionRequest != null &&
                     ReferenceEquals(entry, eligibleSelection))
                 {
+                    var initialSourceValues =
+                        WorkbookSelectionOutputWriter.ReadSourceValues(
+                            _hostApplication,
+                            selectionRequest.Snapshot,
+                            0,
+                            ExcelSelectionOutputPolicy
+                                .PreferredBatchValues);
                     requestExternalContext.Add(
                         new ExternalContextDocument(
                             entry.Document.Name,
-                            selectionRequest.Snapshot.BuildContextText(
-                                selectionRequest.Handle)));
+                            "Selected Excel cells " +
+                            selectionRequest.Snapshot.WorksheetName + "!" +
+                            selectionRequest.Snapshot.Address +
+                            " are the complete scope (" +
+                            selectionRequest.Snapshot.RowCount +
+                            " rows).\nSelection handle for this request: " +
+                            selectionRequest.Handle +
+                            "\nAuthoritative source values at start_offset 0 " +
+                            "(continue from next_source_values returned by " +
+                            "write_selection_output when transforming, or page " +
+                            "the exact sheet/range with read_cells for read-only " +
+                            "analysis):\n" +
+                            _serializer.Serialize(initialSourceValues)));
                 }
                 else
                 {
                     requestExternalContext.Add(entry.Document);
                 }
+            }
+            if (koreanWorkbookRequest != null)
+            {
+                var initialSourceCells =
+                    WorkbookSelectionOutputWriter
+                        .ReadKoreanSourceWindow(
+                            koreanWorkbookRequest.Snapshot,
+                            0,
+                            ExcelSelectionOutputPolicy
+                                .PreferredBatchValues);
+                requestExternalContext.Insert(
+                    0,
+                    new ExternalContextDocument(
+                        "Detected Korean workbook cells",
+                        "The local Excel host detected " +
+                        koreanWorkbookRequest.Snapshot.Cells.Count +
+                        " replaceable Korean text cells across the active " +
+                        "workbook. This is the complete sparse scope.\n" +
+                        "Workbook handle: " +
+                        koreanWorkbookRequest.Handle +
+                        "\nAuthoritative source cells at start_offset 0 " +
+                        "(count " + initialSourceCells.Count +
+                        ", complete " +
+                        (initialSourceCells.Count ==
+                            koreanWorkbookRequest.Snapshot.Cells.Count
+                                ? "true"
+                                : "false") +
+                        "; use that complete value on the first call, then " +
+                        "continue only from next_source_cells):\n" +
+                        _serializer.Serialize(initialSourceCells)));
             }
 
             var requestExternalImages =
@@ -1620,7 +1668,8 @@ namespace Scribble.UI
                 new OneShotDraftAuthorization(
                     DocumentDraftIntentPolicy.AllowsDraft(
                         prompt,
-                        hasAttachedExcelSelection),
+                        hasAttachedExcelSelection ||
+                            koreanWorkbookRequest != null),
                     false,
                     4);
             _diagnostics.BeginRequest(
@@ -1638,6 +1687,8 @@ namespace Scribble.UI
             _requestCancellation = cancellation;
             _draftHost?.BeginExcelSelectionRequest(
                 selectionRequest);
+            _draftHost?.BeginKoreanWorkbookRequest(
+                koreanWorkbookRequest);
 
             try
             {
@@ -1650,6 +1701,7 @@ namespace Scribble.UI
                     _memory.ChatId,
                     turnId,
                     selectionRequest,
+                    koreanWorkbookRequest,
                     cancellation.Token);
                 if (generation != _requestGeneration)
                 {
@@ -1749,6 +1801,7 @@ namespace Scribble.UI
             string chatId,
             string turnId,
             ExcelSelectionRequestContext selectionRequest,
+            KoreanWorkbookRequestContext koreanWorkbookRequest,
             CancellationToken cancellationToken)
         {
             var imagesExpected = externalImages.Count > 0;
@@ -1809,7 +1862,8 @@ namespace Scribble.UI
                 externalContext,
                 mcpTools,
                 activeTopic,
-                selectionRequest != null);
+                selectionRequest != null,
+                koreanWorkbookRequest != null);
             var topicTools = activeTopic == null
                 ? null
                 : new TopicToolHost(
@@ -1841,15 +1895,17 @@ namespace Scribble.UI
                     });
             }
 
-            var maxToolRounds = selectionRequest == null
-                ? TextBoundary.MaxToolRounds
-                : ExcelSelectionOutputPolicy.MaxRequestToolRounds;
-            for (var round = 0;
-                 round <= maxToolRounds;
-                 round++)
+            var taskContext = new TaskContextManager(request, _hostKind, prompt);
+            var exchangeStart = request.messages.Count;
+            var completedToolSteps = new HashSet<string>(
+                StringComparer.Ordinal);
+            var stagedSelectionValues = 0;
+            var noProgressRounds = 0;
+            for (var round = 0; ; round++)
             {
                 var response =
-                    await _client.CompleteStreamingAsync(
+                    await taskContext.CompleteAsync(
+                        _client,
                         _settings,
                         request,
                         PostStreamDelta,
@@ -1869,21 +1925,6 @@ namespace Scribble.UI
 
                 PostStreamEnd();
 
-                if (round == maxToolRounds)
-                {
-                    throw new AiEndpointException(
-                        "TOOL_ROUND_LIMIT",
-                        "The model exceeded the maximum number of bounded tool rounds.");
-                }
-
-                if (toolCalls.Count >
-                    TextBoundary.MaxToolCallsPerRound)
-                {
-                    throw new AiEndpointException(
-                        "TOOL_CALL_LIMIT",
-                        "The model requested too many tools in one round.");
-                }
-
                 if (PromptHelperTool.Contains(toolCalls) &&
                     toolCalls.Count != 1)
                 {
@@ -1895,6 +1936,7 @@ namespace Scribble.UI
                                 rejectedCall));
                     }
 
+                    taskContext.RecordExchange(request, response, rejected);
                     ChatRequestFactory.AppendToolExchange(
                         request,
                         response,
@@ -1909,6 +1951,7 @@ namespace Scribble.UI
                 }
 
                 var results = new List<MailboxToolResult>();
+                var roundMadeProgress = false;
                 foreach (var toolCall in toolCalls)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
@@ -1917,7 +1960,11 @@ namespace Scribble.UI
                         _hostKind,
                         name);
                     MailboxToolResult result;
-                    if (PromptHelperTool.IsTool(name))
+                    if (name == TaskContextManager.ReadEvidenceTool)
+                    {
+                        result = taskContext.ReadEvidence(toolCall);
+                    }
+                    else if (PromptHelperTool.IsTool(name))
                     {
                         result = await _promptHelper.AskAsync(
                             toolCall,
@@ -1983,6 +2030,14 @@ namespace Scribble.UI
                     }
 
                     results.Add(result);
+                    if (ToolResultMadeProgress(
+                            toolCall,
+                            result,
+                            completedToolSteps,
+                            ref stagedSelectionValues))
+                    {
+                        roundMadeProgress = true;
+                    }
                     _diagnostics.RecordEvent(
                         "tool " + (name ?? "(null)") + " -> " +
                         result.StatusText);
@@ -1998,16 +2053,168 @@ namespace Scribble.UI
                     SetStatus(result.StatusText, false);
                 }
 
+                taskContext.RecordExchange(request, response, results);
                 ChatRequestFactory.AppendToolExchange(
                     request,
                     response,
                     results,
                     activeModel);
+
+                if (selectionRequest != null ||
+                    koreanWorkbookRequest != null)
+                {
+                    CompactCompletedSelectionWrites(
+                        request,
+                        exchangeStart);
+                }
+
+                noProgressRounds = roundMadeProgress
+                    ? 0
+                    : noProgressRounds + 1;
+                if (noProgressRounds >=
+                    MaxConsecutiveNoProgressToolRounds)
+                {
+                    throw new AiEndpointException(
+                        "TOOL_NO_PROGRESS",
+                        "Scribble stopped after 20 consecutive tool rounds " +
+                        "without new data or selection progress. No " +
+                        "partially staged Excel values were written.");
+                }
+            }
+        }
+
+        private bool ToolResultMadeProgress(
+            ChatToolCall call,
+            MailboxToolResult result,
+            ISet<string> completedSteps,
+            ref int stagedSelectionValues)
+        {
+            if (call?.function == null || result == null)
+            {
+                return false;
             }
 
-            throw new AiEndpointException(
-                "TOOL_ROUND_LIMIT",
-                "The model did not finish after bounded tool use.");
+            if (PromptHelperTool.IsTool(call.function.name))
+            {
+                return true;
+            }
+
+            try
+            {
+                var payload = _serializer.DeserializeObject(
+                    result.Content) as IDictionary<string, object>;
+                object okValue;
+                if (payload == null)
+                {
+                    return false;
+                }
+
+                if (payload.TryGetValue("ok", out okValue) &&
+                    !Convert.ToBoolean(okValue))
+                {
+                    return false;
+                }
+
+                if (string.Equals(
+                    call.function.name,
+                    WorkbookToolCatalog.WriteSelectionOutput,
+                    StringComparison.Ordinal) ||
+                    string.Equals(
+                        call.function.name,
+                        WorkbookToolCatalog.WriteKoreanTranslations,
+                        StringComparison.Ordinal))
+                {
+                    object stagedValue;
+                    int staged;
+                    if (payload.TryGetValue(
+                            "staged_count",
+                            out stagedValue) &&
+                        int.TryParse(
+                            Convert.ToString(stagedValue),
+                            out staged) &&
+                        staged > stagedSelectionValues)
+                    {
+                        stagedSelectionValues = staged;
+                        return true;
+                    }
+
+                    return false;
+                }
+            }
+            catch
+            {
+                return false;
+            }
+
+            var step = call.function.name + "\n" +
+                (call.function.arguments ?? string.Empty) + "\n" +
+                result.Content;
+            return completedSteps.Add(step);
+        }
+
+        private static void CompactCompletedSelectionWrites(
+            ChatCompletionRequest request,
+            int exchangeStart)
+        {
+            var groups = new List<int[]>();
+            for (var index = exchangeStart;
+                 index < request.messages.Count;
+                 index++)
+            {
+                var assistant = request.messages[index] as
+                    ChatCompletionAssistantToolMessage;
+                if (assistant?.tool_calls == null ||
+                    assistant.tool_calls.Count == 0)
+                {
+                    continue;
+                }
+
+                var onlySelectionWrites = true;
+                foreach (var call in assistant.tool_calls)
+                {
+                    var name = call?.function?.name;
+                    if (!string.Equals(
+                            name,
+                            WorkbookToolCatalog.WriteSelectionOutput,
+                            StringComparison.Ordinal) &&
+                        !string.Equals(
+                            name,
+                            WorkbookToolCatalog.WriteKoreanTranslations,
+                            StringComparison.Ordinal))
+                    {
+                        onlySelectionWrites = false;
+                        break;
+                    }
+                }
+
+                if (!onlySelectionWrites)
+                {
+                    continue;
+                }
+
+                var end = index + 1;
+                while (end < request.messages.Count &&
+                    request.messages[end] is
+                        ChatCompletionToolResultMessage)
+                {
+                    end++;
+                }
+
+                groups.Add(new[] { index, end - index });
+                index = end - 1;
+            }
+
+            // The newest receipt contains the next exact source
+            // window and offset. Older completed write exchanges are
+            // no longer relevant, so discard them as whole pairs;
+            // this lets an unlimited selection proceed sequentially
+            // without replaying every already-processed value.
+            for (var group = groups.Count - 2; group >= 0; group--)
+            {
+                request.messages.RemoveRange(
+                    groups[group][0],
+                    groups[group][1]);
+            }
         }
 
         private bool SelectionAnswerAllowsSourceReplacement(

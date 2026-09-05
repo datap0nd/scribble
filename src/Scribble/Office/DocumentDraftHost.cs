@@ -61,6 +61,15 @@ namespace Scribble.Office
                 "replace_source"
             };
 
+        private static readonly HashSet<string> KoreanOutputArguments =
+            new HashSet<string>(StringComparer.Ordinal)
+            {
+                "workbook_handle",
+                "start_offset",
+                "values",
+                "complete"
+            };
+
         private static readonly HashSet<string> SlideArguments =
             new HashSet<string>(StringComparer.Ordinal)
             {
@@ -86,6 +95,8 @@ namespace Scribble.Office
         private ExcelSelectionOutputSession _selectionOutput;
         private bool _allowSelectionSourceReplacement;
         private bool _selectionReplaceSource;
+        private KoreanWorkbookRequestContext _koreanWorkbookRequest;
+        private KoreanWorkbookOutputSession _koreanWorkbookOutput;
 
         public DocumentDraftHost(
             string hostKind,
@@ -212,6 +223,17 @@ namespace Scribble.Office
                 StringComparison.Ordinal))
             {
                 return ExecuteSelectionOutput(
+                    call.id,
+                    arguments,
+                    authorization);
+            }
+
+            if (string.Equals(
+                name,
+                WorkbookToolCatalog.WriteKoreanTranslations,
+                StringComparison.Ordinal))
+            {
+                return ExecuteKoreanWorkbookOutput(
                     call.id,
                     arguments,
                     authorization);
@@ -409,6 +431,13 @@ namespace Scribble.Office
             _selectionReplaceSource = false;
         }
 
+        internal void BeginKoreanWorkbookRequest(
+            KoreanWorkbookRequestContext context)
+        {
+            _koreanWorkbookRequest = context;
+            _koreanWorkbookOutput = null;
+        }
+
         internal void AllowExcelSelectionSourceReplacement()
         {
             if (_selectionRequest != null)
@@ -423,6 +452,159 @@ namespace Scribble.Office
             _selectionRequest = null;
             _allowSelectionSourceReplacement = false;
             _selectionReplaceSource = false;
+            _koreanWorkbookOutput = null;
+            _koreanWorkbookRequest = null;
+        }
+
+        private MailboxToolResult ExecuteKoreanWorkbookOutput(
+            string callId,
+            IDictionary<string, object> arguments,
+            OneShotDraftAuthorization authorization)
+        {
+            if (authorization == null ||
+                !authorization.CanCreate ||
+                _koreanWorkbookRequest == null)
+            {
+                return Error(
+                    callId,
+                    authorization,
+                    "KOREAN_WORKBOOK_PERMISSION_NOT_AVAILABLE",
+                    "No workbook-wide Korean translation is attached " +
+                    "to this request.");
+            }
+
+            var handle = ToolArguments.GetString(
+                arguments,
+                "workbook_handle",
+                string.Empty);
+            if (!string.Equals(
+                handle,
+                _koreanWorkbookRequest.Handle,
+                StringComparison.Ordinal))
+            {
+                return Error(
+                    callId,
+                    authorization,
+                    "KOREAN_WORKBOOK_HANDLE_UNKNOWN",
+                    "The workbook translation handle is unknown or expired.");
+            }
+
+            try
+            {
+                if (_koreanWorkbookOutput == null)
+                {
+                    _koreanWorkbookOutput =
+                        new KoreanWorkbookOutputSession(
+                            handle,
+                            _koreanWorkbookRequest.Snapshot.Cells.Count);
+                }
+
+                var values = ParseSelectionValues(arguments);
+                var startOffset = ToolArguments.GetInteger(
+                    arguments,
+                    "start_offset",
+                    -1,
+                    -1,
+                    _koreanWorkbookRequest.Snapshot.Cells.Count);
+                var complete = ToolArguments.GetBoolean(
+                    arguments,
+                    "complete");
+                var ready = _koreanWorkbookOutput.Stage(
+                    handle,
+                    startOffset,
+                    values,
+                    complete);
+                if (!ready)
+                {
+                    return KoreanWorkbookSuccess(
+                        callId,
+                        false,
+                        authorization);
+                }
+
+                if (!authorization.TryConsume())
+                {
+                    return Error(
+                        callId,
+                        authorization,
+                        "DRAFT_PERMISSION_NOT_AVAILABLE",
+                        "No unused local write permission is available " +
+                        "for the final workbook translation.");
+                }
+
+                var status = WorkbookSelectionOutputWriter
+                    .CommitKoreanTranslations(
+                        _hostApplication,
+                        _koreanWorkbookRequest.Snapshot,
+                        _koreanWorkbookOutput.Values);
+                authorization.MarkCreated();
+                return KoreanWorkbookSuccess(
+                    callId,
+                    true,
+                    authorization,
+                    status);
+            }
+            catch (Exception exception)
+            {
+                Log.Error("DocumentDraft." +
+                    WorkbookToolCatalog.WriteKoreanTranslations,
+                    exception);
+                return Error(
+                    callId,
+                    authorization,
+                    "KOREAN_WORKBOOK_OUTPUT_INVALID",
+                    DiagnosticDetails.ForException(
+                        exception,
+                        "KOREAN_WORKBOOK_OUTPUT_INVALID"));
+            }
+        }
+
+        private MailboxToolResult KoreanWorkbookSuccess(
+            string callId,
+            bool committed,
+            OneShotDraftAuthorization authorization,
+            string committedStatus = null)
+        {
+            var snapshot = _koreanWorkbookRequest.Snapshot;
+            var staged = _koreanWorkbookOutput.StagedCount;
+            var remaining = Math.Max(0, snapshot.Cells.Count - staged);
+            var nextSourceCells = remaining == 0
+                ? new Dictionary<string, string>[0]
+                : WorkbookSelectionOutputWriter.ReadKoreanSourceWindow(
+                    snapshot,
+                    staged,
+                    Math.Min(
+                        ExcelSelectionOutputPolicy.PreferredBatchValues,
+                        remaining));
+            var nextBatchSize = nextSourceCells.Count;
+            var status = committed
+                ? committedStatus
+                : "Prepared " + staged + " of " +
+                  snapshot.Cells.Count +
+                  " Korean cell translations. Excel is unchanged.";
+            return new MailboxToolResult(
+                callId,
+                _serializer.Serialize(
+                    new Dictionary<string, object>
+                    {
+                        { "ok", true },
+                        { "action",
+                            WorkbookToolCatalog.WriteKoreanTranslations },
+                        { "committed", committed },
+                        { "saved", false },
+                        { "permission_consumed",
+                            authorization.IsConsumed },
+                        { "staged_count", staged },
+                        { "expected_count", snapshot.Cells.Count },
+                        { "next_start_offset", staged },
+                        { "remaining_count", remaining },
+                        { "next_batch_size", nextBatchSize },
+                        { "next_source_cells", nextSourceCells },
+                        { "complete_next",
+                            remaining > 0 && remaining == nextBatchSize },
+                        { "status", status }
+                    }),
+                TextBoundary.SingleLine(status, 300));
         }
 
         private MailboxToolResult ExecuteSelectionOutput(
@@ -459,18 +641,15 @@ namespace Scribble.Office
 
             var snapshot = _selectionRequest.Snapshot;
             if (snapshot.ColumnCount != 1 ||
-                snapshot.RowCount < 1 ||
-                snapshot.RowCount >
-                    ExcelSelectionOutputPolicy.MaxSelectedCells ||
-                snapshot.PreviewTruncated)
+                snapshot.RowCount < 1)
             {
                 return Error(
                     callId,
                     authorization,
                     "SELECTION_OUTPUT_NOT_ELIGIBLE",
-                    "Select one contiguous column of at most " +
-                    ExcelSelectionOutputPolicy.MaxSelectedCells +
-                    " fully captured cells.");
+                    "Select one contiguous Excel column. The full " +
+                    "selection is processed sequentially even when its " +
+                    "inline preview is incomplete.");
             }
 
             var destination = ToolArguments.GetString(
@@ -568,7 +747,7 @@ namespace Scribble.Office
                     "start_offset",
                     -1,
                     -1,
-                    ExcelSelectionOutputPolicy.MaxSelectedCells);
+                    snapshot.RowCount);
                 var complete = ToolArguments.GetBoolean(
                     arguments,
                     "complete");
@@ -691,12 +870,6 @@ namespace Scribble.Office
             var values = new List<string>();
             foreach (var value in outer)
             {
-                if (values.Count ==
-                    ExcelSelectionOutputPolicy.MaxBatchValues + 1)
-                {
-                    break;
-                }
-
                 var text = value as string;
                 if (text == null)
                 {
@@ -719,9 +892,16 @@ namespace Scribble.Office
             int expectedCount)
         {
             var remaining = Math.Max(0, expectedCount - stagedCount);
-            var nextBatchSize = Math.Min(
-                ExcelSelectionOutputPolicy.PreferredBatchValues,
-                remaining);
+            var nextSourceValues = remaining == 0
+                ? new string[0]
+                : WorkbookSelectionOutputWriter.ReadSourceValues(
+                    _hostApplication,
+                    _selectionRequest.Snapshot,
+                    stagedCount,
+                    Math.Min(
+                        ExcelSelectionOutputPolicy.PreferredBatchValues,
+                        remaining));
+            var nextBatchSize = nextSourceValues.Count;
             return new MailboxToolResult(
                 callId,
                 _serializer.Serialize(
@@ -741,12 +921,11 @@ namespace Scribble.Office
                         { "next_start_offset", stagedCount },
                         { "remaining_count", remaining },
                         { "next_batch_size", nextBatchSize },
+                        { "next_source_values", nextSourceValues },
                         {
                             "complete_next",
                             remaining > 0 &&
-                            remaining <=
-                                ExcelSelectionOutputPolicy
-                                    .PreferredBatchValues
+                            remaining == nextBatchSize
                         },
                         { "status", status }
                     }),
@@ -1013,6 +1192,13 @@ namespace Scribble.Office
                 StringComparison.Ordinal))
             {
                 allowed = SelectionOutputArguments;
+            }
+            else if (string.Equals(
+                name,
+                WorkbookToolCatalog.WriteKoreanTranslations,
+                StringComparison.Ordinal))
+            {
+                allowed = KoreanOutputArguments;
             }
             else if (
                 string.Equals(

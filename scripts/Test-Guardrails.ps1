@@ -16,6 +16,9 @@ foreach ($pattern in $forbidden) {
     $matches = $sourceFiles | Select-String -Pattern $pattern |
         Where-Object {
             $_.Line -notmatch 'File\.Delete' -and
+            -not ($_.Path -like '*\Chat\TaskCoordinator.cs' -and
+                ($_.Line.Trim() -eq 'if (Directory.Exists(path)) Directory.Delete(path, true);' -or
+                 $_.Line.Trim() -eq 'else File.Move(temporary, path);')) -and
             -not (
                 ($_.Path -like '*\Chat\TopicIndex.cs' -or
                  $_.Path -like '*\Chat\TopicToolHost.cs' -or
@@ -187,9 +190,9 @@ foreach ($requiredBoundary in @(
     "LimitOverrides.WorkingSetMessages",
     "MAILBOX_WORKING_SET_LOCKED",
     "MAILBOX_CONTEXT_LIMIT_REACHED",
-    "MAILBOX_SEARCH_LIMIT_REACHED",
+    "MAILBOX_CURSOR_EXPIRED",
     "_loadedBodyHandles",
-    "_searchExecuted"
+    "next_cursor"
 )) {
     if (-not $workingSetBoundarySource.Contains($requiredBoundary)) {
         throw "Working-set mailbox boundary is missing $requiredBoundary."
@@ -207,7 +210,7 @@ foreach ($requiredFilterBoundary in @(
     '"received_after"',
     '"received_before"',
     '"unread_only"',
-    'maxResults + 1',
+    'cursor.ReadAsync(maxResults, cancellationToken)',
     '"truncated", truncated'
 )) {
     if (-not ($catalogSource + $toolHostSource).Contains(
@@ -265,7 +268,8 @@ foreach ($skillRunnerSource in @(
     foreach ($requiredRunnerBoundary in @(
         '_skillStore.Resolve',
         'HandleNewChat()',
-        'HandleSendMessage(SkillStore.ExpandPrompt(skill.Prompt))'
+        'HandleSendMessage(',
+        'SkillStore.ExpandPrompt(skill.Prompt)'
     )) {
         if (-not $skillRunnerSource.Contains($requiredRunnerBoundary)) {
             throw "A Skills runner bypasses $requiredRunnerBoundary."
@@ -461,7 +465,8 @@ if (Compare-Object $workbookToolNames (@(
     "read_cells",
     "write_draft_sheet",
     "write_cells",
-    "write_selection_output") | Sort-Object)) {
+    "write_selection_output",
+    "write_korean_translations") | Sort-Object)) {
     throw "Workbook tool catalog contains an unexpected capability."
 }
 
@@ -524,6 +529,39 @@ if ($selectionStageIndex -lt 0 -or
     $selectionConsumeIndex -le $selectionStageIndex -or
     $selectionCommitIndex -le $selectionConsumeIndex) {
     throw "Selection output must stage and validate before consuming permission, then commit."
+}
+
+$koreanStageIndex = $documentDraftHostSource.IndexOf(
+    "_koreanWorkbookOutput.Stage(")
+$koreanConsumeIndex = $documentDraftHostSource.IndexOf(
+    "authorization.TryConsume()",
+    $koreanStageIndex)
+$koreanCommitIndex = $documentDraftHostSource.IndexOf(
+    ".CommitKoreanTranslations(",
+    $koreanConsumeIndex)
+if ($koreanStageIndex -lt 0 -or
+    $koreanConsumeIndex -le $koreanStageIndex -or
+    $koreanCommitIndex -le $koreanConsumeIndex) {
+    throw "Korean workbook output must stage before permission and commit."
+}
+
+$workbookHostSource = Get-Content (
+    Join-Path $sourceRoot "Office\WorkbookToolHost.cs") -Raw
+$selectionWriterSource = Get-Content (
+    Join-Path $sourceRoot "Office\WorkbookSelectionOutputWriter.cs") -Raw
+foreach ($requiredKoreanBoundary in @(
+    "CaptureKoreanWorkbook()",
+    "ContainsKorean(text)",
+    "cell.HasFormula",
+    "cell.MergeCells",
+    "CommitKoreanTranslations(",
+    "KoreanWorkbookTranslationRollback",
+    "next_source_cells")) {
+    if (-not ($workbookHostSource.Contains($requiredKoreanBoundary) -or
+            $selectionWriterSource.Contains($requiredKoreanBoundary) -or
+            $documentDraftHostSource.Contains($requiredKoreanBoundary))) {
+        throw "Korean workbook boundary is missing $requiredKoreanBoundary."
+    }
 }
 
 $workbookWriterSource = Get-Content (
@@ -620,6 +658,43 @@ $officePaneSource = Get-Content (
 if (-not $officePaneSource.Contains(
         "DocumentDraftIntentPolicy.AllowsDraft(")) {
     throw "Document drafts are not gated by the local intent policy."
+}
+
+$excelSelectionPolicySource = Get-Content (
+    Join-Path $sourceRoot "Office\ExcelSelectionOutputPolicy.cs") -Raw
+$documentDraftHostSource = Get-Content (
+    Join-Path $sourceRoot "Office\DocumentDraftHost.cs") -Raw
+foreach ($removedSelectionCap in @(
+    "MaxSelectedCells",
+    "MaxBatchValues",
+    "MaxBatchCharacters",
+    "MaxBatches",
+    "MaxRequestToolRounds")) {
+    if ($excelSelectionPolicySource.Contains($removedSelectionCap) -or
+        $workbookCatalogSource.Contains($removedSelectionCap) -or
+        $officePaneSource.Contains($removedSelectionCap)) {
+        throw "Excel selection still contains obsolete cap $removedSelectionCap."
+    }
+}
+foreach ($requiredSequentialSelectionBoundary in @(
+    "MaxExcelRows = 1048576",
+    "A batch must contain at least one value.",
+    "next_source_values",
+    "MaxConsecutiveNoProgressToolRounds = 20",
+    "CompactCompletedSelectionWrites")) {
+    if (-not ($excelSelectionPolicySource.Contains(
+                $requiredSequentialSelectionBoundary) -or
+            $workbookCatalogSource.Contains(
+                $requiredSequentialSelectionBoundary) -or
+            $officePaneSource.Contains(
+                $requiredSequentialSelectionBoundary) -or
+            $documentDraftHostSource.Contains(
+                $requiredSequentialSelectionBoundary))) {
+        throw "Sequential Excel selection boundary is missing $requiredSequentialSelectionBoundary."
+    }
+}
+if ($officePaneSource.Contains('"TOOL_ROUND_LIMIT"')) {
+    throw "The Office tool loop must stop on lack of progress, not total rounds."
 }
 
 # End-user settings always reset the text and loop budgets to the

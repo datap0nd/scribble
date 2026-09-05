@@ -1,3 +1,5 @@
+> Superseded by [SCRIBBLE_SCALE_AND_QUALITY_PLAN.md](SCRIBBLE_SCALE_AND_QUALITY_PLAN.md). The proposed 500-message ceiling is obsolete; limits must bound individual batches, never total task coverage.
+
 # Scribble Automatic Context and Mailbox Agency Plan
 
 Status: independently reviewed; revision required before implementation.

@@ -14,6 +14,7 @@ permissions:
 
 jobs:
   build:
+    needs: browser-extension-e2e
     runs-on: windows-latest
 
     # Code signing is optional: when the SIGNING_PFX secret is absent
@@ -784,8 +785,7 @@ jobs:
           generate_release_notes: true
 
   browser-extension-e2e:
-    name: Optional browser extension fixtures
-    if: github.event_name == 'workflow_dispatch'
+    name: Browser extension fixtures
     runs-on: ubuntu-latest
     permissions:
       contents: read

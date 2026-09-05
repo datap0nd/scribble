@@ -354,7 +354,7 @@ namespace Scribble.Outlook
             }
         }
 
-        private static string BuildDaslFilter(string query)
+        internal static string BuildDaslFilter(string query)
         {
             var escaped = query.Replace("'", "''");
             return
