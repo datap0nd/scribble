@@ -134,7 +134,7 @@ namespace Scribble.Office
                     {
                         var charsPerLine = Math.Max(1, (int)((area.Width / cols - 8) / 4));
                         var lines = row.Select(v => Math.Max(1, (v.Length + charsPerLine - 1) / charsPerLine)).DefaultIfEmpty(1).Max();
-                        perPage = Math.Min(perPage, Math.Max(1, (int)(area.Height / (lines * 10 + 6)) - 1));
+                        perPage = Math.Min(perPage, Math.Max(1, (int)(area.Height / (lines * 9 + 3)) - 1));
                     }
                 }
                 var count = Math.Max(1, (int)Math.Ceiling(Math.Max(rows, secondaryRows) / (double)perPage));
@@ -288,7 +288,7 @@ namespace Scribble.Office
             var table = element.Table;
             var columns = Math.Max(table.Headers.Count, table.Rows.Select(r => r.Count).DefaultIfEmpty(0).Max());
             var rows = table.Rows.Count + (table.Headers.Count > 0 ? 1 : 0);
-            var box = new RectangleF(0, 0, element.Box.Width / columns - 4, element.Box.Height / rows - 2);
+            var box = new RectangleF(0, 0, element.Box.Width / columns - 4, element.Box.Height / rows);
             var size = 10f;
             foreach (var row in new[] { table.Headers }.Concat(table.Rows))
                 foreach (var text in row) size = Math.Min(size, SamsungSlideDesign.Fit(text, "Arial Narrow", box, 10, 7.5f));

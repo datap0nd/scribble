@@ -30,6 +30,10 @@ namespace GuardrailTests
                 if (!plan.Contains("[Scribble draft]")) throw new Exception("Missing draft marker " + layout);
             }
             var rows = Enumerable.Range(1, 40).Select(i => new[] { "Item " + i, "100" }).ToArray();
+            var denseRows = Enumerable.Range(1, 20).Select(i => new[] { "Item " + i, "100", "100", "100", "100", "100", "100" }).ToArray();
+            var dense = SamsungPresentationReview.InspectPlan(json.Serialize(new[] { new { title = "Specification comparison", layout = "matrix", subtitle = "Compare the complete specification", table = new { headers = new[] { "Item", "A", "B", "C", "D", "E", "F" }, rows = denseRows } } }));
+            if (((IEnumerable)dense).Cast<object>().Count() != 1) throw new Exception("The reference 20-row comparison should fit on one dense slide.");
+            previews.Add(dense);
             var pages = (IEnumerable)SamsungPresentationReview.InspectPlan(json.Serialize(new[] { new { title = "Data", layout = "matrix", subtitle = "Review every row", table = new { headers = new[] { "Item", "Value" }, rows } } }));
             previews.Add(pages);
             File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "SamsungPlans.json"), json.Serialize(previews));

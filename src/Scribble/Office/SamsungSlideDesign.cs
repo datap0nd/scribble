@@ -74,6 +74,6 @@ namespace Scribble.Office
                 " [" + font + ", minimum " + minimum + "pt, box " + area.Width + " x " + area.Height + "]. Split this content across slides; no source text was dropped.");
         }
         public static int RowsPerPage(int columns, float height = 281.34f)
-        { return Math.Max(1, (int)(height / 19f) - 1); }
+        { return Math.Max(1, (int)(height / 12f) - 1); }
     }
 }
