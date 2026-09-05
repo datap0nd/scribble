@@ -23,6 +23,7 @@ namespace Scribble.Chat
         public bool Matches(TaskSourceBinding current)
         {
             return current != null && !string.IsNullOrEmpty(Id) &&
+                !string.IsNullOrEmpty(Fingerprint) && (!Saved || !string.IsNullOrEmpty(Location)) &&
                 Id == current.Id && Location == current.Location &&
                 Fingerprint == current.Fingerprint && Saved == current.Saved &&
                 (Saved || (!string.IsNullOrEmpty(SessionId) && SessionId == current.SessionId));

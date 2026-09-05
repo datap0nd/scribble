@@ -90,6 +90,15 @@ namespace Scribble.Chat
             AppSettings settings, ChatCompletionRequest request, Action<string> delta,
             CancellationToken cancellationToken)
         {
+            try { return await CompleteCoreAsync(client, settings, request, delta, cancellationToken); }
+            catch (OperationCanceledException) { Pause("Stopped by user; retained task evidence and instructions."); throw; }
+            catch (Exception ex) { Pause(ex.Message); throw; }
+        }
+
+        private async Task<ChatCompletionResponseMessage> CompleteCoreAsync(OpenAiCompatibleClient client,
+            AppSettings settings, ChatCompletionRequest request, Action<string> delta,
+            CancellationToken cancellationToken)
+        {
             for (var retry = 0; ; retry++)
             {
                 cancellationToken.ThrowIfCancellationRequested();

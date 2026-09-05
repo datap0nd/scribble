@@ -69,7 +69,8 @@ namespace Scribble.Outlook
             var reader = new MessageReader(_application);
             // A page also bounds nonmatching rows, so sparse searches yield to the UI.
             var scanned = 0;
-            while (hits.Count < pageSize && scanned < 100)
+            var characters = 0;
+            while (hits.Count < pageSize && scanned < 100 && characters < 12000)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 if (_table == null && !OpenNextFolder()) break;
@@ -84,7 +85,7 @@ namespace Scribble.Outlook
                 {
                     row = table.GetNextRow();
                     dynamic entry = row;
-                    var id = Convert.ToString(entry["EntryID"]);
+                    string id = Convert.ToString(entry["EntryID"]);
                     scanned++;
                     if (!MessageReader.IsReadableItemClass(Convert.ToString(entry["MessageClass"]))) continue;
                     if (!_seen.Add(_storeId + "\n" + id)) continue;
@@ -93,6 +94,8 @@ namespace Scribble.Outlook
                     if (!message.ReceivedAt.HasValue || message.ReceivedAt.Value < _after ||
                         message.ReceivedAt.Value > _before || (_unread && !message.IsUnread)) continue;
                     hits.Add(new MailboxSearchHit(message, _folderName, ""));
+                    characters += message.EntryId.Length + message.StoreId.Length +
+                        message.Subject.Length + message.Sender.Length + message.Recipients.Length + 512;
                 }
                 finally
                 {
