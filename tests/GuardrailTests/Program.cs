@@ -2441,7 +2441,7 @@ namespace GuardrailTests
                 .Select(method => method.Name)
                 .ToArray();
             Assert(
-                methods.OrderBy(n => n).SequenceEqual(new[] { "Dispose", "Execute", "ExecuteAsync" }),
+                methods.OrderBy(n => n).SequenceEqual(new[] { "BindTaskAsync", "Dispose", "Execute", "ExecuteAsync", "get_AnalysisReport", "get_CompletionBlocker" }.OrderBy(n => n)),
                 "Mailbox tool host public capabilities changed: " +
                 string.Join(", ", methods));
         }
