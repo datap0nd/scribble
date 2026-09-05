@@ -102,6 +102,7 @@ namespace Scribble.Office
             bool exclusive, string prompt, OpenAiCompatibleClient client, AppSettings settings,
             CancellationToken token, Action<int, int> progress)
         {
+            token.ThrowIfCancellationRequested();
             var name = call?.function?.name;
             if (name == PresentationToolCatalog.AddDraftSlides || name == CrossAppToolCatalog.SendToPowerPoint)
                 return await ExecuteSamsungAsync(call, authorization, exclusive, prompt, client, settings, token);

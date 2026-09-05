@@ -7693,18 +7693,20 @@ namespace GuardrailTests
                 var office = new CrossAppFixture(target, events);
                 var outlook = new FakeOutlookApplication();
                 var args = target == "word" ? "{\"title\":\"Source\",\"body\":\"SOURCE CONTENT\"}" :
-                    "{\"plan\":[\"intro\"],\"slides\":[{\"id\":\"intro\",\"layout\":\"cover\",\"title\":\"SOURCE CONTENT\"}]}";
+                    "{\"plan\":[\"intro\",\"closing\"],\"slides\":[{\"id\":\"intro\",\"layout\":\"cover\",\"title\":\"SOURCE CONTENT\"}]}";
                 if (target == "outlook") args = "{\"subject\":\"Draft\",\"body\":\"SOURCE CONTENT\"}";
                 if (target == "excel") args = "{\"title\":\"Draft\",\"columns\":[\"Source\"],\"rows\":[[\"SOURCE CONTENT\"]]}";
                 var call = MailboxCall("browser-office", target == "outlook" ? BrowserToolCatalog.OpenOutlookDraft : target == "excel" ? BrowserToolCatalog.OpenExcelTable : "send_to_" + target, args);
                 var callResponse = json.Serialize(new { choices = new[] { new { message = new { role = "assistant", content = (string)null, tool_calls = new[] { call } } } } });
+                var secondCall = MailboxCall("browser-office-2", CrossAppToolCatalog.SendToPowerPoint, "{\"slides\":[{\"id\":\"closing\",\"layout\":\"closing\",\"title\":\"Next steps\"}]}");
+                var continuation = json.Serialize(new { choices = new[] { new { message = new { role = "assistant", content = (string)null, tool_calls = new[] { secondCall } } } } });
                 const string approved = "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"approved\\\":true}\"}}]}";
                 const string done = "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"The draft is open.\"}}]}";
                 var chat = "crossapp-test-" + Guid.NewGuid().ToString("N");
                 var launches = 0;
                 try
                 {
-                    using (var server = new FakeEndpoint(target != "powerpoint" ? new[] { callResponse, done } : new[] { callResponse, approved, approved, done }))
+                    using (var server = new FakeEndpoint(target != "powerpoint" ? new[] { callResponse, done } : new[] { callResponse, approved, approved, continuation, approved, approved, done }))
                     {
                         var settings = EndpointSettings(server.BaseUrl); settings.Model = "qwen3-vl";
                         using (var service = new BrowserChatService(settings, progId => {
@@ -7725,7 +7727,8 @@ namespace GuardrailTests
                                 throw new InvalidOperationException("Chrome -> " + target + ": " + exception.Message + "\n" + receipts, exception);
                             }
                             server.Wait();
-                            Assert(launches == 1 && result.Content == "The draft is open." && (target == "outlook" ? outlook.LastDraft.Displayed && outlook.LastDraft.Body == "SOURCE CONTENT" && !outlook.LastDraft.Saved : events.Any(e => e.Contains("SOURCE CONTENT"))), "Chrome-to-Office round trip failed.");
+                            Assert(launches == (target == "powerpoint" ? 2 : 1) && result.Content == "The draft is open." && (target == "outlook" ? outlook.LastDraft.Displayed && outlook.LastDraft.Body == "SOURCE CONTENT" && !outlook.LastDraft.Saved : events.Any(e => e.Contains("SOURCE CONTENT"))), "Chrome-to-Office round trip failed.");
+                            if (target == "powerpoint") Assert(events.Count(e => e.StartsWith("powerpoint.Presentations.Add(")) == 1 && events.Any(e => e.Contains("Next steps")), "Additional batches must continue the original PowerPoint deck.");
                         }
                     }
                 }
@@ -7764,6 +7767,14 @@ namespace GuardrailTests
                     var settings = EndpointSettings(server == null ? "http://127.0.0.1:1/v1" : server.BaseUrl);
                     settings.Model = "qwen3-vl";
                     var call = MailboxCall("handoff", tool, args);
+                    using (var cancelled = new CancellationTokenSource())
+                    {
+                        cancelled.Cancel();
+                        var stopped = false;
+                        try { host.ExecuteAsync(call, new OneShotDraftAuthorization(true), true, "Create a draft", client, settings, cancelled.Token, null).GetAwaiter().GetResult(); }
+                        catch (OperationCanceledException) { stopped = true; }
+                        Assert(stopped && launches == 0, "Cancelled handoff launched an app.");
+                    }
                     var denied = host.ExecuteAsync(call, new OneShotDraftAuthorization(false), true, "Create a draft", client, settings, CancellationToken.None, null).GetAwaiter().GetResult();
                     Assert(launches == 0 && denied.Content.Contains("error_code"), "Denied handoff launched an app.");
                     var mixed = host.ExecuteAsync(call, new OneShotDraftAuthorization(true), false, "Create a draft", client, settings, CancellationToken.None, null).GetAwaiter().GetResult();

@@ -16,11 +16,12 @@ namespace GuardrailTests
         private readonly List<CrossAppFixture> _items = new List<CrossAppFixture>();
         private readonly string _path;
         private readonly List<string> _events;
-        public CrossAppFixture(string path, List<string> events) { _path = path; _events = events; }
+        private readonly CrossAppFixture _parent;
+        public CrossAppFixture(string path, List<string> events, CrossAppFixture parent = null) { _path = path; _events = events; _parent = parent; }
         private CrossAppFixture Child(string name)
         {
             object value;
-            if (!_values.TryGetValue(name, out value)) _values[name] = value = new CrossAppFixture(_path + "." + name, _events);
+            if (!_values.TryGetValue(name, out value)) _values[name] = value = new CrossAppFixture(_path + "." + name, _events, this);
             return (CrossAppFixture)value;
         }
         public override bool TryGetMember(GetMemberBinder binder, out object result)
@@ -75,6 +76,7 @@ namespace GuardrailTests
                 var child = new CrossAppFixture(_path + "[" + (_items.Count + 1) + "]", _events);
                 child._values["Id"] = _items.Count + 1;
                 child._values["SlideIndex"] = _items.Count + 1;
+                if (_path.EndsWith(".Slides")) child._values["Parent"] = _parent;
                 _items.Add(child); result = child; return true;
             }
             result = Child(binder.Name); return true;
