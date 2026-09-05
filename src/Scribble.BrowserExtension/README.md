@@ -112,6 +112,8 @@ There are no content scripts, no remote scripts, and no background page collecti
 
 ## Troubleshooting
 
+Version 1.6.0 adds encrypted task recovery through the native bridge, Stop/Resume/Discard, control and dropdown pagination, cross-origin frame refs, actionability checks, and verified condition comparisons. After updating Scribble Setup, use the extension reload button so the installed 1.6.0 code is active. A paused task rebinds only uniquely matching original pages; closed or changed source pages need reopening. Previously recorded trade-in quotes are rechecked on resume.
+
 - **Browser support is not installed:** rerun Scribble Setup with browser support enabled, then restart the browser.
 - **The extension is not authorized:** the extension and Scribble bridge are from different builds, or the native-host manifest does not contain the stable origin above. Reinstall matching versions.
 - **The footer says an extension update is available:** choose **Reload extension update**. If Chrome asks about new permissions, approve or re-enable Scribble on `chrome://extensions`.

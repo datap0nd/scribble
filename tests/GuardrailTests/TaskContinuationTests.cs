@@ -31,7 +31,8 @@ namespace GuardrailTests
                     var context = new TaskContextManager(request, "test", "KEEP ORIGINAL CONSTRAINT 2026", store);
                     for (var index = 0; index < 150; index++)
                     {
-                        context.CompleteAsync(client, settings, request, null, CancellationToken.None).GetAwaiter().GetResult();
+                        try { context.CompleteAsync(client, settings, request, null, CancellationToken.None).GetAwaiter().GetResult(); }
+                        catch (Exception ex) { throw new Exception("Continuation iteration " + index + ", fake requests " + endpoint.RequestCount + ": " + (endpoint.Failure ?? ex).ToString()); }
                         var call = new ChatToolCall { id = "step-" + index, type = "function", function = new ChatToolCallFunction { name = "read_page", arguments = "{}" } };
                         var response = new ChatCompletionResponseMessage { tool_calls = new List<ChatToolCall> { call } };
                         var results = new List<MailboxToolResult> { new MailboxToolResult(call.id, "Evidence " + index + new string('x', 2200), "Read") };
@@ -97,7 +98,7 @@ namespace GuardrailTests
                         foreach (Dictionary<string, object> message in (IEnumerable)json["messages"])
                         {
                             object calls;
-                            if (message.TryGetValue("tool_calls", out calls)) foreach (Dictionary<string, object> call in (IEnumerable)calls) pending.Add((string)call["id"]);
+                            if (message.TryGetValue("tool_calls", out calls) && calls != null) foreach (Dictionary<string, object> call in (IEnumerable)calls) pending.Add((string)call["id"]);
                             if ((string)message["role"] == "tool" && !pending.Remove((string)message["tool_call_id"])) throw new Exception("Orphan tool result in model request");
                         }
                         if (pending.Count != 0) throw new Exception("Model request omitted tool results");

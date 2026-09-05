@@ -68,9 +68,9 @@ namespace GuardrailTests
 
             try
             {
+                Run("150 requests retain paired evidence across context rejection and restart", TaskContinuationTests.ContextRecoveryAndPairing);
                 Run("Mailbox scales to 1000 messages and long bodies", ScaleTaskTests.MailboxPagination);
                 Run("Actual 20000-row writes reconcile before/after interruption", DurableTransformTests.TwentyThousandRows);
-                Run("150 requests retain paired evidence across context rejection and restart", TaskContinuationTests.ContextRecoveryAndPairing);
                 Run("Semantic repairs retain source alignment", TaskContinuationTests.ReviewRepairsAndAlignment);
                 Run("Changed source and occupied destination stop all writes", DurableTransformTests.ChangedRangesFailClosed);
                 Run("Attachment pages preserve evidence beyond 130000 characters", DurableTransformTests.AttachmentTail);

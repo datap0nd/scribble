@@ -83,6 +83,7 @@ let recoveryChecked = false;
 let comparisonCompletionAttempts = 0;
 let conditionEnumerationComplete = false;
 const conditionPageCoverage = new Map();
+const conditionScopesWithChoices = new Set();
 const validatedEvidenceByCondition = new Map();
 const expectedConditions = new Set();
 function comparisonRequested() { return /compare\s+all|(?:all|every)\s+conditions?|compare[^.]*conditions?/i.test(currentRequestPrompt + " " + currentClarificationAnswers.join(" ")); }
@@ -98,7 +99,7 @@ function renderTaskRecovery() {
   const resume = document.createElement("button"); resume.textContent = "Resume";
   resume.onclick = () => resumeBrowserTask(activeRecovery).catch(error => setActivity(error.message));
   const discard = document.createElement("button"); discard.textContent = "Discard task";
-  discard.onclick = async () => { await sendNativeMessage({type:"discardTask", chatId:activeRecovery.chatId, turnId:activeRecovery.turnId}, PING_TIMEOUT_MS); activeRecovery=null; renderTaskRecovery(); };
+  discard.onclick = async () => { await sendNativeMessage({type:"discardTask", chatId:activeRecovery.chatId, turnId:activeRecovery.turnId}, PING_TIMEOUT_MS); activeRecovery=null; recoveryChecked=false; renderTaskRecovery(); };
   box.append(text, resume, discard);
 }
 async function saveBrowserTask(exchange, totalRounds) {
@@ -112,9 +113,10 @@ async function saveBrowserTask(exchange, totalRounds) {
 async function resumeBrowserTask(saved) {
   if (isSending) return;
   const open = await chrome.tabs.query({});
-  if (saved.sourceUrl && !(saved.tabs || []).some(binding => binding?.url === saved.sourceUrl)) {
+  if (saved.sourceUrl && isReadableUrl(saved.sourceUrl) && !(saved.tabs || []).some(binding => binding?.url === saved.sourceUrl)) {
     const sourceMatches = open.filter(tab => tab.url === saved.sourceUrl);
     if (sourceMatches.length !== 1) throw new Error(`Reopen exactly one original source page: ${saved.sourceUrl}`);
+    saved.sourceTabId = sourceMatches[0].id;
   }
   const ids = [];
   for (const binding of saved.tabs || []) {
@@ -124,13 +126,14 @@ async function resumeBrowserTask(saved) {
     if (matches.length !== 1) throw new Error(`Reopen exactly one original page before resuming: ${binding.url}`);
     ids.push(matches[0].id);
   }
-  conditionEnumerationComplete = saved.conditionEnumerationComplete === true;
-  conditionPageCoverage.clear(); for (const [key,value] of saved.conditionPageCoverage || []) conditionPageCoverage.set(key,value);
+  conditionEnumerationComplete = false;
+  conditionPageCoverage.clear();
+  conditionScopesWithChoices.clear();
   chatId = saved.chatId; conversationHistory = saved.history || []; activeTopic = saved.topic;
   workTabIds.splice(0, workTabIds.length, ...ids);
   lastSnapshotBySlot.clear(); actionReceiptsBySlot.clear();
-  validatedEvidenceByCondition.clear(); for (const [key, value] of saved.evidence || []) validatedEvidenceByCondition.set(key,value);
-  expectedConditions.clear(); for (const value of saved.conditions || []) expectedConditions.add(value);
+  validatedEvidenceByCondition.clear();
+  expectedConditions.clear();
   // Complete every pending call with a receipt; never replay old control refs.
   for (const turn of saved.exchange || []) for (const call of turn.toolCalls || []) {
     if (!turn.results.some(result => result.id === call.id)) turn.results.push({id:call.id,content:"[TASK_INTERRUPTED] No saved receipt. Rediscover the current page and verify state before another action; do not replay this control ref."});
@@ -478,9 +481,15 @@ function isReadableUrl(url) {
 }
 
 async function capturePageContext() {
+  if (activeRecovery?.sourceUrl && isReadableUrl(activeRecovery.sourceUrl)) {
+    const source = await chrome.tabs.get(activeRecovery.sourceTabId);
+    if (source.url !== activeRecovery.sourceUrl) throw new Error("I need the original source page reopened before continuing this task.");
+    return captureFromTab(source);
+  }
   let tab;
   try {
     tab = await getActiveTab();
+    if (activeRecovery) activeRecovery.sourceTabId = tab.id;
   } catch {
     return emptyContext();
   }
@@ -597,7 +606,7 @@ async function sendChatMessage(recovery = null) {
 
       await saveBrowserTask(exchange, totalRounds);
       const context = await capturePageContext();
-      if (!activeRecovery.sourceUrl) activeRecovery.sourceUrl = context.url;
+      if (!activeRecovery.sourceUrl) { activeRecovery.sourceUrl = context.url; await saveBrowserTask(exchange, totalRounds); }
       setWorkStatus(totalRounds === 0
         ? `I'm asking ${connection.model || "the model"}…`
         : `I'm thinking about what I found (step ${totalRounds + 1})…`);
@@ -1237,15 +1246,6 @@ async function snapshotWorkTab(toolRequest) {
   const target = await resolveWorkTab(args.tab);
   setWorkStatus(`I'm checking ${friendlySite(target.tab)}…`);
   const snapshot = await inspectWorkTab(target.tab.id, args.query, args.offset, args.frame, args.options_ref);
-  const scope = `${args.frame || 0}:${args.options_ref ? "select" : "controls"}`;
-  const pageOffset = Number(args.offset) || 0;
-  const covered = conditionPageCoverage.get(scope) || 0;
-  if (!args.query && pageOffset <= covered) conditionPageCoverage.set(scope, Math.max(covered, pageOffset + snapshot.controls.length));
-  for (const control of snapshot.controls) {
-    const label = `${control.groupLabel || ""} ${control.htmlName || ""}`;
-    if (/condition/i.test(label) && ["radio", "option", "button"].includes(control.role)) { if (!/select|choose|please/i.test(control.name)) expectedConditions.add(normalizedEvidenceText(control.name)); }
-  }
-  if (!args.query && pageOffset <= covered && snapshot.nextOffset === null && expectedConditions.size > 0) conditionEnumerationComplete = true;
   return serializeSnapshot(target.slot, snapshot, "I completed the snapshot.");
 }
 
@@ -1658,7 +1658,7 @@ async function performAction(target, args, knownSnapshot = null) {
     if (descriptor.enabled === false) {
       throw new Error("I can't use the referenced control because it is disabled.");
     }
-    if (["click", "check", "hover"].includes(action) &&
+    if (["click", "check", "hover", "type", "select", "press"].includes(action) &&
         descriptor.inViewport === false) {
       resolved = await runPageAgent(target.tab.id, "bringIntoView", {
         ref: args.ref,
@@ -1680,7 +1680,7 @@ async function performAction(target, args, knownSnapshot = null) {
   if (/condition/i.test(`${descriptor.groupLabel} ${descriptor.htmlName}`) && ["click", "check", "select"].includes(action) && !comparisonRequested()) {
     const choice = String(args.value || descriptor.name || "").trim();
     const instructions = `${currentRequestPrompt} ${currentClarificationAnswers.join(" ")}`;
-    const conditionWords = choice.match(/excellent|good|fair|poor|broken|pristine|damaged|like new/ig) || [choice];
+    const conditionWords = choice.match(/flawless|excellent|good|fair|poor|broken|pristine|damaged|like new|acceptable|faulty|mint/ig) || [choice];
     if (!conditionWords.some(word => instructions.toLowerCase().includes(word.toLowerCase()))) {
       const answer = await askUser({id:`condition-${Date.now()}`,arguments:JSON.stringify({questions:[{id:"condition",question:"Which trade-in condition applies? Choose Compare all to get a verified quote for every condition.",options:[choice,"Compare all"]}]})});
       throw new Error(`Condition decision recorded: ${answer}. Inspect the condition controls and continue using that decision.`);
@@ -1797,8 +1797,12 @@ async function performAction(target, args, knownSnapshot = null) {
     commands.push(keyCommand("keyDown", "Enter"), keyCommand("keyUp", "Enter"));
     for (let index = 0; index < commands.length; index += 40) {
       if (stopRequested) throw new Error("Stopped during dropdown selection; rediscover and verify the selected value on resume.");
+      const current = await runPageAgent(target.tab.id, "resolve", {ref:args.ref,revision:resolved.revision});
+      if (current?.error) throw new Error("I need to rediscover the dropdown because it changed during selection.");
       await dispatchCdpBatch(target.tab.id, commands.slice(index, index + 40));
     }
+    const selected = await runPageAgent(target.tab.id, "verifySelection", {ref:args.ref,revision:resolved.revision,value:args.value});
+    if (selected?.error || !selected.matches) throw new Error("I could not verify the requested dropdown value. Inspect the updated control before continuing.");
     return { descriptor, popupCount: 0 };
   }
   return { descriptor, popupCount: 0 };
@@ -1956,6 +1960,19 @@ async function settleAndInspectWorkTab(tabId, query = "") {
   return snapshot;
 }
 
+function recordConditionDiscovery(snapshot) {
+  const scope = `${snapshot.stateFingerprint || snapshot.url || ""}:${/^f(\d+)@/.exec(snapshot.revision || "")?.[1] || 0}:${snapshot.selectRef ? "select" : "controls"}`;
+  const pageOffset = Number(snapshot.offset) || 0;
+  const covered = conditionPageCoverage.get(scope) || 0;
+  if (!snapshot.query && pageOffset <= covered) conditionPageCoverage.set(scope, Math.max(covered, pageOffset + snapshot.controls.length));
+  for (const control of snapshot.controls) {
+    if (/condition/i.test(`${control.groupLabel || ""} ${control.htmlName || ""}`) && ["radio", "checkbox", "option", "button"].includes(control.role) && !/select|choose|please|\b(next|back|continue|done|submit|quote|apply|cancel|confirm|search|help|terms|consent)\b/i.test(control.name)) {
+      expectedConditions.add(normalizedEvidenceText(control.name)); conditionScopesWithChoices.add(scope);
+    }
+  }
+  if (!snapshot.query && pageOffset <= covered && snapshot.nextOffset === null && conditionScopesWithChoices.has(scope)) conditionEnumerationComplete = true;
+}
+
 async function runPageAgent(tabId, command, payload) {
   const match = /^f(\d+)@/.exec(payload?.ref || payload?.options_ref || "");
   const frameId = match ? Number(match[1]) : Math.max(0, Number(payload?.frame) || 0);
@@ -2006,6 +2023,7 @@ function pageAgent(command, payload) {
     if (tag === "a") return "link";
     if (tag === "button" || type === "button" || type === "submit") return "button";
     if (tag === "select") return "combobox";
+    if (tag === "option") return "option";
     if (type === "checkbox") return "checkbox";
     if (type === "radio") return "radio";
     if (tag === "textarea" || tag === "input") return type === "search" ? "searchbox" : "textbox";
@@ -2046,12 +2064,17 @@ function pageAgent(command, payload) {
     const legend = fieldset?.querySelector?.(":scope > legend");
     if (legend) return usableLabel(legend.innerText || legend.textContent);
     const card = cardLabelOf(element);
-    if (card) return card;
+    if (element.closest('[class*="condition"], [id*="condition"]')) return usableLabel(`Condition ${card}`);
     const group = element.closest?.('[role="group"], [role="radiogroup"], [aria-label]');
     if (group && group !== element) {
-      return usableLabel(group.getAttribute("aria-label"));
+      return usableLabel(`${group.getAttribute("aria-label") || ""} ${card}`);
     }
-    return "";
+    let parent = element.parentElement;
+    for (let depth=0; parent && depth<5 && parent !== document.body; depth++, parent=parent.parentElement) {
+      const heading = parent.querySelector(':scope > h2, :scope > h3, :scope > [role="heading"]');
+      if (heading) return usableLabel(heading.textContent);
+    }
+    return cardLabelOf(element);
   };
   const nameOf = (element) => {
     const safeButtonValue = /^(button|submit|reset)$/i.test(element.type || "")
@@ -2313,7 +2336,7 @@ function pageAgent(command, payload) {
       visibleText: query
         ? bodyText.split(/\n+/).filter((line) => line.toLowerCase().includes(query)).join("\n").slice(0, maxVisibleTextCharacters)
         : bodyText,
-      controls, selectRef: scanned.selectRef, totalControls: scanned.total, nextOffset: scanned.nextOffset, offset: scanned.offset
+      controls, query, selectRef: scanned.selectRef, totalControls: scanned.total, nextOffset: scanned.nextOffset, offset: scanned.offset
     };
   }
   if (command === "invalidate") {
@@ -2405,12 +2428,19 @@ function pageAgent(command, payload) {
       normalize(option.textContent, 200).toLowerCase() === wanted ||
       normalize(option.value, 200).toLowerCase() === wanted
     );
-    return index < 0 ? { error: "I couldn't find that option in the select." } : { index };
+    if (index < 0 || options[index].disabled || options[index].parentElement?.disabled) return {error:"I couldn't find an enabled matching select option."};
+    return {index:options.slice(0,index).filter(option=>!option.disabled && !option.parentElement?.disabled).length,label:normalize(options[index].textContent,200)};
+  }
+  if (command === "verifySelection") {
+    const selected = element.selectedOptions?.[0];
+    const wanted = normalize(payload?.value,200).toLowerCase();
+    return {matches:Boolean(selected && (normalize(selected.textContent,200).toLowerCase()===wanted || normalize(selected.value,200).toLowerCase()===wanted))};
   }
   return { error: "I don't support that page-agent command." };
 }
 
 function serializeSnapshot(slot, snapshot, status) {
+  recordConditionDiscovery(snapshot);
   if (slot >= 1) {
     lastSnapshotBySlot.set(slot, {
       ...snapshot,

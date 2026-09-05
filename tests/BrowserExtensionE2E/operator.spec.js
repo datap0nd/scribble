@@ -482,3 +482,18 @@ test("cross-origin frame discovery routes fresh refs and translates click coordi
     expect(blocked.receivesEvents).toBe(false);
   } finally { await Promise.all([new Promise(resolve=>parent.close(resolve)),new Promise(resolve=>child.close(resolve))]); }
 });
+
+test("comparison coverage requires every condition page and retains prior decisions", () => {
+  const helper=extensionSource.slice(extensionSource.indexOf("function recordConditionDiscovery("),extensionSource.indexOf("async function runPageAgent("));
+  const comparison=extensionSource.match(/function comparisonRequested\(\) \{[^\n]+/)[0];
+  const sandbox={expectedConditions:new Set(),conditionPageCoverage:new Map(),conditionScopesWithChoices:new Set(),conditionEnumerationComplete:false,
+    normalizedEvidenceText:value=>value.toLowerCase(),currentRequestPrompt:"Check trade-in quotes",currentClarificationAnswers:["Compare all"]};
+  vm.runInNewContext(`${helper}\n${comparison}`,sandbox);
+  const control=name=>({name,role:"radio",groupLabel:"Device condition"});
+  sandbox.recordConditionDiscovery({revision:"r1",offset:0,nextOffset:2,controls:[control("Flawless"),control("Good")]});
+  expect(sandbox.conditionEnumerationComplete).toBe(false);
+  sandbox.recordConditionDiscovery({revision:"r2",offset:2,nextOffset:null,controls:[control("Broken")]});
+  expect(sandbox.conditionEnumerationComplete).toBe(true);
+  expect([...sandbox.expectedConditions]).toEqual(["flawless","good","broken"]);
+  expect(sandbox.comparisonRequested()).toBe(true);
+});
