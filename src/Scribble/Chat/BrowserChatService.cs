@@ -95,7 +95,8 @@ namespace Scribble.Chat
         public const int MaxBrowserStagnantCalls = 20;
         // An emergency cost/safety fuse. Normal completion is governed by
         // observed progress rather than a small fixed action allowance.
-        public const int MaxBrowserEmergencyRounds = 120;
+        // Kept for binary compatibility; no task-ending round fuse.
+        public const int MaxBrowserEmergencyRounds = int.MaxValue;
         public const int MaxBrowserToolCallsPerRound = 4;
         public const int MaxStateChangingBrowserCallsPerRound = 1;
 
@@ -261,22 +262,32 @@ namespace Scribble.Chat
                 links,
                 activeTopic);
 
-            var totalRoundsUsed = CountExchangeTurns(exchange);
-            if (HasStalled(exchange))
+            var savedTask = BrowserTaskSession.Load(chatId, turnId) ?? new DurableTaskState {
+                Id = BrowserTaskSession.Id(chatId, turnId), Host = "chrome", Objective = safePrompt };
+            var pending = savedTask.PendingCalls.ToArray();
+            var incoming = (exchange ?? new BrowserExchangeTurn[0]).SelectMany(t => t.Results ?? new List<BrowserExchangeResult>()).ToArray();
+            foreach (var call in pending)
             {
-                throw new AiEndpointException(
-                    "BROWSER_STALLED",
-                    "I stopped because my last 20 browser steps did not meaningfully change the page.");
+                var result = incoming.FirstOrDefault(r => r.Id == call.id);
+                if (result != null && !savedTask.PendingResults.Any(r => r.tool_call_id == call.id))
+                    savedTask.PendingResults.Add(new ChatCompletionToolResultMessage { role = "tool", tool_call_id = call.id, content = result.Content });
             }
+            var taskContext = new TaskContextManager(request, "chrome", safePrompt, resume: savedTask);
+            if (pending.Length > 0)
+            {
+                var receipts = incoming.Where(r => pending.Any(c => c.id == r.Id)).Select(r => new MailboxToolResult(r.Id, r.Content, "Restored browser receipt")).ToList();
+                taskContext.RecordExchange(request, new ChatCompletionResponseMessage { tool_calls = pending.ToList() }, receipts);
+            }
+            request.messages.Add(new ChatCompletionInputMessage { role = "user", content = "Current browser page (untrusted): " + url + "\n" + pageText + "\nControls must be rediscovered after resume. Use the original condition if supplied; otherwise ask which condition applies and offer Compare all. For Compare all, enumerate every condition and record separately verified quote evidence for each. Do not finish with only the final quote." });
+            taskContext.SaveRequest(request);
+            allowOutlookDraft = !taskContext.State.HostData.ContainsKey("browser_draft_spent");
+            allowExcelTable = !taskContext.State.HostData.ContainsKey("browser_excel_spent");
             var draftOpened = false;
             var tableOpened = false;
             while (true)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var response = await _client.CompleteAsync(
-                    _settings,
-                    request,
-                    cancellationToken).ConfigureAwait(false);
+                var response = await taskContext.CompleteAsync(_client, _settings, request, null, cancellationToken).ConfigureAwait(false);
                 var toolCalls = NormalizeCalls(response.tool_calls);
                 if (toolCalls.Count == 0)
                 {
@@ -287,6 +298,10 @@ namespace Scribble.Chat
                             "I stopped because the model did not return text.");
                     }
 
+                    taskContext.State.EnumerationComplete = true;
+                    // Extension reconciles quote coverage before accepting completion.
+                    taskContext.State.Lifecycle = TaskLifecycle.AwaitingUser;
+                    taskContext.SaveRequest(request);
                     topicTools?.CompleteSession();
                     return new BrowserChatResult(
                         response.content,
@@ -294,20 +309,7 @@ namespace Scribble.Chat
                         screenshotUsed);
                 }
 
-                if (totalRoundsUsed >= MaxBrowserEmergencyRounds)
-                {
-                    throw new AiEndpointException(
-                        "TOOL_ROUND_LIMIT",
-                        "I stopped because the model exceeded my emergency browser safety limit.");
-                }
-
-                if (toolCalls.Count > MaxBrowserToolCallsPerRound)
-                {
-                    throw new AiEndpointException(
-                        "TOOL_CALL_LIMIT",
-                        "I stopped because the model requested too many tools in one round.");
-                }
-
+                taskContext.PrepareExchange(response, request);
                 if (PromptHelperTool.Contains(toolCalls) &&
                     toolCalls.Count != 1)
                 {
@@ -326,7 +328,7 @@ namespace Scribble.Chat
                         activeModel);
                     request.tool_choice =
                         PromptHelperTool.CreateRequiredChoice();
-                    totalRoundsUsed++;
+                    taskContext.FinishExchange(request);
                     continue;
                 }
 
@@ -351,7 +353,7 @@ namespace Scribble.Chat
                     }
 
                 }
-                totalRoundsUsed++;
+
                 var needsBrowser = false;
                 foreach (var call in toolCalls)
                 {
@@ -374,11 +376,14 @@ namespace Scribble.Chat
                         continue;
                     }
 
+                    if (name == TaskContextManager.ReadEvidenceTool) { hostResults.Add(taskContext.ReadEvidence(call)); continue; }
                     if (string.Equals(
                         name,
                         BrowserToolCatalog.OpenOutlookDraft,
                         StringComparison.Ordinal))
                     {
+                        taskContext.State.HostData["browser_draft_spent"] = "true";
+                        taskContext.BeforeTool(call, true);
                         hostResults.Add(ExecuteDraft(
                             call,
                             allowOutlookDraft && !draftOpened));
@@ -391,6 +396,8 @@ namespace Scribble.Chat
                         BrowserToolCatalog.OpenExcelTable,
                         StringComparison.Ordinal))
                     {
+                        taskContext.State.HostData["browser_excel_spent"] = "true";
+                        taskContext.BeforeTool(call, true);
                         hostResults.Add(ExecuteExcelTable(
                             call,
                             allowExcelTable && !tableOpened));
@@ -426,6 +433,11 @@ namespace Scribble.Chat
                         "BROWSER_TOOL_NOT_ALLOWED"));
                 }
 
+                foreach (var result in hostResults)
+                {
+                    var call = toolCalls.First(c => c.id == result.ToolCallId);
+                    taskContext.AfterTool(call, result);
+                }
                 if (needsBrowser)
                 {
                     var pendingResults =
@@ -449,11 +461,13 @@ namespace Scribble.Chat
                         pendingResults);
                 }
 
+                taskContext.RecordExchange(request, response, hostResults);
                 ChatRequestFactory.AppendToolExchange(
                     request,
                     response,
                     hostResults,
                     activeModel);
+                taskContext.FinishExchange(request);
             }
             }
             catch

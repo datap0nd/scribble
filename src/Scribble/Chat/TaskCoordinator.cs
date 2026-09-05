@@ -81,6 +81,15 @@ namespace Scribble.Chat
         public List<TaskAuthorization> Authorizations { get; set; } = new List<TaskAuthorization>();
         public string Cursor { get; set; }
         public string Blocker { get; set; }
+        public Dictionary<string, string> HostData { get; set; } = new Dictionary<string, string>();
+        public List<string> EvidenceIds { get; set; } = new List<string>();
+        public int PrefixCount { get; set; }
+        public int ContextBudget { get; set; } = 96000;
+        public bool UserPaused { get; set; }
+        public string ProcessSession { get; set; }
+        public List<ChatToolCall> PendingCalls { get; set; } = new List<ChatToolCall>();
+        public List<ChatCompletionToolResultMessage> PendingResults { get; set; } = new List<ChatCompletionToolResultMessage>();
+        public string PendingAssistantText { get; set; }
 
         public string[] Outstanding()
         {
@@ -130,6 +139,8 @@ namespace Scribble.Chat
             WriteProtected(Path.Combine(TaskDirectory(state.Id), "state.dat"), _json.Serialize(state));
         }
 
+        public void Checkpoint(DurableTaskState state) { Save(state); }
+
         public DurableTaskState Load(string id)
         {
             var state = _json.Deserialize<DurableTaskState>(ReadProtected(
@@ -137,6 +148,29 @@ namespace Scribble.Chat
             if (state == null || state.Version != 1 || state.Id != id)
                 throw new InvalidDataException("Unsupported or mismatched checkpoint.");
             return state;
+        }
+
+        public IReadOnlyList<DurableTaskState> FindUnfinished(string host)
+        {
+            var result = new List<DurableTaskState>();
+            if (!Directory.Exists(_root)) return result;
+            foreach (var directory in Directory.EnumerateDirectories(_root))
+            {
+                Guid id;
+                var name = Path.GetFileName(directory);
+                if (!Guid.TryParseExact(name, "N", out id)) continue;
+                try
+                {
+                    var state = Load(name);
+                    if (state.Host == host && state.Lifecycle != TaskLifecycle.Completed &&
+                        state.Lifecycle != TaskLifecycle.Discarded && state.HostData.ContainsKey("recovery_input")) result.Add(state);
+                }
+                catch (IOException) { }
+                catch (CryptographicException) { }
+                catch (ArgumentException) { }
+            }
+            return result.OrderByDescending(s => File.GetLastWriteTimeUtc(
+                Path.Combine(TaskDirectory(s.Id), "state.dat"))).ToArray();
         }
 
         public string PutEvidence(string taskId, string text)

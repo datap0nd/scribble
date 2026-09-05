@@ -12,7 +12,7 @@ using Scribble.Utilities;
 
 namespace Scribble.Outlook
 {
-    public sealed class MailboxToolHost : IDisposable
+    public sealed partial class MailboxToolHost : IDisposable
     {
         private const int MaxDirectMessageBodyCharacters = 6000;
         private const int MaxThreadMessageBodyCharacters = 2000;
@@ -28,7 +28,7 @@ namespace Scribble.Outlook
 
         private readonly MailboxContextService _mailbox;
         private readonly JavaScriptSerializer _serializer =
-            new JavaScriptSerializer();
+            new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
         private readonly Dictionary<string, MessageSnapshot> _handles =
             new Dictionary<string, MessageSnapshot>(
                 StringComparer.Ordinal);
@@ -162,6 +162,13 @@ namespace Scribble.Outlook
         public async Task<MailboxToolResult> ExecuteAsync(ChatToolCall call, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (call?.function?.name == MailboxToolCatalog.RecordAnalysis) return RecordAnalysis(call.id, ParseArguments(call.function.arguments));
+            if (call?.function?.name == MailboxToolCatalog.ReadAttachment)
+            {
+                try { return await ReadAttachmentAsync(call.id, ParseArguments(call.function.arguments), cancellationToken); }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex) { return Error(call.id, "ATTACHMENT_READ_FAILED", ex.Message); }
+            }
             if (call?.function?.name != MailboxToolCatalog.SearchMailbox) return Execute(call, cancellationToken);
             if (string.IsNullOrWhiteSpace(call.id)) return Error(call.id, "MAILBOX_TOOL_CALL_INVALID", "A call ID is required.");
             try { return await SearchAsync(call.id, ParseArguments(call.function.arguments), cancellationToken); }
@@ -244,8 +251,11 @@ namespace Scribble.Outlook
             if (cursor == null)
             {
                 cursorId = Guid.NewGuid().ToString("N");
-                cursor = new MailboxPageCursor(_application, query, folder,
-                    receivedAfter ?? DateTime.Now.AddDays(-daysBack), receivedBefore ?? DateTime.Now, unreadOnly);
+                var after = receivedAfter ?? DateTime.Now.AddDays(-daysBack);
+                var before = receivedBefore ?? DateTime.Now;
+                cursor = new MailboxPageCursor(_application, query, folder, after, before, unreadOnly);
+                if (_ledger != null) _ledger.Searches.Add(new MailboxTaskSearch { Id = cursorId, Query = query, Folder = folder, After = after, Before = before, Unread = unreadOnly, StoreIdentity = StoreIdentity(folder) });
+                SaveCoverage();
                 _cursors.Add(cursorId, cursor);
             }
             var hits = await cursor.ReadAsync(maxResults, cancellationToken);
@@ -260,6 +270,7 @@ namespace Scribble.Outlook
                 {
                     { "source_id", hit.Message.StoreId + "\n" + hit.Message.EntryId },
                     { "handle", handle },
+                    { "analysis_complete", _ledger?.Messages.FirstOrDefault(m => m.Handle == handle)?.Analysed ?? false },
                     { "folder", hit.FolderName },
                     { "subject", hit.Message.Subject },
                     { "from", hit.Message.Sender },
@@ -274,6 +285,7 @@ namespace Scribble.Outlook
                 });
             }
 
+            if (_ledger != null) { _ledger.Searches.First(s => s.Id == cursorId).Complete = !truncated; SaveCoverage(); }
             return Success(
                 callId,
                 new Dictionary<string, object>
@@ -337,7 +349,7 @@ namespace Scribble.Outlook
                     continue;
                 }
 
-                if (_loadedBodyHandles.Contains(handle) && !arguments.ContainsKey("body_offset"))
+                if (_task == null && _loadedBodyHandles.Contains(handle) && !arguments.ContainsKey("body_offset"))
                 {
                     messages.Add(new Dictionary<string, object>
                     {
@@ -484,6 +496,12 @@ namespace Scribble.Outlook
             CancellationToken cancellationToken,
             AttachmentReadBudget attachmentBudget, int bodyOffset = 0)
         {
+            if (_task != null && _metadataHandles.Contains(handle))
+            {
+                message = new MessageReader(_application).CaptureById(message.EntryId, message.StoreId);
+                _handles[handle] = message;
+                _metadataHandles.Remove(handle);
+            }
             if (bodyOffset > message.Body.Length) throw new ArgumentOutOfRangeException(nameof(bodyOffset));
             var bodyLength = Math.Min(maximumBodyCharacters, message.Body.Length - bodyOffset);
             var payload = new Dictionary<string, object>
@@ -518,6 +536,22 @@ namespace Scribble.Outlook
                     "Their bytes are not stored in the email, so Scribble " +
                     "cannot view them. Only embedded images and attachments " +
                     "are readable.";
+            }
+
+            if (_task != null)
+            {
+                var coverage = RegisterCoverage(handle, message);
+                if (bodyOffset > coverage.ReadUntil) throw new InvalidOperationException("Read the next body page at offset " + coverage.ReadUntil);
+                var hash = TaskCheckpointStore.Fingerprint(message.Body);
+                if (coverage.BodyEvidence != null && coverage.BodyEvidence != hash) throw new InvalidOperationException("Message body changed during review.");
+                coverage.BodyEvidence = _task.Store.PutEvidence(_task.State.Id, message.Body);
+                coverage.BodyLength = message.Body.Length;
+                coverage.ReadUntil = Math.Max(coverage.ReadUntil, bodyOffset + bodyLength);
+                coverage.AttachmentCount = MailboxAttachmentPages.Count(_application, message);
+                payload["attachment_count"] = coverage.AttachmentCount;
+                payload["attachment_instruction"] = "Use read_attachment for every index from 1 through attachment_count, following next_offset. Then record_mailbox_analysis with a source-grounded summary.";
+                SaveCoverage();
+                return payload;
             }
 
             var attachments = _mailbox.ReadAttachments(
@@ -576,6 +610,7 @@ namespace Scribble.Outlook
                 _nextHandle.ToString(CultureInfo.InvariantCulture);
             _nextHandle++;
             _handles[handle] = message;
+            RegisterCoverage(handle, message);
             return handle;
         }
 

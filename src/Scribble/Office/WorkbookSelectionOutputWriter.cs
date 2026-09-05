@@ -326,7 +326,7 @@ namespace Scribble.Office
                 "Nothing was saved.";
         }
 
-        private static dynamic ResolveSheet(
+        internal static dynamic ResolveSheet(
             object excelApplication,
             ExcelSelectionSnapshot snapshot)
         {
@@ -414,7 +414,7 @@ namespace Scribble.Office
             return sheet;
         }
 
-        private static dynamic ResolveWorkbook(
+        internal static dynamic ResolveWorkbook(
             object excelApplication,
             KoreanWorkbookSnapshot snapshot)
         {
@@ -452,7 +452,7 @@ namespace Scribble.Office
             var saved = path.Length > 0;
             var identityMatches =
                 snapshot.Saved == saved &&
-                snapshot.WindowHandle == windowHandle &&
+                (snapshot.Saved || snapshot.WindowHandle == windowHandle) &&
                 (saved
                     ? string.Equals(
                         snapshot.WorkbookIdentity,
@@ -472,7 +472,7 @@ namespace Scribble.Office
             return workbook;
         }
 
-        private static dynamic FindWorksheet(
+        internal static dynamic FindWorksheet(
             dynamic workbook,
             string worksheetName)
         {

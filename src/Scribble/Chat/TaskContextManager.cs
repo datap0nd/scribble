@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Collections;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Web.Script.Serialization;
@@ -24,12 +25,14 @@ namespace Scribble.Chat
         private string _previousExchange;
 
         public TaskContextManager(ChatCompletionRequest request, string host, string objective,
-            TaskCheckpointStore store = null)
+            TaskCheckpointStore store = null, DurableTaskState resume = null)
         {
             _store = store ?? new TaskCheckpointStore();
-            _state = new DurableTaskState { Host = host, Objective = objective };
-            _state.OriginalDecisions.Add(objective);
+            _state = resume ?? new DurableTaskState { Host = host, Objective = objective, ProcessSession = TaskRecoveryInput.ProcessSession };
+            if (_state.Host != host || _state.Objective != objective) throw new InvalidOperationException("Task identity does not match the original request.");
+            if (_state.OriginalDecisions.Count == 0) _state.OriginalDecisions.Add(objective);
             _prefixCount = request.messages.Count;
+            if (request.tools == null) request.tools = new List<ChatToolDefinition>();
             request.tools.Add(new ChatToolDefinition
             {
                 type = "function",
@@ -51,8 +54,109 @@ namespace Scribble.Chat
                     }
                 }
             });
+            if (resume != null && !string.IsNullOrEmpty(resume.Cursor))
+            {
+                RestoreInto(request);
+                _prefixCount = _state.PrefixCount;
+                _budget = _state.ContextBudget;
+                foreach (var id in _state.EvidenceIds) _evidence.Add(id);
+            }
+            _state.Lifecycle = TaskLifecycle.Running;
+            _state.UserPaused = false;
+            SaveRequest(request);
+        }
+
+        public DurableTaskState State { get { return _state; } }
+        public TaskCheckpointStore Store { get { return _store; } }
+
+        public void SaveRequest(ChatCompletionRequest request)
+        {
+            _state.PrefixCount = _prefixCount;
+            _state.ContextBudget = _budget;
+            _state.EvidenceIds = _evidence.ToList();
             _state.Cursor = _store.PutEvidence(_state.Id, _json.Serialize(request));
             _store.Save(_state);
+        }
+
+        public void Checkpoint() { _store.Save(_state); }
+
+        public void PrepareExchange(ChatCompletionResponseMessage response, ChatCompletionRequest request)
+        {
+            _state.PendingCalls = response.tool_calls ?? new List<ChatToolCall>();
+            _state.PendingResults.Clear();
+            _state.PendingAssistantText = response.content;
+            SaveRequest(request);
+        }
+
+        public void BeforeTool(ChatToolCall call, bool changesDocument)
+        {
+            if (!changesDocument) return;
+            string spent;
+            if (_state.HostData.TryGetValue("generic_write_spent", out spent) && spent == "true")
+                throw new InvalidOperationException("This task's document write already completed. Its saved receipt is authoritative; a second draft was not created.");
+            if (_state.Writes.Any(w => w.Status != "verified" && w.Id.StartsWith("tool:")))
+                throw new InvalidOperationException("An interrupted document write is uncertain. Reopen and inspect the original marked draft; discard this task before starting a replacement. No write was retried.");
+            _state.Writes.Add(new TaskWriteRecord { Id = "tool:" + call.id, Status = "pending",
+                BeforeFingerprint = TaskCheckpointStore.Fingerprint(_json.Serialize(call.function)) });
+            Checkpoint();
+        }
+
+        public void AfterTool(ChatToolCall call, MailboxToolResult result)
+        {
+            _state.PendingResults.Add(new ChatCompletionToolResultMessage { role = "tool", tool_call_id = call.id, content = result.Content });
+            var write = _state.Writes.FirstOrDefault(w => w.Id == "tool:" + call.id);
+            if (write != null)
+            {
+                // An error may have occurred after the side effect. Never presume that it did not execute.
+                write.Status = result.Content.Contains("\"error_code\"") &&
+                    !result.Content.Contains("\"permission_consumed\":false") ? "uncertain" : "verified";
+                write.AfterFingerprint = TaskCheckpointStore.Fingerprint(result.Content);
+                if (!result.Content.Contains("\"permission_consumed\":false")) _state.HostData["generic_write_spent"] = "true";
+            }
+            Checkpoint();
+        }
+
+        public void FinishExchange(ChatCompletionRequest request)
+        {
+            _state.PendingCalls.Clear();
+            _state.PendingResults.Clear();
+            SaveRequest(request);
+        }
+
+        public void CompleteTask(ChatCompletionRequest request)
+        {
+            if (!_state.CanComplete(false)) throw new InvalidOperationException("Task coverage or write recovery is incomplete.");
+            _state.Lifecycle = TaskLifecycle.Completed;
+            SaveRequest(request);
+        }
+
+        private void RestoreInto(ChatCompletionRequest request)
+        {
+            var restored = _json.Deserialize<ChatCompletionRequest>(_store.ReadEvidence(_state.Id, _state.Cursor));
+            var messages = new List<object>();
+            foreach (var raw in restored.messages)
+            {
+                var value = raw as IDictionary<string, object>;
+                if (value == null) throw new InvalidOperationException("Invalid saved request message.");
+                var role = Convert.ToString(value["role"]);
+                var text = _json.Serialize(value);
+                if (role == "tool") messages.Add(_json.Deserialize<ChatCompletionToolResultMessage>(text));
+                else if (value.ContainsKey("tool_calls")) messages.Add(_json.Deserialize<ChatCompletionAssistantToolMessage>(text));
+                else messages.Add(_json.Deserialize<ChatCompletionInputMessage>(text));
+            }
+            if (_state.PendingCalls.Count > 0)
+            {
+                messages.Add(new ChatCompletionAssistantToolMessage { role = "assistant", content = _state.PendingAssistantText, tool_calls = _state.PendingCalls.ToList() });
+                foreach (var call in _state.PendingCalls)
+                    messages.Add(_state.PendingResults.FirstOrDefault(r => r.tool_call_id == call.id) ??
+                        new ChatCompletionToolResultMessage { role = "tool", tool_call_id = call.id,
+                            content = "{\"error_code\":\"TASK_INTERRUPTED\",\"message\":\"No receipt was saved. Rediscover read controls; do not repeat a write without host reconciliation.\"}" });
+            }
+            messages.Add(new ChatCompletionInputMessage { role = "user", content =
+                "The task resumed from its encrypted checkpoint. Original instructions and authorization still apply. Rediscover application and browser controls before acting; old temporary handles may have expired. Follow the host's restored staging/coverage receipts." });
+            request.messages = messages;
+            _state.PendingCalls.Clear();
+            _state.PendingResults.Clear();
         }
 
         public void Pause(string reason)
@@ -162,18 +266,26 @@ namespace Scribble.Chat
         {
             // Counting every serialized character as a token deliberately overestimates
             // text and image costs. This is a conservative fallback for unknown endpoints.
-            while (_json.Serialize(request).Length + (request.max_tokens ?? 8192) > _budget)
+            while (EstimateRequestCost(request) > _budget)
             {
                 var suffix = request.messages.Skip(_prefixCount).ToList();
                 if (suffix.Count == 0)
-                    throw new AiEndpointException("TASK_INPUT_TOO_LARGE", "The original instructions, sources, images and tools exceed the request budget. Reduce the source batch or image size.");
+                {
+                    var largest = request.messages.Take(_prefixCount).OfType<ChatCompletionInputMessage>()
+                        .Where(m => m.role != "system" && _json.Serialize(m).Length > 6000)
+                        .OrderByDescending(m => _json.Serialize(m).Length).FirstOrDefault();
+                    if (largest == null) throw new AiEndpointException("TASK_INPUT_TOO_LARGE", "The model context cannot fit the original instructions and tool definitions. Select a model with a larger context to resume.");
+                    var sourceId = _store.PutEvidence(_state.Id, _json.Serialize(largest));
+                    _evidence.Add(sourceId);
+                    largest.content = "Original task: " + _state.Objective + "\nFull original input and reference material are archived as " + sourceId + ". Use read_task_evidence in pages to inspect every relevant source. Earlier original decisions: " + string.Join("\n", _state.OriginalDecisions);
+                    SaveRequest(request);
+                    continue;
+                }
                 // Keep the latest complete exchange in the main context when possible.
                 var lastAssistant = suffix.FindLastIndex(m => m is ChatCompletionAssistantToolMessage);
                 var count = suffix.Count(m => m is ChatCompletionAssistantToolMessage) > 1 ? lastAssistant : suffix.Count;
                 var group = suffix.Take(count).ToList();
                 var archive = _json.Serialize(group);
-                if (archive.Length > _budget - 10000)
-                    throw new AiEndpointException("TASK_BATCH_TOO_LARGE", "A tool exchange exceeds the request budget. Resume with smaller tool pages; the original evidence is checkpointed.");
                 var id = _store.PutEvidence(_state.Id, archive);
                 _evidence.Add(id);
                 var summaryRequest = new ChatCompletionRequest
@@ -185,17 +297,35 @@ namespace Scribble.Chat
                         new ChatCompletionInputMessage { role = "user", content = archive }
                     }
                 };
-                var summary = await client.CompleteAsync(settings, summaryRequest, cancellationToken);
+                ChatCompletionResponseMessage summary = null;
+                if (archive.Length < _budget - 10000)
+                {
+                    try { summary = await client.CompleteAsync(settings, summaryRequest, cancellationToken); }
+                    catch (AiEndpointException ex) when (IsContextRejection(ex)) { }
+                }
                 var note = new ChatCompletionInputMessage { role = "user", content =
-                    "<untrusted_task_notes evidence_id=\"" + id + "\">\n" + summary.content +
+                    "<untrusted_task_notes evidence_id=\"" + id + "\">\n" + (summary?.content ?? "Full exchange archived. Read its pages before relying on omitted facts or repeating work. Coverage and writes remain tracked by the host.") +
                     "\n</untrusted_task_notes>\nUse read_task_evidence to verify omitted details. Original permissions remain host-controlled." };
                 if (_json.Serialize(note).Length >= archive.Length)
-                    throw new AiEndpointException("TASK_COMPACTION_STALLED", "The context summary did not reduce request size. Use smaller source pages.");
+                {
+                    note.content = "Archived task evidence: " + id + ". Read with read_task_evidence before relying on omitted details.";
+                    if (_json.Serialize(note).Length >= archive.Length)
+                        throw new AiEndpointException("TASK_CONTEXT_MINIMUM", "The model context cannot fit the task's instructions and tools. Select a larger-context model to resume.");
+                }
                 request.messages.RemoveRange(_prefixCount, count);
                 request.messages.Insert(_prefixCount, note);
-                _state.Cursor = _store.PutEvidence(_state.Id, _json.Serialize(request));
-                _store.Save(_state);
+                SaveRequest(request);
             }
+        }
+
+        public static int EstimateRequestCost(ChatCompletionRequest request)
+        {
+            var serialized = new JavaScriptSerializer { MaxJsonLength = int.MaxValue }.Serialize(request);
+            // Base64 bytes are not text tokens. Reserve a conservative image
+            // allowance per image while counting all text/tool schema characters.
+            var text = System.Text.RegularExpressions.Regex.Replace(serialized,
+                @"data:image/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=]+", match => new string('i', 8192));
+            return text.Length + (request.max_tokens ?? 8192);
         }
     }
 }

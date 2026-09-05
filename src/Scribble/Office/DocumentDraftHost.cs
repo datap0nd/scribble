@@ -23,7 +23,7 @@ namespace Scribble.Office
     // text once to a snapshot-bound blank column, or to that exact
     // source only after explicit replacement intent. Nothing is
     // saved or sent.
-    public sealed class DocumentDraftHost : IDisposable
+    public sealed partial class DocumentDraftHost : IDisposable
     {
         private static readonly HashSet<string> EmailArguments =
             new HashSet<string>(StringComparer.Ordinal)
@@ -443,6 +443,11 @@ namespace Scribble.Office
             if (_selectionRequest != null)
             {
                 _allowSelectionSourceReplacement = true;
+                if (_taskContext != null)
+                {
+                    _taskContext.State.HostData["allow_source_replacement"] = "true";
+                    _taskContext.Checkpoint();
+                }
             }
         }
 
@@ -521,6 +526,8 @@ namespace Scribble.Office
                         false,
                         authorization);
                 }
+
+                if (_durableExcel != null) return KoreanWorkbookSuccess(callId, false, authorization);
 
                 if (!authorization.TryConsume())
                 {
@@ -781,6 +788,8 @@ namespace Scribble.Office
                         _selectionOutput.StagedCount,
                         snapshot.RowCount);
                 }
+
+                if (_durableExcel != null) return SelectionSuccess(callId, "All rows staged for reviewed journaled commit.", false, authorization, _selectionOutput.StagedCount, snapshot.RowCount);
 
                 // Validate once more immediately before consuming
                 // permission; rejected preflights never spend it.

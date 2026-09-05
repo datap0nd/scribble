@@ -362,6 +362,12 @@ namespace Scribble.UI
                             Convert.ToString(skillIdValue) ??
                             string.Empty);
                         break;
+                    case "resumeTask":
+                        HandleResumeTask();
+                        break;
+                    case "discardTask":
+                        HandleDiscardTask();
+                        break;
                     case "stop":
                         HandleStop();
                         break;
@@ -479,6 +485,7 @@ namespace Scribble.UI
             }
 
             _promptHelper.RestoreIfPending();
+            DiscoverTaskRecovery();
 
             PostToWeb(new Dictionary<string, object>
             {
@@ -1979,7 +1986,11 @@ namespace Scribble.UI
         // than waiting for the network stack to notice.
         private void HandleStop()
         {
-            _requestGeneration++;
+            if (_currentTask != null)
+            {
+                _currentTask.State.UserPaused = true;
+                _currentTask.Pause("Paused by user. Resume continues the same task.");
+            }
             _promptHelper.Cancel();
             try
             {
@@ -1990,11 +2001,74 @@ namespace Scribble.UI
             }
 
             PostStreamEnd();
-            SetBusy(false);
-            SetStatus("Stopped", false);
+
+            SetStatus("Pausing…", false);
+        }
+
+        private TaskContextManager _currentTask;
+        private DurableTaskState _pendingRecovery;
+        private DurableTaskState _resumeRecovery;
+        private bool _recoveryChecked;
+
+        private void DiscoverTaskRecovery()
+        {
+            if (_recoveryChecked || _busy) return;
+            _recoveryChecked = true;
+            var pending = new TaskCheckpointStore().FindUnfinished("outlook");
+            _pendingRecovery = pending.FirstOrDefault();
+            PublishTaskRecovery();
+            if (pending.Count == 1 && !_pendingRecovery.UserPaused &&
+                _pendingRecovery.Lifecycle == TaskLifecycle.Running) HandleResumeTask();
+        }
+
+        private void PublishTaskRecovery()
+        {
+            PostToWeb(new Dictionary<string, object>
+            {
+                { "type", "taskRecovery" },
+                { "available", _pendingRecovery != null },
+                { "objective", _pendingRecovery?.Objective ?? string.Empty },
+                { "blocker", _pendingRecovery?.Blocker ?? string.Empty }
+            });
+        }
+
+        private void HandleResumeTask()
+        {
+            if (_busy || _pendingRecovery == null) return;
+            try
+            {
+                OfficeTaskBinding.Validate(_pendingRecovery, "outlook", _outlookApplication);
+                _resumeRecovery = _pendingRecovery;
+                HandleSendMessage(_resumeRecovery.Objective);
+            }
+            catch (Exception ex)
+            {
+                _resumeRecovery = null;
+                _pendingRecovery.Blocker = ex.Message;
+                _pendingRecovery.Lifecycle = TaskLifecycle.AwaitingUser;
+                new TaskCheckpointStore().Save(_pendingRecovery);
+                SetStatus(ex.Message, true);
+                PublishTaskRecovery();
+            }
+        }
+
+        private void HandleDiscardTask()
+        {
+            if (_busy || _pendingRecovery == null) return;
+            new TaskCheckpointStore().Discard(_pendingRecovery.Id);
+            _pendingRecovery = null;
+            _resumeRecovery = null;
+            _recoveryChecked = false;
+            DiscoverTaskRecovery();
         }
 
         private async void HandleSendMessage(string rawText)
+        {
+            try { await HandleSendMessageCore(rawText); }
+            catch (Exception exception) { SetStatus(exception.Message, true); SetBusy(false); }
+        }
+
+        private async Task HandleSendMessageCore(string rawText)
         {
             if (_busy)
             {
@@ -2068,6 +2142,18 @@ namespace Scribble.UI
             foreach (var image in _externalImages)
             {
                 requestExternalImages.Add(image.Payload);
+            }
+
+            if (_resumeRecovery != null)
+            {
+                var restored = TaskRecoveryInput.Read(_resumeRecovery);
+                requestSelectedMessage = restored.Selected?.Restore();
+                requestWorkingMessages = restored.Working.Select(m => m.Restore()).ToList();
+                requestExternalContext = restored.Documents.Select(d => new ExternalContextDocument(d.Name, d.Content)).ToList();
+                requestExternalImages = restored.Images.Select(i => new VisionImagePayload(i.FileName, i.DataUrl)).ToList();
+                foreach (var source in requestWorkingMessages.Concat(requestSelectedMessage == null ?
+                    new MessageSnapshot[0] : new[] { requestSelectedMessage }))
+                    new MessageReader(_outlookApplication).CaptureById(source.EntryId, source.StoreId, true);
             }
 
             var hasLinkedDraft =
@@ -2223,6 +2309,15 @@ namespace Scribble.UI
             }
             finally
             {
+                if (_currentTask != null && _currentTask.State.Lifecycle != TaskLifecycle.Completed)
+                {
+                    if (_currentTask.State.Lifecycle == TaskLifecycle.Running) _currentTask.Pause("Task interrupted. Resume continues saved work.");
+                    _pendingRecovery = _currentTask.State;
+                }
+                else _pendingRecovery = null;
+                _currentTask = null;
+                _resumeRecovery = null;
+                PublishTaskRecovery();
                 PostStreamEnd();
                 if (ReferenceEquals(
                     _requestCancellation,
@@ -2363,8 +2458,23 @@ namespace Scribble.UI
                         });
                 }
 
-                var taskContext = new TaskContextManager(request, "outlook", prompt);
-                for (var round = 0; ; round++)
+                var taskContext = new TaskContextManager(request, "outlook", prompt, resume: _resumeRecovery);
+                _currentTask = taskContext;
+                if (_resumeRecovery == null)
+                {
+                    new TaskRecoveryInput
+                    {
+                        Prompt = prompt, Selected = TaskRecoveryInput.Copy<SavedMessage>(selectedMessage),
+                        Working = workingMessages.Select(m => TaskRecoveryInput.Copy<SavedMessage>(m)).ToList(),
+                        Documents = externalContext.Select(d => new SavedReference { Name = d.Name, Content = d.Content }).ToList(),
+                        Images = externalImages.Select(i => new SavedImage { FileName = i.FileName, DataUrl = i.DataUrl }).ToList()
+                    }.PersistTo(taskContext.State);
+                    taskContext.Checkpoint();
+                }
+                await mailboxTools.BindTaskAsync(taskContext, cancellationToken);
+                _resumeRecovery = null;
+                var completionAttempts = 0;
+            for (var round = 0; ; round++)
                 {
                     var response =
                         await taskContext.CompleteAsync(
@@ -2373,7 +2483,8 @@ namespace Scribble.UI
                             request,
                             PostStreamDelta,
                             cancellationToken);
-                    var toolCalls = response.tool_calls;
+                    cancellationToken.ThrowIfCancellationRequested();
+                var toolCalls = response.tool_calls;
                     if (toolCalls == null || toolCalls.Count == 0)
                     {
                         if (string.IsNullOrWhiteSpace(response.content))
@@ -2383,11 +2494,29 @@ namespace Scribble.UI
                                 "The model stopped without returning text.");
                         }
 
+                        var blocker = mailboxTools.CompletionBlocker;
+                        if (!string.IsNullOrEmpty(blocker))
+                        {
+                            request.messages.Add(new ChatCompletionInputMessage { role = "user", content = blocker });
+                            if (++completionAttempts > 3) throw new InvalidOperationException(blocker);
+                            continue;
+                        }
+                        taskContext.State.EnumerationComplete = true;
+                        var report = mailboxTools.AnalysisReport;
+                        for (var offset = 0; offset < report.Count; offset += 50)
+                            PostToWeb(new Dictionary<string, object> {
+                                { "type", "mailboxReport" }, { "taskId", taskContext.State.Id }, { "total", report.Count },
+                                { "rows", report.Skip(offset).Take(50).Select(m => new { subject = m.Source.Subject,
+                                    source = m.Id, sender = m.Source.Sender, received = m.Source.ReceivedAt, summary = m.Summary }).ToArray() }
+                            });
+                        taskContext.CompleteTask(request);
                         return response.content;
                     }
 
                     // A round that continues into tool calls clears any
                     // preamble text that streamed to the page.
+                    completionAttempts = 0;
+                taskContext.PrepareExchange(response, request);
                     PostStreamEnd();
 
                     if (PromptHelperTool.Contains(toolCalls) &&
@@ -2407,6 +2536,7 @@ namespace Scribble.UI
                             response,
                             rejected,
                             activeModel);
+                    taskContext.FinishExchange(request);
                         request.tool_choice =
                             PromptHelperTool.CreateRequiredChoice();
                         SetStatus(
@@ -2426,6 +2556,7 @@ namespace Scribble.UI
                             CrossAppToolCatalog.IsCrossAppTool(
                                 toolCall?.function?.name);
                         MailboxToolResult result;
+                        taskContext.BeforeTool(toolCall, isDraftCall || isCrossAppCall);
                         if (toolCall?.function?.name == TaskContextManager.ReadEvidenceTool)
                         {
                             result = taskContext.ReadEvidence(toolCall);
@@ -2488,6 +2619,7 @@ namespace Scribble.UI
                                 toolCall,
                                 cancellationToken);
                         }
+                        taskContext.AfterTool(toolCall, result);
                         results.Add(result);
                         _diagnostics.RecordEvent(
                             "tool " +
@@ -2527,6 +2659,7 @@ namespace Scribble.UI
                         response,
                         results,
                         activeModel);
+                    taskContext.FinishExchange(request);
                 }
 
             }

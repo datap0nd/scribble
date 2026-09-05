@@ -324,6 +324,7 @@ namespace Scribble.Chat
                             responseSnippet: responseText);
                     }
 
+                    message.RawContent = TextBoundary.PlainText(message.content, TextBoundary.MaxHttpResponseCharacters);
                     message.content = TextBoundary.PlainText(
                         message.content,
                         TextBoundary.MaxAssistantCharacters);

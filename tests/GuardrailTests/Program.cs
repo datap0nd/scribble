@@ -69,6 +69,9 @@ namespace GuardrailTests
             try
             {
                 Run("Mailbox scales to 1000 messages and long bodies", ScaleTaskTests.MailboxPagination);
+                Run("Actual 20000-row writes reconcile before/after interruption", DurableTransformTests.TwentyThousandRows);
+                Run("Changed source and occupied destination stop all writes", DurableTransformTests.ChangedRangesFailClosed);
+                Run("Attachment pages preserve evidence beyond 130000 characters", DurableTransformTests.AttachmentTail);
                 Run("Task checkpoints reconcile 20000 rows across restart", ScaleTaskTests.RestartAndCoverage);
                 Run(
                     "Vision-capable models are detected broadly",
@@ -768,8 +771,10 @@ namespace GuardrailTests
             var expected = new[]
             {
                 "ask_user",
+                "read_attachment",
                 "read_messages",
                 "read_thread",
+                "record_mailbox_analysis",
                 "search_mailbox"
             };
             Assert(

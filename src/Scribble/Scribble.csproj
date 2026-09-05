@@ -66,8 +66,11 @@
     <Compile Include="Chat\AiEndpointException.cs" />
     <Compile Include="Chat\ChatModels.cs" />
     <Compile Include="Chat\TaskCoordinator.cs" />
+    <Compile Include="Chat\BrowserTaskSession.cs" />
+    <Compile Include="Chat\TaskRecoveryInput.cs" />
     <Compile Include="Chat\TaskContextManager.cs" />
     <Compile Include="Outlook\MailboxPageCursor.cs" />
+    <Compile Include="Outlook\MailboxAttachmentPages.cs" />
     <Compile Include="Chat\BrowserChatRequestFactory.cs" />
     <Compile Include="Chat\BrowserToolCatalog.cs" />
     <Compile Include="Chat\WebReadTool.cs" />
@@ -98,10 +101,13 @@
     <Compile Include="Office\WorkbookToolHost.cs" />
     <Compile Include="Office\WorkbookDraftWriter.cs" />
     <Compile Include="Office\ExcelSelectionOutputPolicy.cs" />
+    <Compile Include="Office\DurableExcelTransform.cs" />
+    <Compile Include="Office\ExcelTransformTarget.cs" />
     <Compile Include="Office\WorkbookSelectionOutputWriter.cs" />
     <Compile Include="Office\PresentationToolHost.cs" />
     <Compile Include="Office\PresentationDraftWriter.cs" />
     <Compile Include="Office\DocumentDraftHost.cs" />
+    <Compile Include="Office\DocumentDraftHost.Tasks.cs" />
     <Compile Include="Chat\McpConnection.cs" />
     <Compile Include="Chat\McpToolHost.cs" />
     <Compile Include="Configuration\McpServerConfig.cs" />
@@ -126,6 +132,7 @@
     <Compile Include="Outlook\DraftToolHost.cs" />
     <Compile Include="Outlook\MailboxContextService.cs" />
     <Compile Include="Outlook\MailboxToolHost.cs" />
+    <Compile Include="Outlook\MailboxToolHost.Tasks.cs" />
     <Compile Include="Outlook\MailboxWorkingSet.cs" />
     <Compile Include="Office\ExcelTableLauncher.cs" />
     <Compile Include="Outlook\OutlookDraftLauncher.cs" />

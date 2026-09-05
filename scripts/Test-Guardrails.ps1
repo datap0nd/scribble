@@ -94,6 +94,8 @@ $toolNames = [regex]::Matches(
     'public const string \w+ = "([^"]+)";'
 ) | ForEach-Object { $_.Groups[1].Value } | Sort-Object
 $approvedToolNames = @(
+    "read_attachment",
+    "record_mailbox_analysis",
     "read_messages",
     "read_thread",
     "search_mailbox"
@@ -1286,11 +1288,11 @@ foreach ($requiredBrowserServiceBoundary in @(
     "McpToolHost.IsMcpTool",
     "BROWSER_TOOL_NOT_ALLOWED",
     "MaxBrowserStagnantCalls = 20",
-    "MaxBrowserEmergencyRounds = 120",
+    'new TaskContextManager(request, "chrome"',
     "MaxBrowserToolCallsPerRound = 4",
     "MaxStateChangingBrowserCallsPerRound = 1",
     "BROWSER_MUTATION_DEFERRED",
-    "HasStalled(exchange)",
+    "taskContext.RecordExchange",
     "ExchangeContainsCall"
 )) {
     if (-not $browserServiceSource.Contains($requiredBrowserServiceBoundary)) {
@@ -1358,7 +1360,7 @@ foreach ($requiredClickBoundary in @(
     "MAX_WORK_TABS = 5",
     "active: false",
     "MAX_STAGNANT_BROWSER_CALLS = 20",
-    "MAX_EMERGENCY_TOOL_TURNS = 120",
+    'await saveBrowserTask(exchange, totalRounds)',
     "MAX_TYPED_CHARS = 200",
     "MAX_SNAPSHOT_CHARS = 24_000",
     "MAX_VISIBLE_TEXT_CHARS = 5_000",

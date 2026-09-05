@@ -256,7 +256,7 @@ namespace Scribble.Office
         {
             if (snapshot == null ||
                 snapshot.Saved != saved ||
-                snapshot.WindowHandle != windowHandle ||
+                (!snapshot.Saved && snapshot.WindowHandle != windowHandle) ||
                 !string.Equals(
                     snapshot.WorksheetName,
                     worksheetName ?? string.Empty,

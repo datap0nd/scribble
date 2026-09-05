@@ -263,6 +263,9 @@ namespace Scribble.Chat
                                             { "description", "Open work tab number 1-5." }
                                         }
                                     },
+                                    { "offset", new Dictionary<string, object> { { "type", "integer" }, { "minimum", 0 }, { "description", "Continue at next_offset until complete; no total control limit." } } },
+                                    { "frame", new Dictionary<string, object> { { "type", "integer" }, { "minimum", 0 }, { "description", "Frame ID from the observed frames list, zero for top." } } },
+                                    { "options_ref", new Dictionary<string, object> { { "type", "string" }, { "description", "Select control ref whose options to enumerate; follow next_offset using its fresh select ref." } } },
                                     {
                                         "query",
                                         new Dictionary<string, object>

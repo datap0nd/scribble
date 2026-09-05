@@ -40,8 +40,12 @@ namespace GuardrailTests
                 var cursor = "";
                 var pages = 0;
                 var foundLateEvidence = false;
+                var taskRoot = Path.Combine(Path.GetTempPath(), "scribble-mail-ledger-" + Guid.NewGuid().ToString("N"));
+                var task = new TaskContextManager(request, "outlook", "Review all messages", new TaskCheckpointStore(taskRoot));
                 using (var host = new MailboxToolHost(app, null))
                 {
+                    host.BindTaskAsync(task, CancellationToken.None).GetAwaiter().GetResult();
+                    Check(host.CompletionBlocker != null, "Review-all completed without enumeration.");
                     do
                     {
                         var response = host.ExecuteAsync(Call(MailboxToolCatalog.SearchMailbox, json.Serialize(new
@@ -54,6 +58,11 @@ namespace GuardrailTests
                         {
                             var hit = (Dictionary<string, object>)raw;
                             Check(seen.Add((string)hit["source_id"]), "Duplicate source escaped pagination.");
+                            if (seen.Count == 1)
+                            {
+                                var premature = host.ExecuteAsync(Call(MailboxToolCatalog.RecordAnalysis, json.Serialize(new { handle = (string)hit["handle"], summary = "Unread" })), CancellationToken.None).GetAwaiter().GetResult();
+                                Check(premature.Content.Contains("MAILBOX_COVERAGE_INCOMPLETE"), "Unread mail received an analysis receipt.");
+                            }
                             int? offset = 0;
                             var reconstructed = new StringBuilder();
                             do
@@ -69,11 +78,20 @@ namespace GuardrailTests
                                 offset = body["next_body_offset"] == null ? null : (int?)Convert.ToInt32(body["next_body_offset"]);
                             } while (offset.HasValue);
                             foundLateEvidence |= reconstructed.ToString().EndsWith("IMPORTANT LATE EVIDENCE");
+                            var analysed = host.ExecuteAsync(Call(MailboxToolCatalog.RecordAnalysis, json.Serialize(new
+                            {
+                                handle = (string)hit["handle"], summary = reconstructed.ToString().EndsWith("IMPORTANT LATE EVIDENCE") ? "IMPORTANT LATE EVIDENCE" : "Reviewed short body"
+                            })), CancellationToken.None).GetAwaiter().GetResult();
+                            Check(!analysed.Content.Contains("error_code"), analysed.Content);
                         }
                         cursor = (string)page["next_cursor"];
                         Check(++pages < 100, "Cursor did not terminate.");
                     } while (cursor.Length > 0);
+                    Check(host.CompletionBlocker == null && host.AnalysisReport.Count == count && host.AnalysisReport.Any(m => m.Summary == "IMPORTANT LATE EVIDENCE"), "Complete report lost coverage or late evidence.");
+                    task.State.EnumerationComplete = true;
+                    Check(task.State.CanComplete(true), "Mailbox ledger did not reconcile every matched source.");
                 }
+                Directory.Delete(taskRoot, true);
                 Check(seen.Count == count && foundLateEvidence, "Mailbox coverage or long-body paging was incomplete.");
             }
         }

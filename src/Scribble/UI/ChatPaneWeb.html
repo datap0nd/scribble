@@ -637,6 +637,8 @@
     0%, 60%, 100% { opacity: 0.25; transform: scale(0.85); }
     30% { opacity: 1; transform: scale(1); }
   }
+#taskRecovery { padding: 8px; max-height: 100px; overflow: auto; }
+#taskRecovery button { margin-left: 6px; }
 </style>
 </head>
 <body>
@@ -684,6 +686,7 @@
     <button id="menuAddShared">&#8645;&#xFE0E;&nbsp; Add shared Scribble context</button>
     <button id="menuCopyDiag">&#9741;&#xFE0E;&nbsp; Copy diagnostics</button>
   </div>
+  <div id="taskRecovery" hidden aria-live="polite"><span id="taskRecoveryText"></span> <button id="resumeTask">Resume</button> <button id="discardTask">Discard task</button></div>
   <div id="composerCard">
     <button id="btnPlus" title="Add emails, files, or pictures to the context">+</button>
     <textarea id="input" rows="1" placeholder="Message Scribble..." maxlength="4000"></textarea>
@@ -1604,6 +1607,24 @@
       case "dismissAskUser": dismissAskUser(); break;
       case "delta": streamDelta(m.text || ""); break;
       case "deltaEnd": streamEnd(); break;
+      case "mailboxReport":
+        var reportId = "report-" + m.taskId;
+        var report = document.getElementById(reportId);
+        if (!report) {
+          report = document.createElement("details"); report.id = reportId;
+          var label = document.createElement("summary"); label.textContent = "Complete mailbox report — " + m.total + " messages";
+          report.appendChild(label); document.getElementById("chat").appendChild(report);
+        }
+        (m.rows || []).forEach(function (row) {
+          var entry = document.createElement("p");
+          entry.textContent = row.subject + " — " + row.sender + "\n" + row.summary + "\nSource: " + row.source;
+          entry.style.whiteSpace = "pre-wrap"; report.appendChild(entry);
+        });
+        break;
+      case "taskRecovery":
+        document.getElementById("taskRecovery").hidden = !m.available;
+        document.getElementById("taskRecoveryText").textContent = m.blocker || m.objective || "Task paused";
+        break;
       case "status": setStatus(m.text, m.error); break;
       case "busy": setBusy(!!m.value); break;
       case "draft":
@@ -1753,6 +1774,8 @@
     });
   }
 
+  document.getElementById("resumeTask").onclick = function () { if (!busy) post("resumeTask"); };
+  document.getElementById("discardTask").onclick = function () { if (!busy) post("discardTask"); };
   post("ready");
   input.focus();
 })();

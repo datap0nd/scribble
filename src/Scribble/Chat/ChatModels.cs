@@ -119,6 +119,9 @@ namespace Scribble.Chat
 
     public sealed class ChatCompletionResponseMessage
     {
+        [System.Web.Script.Serialization.ScriptIgnore]
+        public string RawContent { get; set; }
+
         public string role { get; set; }
 
         public string content { get; set; }

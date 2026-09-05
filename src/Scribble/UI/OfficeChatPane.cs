@@ -362,6 +362,12 @@ namespace Scribble.UI
                             Convert.ToString(skillIdValue) ??
                             string.Empty);
                         break;
+                    case "resumeTask":
+                        HandleResumeTask();
+                        break;
+                    case "discardTask":
+                        HandleDiscardTask();
+                        break;
                     case "stop":
                         HandleStop();
                         break;
@@ -447,6 +453,7 @@ namespace Scribble.UI
             PushContextToWeb();
             ReplayTranscript();
             _promptHelper.RestoreIfPending();
+            DiscoverTaskRecovery();
             if (_focusComposerWhenReady)
             {
                 FocusComposer();
@@ -1479,7 +1486,11 @@ namespace Scribble.UI
 
         private void HandleStop()
         {
-            _requestGeneration++;
+            if (_currentTask != null)
+            {
+                _currentTask.State.UserPaused = true;
+                _currentTask.Pause("Paused by user. Resume continues the same task.");
+            }
             _promptHelper.Cancel();
             try
             {
@@ -1490,11 +1501,76 @@ namespace Scribble.UI
             }
 
             PostStreamEnd();
-            SetBusy(false);
-            SetStatus("Stopped", false);
+
+            SetStatus("Pausing…", false);
+        }
+
+        private TaskContextManager _currentTask;
+        private DurableTaskState _pendingRecovery;
+        private DurableTaskState _resumeRecovery;
+        private bool _recoveryChecked;
+
+        private void DiscoverTaskRecovery()
+        {
+            if (_recoveryChecked || _busy) return;
+            _recoveryChecked = true;
+            var pending = new TaskCheckpointStore().FindUnfinished(_hostKind);
+            _pendingRecovery = pending.FirstOrDefault();
+            PublishTaskRecovery();
+            if (pending.Count == 1 && !_pendingRecovery.UserPaused &&
+                _pendingRecovery.Lifecycle == TaskLifecycle.Running) HandleResumeTask();
+        }
+
+        private void PublishTaskRecovery()
+        {
+            PostToWeb(new Dictionary<string, object>
+            {
+                { "type", "taskRecovery" },
+                { "available", _pendingRecovery != null },
+                { "objective", _pendingRecovery?.Objective ?? string.Empty },
+                { "blocker", _pendingRecovery?.Blocker ?? string.Empty }
+            });
+        }
+
+        private void HandleResumeTask()
+        {
+            if (_busy || _pendingRecovery == null) return;
+            try
+            {
+                OfficeTaskBinding.Validate(_pendingRecovery, _hostKind, _hostApplication);
+                _resumeRecovery = _pendingRecovery;
+                HandleSendMessage(_resumeRecovery.Objective);
+            }
+            catch (Exception ex)
+            {
+                _resumeRecovery = null;
+                _pendingRecovery.Blocker = ex.Message;
+                _pendingRecovery.Lifecycle = TaskLifecycle.AwaitingUser;
+                new TaskCheckpointStore().Checkpoint(_pendingRecovery);
+                SetStatus(ex.Message, true);
+                PublishTaskRecovery();
+            }
+        }
+
+        private void HandleDiscardTask()
+        {
+            if (_busy || _pendingRecovery == null) return;
+            new TaskCheckpointStore().Discard(_pendingRecovery.Id);
+            _pendingRecovery = null;
+            _resumeRecovery = null;
+            _recoveryChecked = false;
+            DiscoverTaskRecovery();
         }
 
         private async void HandleSendMessage(
+            string rawText,
+            KoreanWorkbookSnapshot koreanWorkbookSnapshot = null)
+        {
+            try { await HandleSendMessageCore(rawText, koreanWorkbookSnapshot); }
+            catch (Exception exception) { SetStatus(exception.Message, true); SetBusy(false); }
+        }
+
+        private async Task HandleSendMessageCore(
             string rawText,
             KoreanWorkbookSnapshot koreanWorkbookSnapshot = null)
         {
@@ -1583,6 +1659,16 @@ namespace Scribble.UI
                     "korean_workbook_" +
                         Guid.NewGuid().ToString("N"),
                     koreanWorkbookSnapshot);
+
+            if (_resumeRecovery != null)
+            {
+                var restored = TaskRecoveryInput.Read(_resumeRecovery);
+                selectionRequest = restored.Selection == null ? null : new ExcelSelectionRequestContext(
+                    restored.SelectionHandle, restored.Selection.Restore(), restored.ReplaceSource);
+                koreanWorkbookRequest = restored.Korean == null ? null : new KoreanWorkbookRequestContext(
+                    restored.KoreanHandle, restored.Korean.Restore());
+                hasAttachedExcelSelection = selectionRequest != null;
+            }
 
             var requestExternalContext =
                 new List<ExternalContextDocument>();
@@ -1775,6 +1861,15 @@ namespace Scribble.UI
             }
             finally
             {
+                if (_currentTask != null && _currentTask.State.Lifecycle != TaskLifecycle.Completed)
+                {
+                    if (_currentTask.State.Lifecycle == TaskLifecycle.Running) _currentTask.Pause("Task interrupted. Resume continues saved work.");
+                    _pendingRecovery = _currentTask.State;
+                }
+                else _pendingRecovery = null;
+                _currentTask = null;
+                _resumeRecovery = null;
+                PublishTaskRecovery();
                 _draftHost?.EndExcelSelectionRequest();
                 PostStreamEnd();
                 if (ReferenceEquals(
@@ -1895,12 +1990,38 @@ namespace Scribble.UI
                     });
             }
 
-            var taskContext = new TaskContextManager(request, _hostKind, prompt);
+            var taskContext = new TaskContextManager(request, _hostKind, prompt, resume: _resumeRecovery);
+            _currentTask = taskContext;
+            if (_resumeRecovery == null)
+            {
+                var binding = OfficeTaskBinding.Capture(_hostKind, _hostApplication);
+                if (binding != null) taskContext.State.Sources.Add(binding);
+                new TaskRecoveryInput
+                {
+                    Prompt = prompt, SelectionHandle = selectionRequest?.Handle,
+                    Selection = TaskRecoveryInput.Copy<SavedSelection>(selectionRequest?.Snapshot),
+                    ReplaceSource = selectionRequest != null && selectionRequest.AllowSourceReplacement,
+                    KoreanHandle = koreanWorkbookRequest?.Handle,
+                    Korean = TaskRecoveryInput.Copy<SavedKoreanWorkbook>(koreanWorkbookRequest?.Snapshot),
+                    Documents = externalContext.Select(d => new SavedReference { Name = d.Name, Content = d.Content }).ToList(),
+                    Images = externalImages.Select(i => new SavedImage { FileName = i.FileName, DataUrl = i.DataUrl }).ToList()
+                }.PersistTo(taskContext.State);
+                taskContext.Checkpoint();
+            }
+            if (_draftHost != null)
+            {
+                await _draftHost.BindTaskAsync(taskContext, cancellationToken);
+                await _draftHost.ResumeReadyExcelAsync(cancellationToken, (done, total) => SetStatus("Verified " + done + " of " + total + " output rows", false));
+                if (_draftHost.RecoveryNote.Length > 0) request.messages.Add(new ChatCompletionInputMessage { role = "user", content = _draftHost.RecoveryNote });
+                taskContext.SaveRequest(request);
+            }
+            _resumeRecovery = null;
             var exchangeStart = request.messages.Count;
             var completedToolSteps = new HashSet<string>(
                 StringComparer.Ordinal);
             var stagedSelectionValues = 0;
             var noProgressRounds = 0;
+            var completionAttempts = 0;
             for (var round = 0; ; round++)
             {
                 var response =
@@ -1910,6 +2031,7 @@ namespace Scribble.UI
                         request,
                         PostStreamDelta,
                         cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
                 var toolCalls = response.tool_calls;
                 if (toolCalls == null || toolCalls.Count == 0)
                 {
@@ -1920,9 +2042,20 @@ namespace Scribble.UI
                             "The model stopped without returning text.");
                     }
 
+                    var blocker = _draftHost?.CompletionBlocker;
+                    if (!string.IsNullOrEmpty(blocker))
+                    {
+                        request.messages.Add(new ChatCompletionInputMessage { role = "user", content = blocker });
+                        if (++completionAttempts > 3) throw new InvalidOperationException(blocker);
+                        continue;
+                    }
+                    taskContext.State.EnumerationComplete = true;
+                    taskContext.CompleteTask(request);
                     return response.content;
                 }
 
+                completionAttempts = 0;
+                taskContext.PrepareExchange(response, request);
                 PostStreamEnd();
 
                 if (PromptHelperTool.Contains(toolCalls) &&
@@ -1942,6 +2075,7 @@ namespace Scribble.UI
                         response,
                         rejected,
                         activeModel);
+                taskContext.FinishExchange(request);
                     request.tool_choice =
                         PromptHelperTool.CreateRequiredChoice();
                     SetStatus(
@@ -1960,6 +2094,7 @@ namespace Scribble.UI
                         _hostKind,
                         name);
                     MailboxToolResult result;
+                    taskContext.BeforeTool(toolCall, isDraftCall && name != WorkbookToolCatalog.WriteSelectionOutput && name != WorkbookToolCatalog.WriteKoreanTranslations);
                     if (name == TaskContextManager.ReadEvidenceTool)
                     {
                         result = taskContext.ReadEvidence(toolCall);
@@ -1981,11 +2116,10 @@ namespace Scribble.UI
                     }
                     else if (isDraftCall)
                     {
-                        result = _draftHost.Execute(
-                            toolCall,
-                            draftAuthorization,
-                            toolCalls.Count == 1,
-                            prompt);
+                        result = await _draftHost.ExecuteAsync(
+                            toolCall, draftAuthorization, toolCalls.Count == 1, prompt,
+                            _client, _settings, cancellationToken,
+                            (done, total) => SetStatus("Verified " + done + " of " + total + " output rows", false));
                     }
                     else if (McpToolHost.IsMcpTool(name) &&
                              mcpHost != null)
@@ -2029,6 +2163,7 @@ namespace Scribble.UI
                             toolCall);
                     }
 
+                    taskContext.AfterTool(toolCall, result);
                     results.Add(result);
                     if (ToolResultMadeProgress(
                             toolCall,
@@ -2059,6 +2194,7 @@ namespace Scribble.UI
                     response,
                     results,
                     activeModel);
+                taskContext.FinishExchange(request);
 
                 if (selectionRequest != null ||
                     koreanWorkbookRequest != null)

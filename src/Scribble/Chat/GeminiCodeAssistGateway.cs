@@ -1148,6 +1148,7 @@ namespace Scribble.Chat
             {
                 role = "assistant",
                 content = boundedText,
+                RawContent = TextBoundary.PlainText(text.ToString(), TextBoundary.MaxHttpResponseCharacters),
                 tool_calls = toolCalls.Count > 0
                     ? toolCalls
                     : null
@@ -1935,6 +1936,7 @@ namespace Scribble.Chat
             {
                 role = "assistant",
                 content = boundedText,
+                RawContent = TextBoundary.PlainText(text.ToString(), TextBoundary.MaxHttpResponseCharacters),
                 tool_calls = toolCalls.Count > 0
                     ? toolCalls
                     : null

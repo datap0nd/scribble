@@ -105,6 +105,7 @@ namespace Scribble.BrowserHost
         public string requestId { get; set; }
 
         public string prompt { get; set; }
+        public string taskData { get; set; }
 
         public List<BrowserHistoryTurn> history { get; set; }
 
@@ -316,6 +317,17 @@ namespace Scribble.BrowserHost
                         request.action);
                 }
 
+                if (request.type == "saveTask")
+                {
+                    BrowserTaskSession.SaveUi(request.chatId, request.turnId, request.prompt, request.taskData);
+                    return Success(service, requestId, "Saved", service.Model, false);
+                }
+                if (request.type == "loadTask") return Success(service, requestId, BrowserTaskSession.RecoverUi(), service.Model, false);
+                if (request.type == "discardTask")
+                {
+                    BrowserTaskSession.Discard(request.chatId, request.turnId);
+                    return Success(service, requestId, "Discarded", service.Model, false);
+                }
                 if (!string.Equals(
                     request.type,
                     "chat",

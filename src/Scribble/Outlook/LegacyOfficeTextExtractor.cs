@@ -15,7 +15,7 @@ namespace Scribble.Outlook
         private const uint EndOfChain = 0xFFFFFFFE;
         private const uint FreeSector = 0xFFFFFFFF;
         private const int MaxChainLength = 65536;
-        private const int MaxOutputCharacters = 16000;
+        private static int MaxOutputCharacters { get { return EmailAttachmentReader.PageCharacterLimit ?? 16000; } }
 
         public static string ExtractPptText(byte[] fileBytes)
         {

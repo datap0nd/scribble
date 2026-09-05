@@ -25,8 +25,7 @@ namespace Scribble.Outlook
                 kind ?? string.Empty,
                 32);
             var raw = text ?? string.Empty;
-            var characterLimit = ContextScale.Scaled(
-                EmailAttachmentReader.MaxCharactersPerAttachment);
+            var characterLimit = EmailAttachmentReader.CurrentCharacterLimit;
             var bounded = TextBoundary.PlainText(
                 raw,
                 characterLimit);
@@ -95,12 +94,37 @@ namespace Scribble.Outlook
 
         // Text budgets scale with the provider (see ContextScale);
         // byte and count caps do not.
+        [ThreadStatic] private static int? _pageExtractionLimit;
+        internal static int CurrentCharacterLimit { get { return _pageExtractionLimit ?? ContextScale.Scaled(MaxCharactersPerAttachment); } }
+        internal static int? PageCharacterLimit { get { return _pageExtractionLimit; } }
+
+        public static MailboxAttachmentPage LoadLocalPage(string path, int offset, int count, CancellationToken token)
+        {
+            if (offset < 0 || count < 1 || count > 12000 || offset > int.MaxValue - count - 1024)
+                throw new ArgumentOutOfRangeException();
+            var previous = _pageExtractionLimit;
+            try
+            {
+                _pageExtractionLimit = offset + count + 1024;
+                var content = LoadLocalFile(path, token);
+                if (content == null || content.Kind == "unreadable" || content.Kind == "limit" || content.Kind == "resource-limited" ||
+                    content.Text.Contains("No machine-readable text") || content.Text.Contains("resource limit"))
+                    throw new InvalidOperationException("The attachment could not be fully extracted. Supply a readable export; it has not been counted as reviewed.");
+                var text = content.Text ?? "";
+                if (offset > text.Length) throw new InvalidOperationException("Attachment content changed or the offset is invalid.");
+                var length = Math.Min(count, text.Length - offset);
+                return new MailboxAttachmentPage { FileName = content.FileName, Kind = content.Kind,
+                    Text = text.Substring(offset, length), ImageDataUrl = content.ImageDataUrl, Offset = offset,
+                    NextOffset = offset + length < text.Length || content.Truncated ? (int?)(offset + length) : null };
+            }
+            finally { _pageExtractionLimit = previous; }
+        }
+
         private static int ScaledCharactersPerAttachment
         {
             get
             {
-                return ContextScale.Scaled(
-                    MaxCharactersPerAttachment);
+                return CurrentCharacterLimit;
             }
         }
 

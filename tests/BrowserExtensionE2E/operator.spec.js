@@ -355,6 +355,8 @@ test("extension evidence validation rejects stale, cross-tab, and unsupported cl
     MAX_URL_CHARS: 2_000,
     currentTurnId: "turn-1",
     latestValidatedEvidence: null,
+    expectedConditions: new Set(),
+    validatedEvidenceByCondition: new Map(),
     lastSnapshotBySlot: new Map([[1, snapshot]]),
     actionReceiptsBySlot: new Map([[1, []]]),
     resolveWorkTab: async () => ({ slot: 1, tab: { id: 10, url: sourceUrl } }),
@@ -403,4 +405,49 @@ test("browser progress resets on changed state and accumulates on unchanged call
       ], [{ id: "two", content: "2026" }], 7)
     };`, sandbox);
   expect(sandbox.result).toEqual({ unchanged: 20, changed: 0, nonBrowser: 7 });
+});
+
+test("all 2300 controls are reachable by pages without a total option cap", async ({page}) => {
+  await page.evaluate(() => {
+    document.body.replaceChildren();
+    for (let i=0;i<2300;i++) { const button=document.createElement("button"); button.textContent=`Choice ${i}`; document.body.append(button); }
+  });
+  let offset=0; const names=new Set();
+  do {
+    const snapshot=await callAgent(page,"snapshot",{offset});
+    expect(snapshot.totalControls).toBe(2300);
+    snapshot.controls.forEach(control=>names.add(control.name));
+    offset=snapshot.nextOffset;
+  } while(offset!==null);
+  expect(names.size).toBe(2300);
+  expect(names.has("Choice 2299")).toBe(true);
+});
+
+test("native select pages retain a fresh select ref through the final option", async ({page}) => {
+  await page.evaluate(() => {
+    document.body.innerHTML='<label>Condition<select id="conditions"></select></label>';
+    const select=document.getElementById("conditions");
+    for(let i=0;i<240;i++) select.add(new Option(`Condition ${i}`,String(i)));
+  });
+  let snapshot=await callAgent(page,"snapshot");
+  let ref=snapshot.controls.find(c=>c.optionCount===240).ref;
+  let offset=0; const names=[];
+  do {
+    snapshot=await callAgent(page,"snapshot",{options_ref:ref,offset});
+    names.push(...snapshot.controls.map(c=>c.name)); ref=snapshot.selectRef; offset=snapshot.nextOffset;
+  } while(offset!==null);
+  expect(names).toHaveLength(240);
+  const plan=await callAgent(page,"selectPlan",{ref,revision:snapshot.revision,value:"Condition 239"});
+  expect(plan.index).toBe(239);
+});
+
+test("actionability detects overlays instead of clicking through them", async ({page}) => {
+  const snapshot=await callAgent(page,"snapshot",{query:"Origin"});
+  const control=snapshot.controls[0];
+  await page.evaluate(() => {const overlay=document.createElement("div");overlay.id="overlay";Object.assign(overlay.style,{position:"fixed",inset:"0",zIndex:"99999"});document.body.append(overlay);});
+  const blocked=await callAgent(page,"actionability",{ref:control.ref,revision:control.revision});
+  expect(blocked.receivesEvents).toBe(false);
+  await page.locator("#overlay").evaluate(node=>node.remove());
+  const ready=await callAgent(page,"actionability",{ref:control.ref,revision:control.revision});
+  expect(ready.receivesEvents).toBe(true);
 });
