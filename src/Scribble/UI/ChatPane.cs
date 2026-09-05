@@ -2460,7 +2460,7 @@ namespace Scribble.UI
                 }
 
                 var taskContext = new TaskContextManager(request, "outlook", prompt, resume: _resumeRecovery);
-                _diagnostics.RecordEvent("Local diagnostic ID: " + taskContext.State.Id);
+                _diagnostics.BindTask(taskContext.State.Id, request.model);
                 _currentTask = taskContext;
                 if (_resumeRecovery == null)
                 {

@@ -85,8 +85,10 @@ namespace GuardrailTests
             Check(ToolOutcome.Parse("{\"error_code\":\"SLIDE_FAILED\",\"permission_consumed\": false}").PermissionConsumed == false, "Whitespace changed permission classification.");
             Check(ToolOutcome.Parse("[WEB_FETCH_HTTP_404] Missing").Failed, "Legacy fetch failure was ignored.");
             var recorder = new DiagnosticsRecorder(); recorder.BeginRequest("test", "model", false);
+            recorder.BindTask("permanent-task-id", "effective-vision-model");
             for (var i = 1; i <= 160; i++) recorder.RecordEvent("Event " + i);
             var report = recorder.BuildReport("test");
+            Check(report.Contains("Local diagnostic ID: permanent-task-id") && report.Contains("Model: effective-vision-model"), "Diagnostic identity or effective model fell out of the event ring.");
             Check(report.Contains("Event 160") && report.Contains("Events: 160; retained tail: 128") && !report.Contains("  Event 1\r\n"), "Diagnostics lost the recent failure tail.");
             var root = Path.Combine(Path.GetTempPath(), "scribble-flight-" + Guid.NewGuid().ToString("N"));
             try

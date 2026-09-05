@@ -23,6 +23,7 @@ namespace Scribble.Utilities
             internal string StartedAt = string.Empty;
             internal string Host = string.Empty;
             internal string Model = string.Empty;
+            internal string DiagnosticId = string.Empty;
             internal bool DraftAllowed;
             internal long TotalEvents;
             internal string ExposedTools = string.Empty;
@@ -75,6 +76,17 @@ namespace Scribble.Utilities
                     current.ExposedTools = Line(
                         string.Join(", ", names));
                 }
+            }
+        }
+
+        public void BindTask(string diagnosticId, string effectiveModel)
+        {
+            lock (_gate)
+            {
+                var current = Current();
+                if (current == null) return;
+                current.DiagnosticId = Line(diagnosticId);
+                current.Model = Line(effectiveModel);
             }
         }
 
@@ -136,6 +148,8 @@ namespace Scribble.Utilities
                     report.AppendLine(
                         "Host: " + request.Host +
                         "  Model: " + request.Model);
+                    if (request.DiagnosticId.Length > 0)
+                        report.AppendLine("Local diagnostic ID: " + request.DiagnosticId);
                     report.AppendLine(
                         "Draft intent gate: " +
                         (request.DraftAllowed
