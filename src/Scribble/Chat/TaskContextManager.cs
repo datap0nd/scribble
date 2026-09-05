@@ -29,6 +29,9 @@ namespace Scribble.Chat
         {
             _store = store ?? new TaskCheckpointStore();
             _state = resume ?? new DurableTaskState { Host = host, Objective = objective, ProcessSession = TaskRecoveryInput.ProcessSession };
+            string priorProgress;
+            if (_state.HostData.TryGetValue("stalled_count", out priorProgress)) int.TryParse(priorProgress, out _stalled);
+            _state.HostData.TryGetValue("last_progress_signature", out _previousExchange);
             if (_state.Host != host || _state.Objective != objective) throw new InvalidOperationException("Task identity does not match the original request.");
             if (_state.OriginalDecisions.Count == 0) _state.OriginalDecisions.Add(objective);
             _prefixCount = request.messages.Count;
@@ -82,7 +85,9 @@ namespace Scribble.Chat
 
         public void PrepareExchange(ChatCompletionResponseMessage response, ChatCompletionRequest request)
         {
-            _state.PendingCalls = response.tool_calls ?? new List<ChatToolCall>();
+            // The request's assistant message retains this list. Clearing the
+            // checkpoint must never clear its tool calls and orphan the results.
+            _state.PendingCalls = response.tool_calls?.ToList() ?? new List<ChatToolCall>();
             _state.PendingResults.Clear();
             _state.PendingAssistantText = response.content;
             SaveRequest(request);
@@ -92,7 +97,8 @@ namespace Scribble.Chat
         {
             if (!changesDocument) return;
             string spent;
-            if (_state.HostData.TryGetValue("generic_write_spent", out spent) && spent == "true")
+            var permissionKey = _state.Host == "chrome" ? "generic_write_spent:" + call.function.name : "generic_write_spent";
+            if (_state.HostData.TryGetValue(permissionKey, out spent) && spent == "true" && _state.Writes.All(w => w.Status == "verified"))
                 throw new InvalidOperationException("This task's document write already completed. Its saved receipt is authoritative; a second draft was not created.");
             if (_state.Writes.Any(w => w.Status != "verified" && w.Id.StartsWith("tool:")))
                 throw new InvalidOperationException("An interrupted document write is uncertain. Reopen and inspect the original marked draft; discard this task before starting a replacement. No write was retried.");
@@ -108,10 +114,11 @@ namespace Scribble.Chat
             if (write != null)
             {
                 // An error may have occurred after the side effect. Never presume that it did not execute.
-                write.Status = result.Content.Contains("\"error_code\"") &&
+                write.Status = (result.Content.Contains("\"error_code\"") ||
+                    System.Text.RegularExpressions.Regex.IsMatch(result.Content, @"^\[[A-Z_]*(FAILED|INVALID|NOT_AUTHORIZED)\]")) &&
                     !result.Content.Contains("\"permission_consumed\":false") ? "uncertain" : "verified";
                 write.AfterFingerprint = TaskCheckpointStore.Fingerprint(result.Content);
-                if (!result.Content.Contains("\"permission_consumed\":false")) _state.HostData["generic_write_spent"] = "true";
+                if (!result.Content.Contains("\"permission_consumed\":false")) _state.HostData[_state.Host == "chrome" ? "generic_write_spent:" + call.function.name : "generic_write_spent"] = "true";
             }
             Checkpoint();
         }
@@ -175,6 +182,9 @@ namespace Scribble.Chat
                 var offset = Convert.ToInt32(args["offset"]);
                 if (!_evidence.Contains(id) || offset < 0) throw new ArgumentException("Unknown evidence or invalid offset.");
                 var source = _store.ReadEvidence(_state.Id, id);
+                if (source.StartsWith("data:image/", StringComparison.Ordinal))
+                    return new MailboxToolResult(call.id, _json.Serialize(new { untrusted_evidence = true, id, kind = "image", complete = true }),
+                        "Retrieved archived image", new[] { new VisionImagePayload("Archived task image", source) });
                 if (offset > source.Length) throw new ArgumentException("Offset exceeds evidence length.");
                 var count = Math.Min(12000, source.Length - offset);
                 return new MailboxToolResult(call.id, _json.Serialize(new
@@ -235,14 +245,16 @@ namespace Scribble.Chat
                 });
             }
             // Call IDs change even when an action is repeated. Exclude them from the progress key.
-            var signature = _json.Serialize(new
+            var signature = TaskCheckpointStore.Fingerprint(_json.Serialize(new
             {
                 calls = response.tool_calls.Select(c => c.function),
                 results = results.Select(r => r.Content)
-            });
-            var failed = results.All(r => r.Content.Contains("\"error_code\""));
+            }));
+            var failed = results.Count > 0 && results.All(r => r.Content.Contains("\"error_code\"") || r.Content.StartsWith("[BROWSER_TOOL_FAILED]"));
             _stalled = failed || signature == _previousExchange ? _stalled + 1 : 0;
             _previousExchange = signature;
+            _state.HostData["stalled_count"] = _stalled.ToString();
+            _state.HostData["last_progress_signature"] = signature;
             if (_stalled == 3) request.messages.Add(new ChatCompletionInputMessage
             {
                 role = "user", content = "The last actions produced no new result. Re-observe the source and use a different approach before retrying. Explain any concrete blocker."
@@ -256,7 +268,7 @@ namespace Scribble.Chat
             _store.Save(_state);
             if (_stalled >= 6)
             {
-                Pause("Repeated actions produced no new result. Revalidate the source or select another approach.");
+                Pause("Repeated actions produced no new result. Revalidate the source or select another approach. Last result: " + string.Join("; ", results.Select(r => r.Content.Substring(0, Math.Min(600, r.Content.Length)))));
                 throw new AiEndpointException("TASK_NEEDS_RECOVERY", _state.Blocker);
             }
         }
@@ -276,8 +288,9 @@ namespace Scribble.Chat
                         .OrderByDescending(m => _json.Serialize(m).Length).FirstOrDefault();
                     if (largest == null) throw new AiEndpointException("TASK_INPUT_TOO_LARGE", "The model context cannot fit the original instructions and tool definitions. Select a model with a larger context to resume.");
                     var sourceId = _store.PutEvidence(_state.Id, _json.Serialize(largest));
+                    var imageReferences = ArchiveImages(_json.Serialize(largest));
                     _evidence.Add(sourceId);
-                    largest.content = "Original task: " + _state.Objective + "\nFull original input and reference material are archived as " + sourceId + ". Use read_task_evidence in pages to inspect every relevant source. Earlier original decisions: " + string.Join("\n", _state.OriginalDecisions);
+                    largest.content = "Original task: " + _state.Objective + "\nFull original input and reference material are archived as " + sourceId + ". Use read_task_evidence in pages to inspect every relevant source. " + imageReferences + " Earlier original decisions: " + string.Join("\n", _state.OriginalDecisions);
                     SaveRequest(request);
                     continue;
                 }
@@ -287,6 +300,7 @@ namespace Scribble.Chat
                 var group = suffix.Take(count).ToList();
                 var archive = _json.Serialize(group);
                 var id = _store.PutEvidence(_state.Id, archive);
+                var archivedImages = ArchiveImages(archive);
                 _evidence.Add(id);
                 var summaryRequest = new ChatCompletionRequest
                 {
@@ -305,10 +319,10 @@ namespace Scribble.Chat
                 }
                 var note = new ChatCompletionInputMessage { role = "user", content =
                     "<untrusted_task_notes evidence_id=\"" + id + "\">\n" + (summary?.content ?? "Full exchange archived. Read its pages before relying on omitted facts or repeating work. Coverage and writes remain tracked by the host.") +
-                    "\n</untrusted_task_notes>\nUse read_task_evidence to verify omitted details. Original permissions remain host-controlled." };
+                    "\n</untrusted_task_notes>\nUse read_task_evidence to verify omitted details. " + archivedImages + " Original permissions remain host-controlled." };
                 if (_json.Serialize(note).Length >= archive.Length)
                 {
-                    note.content = "Archived task evidence: " + id + ". Read with read_task_evidence before relying on omitted details.";
+                    note.content = "Archived task evidence: " + id + ". Read with read_task_evidence before relying on omitted details. " + archivedImages;
                     if (_json.Serialize(note).Length >= archive.Length)
                         throw new AiEndpointException("TASK_CONTEXT_MINIMUM", "The model context cannot fit the task's instructions and tools. Select a larger-context model to resume.");
                 }
@@ -326,6 +340,16 @@ namespace Scribble.Chat
             var text = System.Text.RegularExpressions.Regex.Replace(serialized,
                 @"data:image/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=]+", match => new string('i', 8192));
             return text.Length + (request.max_tokens ?? 8192);
+        }
+        private string ArchiveImages(string serialized)
+        {
+            var ids = new List<string>();
+            foreach (System.Text.RegularExpressions.Match match in System.Text.RegularExpressions.Regex.Matches(serialized,
+                @"data:image/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=]+"))
+            {
+                var id = _store.PutEvidence(_state.Id, match.Value); _evidence.Add(id); ids.Add(id);
+            }
+            return ids.Count == 0 ? "" : "Images remain separately retrievable as image input: " + string.Join(", ", ids.Distinct()) + ". Read each required image with read_task_evidence at offset 0; a text summary is not an image review.";
         }
     }
 }

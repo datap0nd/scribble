@@ -108,6 +108,7 @@ namespace Scribble.Outlook
                 _pageExtractionLimit = offset + count + 1024;
                 var content = LoadLocalFile(path, token);
                 if (content == null || content.Kind == "unreadable" || content.Kind == "limit" || content.Kind == "resource-limited" ||
+                    (content.Kind == "image" && string.IsNullOrEmpty(content.ImageDataUrl)) ||
                     content.Text.Contains("No machine-readable text") || content.Text.Contains("resource limit"))
                     throw new InvalidOperationException("The attachment could not be fully extracted. Supply a readable export; it has not been counted as reviewed.");
                 var text = content.Text ?? "";
