@@ -40,6 +40,7 @@
   <ItemGroup>
     <Reference Include="Microsoft.CSharp" />
     <Reference Include="System" />
+    <Reference Include="System.Data" />
     <Reference Include="System.Core" />
     <Reference Include="System.Drawing" />
     <Reference Include="System.IO.Compression" />
@@ -53,6 +54,7 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
+    <PackageReference Include="ExcelDataReader" Version="3.9.0" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="UI\ChatPaneWeb.html" />
@@ -81,6 +83,7 @@
     <Compile Include="Chat\WebReadTool.cs" />
     <Compile Include="Chat\BrowserChatService.cs" />
     <Compile Include="Chat\ChatRequestFactory.cs" />
+    <Compile Include="Chat\DraftContentReview.cs" />
     <Compile Include="Chat\DraftToolCatalog.cs" />
     <Compile Include="Chat\ExternalContextDocument.cs" />
     <Compile Include="Chat\LocalSearchCommand.cs" />

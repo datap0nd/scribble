@@ -42,7 +42,7 @@ namespace Scribble.Chat
                 request.tools.Any(t => t.function.name == PresentationToolCatalog.AddDraftSlides || t.function.name == CrossAppToolCatalog.SendToPowerPoint))
             {
                 var count = System.Text.RegularExpressions.Regex.Match(objective ?? "",
-                    @"\b(?<count>\d+|one|two|three|four|five|six|seven|eight|nine|ten|a)\s+(?:powerpoint\s+)?slides?\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                    @"\b(?<count>\d+|one|two|three|four|five|six|seven|eight|nine|ten|a)[\s-]+(?:powerpoint\s+)?slides?\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
                 if (count.Success)
                 {
                     var word = count.Groups["count"].Value.ToLowerInvariant();
@@ -86,6 +86,7 @@ namespace Scribble.Chat
             _state.UserPaused = false;
             Diagnostics = new TaskDiagnostics(_store, _state);
             request.Diagnostics = Diagnostics;
+            if (host == "outlook" && ChatRequestFactory.IsMetadataOnly(objective) && Equals(request.tool_choice, "none")) request.tools.Clear();
             SaveRequest(request);
             Diagnostics.Record(resume == null ? "task_started" : "task_resumed", new { model = request.model,
                 schema_hash = TaskCheckpointStore.Fingerprint(_json.Serialize(request.tools)), host });
@@ -101,7 +102,10 @@ namespace Scribble.Chat
         public MailboxToolResult ValidateArguments(ChatToolCall call)
         {
             var definition = _request.tools.FirstOrDefault(t => t.function.name == call?.function?.name);
-            if (definition == null || McpToolHost.IsMcpTool(call?.function?.name)) return null;
+            if (definition == null) return new MailboxToolResult(call?.id,
+                _json.Serialize(new { error_code = "TOOL_NOT_EXPOSED", message = "This tool is not available for the current user request.", permission_consumed = false }),
+                "Tool is outside the current request scope");
+            if (McpToolHost.IsMcpTool(call?.function?.name)) return null;
             var errors = ToolContractValidator.Validate(call, definition);
             if (errors.Count == 0) return null;
             Diagnostics.Record("argument_validation_failed", new { call.id, tool = call.function.name, errors });

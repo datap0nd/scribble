@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Threading;
@@ -16,6 +17,7 @@ namespace Scribble.Outlook
         public string ImageDataUrl { get; set; }
         public int Offset { get; set; }
         public int? NextOffset { get; set; }
+        public bool CacheHit { get; set; }
     }
 
     internal static class MailboxAttachmentPages
@@ -38,7 +40,7 @@ namespace Scribble.Outlook
         }
 
         internal static async Task<MailboxAttachmentPage> ReadAsync(object application, MessageSnapshot source,
-            int index, int offset, CancellationToken token)
+            int index, int offset, CancellationToken token, IDictionary<string, MailboxAttachmentPage> cache = null)
         {
             object session = null, item = null, attachments = null, attachment = null;
             string temporary = null;
@@ -73,11 +75,26 @@ namespace Scribble.Outlook
                 return await Task.Run(() =>
                 {
                     token.ThrowIfCancellationRequested();
-                    var page = EmailAttachmentReader.LoadLocalPage(temporary, offset, 6000, token);
-                    page.FileName = name;
+                    string fingerprint;
                     using (var stream = File.OpenRead(temporary))
                     using (var hash = SHA256.Create())
-                        page.Fingerprint = BitConverter.ToString(hash.ComputeHash(stream)).Replace("-", "");
+                        fingerprint = BitConverter.ToString(hash.ComputeHash(stream)).Replace("-", "");
+                    // Hash the current bytes on every read. Reusing extracted pages
+                    // must never hide a changed attachment, even at the same index.
+                    var key = fingerprint + ":" + Path.GetExtension(name).ToLowerInvariant() + ":" + offset;
+                    MailboxAttachmentPage page;
+                    if (cache != null && cache.TryGetValue(key, out page))
+                        return new MailboxAttachmentPage { FileName = name, Fingerprint = fingerprint,
+                            Kind = page.Kind, Text = page.Text, ImageDataUrl = page.ImageDataUrl,
+                            Offset = page.Offset, NextOffset = page.NextOffset, CacheHit = true };
+                    page = EmailAttachmentReader.LoadLocalPage(temporary, offset, 6000, token);
+                    page.FileName = name;
+                    page.Fingerprint = fingerprint;
+                    if (cache != null && string.IsNullOrEmpty(page.ImageDataUrl))
+                    {
+                        if (cache.Count >= 128) cache.Clear();
+                        cache[key] = page;
+                    }
                     return page;
                 }, token).ConfigureAwait(true);
             }

@@ -18,10 +18,23 @@ namespace Scribble.Office
             "A slide needs a concise title and a separate single-line action title in subtitle. " +
             "Read retained source passages with read_task_sources and cite their host-issued span_id values in source_spans. Multiple spans may support one slide. " +
             "The host resolves evidence from these IDs; you do not need to copy it. Legacy evidence accepts whitespace-normalized verbatim text. Never invent numbers or quotes. " +
+            "When the user explicitly requests sample/synthetic/illustrative/example data, use their supplied values and labels as the evidence; no external business evidence is needed. Mark this content Sample data. " +
             "Use takeaway for the conclusion, and highlight_rows for the data rows/categories that support it. " +
             "The host independently checks evidence, renders editable slides, reviews each rendered image, and repairs owned draft shapes. " +
             "Never claim completion when a review reports a blocker. Themes and positions are host-controlled. " +
             "Content may be quantitative tables/charts, diagrams, action lists, or concise summaries as appropriate; do not invent a table just to fill space.";
+
+        public static bool PrepareSampleEvidence(IDictionary<string, object> slide, string userInstruction)
+        {
+            // Only the trusted user's instruction can authorize synthetic content.
+            // Email text and model-provided evidence cannot switch this mode on.
+            if (!Regex.IsMatch(userInstruction ?? "", @"\b(sample|synthetic|illustrative|example)\s+(data|values|numbers)\b", RegexOptions.IgnoreCase) ||
+                Regex.IsMatch(userInstruction ?? "", @"\b(no|not|without|never)\b.{0,30}\b(sample|synthetic|illustrative|example)\b", RegexOptions.IgnoreCase)) return false;
+            slide["evidence"] = userInstruction;
+            slide["sources"] = "Sample data — supplied by the user; not actual business results";
+            slide.Remove("source_spans");
+            return true;
+        }
 
         public static void ValidateEvidence(string slideJson, string actualSource)
         {
@@ -39,6 +52,12 @@ namespace Scribble.Office
             var content = string.Join(" ", data.Where(p => !new[] { "id", "sources", "evidence", "source_spans", "layout", "highlight_rows", "image_names" }.Contains(p.Key)).SelectMany(p => DisplayedStrings(p.Value, p.Key)));
             if (content.Length > 36000) throw new InvalidOperationException("Slide content must be split into smaller review batches.");
             var allowed = new HashSet<string>(Numbers(special && string.IsNullOrWhiteSpace(evidence) ? actualSource : evidence));
+            foreach (Match range in Regex.Matches(evidence ?? "", @"\b(?:weeks?|days?|months?|years?)\s+(\d+)\s*[-–]\s*(\d+)\b", RegexOptions.IgnoreCase))
+            {
+                int from, to;
+                if (int.TryParse(range.Groups[1].Value, out from) && int.TryParse(range.Groups[2].Value, out to) && to >= from && to - (long)from <= 100)
+                    for (var value = (long)from; value <= to; value++) allowed.Add(value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            }
             var missing = Numbers(content).Where(n => !allowed.Contains(n)).Distinct().ToArray();
             if (missing.Length > 0) throw new InvalidOperationException("SLIDE_NUMBERS_UNVERIFIED: Values absent from cited evidence: " + string.Join(", ", missing));
             if (special) return;

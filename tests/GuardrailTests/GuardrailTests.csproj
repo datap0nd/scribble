@@ -50,6 +50,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Program.cs" />
+    <Content Include="Fixtures\structured.xls"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>
     <Compile Include="CrossAppFixture.cs" />
     <Compile Include="ScaleTaskTests.cs" />
     <Compile Include="HardeningTests.cs" />

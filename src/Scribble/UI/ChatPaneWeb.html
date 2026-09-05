@@ -409,6 +409,14 @@
     white-space: nowrap;
   }
   .md tr:nth-child(even) td { background: rgba(255, 255, 255, 0.02); }
+  @media (max-width: 520px) {
+    .md .tblwrap { overflow-x: visible; }
+    .md table, .md tbody { display: block; width: 100%; min-width: 0; }
+    .md thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+    .md tbody tr { display: block; margin-bottom: 10px; border: 1px solid var(--border); border-radius: 6px; }
+    .md td { display: block; border: 0; overflow-wrap: anywhere; white-space: normal; }
+    .md td::before { content: attr(data-label) ": "; font-weight: 600; }
+  }
   .md .mlink {
     color: var(--accent);
     text-decoration: underline;
@@ -985,8 +993,10 @@
         var table = document.createElement("table");
         var thead = document.createElement("thead");
         var headRow = document.createElement("tr");
-        splitTableRow(line).forEach(function (cell, index) {
+        var headers = splitTableRow(line);
+        headers.forEach(function (cell, index) {
           var th = document.createElement("th");
+          th.scope = "col";
           if (aligns[index]) { th.style.textAlign = aligns[index]; }
           appendInline(cell, th);
           headRow.appendChild(th);
@@ -1000,6 +1010,7 @@
           var bodyRow = document.createElement("tr");
           splitTableRow(lines[i]).forEach(function (cell, index) {
             var td = document.createElement("td");
+            td.setAttribute("data-label", headRow.children[index] ? headRow.children[index].textContent : "Column " + (index + 1));
             if (aligns[index]) { td.style.textAlign = aligns[index]; }
             appendInline(cell, td);
             bodyRow.appendChild(td);
@@ -1016,6 +1027,7 @@
       if (listMatch) {
         var ordered = /\d/.test(listMatch[2].charAt(0));
         var list = document.createElement(ordered ? "ol" : "ul");
+        if (ordered) { list.start = parseInt(listMatch[2], 10); }
         var sublist = null;
         while (i < lines.length) {
           var itemMatch =

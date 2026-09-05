@@ -1785,7 +1785,7 @@ namespace Scribble.Outlook
                         .ExtractXlsText(path, cancellationToken);
                     text = extracted.Trim().Length > 0
                         ? "[Excel attachment: " + fileName +
-                          " - legacy .xls cell text without positions]\n" +
+                          " - structured legacy .xls rows and columns]\n" +
                           extracted
                         : "[Excel attachment: " + fileName +
                           ". No readable cell text was extracted from " +

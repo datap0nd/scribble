@@ -60,6 +60,7 @@ jobs:
             ForEach-Object { Write-Host $_.FullName.Substring((Resolve-Path $bin).Path.Length + 1) }
           foreach ($required in @(
             "Microsoft.Web.WebView2.Core.dll",
+            "ExcelDataReader.dll",
             "Microsoft.Web.WebView2.WinForms.dll"
           )) {
             if (-not (Test-Path (Join-Path $bin $required))) {
@@ -516,6 +517,14 @@ jobs:
             $browserRegistryRoot.Dispose()
           }
           $assembly = [Reflection.Assembly]::LoadFrom($installedDll)
+          $readerDll = Join-Path $installedDir "ExcelDataReader.dll"
+          if (-not (Test-Path $readerDll) -or -not (Test-Path (Join-Path $installedDir "THIRD_PARTY_NOTICES.txt"))) {
+            throw "Installer omitted the structured XLS reader or its license."
+          }
+          [void][Reflection.Assembly]::LoadFrom($readerDll)
+          $xlsFixture = (Resolve-Path "tests\GuardrailTests\Fixtures\structured.xls").Path
+          $xlsText = [Scribble.Outlook.LegacyOfficeTextExtractor]::ExtractXlsText($xlsFixture)
+          if (-not $xlsText.Contains('["JO-1",null,42]')) { throw "Installed XLS reader lost cell positions." }
           $instance = $assembly.CreateInstance("Scribble.AddIn")
           if ($null -eq $instance) {
             throw "The installed add-in class could not be instantiated."

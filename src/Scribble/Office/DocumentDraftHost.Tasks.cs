@@ -104,6 +104,11 @@ namespace Scribble.Office
         {
             token.ThrowIfCancellationRequested();
             var name = call?.function?.name;
+            if (name == CrossAppToolCatalog.CreateEmailDraft && exclusive && authorization != null && authorization.CanCreate)
+            {
+                var review = await DraftContentReview.ReviewAsync(call, _taskContext, prompt, client, settings, token);
+                if (review != null) return review;
+            }
             if (name == PresentationToolCatalog.AddDraftSlides || name == CrossAppToolCatalog.SendToPowerPoint)
                 return await ExecuteSamsungAsync(call, authorization, exclusive, prompt, client, settings, token);
             if (_durableExcel == null || (name != WorkbookToolCatalog.WriteSelectionOutput && name != WorkbookToolCatalog.WriteKoreanTranslations))

@@ -46,10 +46,21 @@ namespace Scribble.Outlook
         private MailboxTaskCheckpoint _ledger;
         private bool _reviewAll;
         private bool _requiresEnumeration;
+        private bool _metadataOnly;
+        private bool _skipAttachments;
+        private readonly Dictionary<string, MailboxAttachmentPage> _attachmentPages = new Dictionary<string, MailboxAttachmentPage>();
+
+        internal void ConfigureRequestScope(string prompt)
+        {
+            _metadataOnly = _workingSetOnly && ChatRequestFactory.IsMetadataOnly(prompt);
+            _skipAttachments = _metadataOnly || ChatRequestFactory.ForbidsAttachmentReads(prompt);
+        }
 
         public async Task BindTaskAsync(TaskContextManager task, CancellationToken token)
         {
             _task = task;
+            ConfigureRequestScope(task.State.Objective);
+            if (_metadataOnly) { _ledger = new MailboxTaskCheckpoint(); return; }
             _reviewAll = Regex.IsMatch(task.State.Objective ?? "", @"\b(all|every|entire|unread|morning)\b", RegexOptions.IgnoreCase);
             _requiresEnumeration = !_workingSetOnly && _reviewAll &&
                 !Regex.IsMatch(task.State.Objective ?? "", @"\b(selected|this email|this message)\b", RegexOptions.IgnoreCase);
@@ -78,7 +89,7 @@ namespace Scribble.Outlook
                 _cursors[search.Id] = new MailboxPageCursor(_application, search.Query, search.Folder, search.After, search.Before, search.Unread);
             }
             _nextHandle = _handles.Count + 1;
-            foreach (var handle in _handles.Keys.ToArray()) { _metadataHandles.Add(handle); if (_workingSetOnly) RegisterCoverage(handle, _handles[handle]); }
+            foreach (var handle in _handles.Keys.ToArray()) { _metadataHandles.Add(handle); if (_workingSetOnly && !_skipAttachments) RegisterCoverage(handle, _handles[handle]); }
             SaveCoverage();
         }
 
@@ -124,7 +135,7 @@ namespace Scribble.Outlook
         {
             get
             {
-                if (_task == null) return null;
+                if (_task == null || _metadataOnly) return null;
                 if (_requiresEnumeration && _ledger.Searches.Count == 0)
                     return "Mailbox coverage is incomplete: enumerate the user's requested mailbox/time window with search_mailbox before answering.";
                 var cursor = _ledger.Searches.FirstOrDefault(s => !s.Complete);
@@ -163,7 +174,7 @@ namespace Scribble.Outlook
                     (entry.AttachmentCount >= 0 && MailboxAttachmentPages.Count(_application, current) != entry.AttachmentCount))
                     return Error(callId, "MAILBOX_SOURCE_CHANGED", "The message body or attachment collection changed during analysis. Its old coverage cannot be used.");
                 if (entry.BodyLength < 0 || entry.ReadUntil < entry.BodyLength || entry.AttachmentCount < 0 ||
-                    entry.CompleteAttachments.Count != entry.AttachmentCount)
+                    (!_skipAttachments && entry.CompleteAttachments.Count != entry.AttachmentCount))
                     return Error(callId, "MAILBOX_COVERAGE_INCOMPLETE", "Read the complete body and every attachment before recording analysis. Body offset " + entry.ReadUntil + "; attachments complete " + entry.CompleteAttachments.Count + " of " + entry.AttachmentCount + ".");
                 var summary = GetString(arguments, "summary", "");
                 if (summary.Length == 0) return Error(callId, "MAILBOX_ANALYSIS_REQUIRED", "Provide a source-grounded summary, including actions and important evidence.");
@@ -189,7 +200,10 @@ namespace Scribble.Outlook
             if (!_handles.TryGetValue(handle, out source)) return Error(callId, "MAILBOX_HANDLE_UNKNOWN", "Unknown message handle.");
             var index = GetInteger(arguments, "attachment_index", 1, 1, int.MaxValue);
             var offset = GetInteger(arguments, "offset", 0, 0, int.MaxValue);
-            var page = await MailboxAttachmentPages.ReadAsync(_application, source, index, offset, token);
+            var timer = System.Diagnostics.Stopwatch.StartNew();
+            var page = await MailboxAttachmentPages.ReadAsync(_application, source, index, offset, token, _attachmentPages);
+            _task?.Diagnostics.Record("attachment_read", new { handle, attachment_index = index, offset,
+                cache_hit = page.CacheHit, elapsed_ms = timer.ElapsedMilliseconds, source_fingerprint = page.Fingerprint });
             var entry = RegisterCoverage(handle, source);
             if (entry != null)
             {
@@ -208,7 +222,8 @@ namespace Scribble.Outlook
             var images = string.IsNullOrEmpty(page.ImageDataUrl) ? new VisionImagePayload[0] : new[] { new VisionImagePayload(page.FileName, page.ImageDataUrl) };
             return Success(callId, new { untrusted_attachment_data = true, handle, attachment_index = index,
                 file_name = page.FileName, offset, next_offset = page.NextOffset, complete = !page.NextOffset.HasValue,
-                content = page.Text, kind = page.Kind }, "Read attachment " + index + ": " + page.FileName, images);
+                content = page.Text, kind = page.Kind, cache_hit = page.CacheHit,
+                source_fingerprint = page.Fingerprint }, (page.CacheHit ? "Reused verified attachment " : "Read attachment ") + index + ": " + page.FileName, images);
         }
     }
 }

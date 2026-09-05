@@ -1898,6 +1898,22 @@ async function dispatchCdpBatch(tabId, commands) {
   return response.results || [];
 }
 
+function inspectionFailure(error, url) {
+  let location = "the selected tab";
+  let scheme = "";
+  try { const parsed = new URL(url); scheme = parsed.protocol; location = /^https?:$/.test(scheme) ? parsed.origin : scheme; } catch {}
+  const message = String(error?.message || error || "");
+  if (scheme && !/^https?:$/.test(scheme)) return { retry: false,
+    message: `BROWSER_RESTRICTED_SCHEME: Chrome does not permit page inspection on ${location}. Open a public http/https page, then Resume.` };
+  if (/extensions gallery|web store|cannot access|missing host permission|permission denied|not allowed/i.test(message)) return { retry: false,
+    message: `BROWSER_ACCESS_DENIED: Chrome denied inspection of ${location}. Check the extension's site access or open a public page, then Resume. No restrictions were bypassed.` };
+  if (/no tab|tab.*closed/i.test(message)) return { retry: false,
+    message: "BROWSER_TAB_UNAVAILABLE: The work tab was closed or is unavailable. Select an open public page, then Resume." };
+  if (/frame.*removed|no frame|context.*destroyed|document.*unloaded|cannot find context|receiving end does not exist/i.test(message)) return { retry: true,
+    message: `BROWSER_NAVIGATION_CHANGED: ${location} changed while being inspected. Wait for loading to finish, then Resume.` };
+  return { retry: false, message: `BROWSER_INSPECTION_FAILED: Inspection of ${location} failed for an unclassified reason. This does not establish that the page is protected. Reload the public page, then Resume.` };
+}
+
 async function inspectWorkTab(tabId, query = "", offset = 0, frame = 0, options_ref = "") {
   snapshotImagesByTab.delete(tabId);
   let snapshot;
@@ -1906,10 +1922,18 @@ async function inspectWorkTab(tabId, query = "", offset = 0, frame = 0, options_
       query: boundText(query, 200), offset, frame, options_ref
     });
   } catch (error) {
-    operatorDetachError =
-      "I can't inspect this protected page, so I've stopped without trying to bypass it.";
-    stopRequested = true;
-    throw new Error(operatorDetachError);
+    const tab = await chrome.tabs.get(tabId).catch(() => null);
+    let failure = inspectionFailure(error, tab?.url);
+    if (failure.retry) {
+      await delay(300);
+      try { snapshot = await runPageAgent(tabId, "snapshot", { query: boundText(query, 200), offset, frame, options_ref }); }
+      catch (retryError) { failure = inspectionFailure(retryError, tab?.url); }
+    }
+    if (!snapshot) {
+      operatorDetachError = failure.message;
+      stopRequested = true;
+      throw new Error(operatorDetachError);
+    }
   }
   if (!snapshot || snapshot.error) {
     operatorDetachError = snapshot?.error ||

@@ -6,7 +6,7 @@ using System.Threading;
 
 namespace Scribble.Outlook
 {
-    // Local, dependency-free text extraction for legacy binary Office
+    // Local text extraction for legacy binary Office
     // formats (.doc, .ppt, .xls live inside OLE compound files) and RTF.
     // Everything is best-effort and bounded; failures return empty text
     // so the caller can add a visible note instead of dropping the file.
@@ -187,13 +187,35 @@ namespace Scribble.Outlook
             string path,
             CancellationToken cancellationToken)
         {
-            using (var file = new CompoundFileReader(
-                path,
-                cancellationToken))
+            using (var stream = File.OpenRead(path))
+            using (var reader = ExcelDataReader.ExcelReaderFactory.CreateBinaryReader(stream))
             {
-                return ExtractXlsStream(
-                    file.ReadStream("Workbook") ??
-                    file.ReadStream("Book"));
+                var json = new System.Web.Script.Serialization.JavaScriptSerializer { MaxJsonLength = int.MaxValue };
+                var output = new StringBuilder("[Structured XLS: one JSON record per sheet/row. Cells retain column positions including blanks. Numeric values are raw; number formats are supplied separately. Formula cells expose stored results, not formula expressions; results may be stale. Dimensions include blank/formatted rows and are not SKU counts.]\n");
+                do
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    output.AppendLine(json.Serialize(new { sheet = reader.Name, rows = reader.RowCount,
+                        columns = reader.FieldCount, merged_ranges = reader.MergeCells }));
+                    var row = 0;
+                    while (reader.Read())
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        var values = new object[reader.FieldCount];
+                        var formats = new string[reader.FieldCount];
+                        var types = new string[reader.FieldCount];
+                        for (var column = 0; column < reader.FieldCount; column++)
+                        {
+                            var value = reader.GetValue(column);
+                            values[column] = value is DateTime ? ((DateTime)value).ToString("O") : value;
+                            formats[column] = reader.GetNumberFormatString(column);
+                            types[column] = value == null ? "blank" : value.GetType().Name;
+                        }
+                        output.AppendLine(json.Serialize(new { row = ++row, cells = values, types, formats }));
+                        if (output.Length > MaxOutputCharacters) return output.ToString();
+                    }
+                } while (reader.NextResult());
+                return output.ToString();
             }
         }
 

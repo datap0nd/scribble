@@ -70,6 +70,11 @@ namespace GuardrailTests
             try
             {
                 if (args.Length == 2 && args[0] == "--filter") _filter = args[1];
+                Run("QA metadata followup forbids reads and old task continuation", QaMetadataScope);
+                Run("QA repeated attachments reuse extraction and invalidate changed bytes", QaAttachmentCache);
+                Run("QA structured XLS preserves positions multilingual values and sheets", QaStructuredXls);
+                Run("QA sample slide evidence accepts user values without external quotes", QaSampleEvidence);
+                Run("QA draft grounding rejects invented facts and stale future dates", QaDraftGrounding);
                 Run("Samsung layouts preserve content and enforce overflow bounds", SamsungSlideTests.LayoutsAndOverflow);
                 Run("Samsung slide numbers require verified source evidence", SamsungSlideTests.EvidenceAndNumbers);
                 Run("PowerPoint and Outlook slide tool calls reach independent review", SlideToolCallsReachReview);
@@ -7715,7 +7720,7 @@ namespace GuardrailTests
                 var launches = 0;
                 try
                 {
-                    using (var server = new FakeEndpoint(target != "powerpoint" ? new[] { callResponse, done } : new[] { callResponse, approved, approved, continuation, approved, approved, done }))
+                    using (var server = new FakeEndpoint(target == "outlook" ? new[] { callResponse, approved, done } : target != "powerpoint" ? new[] { callResponse, done } : new[] { callResponse, approved, approved, continuation, approved, approved, done }))
                     {
                         var settings = EndpointSettings(server.BaseUrl); settings.Model = "qwen3-vl";
                         using (var service = new BrowserChatService(settings, progId => {
@@ -7769,7 +7774,7 @@ namespace GuardrailTests
                 if (target == "outlook") args = "{\"subject\":\"Draft\",\"body\":\"SOURCE CONTENT\"}";
                 if (target == "chrome") args = "{\"url\":\"https://example.com/\"}";
                 const string approved = "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"approved\\\":true}\"}}]}";
-                using (var server = target == "powerpoint" ? new FakeEndpoint(approved, approved) : null)
+                using (var server = target == "outlook" ? new FakeEndpoint(approved) : target == "powerpoint" ? new FakeEndpoint(approved, approved) : null)
                 using (var client = new OpenAiCompatibleClient())
                 using (var host = new DocumentDraftHost(source, new object(), resolve, url => { Assert(url == "https://example.com/", "Wrong Chrome URL"); launches++; }))
                 {
@@ -7803,6 +7808,104 @@ namespace GuardrailTests
             }
             Assert(matrix.Count == 20, "All twenty directional handoffs must be covered.");
             File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "CrossApplicationResults.json"), json.Serialize(matrix));
+        }
+
+        private static void QaMetadataScope()
+        {
+            var prompt = "list only the three market codes in the working set then state whether you can access the next unselected email do not search";
+            var working = new[] { new MessageSnapshot("qa", "store", "Product Extract - JO", "sender", "to", DateTime.Now, "SECRET BODY") };
+            var request = ChatRequestFactory.Create("test", null, new[] { new ChatTurn("assistant", "OLD SKU ANALYSIS") }, prompt, workingMessages: working);
+            Assert(request.tools.Count == 0 && Equals(request.tool_choice, "none"), "Metadata requests exposed tools.");
+            var serialized = new JavaScriptSerializer().Serialize(request.messages);
+            Assert(!serialized.Contains("SECRET BODY") && !serialized.Contains("OLD SKU ANALYSIS") && serialized.Contains("Product Extract - JO"), "Metadata context leaks body/history or loses headers.");
+            var task = new TaskContextManager(request, "outlook", prompt);
+            Assert(request.tools.Count == 0 && task.ValidateArguments(MailboxCall("bad", "read_task_sources", "{}")) != null, "Task infrastructure reopened metadata reads.");
+            using (var host = new MailboxToolHost(new object(), null, working))
+            {
+                host.BindTaskAsync(task, CancellationToken.None).GetAwaiter().GetResult();
+                Assert(host.CompletionBlocker == null, "Metadata completion requires body analysis.");
+                Assert(host.ExecuteAsync(MailboxCall("bad", "read_attachment", "{}"), CancellationToken.None).Result.Content.Contains("MAILBOX_REQUEST_SCOPE"), "Host allowed a forbidden attachment.");
+            }
+            request = ChatRequestFactory.Create("test", null, new ChatTurn[0], "Compare the working set; do not reread attachments", workingMessages: working);
+            Assert(request.tools.All(t => t.function.name != "read_attachment"), "No-reread instruction was ignored.");
+            var reuseTask = new TaskContextManager(request, "outlook", "Compare the working set; do not reread attachments");
+            using (var host = new MailboxToolHost(new object(), null, working))
+            {
+                host.BindTaskAsync(reuseTask, CancellationToken.None).GetAwaiter().GetResult();
+                Assert(host.CompletionBlocker == null, "Existing-evidence followup forced body/attachment reads.");
+                reuseTask.State.EnumerationComplete = true; // Same completion boundary as ChatPane.
+                reuseTask.CompleteTask(request);
+            }
+            Assert(!ChatRequestFactory.IsMetadataOnly("Compare the contents of only the selected emails"), "Content analysis was mistaken for metadata.");
+        }
+
+        private static void QaAttachmentCache()
+        {
+            var path = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".txt");
+            try
+            {
+                File.WriteAllText(path, "initial evidence");
+                var app = new FakeOutlookApplication();
+                var mail = new FakeSelectedMailItem("qa", "Attachment test");
+                mail.Attachments.Add(new FakeOutlookAttachment("evidence.txt", path) { Size = 100 });
+                app.Session.Register("qa", "store", mail);
+                var source = new MessageSnapshot("qa", "store", "Attachment test", "sender", "to", DateTime.Now, "body");
+                using (var host = new MailboxToolHost(app, source))
+                {
+                    var call = MailboxCall("read", "read_attachment", "{\"handle\":\"selected\",\"attachment_index\":1,\"offset\":0}");
+                    var first = host.ExecuteAsync(call, CancellationToken.None).Result;
+                    var second = host.ExecuteAsync(call, CancellationToken.None).Result;
+                    Assert(first.Content.Contains("\"cache_hit\":false") && second.Content.Contains("\"cache_hit\":true"), "Repeated extraction was not cached: " + second.Content);
+                    File.WriteAllText(path, "changed evidence");
+                    var changed = host.ExecuteAsync(call, CancellationToken.None).Result;
+                    Assert(changed.Content.Contains("\"cache_hit\":false") && changed.Content.Contains("changed evidence"), "Changed bytes reused stale extraction.");
+                }
+            }
+            finally { File.Delete(path); }
+        }
+
+        private static void QaStructuredXls()
+        {
+            var text = LegacyOfficeTextExtractor.ExtractXlsText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Fixtures", "structured.xls"));
+            Assert(text.Contains("\"sheet\":\"Markets\"") && text.Contains("\"sheet\":\"Secondary\""), "Lost sheet names.");
+            Assert(text.Contains("[\"JO-1\",null,42]") && text.Contains("مرحبا 한국어") && text.Contains("merged_ranges"), "Lost cell positions, Unicode, or merged ranges: " + text);
+            Assert(text.Contains("stored results") && text.Contains("\"row\":5"), "Formula limitations/row identity missing.");
+        }
+
+        private static void QaSampleEvidence()
+        {
+            var json = new JavaScriptSerializer();
+            foreach (var kind in new[] { "sample", "synthetic", "illustrative", "example" })
+            {
+                var prompt = "Create a three-slide deck using " + kind + " data: Adoption 42/55/68 and Errors 14/9/4 across Weeks 1–3.";
+                var slide = new Dictionary<string, object> { { "layout", "bullets" }, { "title", "Adoption improves" }, { "subtitle", "Sample trend" },
+                    { "bullets", new[] { "Week 1: 42, 14", "Week 2: 55, 9", "Week 3: 68, 4" } } };
+                Assert(SamsungPresentationReview.PrepareSampleEvidence(slide, prompt), "Explicit sample mode not recognized.");
+                SamsungPresentationReview.ValidateEvidence(json.Serialize(slide), prompt);
+                slide["bullets"] = new[] { "Adoption 999" };
+                var rejected = false;
+                try { SamsungPresentationReview.ValidateEvidence(json.Serialize(slide), prompt); } catch (InvalidOperationException) { rejected = true; }
+                Assert(rejected, "Sample mode permitted invented values.");
+            }
+            Assert(!SamsungPresentationReview.PrepareSampleEvidence(new Dictionary<string, object>(), "Create slides without sample data"), "Negative instruction enabled synthetic evidence.");
+        }
+
+        private static void QaDraftGrounding()
+        {
+            var now = new DateTimeOffset(2026, 9, 5, 12, 0, 0, TimeSpan.FromHours(4));
+            Assert(DraftContentReview.ValidateDates("Gather feedback by 2025-07-03", "", "next week's validation plan", now) != null, "Past future-plan date accepted.");
+            Assert(DraftContentReview.ValidateDates("Discovery ended 2025-07-03", "Discovery ended 2025-07-03", "next week's plan", now) == null, "Grounded historical date rejected.");
+            const string response = "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"approved\\\":false,\\\"issues\\\":\\\"Eight stakeholders is unsupported; use a placeholder.\\\"}\"}}]}";
+            using (var server = new FakeEndpoint(response))
+            using (var client = new OpenAiCompatibleClient())
+            using (var host = new DocumentDraftHost("powerpoint", new object()))
+            {
+                var authorization = new OneShotDraftAuthorization(true);
+                var call = MailboxCall("draft", CrossAppToolCatalog.CreateEmailDraft, "{\"subject\":\"QA\",\"body\":\"Interviewed 8 stakeholders.\"}");
+                var result = host.ExecuteAsync(call, authorization, true, "Create an unsent PM update covering completed discovery", client, EndpointSettings(server.BaseUrl), CancellationToken.None, null).Result;
+                server.Wait();
+                Assert(result.Content.Contains("DRAFT_FACTS_UNVERIFIED") && authorization.RemainingCalls == 1, "Ungrounded draft consumed write permission.");
+            }
         }
 
         private static void SlideToolCallsReachReview()

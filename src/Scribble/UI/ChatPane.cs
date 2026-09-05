@@ -2427,6 +2427,7 @@ namespace Scribble.UI
                 selectedMessage,
                 workingMessages))
             {
+                mailboxTools.ConfigureRequestScope(prompt);
                 var topicTools = activeTopic == null
                     ? null
                     : new TopicToolHost(
@@ -2434,7 +2435,7 @@ namespace Scribble.UI
                         chatId,
                         turnId,
                         false);
-                if (VisionImagePrefetch.TryInject(
+                if (!ChatRequestFactory.IsMetadataOnly(prompt) && !ChatRequestFactory.ForbidsAttachmentReads(prompt) && VisionImagePrefetch.TryInject(
                         request,
                         activeModel,
                         mailboxTools,
@@ -2444,7 +2445,7 @@ namespace Scribble.UI
                     SetStatus("Images attached for vision", false);
                 }
 
-                if (externalImages.Count > 0)
+                if (!ChatRequestFactory.IsMetadataOnly(prompt) && externalImages.Count > 0)
                 {
                     VisionAttachmentExchange.AppendVisionContext(
                         request,
@@ -2576,7 +2577,9 @@ namespace Scribble.UI
                         }
                         else if (isDraftCall)
                         {
-                            result = _draftTools.Execute(
+                            result = await DraftContentReview.ReviewAsync(toolCall, taskContext, prompt, _client,
+                                _settings.ForModel(activeModel), cancellationToken, _draftTools.ActiveDraft?.Body);
+                            if (result == null) result = _draftTools.Execute(
                                 toolCall,
                                 mailboxTools.ResolveHandle,
                                 draftAuthorization,

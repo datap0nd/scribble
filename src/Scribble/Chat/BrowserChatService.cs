@@ -436,6 +436,11 @@ namespace Scribble.Chat
                         BrowserToolCatalog.OpenOutlookDraft,
                         StringComparison.Ordinal))
                     {
+                        if (allowOutlookDraft && !draftOpened)
+                        {
+                            var grounding = await DraftContentReview.ReviewAsync(call, taskContext, safePrompt, _client, _settings, cancellationToken).ConfigureAwait(false);
+                            if (grounding != null) { hostResults.Add(grounding); continue; }
+                        }
                         taskContext.State.HostData["browser_draft_spent"] = "true";
                         taskContext.BeforeTool(call, true);
                         hostResults.Add(await OfficeThread.RunAsync(() => Task.FromResult(ExecuteDraft(
