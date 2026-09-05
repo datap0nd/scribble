@@ -169,7 +169,7 @@ namespace Scribble.Office
                 if (draft.Layout == "closing") page.Background = SamsungSlideDesign.Blue;
                 elements.Add(TextElement(draft.Title, regions[0], draft.Layout == "cover" ? 66 : 40, 28,
                     MetoTheme.TitleFont, true, null, draft.Layout == "closing" ? "#FFFFFF" : "#000000"));
-                if (draft.Subtitle.Length > 0) elements.Add(TextElement(draft.Subtitle, SamsungSlideDesign.Percent(4.6f, 78, 84.4f, 8), 22, 18));
+                if (draft.Subtitle.Length > 0) elements.Add(TextElement(draft.Subtitle, SamsungSlideDesign.Percent(4.6f, 78, 84.4f, 8), 22, 18, color: draft.Layout == "closing" ? "#FFFFFF" : "#000000"));
                 if (draft.Layout == "cover") elements.Add(TextElement("", SamsungSlideDesign.Percent(0, 94.7f, 100, 2.1f), fill: SamsungSlideDesign.Blue));
                 if (draft.Bullets.Count > 0 || draft.Cards.Count > 0 || table != null || draft.Chart != null || draft.SecondaryTable != null || draft.SecondaryChart != null || draft.ImageNames.Count > 0 || draft.Takeaway.Length > 0 || draft.Caption.Length > 0 || draft.Unit.Length > 0)
                     throw new InvalidOperationException("Cover/divider/closing accepts title and subtitle only; put supporting content on a content slide.");
@@ -194,9 +194,12 @@ namespace Scribble.Office
                 else
                 {
                     var commentary = string.Join("\n", draft.Bullets.Select(b => b.Text).Concat(draft.Cards.Select(c => c.Heading + "\n" + string.Join("\n", c.Points))));
+                    if (draft.Layout == "two_pane" && draft.Cards.Count > 0)
+                        commentary = string.Join("\n", draft.Bullets.Select(b => b.Text).Concat(draft.Cards[0].Points).Concat(draft.Cards.Skip(1).Select(c => c.Heading + "\n" + string.Join("\n", c.Points))));
                     if (commentary.Length > 0)
                     {
                         var comment = TextElement(commentary, RectangleF.Empty);
+                        if (draft.Layout == "two_pane") comment.Fill = SamsungSlideDesign.Gray;
                         if (draft.Layout == "two_pane") queue = new Queue<SamsungElement>(new[] { comment }.Concat(queue));
                         else queue.Enqueue(comment);
                     }
@@ -211,7 +214,16 @@ namespace Scribble.Office
                     }
                     for (var i = 0; queue.Count > 0; i++)
                     {
-                        var element = queue.Dequeue(); element.Box = regions[i]; elements.Add(element);
+                        var element = queue.Dequeue(); element.Box = regions[i];
+                        if (draft.Layout == "two_pane" && i == 0 && element.Text.Length > 0 && draft.Cards.Count > 0)
+                        {
+                            var headingBox = new RectangleF(element.Box.X, element.Box.Y, element.Box.Width, 32.4f);
+                            elements.Add(TextElement(draft.Cards[0].Heading, headingBox, 14, 11, "Arial", true, SamsungSlideDesign.Blue, "#FFFFFF"));
+                            element.Box = new RectangleF(element.Box.X, element.Box.Y + 32.4f, element.Box.Width, element.Box.Height - 32.4f);
+                        }
+                        if (element.Table != null && element.Table.Rows.SelectMany(r => r).Concat(element.Table.Headers).All(t => t.Length <= 30))
+                            element.Box = new RectangleF(element.Box.X, element.Box.Y, element.Box.Width, Math.Min(element.Box.Height, (element.Table.Rows.Count + 1) * 16f));
+                        elements.Add(element);
                     }
                 }
                 if (draft.Caption.Length > 0) elements.Add(TextElement(draft.Caption, SamsungSlideDesign.Percent(15.6f, 21f, 57, 3.5f), 14, 11, "Arial Narrow", true));
@@ -254,6 +266,8 @@ namespace Scribble.Office
             if (source.Length > 0) elements.Add(TextElement(source.Length > 240 ? "Source references and evidence: see speaker notes." : source, SamsungSlideDesign.Footer, 7, 7, "Arial Narrow"));
             var pageNumber = TextElement("- " + index + " -", SamsungSlideDesign.Page, 10.5f, 8, "Calibri"); pageNumber.Alignment = 3; elements.Add(pageNumber); page.PageNumber = pageNumber;
             elements.Add(TextElement(DraftMarker, SamsungSlideDesign.Percent(3.8f, 97, 32, 2.8f), 7, 7, "Arial", false, null, "#7F7F7F"));
+            if (draft.Layout == "closing")
+                foreach (var element in elements) if (element.Fill == null) element.Color = "#FFFFFF";
             return page;
         }
 

@@ -34,6 +34,10 @@ namespace GuardrailTests
             var dense = SamsungPresentationReview.InspectPlan(json.Serialize(new[] { new { title = "Specification comparison", layout = "matrix", subtitle = "Compare the complete specification", table = new { headers = new[] { "Item", "A", "B", "C", "D", "E", "F" }, rows = denseRows } } }));
             if (((IEnumerable)dense).Cast<object>().Count() != 1) throw new Exception("The reference 20-row comparison should fit on one dense slide.");
             previews.Add(dense);
+            var twoPane = SamsungPresentationReview.InspectPlan(json.Serialize(new[] { new { title = "Operational plan", layout = "two_pane", subtitle = "Align actions with targets", cards = new[] { new { heading = "Actions", points = new[] { "Confirm channel coverage", "Review the weekly forecast" } } }, table = new { headers = new[] { "Segment", "Target" }, rows = new[] { new[] { "Enterprise", "100" }, new[] { "Consumer", "200" } } }, secondary_table = new { headers = new[] { "Channel", "Share" }, rows = new[] { new[] { "Direct", "40%" }, new[] { "Partner", "60%" } } } } }));
+            var paneJson = json.Serialize(twoPane);
+            if (!paneJson.Contains("#4F81BD") || !paneJson.Contains("#F2F2F2")) throw new Exception("The two-pane recipe lost its heading and container.");
+            previews.Add(twoPane);
             var pages = (IEnumerable)SamsungPresentationReview.InspectPlan(json.Serialize(new[] { new { title = "Data", layout = "matrix", subtitle = "Review every row", table = new { headers = new[] { "Item", "Value" }, rows } } }));
             previews.Add(pages);
             File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "SamsungPlans.json"), json.Serialize(previews));
