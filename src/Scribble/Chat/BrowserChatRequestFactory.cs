@@ -419,6 +419,7 @@ namespace Scribble.Chat
                 foreach (var call in calls)
                 {
                     var content = string.Empty;
+                    var screenshot = string.Empty;
                     foreach (var result in turn.Results ??
                         new List<BrowserExchangeResult>())
                     {
@@ -429,6 +430,7 @@ namespace Scribble.Chat
                                 StringComparison.Ordinal))
                         {
                             content = result.Content;
+                            screenshot = NormalizeScreenshot(result.ScreenshotDataUrl);
                             break;
                         }
                     }
@@ -464,7 +466,7 @@ namespace Scribble.Chat
                         call.id,
                         boundedContent,
                         string.Empty,
-                        null,
+                        retainSnapshot && screenshot.Length > 0 ? new[] { new VisionImagePayload("Observed browser viewport", screenshot) } : null,
                         TopicToolCatalog.IsTopicTool(
                             call.function.name)
                                 ? TopicToolHost

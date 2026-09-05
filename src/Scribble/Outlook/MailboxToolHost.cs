@@ -258,7 +258,12 @@ namespace Scribble.Outlook
                 SaveCoverage();
                 _cursors.Add(cursorId, cursor);
             }
-            var hits = await cursor.ReadAsync(maxResults, cancellationToken);
+            var scanTime = System.Diagnostics.Stopwatch.StartNew();
+            IReadOnlyList<MailboxSearchHit> hits;
+            // Empty provider pages are an adapter concern. Yield to the UI while
+            // advancing them, not to the model for every hundred nonmatching rows.
+            do { hits = await cursor.ReadAsync(maxResults, cancellationToken); }
+            while (hits.Count == 0 && !cursor.Complete && scanTime.ElapsedMilliseconds < 2000);
             var truncated = !cursor.Complete;
 
             var results = new List<object>();
@@ -291,26 +296,28 @@ namespace Scribble.Outlook
                 new Dictionary<string, object>
                 {
                     { "untrusted_email_data", true },
-                    { "query", query },
-                    { "folder", folder },
-                    { "unread_only", unreadOnly },
+                    { "query", cursor.Query },
+                    { "folder", cursor.Folder },
+                    { "unread_only", cursor.Unread },
                     {
                         "received_after",
-                        receivedAfter?.ToString("O") ?? string.Empty
+                        new DateTimeOffset(cursor.After).ToString("O")
                     },
                     {
                         "received_before",
-                        receivedBefore?.ToString("O") ?? string.Empty
+                        new DateTimeOffset(cursor.Before).ToString("O")
                     },
                     { "result_count", results.Count },
                     { "truncated", truncated },
                     { "next_cursor", truncated ? cursorId : string.Empty },
                     { "enumeration_complete", !truncated },
+                    { "progress", new { cursor_id = cursorId, page_sequence = cursor.PageSequence,
+                        scanned_rows = cursor.ScannedRows, matched_rows = cursor.MatchedRows, filter_mode = cursor.FilterMode } },
                     { "results", results }
                 },
-                "Mailbox search loaded " +
-                results.Count.ToString(CultureInfo.InvariantCulture) +
-                " result summaries.");
+                "Mailbox search: " + cursor.MatchedRows.ToString(CultureInfo.InvariantCulture) +
+                " matches, " + cursor.ScannedRows.ToString(CultureInfo.InvariantCulture) + " scanned" +
+                (truncated ? "; continuing." : "; search complete."));
         }
 
         private MailboxToolResult ReadMessages(

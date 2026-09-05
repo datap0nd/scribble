@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -21,6 +22,15 @@ namespace Scribble.Outlook
         private string _storeId;
         private string _folderName;
         public bool Complete { get; private set; }
+        public long ScannedRows { get; private set; }
+        public long MatchedRows { get; private set; }
+        public int PageSequence { get; private set; }
+        public string FilterMode { get; private set; } = "provider";
+        public string Query { get { return _query; } }
+        public string Folder { get; private set; }
+        public DateTime After { get { return _after; } }
+        public DateTime Before { get { return _before; } }
+        public bool Unread { get { return _unread; } }
 
         public MailboxPageCursor(object application, string query, string folder,
             DateTime after, DateTime before, bool unread)
@@ -30,6 +40,7 @@ namespace Scribble.Outlook
             _after = after;
             _before = before;
             _unread = unread;
+            Folder = folder;
             _folders = new Queue<int>(folder == "inbox" ? new[] { 6 } :
                 folder == "sent" ? new[] { 5 } : new[] { 6, 5 });
         }
@@ -54,8 +65,25 @@ namespace Scribble.Outlook
                 // Outlook evaluates the full-text predicate without materializing bodies.
                 // If the provider cannot evaluate it, fail explicitly; never silently
                 // fall back to a fixed number of recent items.
-                _table = source.GetTable(_query.Length == 0 ? "" :
-                    MailboxContextService.BuildDaslFilter(_query));
+                var textFilter = _query.Length == 0 ? "" : MailboxContextService.BuildDaslFilter(_query);
+                // DASL namespace dates are UTC. Widen to minute boundaries;
+                // exact inclusive second comparisons remain below for all providers.
+                var afterUtc = _after.ToUniversalTime();
+                var beforeUtc = _before.ToUniversalTime();
+                var lower = new DateTime(afterUtc.Year, afterUtc.Month, afterUtc.Day, afterUtc.Hour, afterUtc.Minute, 0, DateTimeKind.Utc);
+                var upper = new DateTime(beforeUtc.Year, beforeUtc.Month, beforeUtc.Day, beforeUtc.Hour, beforeUtc.Minute, 0, DateTimeKind.Utc).AddMinutes(1);
+                var predicate = "\"urn:schemas:httpmail:datereceived\" >= '" + lower.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) +
+                    "' AND \"urn:schemas:httpmail:datereceived\" < '" + upper.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) + "'";
+                if (_unread) predicate += " AND \"urn:schemas:httpmail:read\" = false";
+                if (textFilter.Length > 0) predicate += " AND (" + textFilter.Substring(5) + ")";
+                try { _table = source.GetTable("@SQL=" + predicate); }
+                catch (Exception)
+                {
+                    // Some stores do not implement these restrictions. Preserve the
+                    // original text predicate and perform a complete, cancellable scan.
+                    FilterMode = "complete_scan";
+                    _table = source.GetTable(textFilter);
+                }
                 _folders.Dequeue();
                 return true;
             }
@@ -66,6 +94,7 @@ namespace Scribble.Outlook
             CancellationToken cancellationToken)
         {
             var hits = new List<MailboxSearchHit>();
+            PageSequence++;
             var reader = new MessageReader(_application);
             // A page also bounds nonmatching rows, so sparse searches yield to the UI.
             var scanned = 0;
@@ -87,6 +116,7 @@ namespace Scribble.Outlook
                     dynamic entry = row;
                     string id = Convert.ToString(entry["EntryID"]);
                     scanned++;
+                    ScannedRows++;
                     if (!MessageReader.IsReadableItemClass(Convert.ToString(entry["MessageClass"]))) continue;
                     if (!_seen.Add(_storeId + "\n" + id)) continue;
                     // Metadata only. Missing/unreadable items are errors, not coverage.
@@ -94,6 +124,7 @@ namespace Scribble.Outlook
                     if (!message.ReceivedAt.HasValue || message.ReceivedAt.Value < _after ||
                         message.ReceivedAt.Value > _before || (_unread && !message.IsUnread)) continue;
                     hits.Add(new MailboxSearchHit(message, _folderName, ""));
+                    MatchedRows++;
                     characters += message.EntryId.Length + message.StoreId.Length +
                         message.Subject.Length + message.Sender.Length + message.Recipients.Length + 512;
                 }

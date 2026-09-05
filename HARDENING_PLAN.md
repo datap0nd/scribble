@@ -1,5 +1,7 @@
 # Scribble reliability audit and hardening plan
 
+Implementation progress and explicit remaining gates are tracked in [HARDENING_IMPLEMENTATION.md](HARDENING_IMPLEMENTATION.md). The audit below describes the pre-implementation application revision.
+
 Date: 2026-09-05. Audited application commit: `3ad74ba31c97cb71634a96fdb0c4e60e78dd83a7`.
 
 This is an investigation and implementation plan. Application fixes described below have **not** been implemented by this audit. The existing successful CI run is [33959538760](https://github.com/datap0nd/scribble/actions/runs/33959538760); it does not establish that the reported workflows work with native Office and the user's model endpoint.

@@ -7,6 +7,13 @@ namespace Scribble.Configuration
 {
     public sealed class AppSettings
     {
+        public AppSettings ForModel(string model)
+        {
+            var copy = (AppSettings)MemberwiseClone();
+            copy.Model = model;
+            return copy;
+        }
+
         public string BaseUrl { get; set; } = string.Empty;
 
         public string Model { get; set; } = string.Empty;

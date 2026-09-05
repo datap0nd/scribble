@@ -65,6 +65,11 @@ namespace GuardrailTests
             var slide = new { title = "Sales increased 20%", subtitle = "Sales increased 20%", sources = "Report, page 1", evidence = "Sales increased 20%." };
             SamsungPresentationReview.ValidateEvidence(json.Serialize(slide), "Source: Sales increased 20%.");
             SamsungPresentationReview.ValidateEvidence(json.Serialize(new { title = "Value 1000", subtitle = "Rate 0.4", sources = "Report", evidence = "Value 1,000.0; rate .4" }), "Value 1,000.0; rate .4");
+            SamsungPresentationReview.ValidateEvidence(json.Serialize(new { title = "Next actions", subtitle = "Prepare the launch", sources = "Report", evidence = "Prepare the launch. Review results.",
+                bullets = new[] { "1. Prepare the launch", "2. Review results" } }), "Prepare the launch.\n  Review results.");
+            ExpectFailure(() => SamsungPresentationReview.ValidateEvidence(json.Serialize(new { title = "Next actions", subtitle = "Prepare", sources = "Report", evidence = "Prepare the launch.",
+                bullets = new[] { "2026. Launch with 500 units" } }), "Prepare the launch."));
+            ExpectFailure(() => SamsungPresentationReview.ValidateEvidence(json.Serialize(new { layout = "cover", title = "500 units", evidence = "Launch" }), "Launch"));
             ExpectFailure(() => SamsungPresentationReview.ValidateEvidence(json.Serialize(slide), "No such result"));
             ExpectFailure(() => SamsungPresentationReview.ValidateEvidence(json.Serialize(new { title = "Sales increased 30%", subtitle = "Growth", sources = "Report", evidence = "Sales increased 20%." }), "Sales increased 20%."));
         }

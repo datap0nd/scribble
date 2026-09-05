@@ -188,6 +188,7 @@ namespace Scribble.Office
                     {
                         var response = await client.CompleteAsync(settings, new ChatCompletionRequest
                         {
+                            Diagnostics = _taskContext?.Diagnostics,
                             model = settings.Model, max_tokens = Math.Min(32768, Math.Max(4096, size + 1024)),
                             messages = new List<object>
                             {

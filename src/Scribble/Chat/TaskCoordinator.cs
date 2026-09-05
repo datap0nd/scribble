@@ -85,6 +85,7 @@ namespace Scribble.Chat
         public List<string> EvidenceIds { get; set; } = new List<string>();
         public int PrefixCount { get; set; }
         public int ContextBudget { get; set; } = 96000;
+        public int RequiredPresentationSlides { get; set; }
         public bool UserPaused { get; set; }
         public string ProcessSession { get; set; }
         public List<ChatToolCall> PendingCalls { get; set; } = new List<ChatToolCall>();
@@ -104,6 +105,7 @@ namespace Scribble.Chat
             var expected = new HashSet<string>(ExpectedSourceIds, StringComparer.Ordinal);
             var covered = Batches.SelectMany(b => b.CoveredSourceIds).ToArray();
             return EnumerationComplete && Outstanding().Length == 0 &&
+                (RequiredPresentationSlides == 0 || covered.Count(id => id.StartsWith("ppt:", StringComparison.Ordinal)) >= RequiredPresentationSlides) &&
                 covered.Distinct(StringComparer.Ordinal).Count() == covered.Length &&
                 Batches.All(b => b.Failures.Count == 0 && b.CoveredSourceIds.All(expected.Contains)) &&
                 Writes.All(w => w.Status == "verified") &&
@@ -176,7 +178,8 @@ namespace Scribble.Chat
         public string PutEvidence(string taskId, string text)
         {
             var id = Fingerprint(text);
-            WriteProtected(Path.Combine(TaskDirectory(taskId), id + ".dat"), text);
+            var path = Path.Combine(TaskDirectory(taskId), id + ".dat");
+            if (!File.Exists(path)) WriteProtected(path, text);
             return id;
         }
 
@@ -187,6 +190,20 @@ namespace Scribble.Chat
             var text = ReadProtected(Path.Combine(TaskDirectory(taskId), id + ".dat"));
             if (Fingerprint(text) != id) throw new InvalidDataException("Evidence fingerprint mismatch.");
             return text;
+        }
+
+        public void WriteDiagnostic(string taskId, int slot, string text)
+        {
+            if (slot < 0 || slot >= TaskDiagnostics.Slots) throw new ArgumentOutOfRangeException(nameof(slot));
+            if (text == null || text.Length > TaskDiagnostics.MaxDetailCharacters * 6 + 4096) throw new ArgumentException("Diagnostic too large.");
+            WriteProtected(Path.Combine(TaskDirectory(taskId), "diagnostic-" + slot + ".dat"), text);
+        }
+
+        public string ReadDiagnostic(string taskId, int slot)
+        {
+            if (slot < 0 || slot >= TaskDiagnostics.Slots) throw new ArgumentOutOfRangeException(nameof(slot));
+            var path = Path.Combine(TaskDirectory(taskId), "diagnostic-" + slot + ".dat");
+            return File.Exists(path) ? ReadProtected(path) : null;
         }
 
         public void Discard(string id)

@@ -16,8 +16,8 @@ namespace Scribble.Office
             "Read sources fully, then outline the storyline and choose a Samsung layout for each slide. " +
             "The first batch must include plan, an ordered list of IDs for the whole deck; each slide must have its matching id. Complete every planned ID across batches. " +
             "A slide needs a concise title and a separate single-line action title in subtitle. " +
-            "Use sources for exact citations and evidence for one contiguous verbatim source passage supporting all numbers on that slide. " +
-            "Split slides whose evidence spans unrelated sources. Never invent numbers or quotes. " +
+            "Read retained source passages with read_task_sources and cite their host-issued span_id values in source_spans. Multiple spans may support one slide. " +
+            "The host resolves evidence from these IDs; you do not need to copy it. Legacy evidence accepts whitespace-normalized verbatim text. Never invent numbers or quotes. " +
             "Use takeaway for the conclusion, and highlight_rows for the data rows/categories that support it. " +
             "The host independently checks evidence, renders editable slides, reviews each rendered image, and repairs owned draft shapes. " +
             "Never claim completion when a review reports a blocker. Themes and positions are host-controlled. " +
@@ -31,21 +31,47 @@ namespace Scribble.Office
             var evidence = data.TryGetValue("evidence", out raw) ? Convert.ToString(raw) : "";
             var layout = data.TryGetValue("layout", out raw) ? Convert.ToString(raw) : "";
             var special = new[] { "cover", "divider", "closing", "agenda" }.Contains(layout);
-            if (!special && string.IsNullOrWhiteSpace(evidence)) throw new InvalidOperationException("SLIDE_EVIDENCE_REQUIRED: Supply the verbatim supporting source passage.");
-            if (!string.IsNullOrWhiteSpace(evidence) && !(actualSource ?? "").Contains(evidence))
+            if (!special && string.IsNullOrWhiteSpace(evidence)) throw new InvalidOperationException("SLIDE_EVIDENCE_REQUIRED: Cite source_spans returned by read_task_sources, or supply a verbatim supporting passage.");
+            if (!string.IsNullOrWhiteSpace(evidence) && !NormalizeSource(actualSource).Contains(NormalizeSource(evidence)))
                 throw new InvalidOperationException("SLIDE_EVIDENCE_UNVERIFIED: The excerpt does not occur in the original input or read receipts. Read the source and copy an exact passage.");
-            if (special) return;
             // Metadata is not a numeric claim. Layout indices and outline levels
             // are not facts either. Inspect displayed content recursively.
-            var content = string.Join(" ", data.Where(p => !new[] { "id", "sources", "evidence", "layout", "highlight_rows", "image_names" }.Contains(p.Key)).Select(p => json.Serialize(p.Value)));
+            var content = string.Join(" ", data.Where(p => !new[] { "id", "sources", "evidence", "source_spans", "layout", "highlight_rows", "image_names" }.Contains(p.Key)).SelectMany(p => DisplayedStrings(p.Value, p.Key)));
             if (content.Length > 36000) throw new InvalidOperationException("Slide content must be split into smaller review batches.");
-            var allowed = new HashSet<string>(Numbers(evidence));
+            var allowed = new HashSet<string>(Numbers(special && string.IsNullOrWhiteSpace(evidence) ? actualSource : evidence));
             var missing = Numbers(content).Where(n => !allowed.Contains(n)).Distinct().ToArray();
             if (missing.Length > 0) throw new InvalidOperationException("SLIDE_NUMBERS_UNVERIFIED: Values absent from cited evidence: " + string.Join(", ", missing));
+            if (special) return;
             if (!data.TryGetValue("subtitle", out raw) || string.IsNullOrWhiteSpace(Convert.ToString(raw)))
                 throw new InvalidOperationException("SLIDE_ACTION_TITLE_REQUIRED");
             if (!data.TryGetValue("sources", out raw) || string.IsNullOrWhiteSpace(Convert.ToString(raw)))
                 throw new InvalidOperationException("SLIDE_CITATION_REQUIRED");
+        }
+        private static string NormalizeSource(string value) { return Regex.Replace(value ?? "", @"\s+", " ").Trim(); }
+
+        private static IEnumerable<string> DisplayedStrings(object value, string field)
+        {
+            if (value == null) yield break;
+            if (value is string) { yield return (string)value; yield break; }
+            var map = value as IDictionary<string, object>;
+            if (map != null)
+            {
+                foreach (var pair in map) foreach (var text in DisplayedStrings(pair.Value, pair.Key)) yield return text;
+                yield break;
+            }
+            var array = value as IEnumerable;
+            if (array != null)
+            {
+                var index = 0;
+                foreach (var item in array)
+                {
+                    index++;
+                    foreach (var text in DisplayedStrings(item, ""))
+                        yield return field == "bullets" || field == "points" ? Regex.Replace(text, @"^\s*" + index + @"[.)]\s+", "") : text;
+                }
+                yield break;
+            }
+            yield return Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture);
         }
         private static IEnumerable<string> Numbers(string text)
         {
@@ -73,6 +99,9 @@ namespace Scribble.Office
             var sources = new List<string> { prompt ?? "" };
             if (task == null) return string.Join("\n", sources);
             sources.Add(task.State.Objective);
+            sources.AddRange(task.State.OriginalDecisions);
+            task.Sources.CaptureInput();
+            sources.Add(task.Sources.Resolve(task.Sources.Spans().Select(s => s.Id)));
             if (task.State.HostData.ContainsKey("recovery_input"))
             {
                 try

@@ -131,6 +131,120 @@ test("snapshots prefer visible card labels and expose localized Google semantics
   expect(google.accessibleName).toBe("بحث");
 });
 
+test("generic styled choices remain actionable through the production action dispatcher", async ({ page, context }) => {
+  await page.setContent(`<style>
+    label {display:inline-block;position:relative;width:20px;height:20px}
+    input {position:absolute;inset:0;width:20px;height:20px;opacity:0}
+    .mark {display:block;width:20px;height:20px;border:1px solid black}
+    .choice {display:flex;padding:12px}.title {margin-left:10px}
+    </style><fieldset><legend>Delivery option</legend>
+    ${["Standard", "Priority", "Express"].map(name=>`<div class="choice"><div><label><input type="checkbox"><span class="mark"></span></label></div><div><span class="title">${name}</span><ul><li>Details for this option</li></ul></div></div>`).join("")}
+    </fieldset><button hidden>Hidden choice</button>`);
+  const cdp = await context.newCDPSession(page);
+  const start = extensionSource.indexOf("async function performAction(");
+  const end = extensionSource.indexOf("async function withPopupAdoption(");
+  const sandbox = {
+    stopRequested:false, operatorDetachError:"", currentRequestPrompt:"Select a delivery option", currentClarificationAnswers:[],
+    FORBIDDEN_CLICK: /purchase|delete|submit/i, comparisonRequested:()=>false, setWorkStatus:()=>{},
+    describeBrowserAction:()=>"Test action", registerOperatorWorkTabs:async()=>{},
+    createRequestId:()=>"fixture", PING_TIMEOUT_MS:1000,
+    sendNativeMessage:async()=>({ok:true,actionAllowed:true}),
+    runPageAgent:async(id,command,payload)=>callAgent(page,command,payload),
+    delay:ms=>new Promise(resolve=>setTimeout(resolve,ms)),
+    withPopupAdoption:async(id,action)=>{await action();return 0;},
+    dispatchCdpBatch:async(id,commands)=>{for(const item of commands) await cdp.send(item.command,sandbox.validateCdpParams(item.command,item.params));}
+  };
+  vm.createContext(sandbox);
+  const brokerSource=fs.readFileSync(path.resolve(__dirname,'../../src/Scribble.BrowserExtension/background.js'),'utf8');
+  vm.runInContext(brokerSource.slice(brokerSource.indexOf('const ALLOWED_KEYS'),brokerSource.indexOf('const operatorStates')) +
+    brokerSource.slice(brokerSource.indexOf('function validateCdpParams('),brokerSource.indexOf('async function detachForPort(')),sandbox);
+  vm.runInContext(extensionSource.slice(start,end),sandbox);
+  for (const name of ["Standard", "Priority", "Express"]) {
+    const snapshot = await callAgent(page,"snapshot",{query:name});
+    const control = snapshot.controls.find(c=>c.role==="checkbox" && c.name===name);
+    expect(control).toBeTruthy(); expect(control.proxy).toBe(true);
+    expect(control.groupLabel).toBe("Delivery option");
+    const target={tab:{id:1,url:"https://fixture.test/"}};
+    await sandbox.performAction(target,{action:"check",ref:control.ref},snapshot);
+    const after=await callAgent(page,"snapshot",{query:name});
+    expect(after.controls.find(c=>c.name===name).selected).toBe(true);
+    const repeated=await sandbox.performAction(target,{action:"check",ref:after.controls[0].ref},after);
+    expect(repeated.verifiedState).toContain("already checked");
+  }
+});
+
+test("generic custom controls, shadow labels, icons and unresolved graphics are exposed", async ({ page }) => {
+  await page.setContent(`<div role="switch" aria-checked="true" tabindex="0">Notifications</div>
+    <div role="slider" aria-label="Volume" aria-valuenow="30" tabindex="0"></div>
+    <details><summary>Advanced options</summary><p>Detail</p></details>
+    <div style="cursor:pointer" onclick="this.textContent='Selected'">Choose plan</div>
+    <button><svg><title>Zoom in</title></svg></button>
+    <canvas width="200" height="100" aria-label="Interactive diagram"></canvas>
+    <div id="component"></div><input style="opacity:0" aria-label="Invisible trap">`);
+  await page.evaluate(()=>{
+    const root=document.getElementById('component').attachShadow({mode:'open'});
+    root.innerHTML='<span id="label">Component setting</span><input aria-labelledby="label">';
+  });
+  const snapshot=await callAgent(page,"snapshot");
+  expect(snapshot.controls.some(c=>c.name==="Component setting")).toBe(true);
+  expect(snapshot.controls.some(c=>c.name==="Zoom in")).toBe(true);
+  expect(snapshot.controls.some(c=>c.name==="Choose plan")).toBe(true);
+  expect(snapshot.controls.some(c=>c.name==="Advanced options")).toBe(true);
+  expect(snapshot.controls.some(c=>c.name==="Invisible trap")).toBe(false);
+  expect(snapshot.controls.find(c=>c.role==="switch").selected).toBe(true);
+  expect(snapshot.unresolvedSurfaces.some(s=>s.kind==="canvas")).toBe(true);
+});
+
+test("zero-sized and clipped controls use visible labels while hidden and disabled fields stay protected", async ({page})=>{
+  await page.setContent(`<input type="checkbox" id="zero" style="width:0;height:0;opacity:0"><label for="zero">Compact option</label>
+    <input type="checkbox" id="clip" style="position:absolute;width:1px;height:1px;clip:rect(0,0,0,0)"><label for="clip">Clipped option</label>
+    <div hidden><input type="checkbox" id="hidden"></div><label for="hidden">Hidden option</label>
+    <fieldset disabled><input type="checkbox" id="disabled"><label for="disabled">Disabled option</label></fieldset>`);
+  const snapshot = await callAgent(page,'snapshot');
+  expect(snapshot.controls.find(c=>c.name==='Compact option')?.proxy).toBe(true);
+  expect(snapshot.controls.find(c=>c.name==='Clipped option')?.proxy).toBe(true);
+  expect(snapshot.controls.some(c=>c.name==='Hidden option')).toBe(false);
+  expect(snapshot.controls.find(c=>c.name==='Disabled option')?.enabled).toBe(false);
+});
+
+test("text queries search beyond the initial page text budget", async ({page})=>{
+  await page.setContent('<p>'+ 'Earlier text '.repeat(1000)+'</p><p>Late source fact</p>');
+  expect((await callAgent(page,'snapshot',{query:'Late source fact'})).visibleText).toContain('Late source fact');
+});
+
+test("browser DOM and AX observations discover JavaScript listeners and report closed roots", async ({ page, context }) => {
+  await page.setContent(`<div id="delegated" style="width:180px;height:35px">Choose a delivery region</div>
+    <closed-widget></closed-widget><input type="password" value="private-password">`);
+  await page.evaluate(() => {
+    document.querySelector('#delegated').addEventListener('click', event => event.currentTarget.textContent = 'Delivery region selected');
+    document.querySelector('closed-widget').attachShadow({mode:'closed'}).innerHTML = '<button>Closed-root choice</button>';
+  });
+  const before = await callAgent(page, "snapshot");
+  expect(before.controls.some(c => c.name === "Choose a delivery region")).toBe(false);
+  const client = await context.newCDPSession(page);
+  const dom = await client.send("DOMSnapshot.captureSnapshot", {computedStyles:["display","visibility","opacity"],includeDOMRects:true});
+  const ax = await client.send("Accessibility.getFullAXTree");
+  const source = fs.readFileSync(path.resolve(__dirname, '../../src/Scribble.BrowserExtension/background.js'), 'utf8');
+  const start = source.indexOf('function collectPerception('), end = source.indexOf('function validateCdpParams(', start);
+  const sandbox = {snapshot:dom,accessibility:ax}; vm.createContext(sandbox);
+  vm.runInContext(source.slice(start,end), sandbox);
+  const observation = vm.runInContext('collectPerception(snapshot,accessibility)', sandbox);
+  expect(observation.controls.some(c => c.name === 'Closed-root choice')).toBe(true);
+  expect(JSON.stringify(observation)).not.toContain('private-password');
+  const adopted = await callAgent(page, 'adoptPerception', {controls:observation.controls});
+  expect(adopted.adopted).toBeGreaterThan(0);
+  const snapshot = await callAgent(page,'snapshot');
+  const choice = snapshot.controls.find(c => c.name === 'Choose a delivery region');
+  expect(choice).toBeTruthy();
+  const target = await callAgent(page,'actionability',{ref:choice.ref,revision:choice.revision});
+  expect(target.receivesEvents).toBe(true);
+  await client.send('Input.dispatchMouseEvent',{type:'mousePressed',x:target.x,y:target.y,button:'left',clickCount:1});
+  await client.send('Input.dispatchMouseEvent',{type:'mouseReleased',x:target.x,y:target.y,button:'left',clickCount:1});
+  expect((await callAgent(page,'snapshot')).visibleText).toContain('Delivery region selected');
+  expect(observation.controls.filter(c => !adopted.resolvedIds.includes(c.backendId)).some(c => c.name === 'Closed-root choice')).toBe(true);
+  await client.detach();
+});
+
 test("Samsung-like journey reaches a DOM-matching AED 1,660 estimate", async ({ page }) => {
   const steps = [
     ["Mobile Phones", "#mobile-card"],

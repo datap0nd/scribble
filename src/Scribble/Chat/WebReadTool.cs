@@ -49,12 +49,9 @@ namespace Scribble.Chat
                     description =
                         "Fetch one http or https web page read-only and return its " +
                         "bounded readable text plus a list of links on the page. " +
-                        "Build search-result URLs directly when a site has a search " +
-                        "page (for example /s?k=... on Amazon or /search?q=... on " +
-                        "Google), then open precise result links from the returned " +
-                        "link list. Never fetch general search engines such as " +
-                        "google.com or bing.com - they block automated reads; go to " +
-                        "the target site directly. It cannot sign in, submit forms, " +
+                        "Follow observed links from sources or a publisher's home page; never invent article URLs. " +
+                        "Repeated URLs return a cached source reference. A 404 means the URL was not found; use another observed link. " +
+                        "It cannot sign in, submit forms, " +
                         "purchase, or download files. If a page comes back blocked " +
                         "or empty, stop retrying, say so plainly, and suggest the " +
                         "Scribble panel in Chrome, which browses the user's real " +
@@ -85,7 +82,7 @@ namespace Scribble.Chat
             };
         }
 
-        public static MailboxToolResult Execute(ChatToolCall call)
+        public static MailboxToolResult Execute(ChatToolCall call, TaskContextManager task = null, HttpClient httpClient = null)
         {
             var callId = call?.id ?? string.Empty;
             try
@@ -117,7 +114,14 @@ namespace Scribble.Chat
                 }
 
                 string html;
-                using (var response = Client
+                target = new UriBuilder(target) { Fragment = "" }.Uri;
+                var cacheKey = "web_read:" + TaskCheckpointStore.Fingerprint(target.AbsoluteUri);
+                string cached;
+                if (task != null && task.State.HostData.TryGetValue(cacheKey, out cached))
+                    return new MailboxToolResult(callId, new JavaScriptSerializer().Serialize(new { cached = true,
+                        source_id = cached, url = target.AbsoluteUri,
+                        message = "This source was already fetched. Use read_task_evidence with this source ID and offset 0 to inspect omitted details." }), "Using previously fetched source");
+                using (var response = (httpClient ?? Client)
                     .GetAsync(target)
                     .GetAwaiter()
                     .GetResult())
@@ -132,13 +136,14 @@ namespace Scribble.Chat
                             "The page returned HTTP " +
                             ((int)response.StatusCode).ToString(
                                 CultureInfo.InvariantCulture) +
-                            ". The site likely blocks automated fetching; do not retry or try a search engine - tell the user and suggest the Scribble panel in Chrome instead.");
+                            ". " + HttpRecovery((int)response.StatusCode));
                     }
 
                     html = response.Content
                         .ReadAsStringAsync()
                         .GetAwaiter()
                         .GetResult();
+                    target = response.RequestMessage?.RequestUri ?? target;
                 }
 
                 var finalUrl = target.AbsoluteUri;
@@ -155,7 +160,7 @@ namespace Scribble.Chat
                     "<links>\n" + links + "\n</links>";
                 return new MailboxToolResult(
                     callId,
-                    payload,
+                    Cache(task, cacheKey, payload),
                     "Fetched " + TextBoundary.SingleLine(
                         target.Host,
                         200));
@@ -169,6 +174,24 @@ namespace Scribble.Chat
                         exception.Message,
                         400));
             }
+        }
+
+        private static string Cache(TaskContextManager task, string key, string payload)
+        {
+            if (task == null) return payload;
+            var id = task.RegisterEvidence(payload);
+            task.State.HostData[key] = id;
+            task.Checkpoint();
+            return "Source ID: " + id + "\n" + payload;
+        }
+
+        private static string HttpRecovery(int status)
+        {
+            if (status == 404 || status == 410) return "Source not found. Discover a valid link from the publisher; do not repeat this URL.";
+            if (status == 401 || status == 403) return "Access was refused. This fetch has no sign-in session; use an authorized Chrome handoff if needed.";
+            if (status == 429) return "The site is rate limiting requests. Wait before a bounded retry; do not repeatedly fetch.";
+            if (status >= 500) return "The server is temporarily unavailable. A later bounded retry may succeed.";
+            return "The request was rejected. Inspect the URL and status before another attempt.";
         }
 
         private static MailboxToolResult Failure(

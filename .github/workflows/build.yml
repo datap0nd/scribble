@@ -244,6 +244,10 @@ jobs:
         shell: pwsh
         run: ./scripts/Test-Guardrails.ps1
 
+      - name: Test release evidence gate
+        shell: pwsh
+        run: ./tests/ReleaseGate/Test-ReleaseEvidence.Tests.ps1
+
       - name: Inspect .NET COM registration contract
         shell: powershell
         run: |
@@ -768,35 +772,28 @@ jobs:
             }
           }
 
+      - name: Record candidate identity
+        shell: pwsh
+        run: |
+          $manifest = Get-Content src/Scribble.BrowserExtension/manifest.json -Raw | ConvertFrom-Json
+          [ordered]@{
+            schema = 1
+            commit = '${{ github.sha }}'
+            build_run_id = '${{ github.run_id }}'
+            version = '2.0.${{ github.run_number }}.0'
+            extension_version = $manifest.version
+            installer_sha256 = (Get-FileHash artifacts/ScribbleSetup.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+            status = 'candidate_requires_native_and_model_acceptance'
+          } | ConvertTo-Json | Set-Content artifacts/candidate.json -Encoding utf8
+
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
           name: ScribbleSetup
-          path: artifacts/ScribbleSetup.exe
+          path: |
+            artifacts/ScribbleSetup.exe
+            artifacts/candidate.json
           if-no-files-found: error
-
-      - name: Publish latest installer from main
-        if: github.ref == 'refs/heads/main'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: continuous
-          name: Latest
-          body: |
-            Built automatically from the latest commit on main.
-            Version: 2.0.${{ github.run_number }} (shown as
-            "Installed version" in Scribble Settings after updating)
-            Commit: ${{ github.sha }}
-          files: artifacts/ScribbleSetup.exe
-          make_latest: true
-          draft: false
-          prerelease: false
-
-      - name: Attach installer to GitHub release
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: artifacts/ScribbleSetup.exe
-          generate_release_notes: true
 
   browser-extension-e2e:
     name: Browser extension fixtures
@@ -825,3 +822,11 @@ jobs:
 
       - name: Run browser extension fixtures
         run: npm test
+
+      - name: Preserve browser failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: BrowserFailureEvidence
+          path: tests/BrowserExtensionE2E/test-results/
+          retention-days: 14

@@ -17,6 +17,9 @@ namespace Scribble.Chat
 
     public sealed class ChatCompletionRequest
     {
+        [System.Web.Script.Serialization.ScriptIgnore]
+        public TaskDiagnostics Diagnostics { get; set; }
+
         public string model { get; set; }
 
         public List<object> messages { get; set; }
@@ -196,6 +199,9 @@ namespace Scribble.Chat
         public IReadOnlyList<VisionImagePayload> VisionImages { get; }
 
         public int ContentCharacterLimit { get; }
+
+        [System.Web.Script.Serialization.ScriptIgnore]
+        public ToolOutcome Outcome { get { return ToolOutcome.Parse(Content); } }
     }
 
     // One completed browser tool round replayed by the extension:
@@ -215,6 +221,7 @@ namespace Scribble.Chat
         public string Id { get; set; }
 
         public string Content { get; set; }
+        public string ScreenshotDataUrl { get; set; }
     }
 
     // A tool call the extension must execute (or display) before

@@ -764,7 +764,7 @@ namespace Scribble.UI
 
             HandleSendMessage(
                 SkillStore.ExpandPrompt(skill.Prompt),
-                koreanWorkbookSnapshot);
+                koreanWorkbookSnapshot, skill.Name);
         }
 
         private bool EnsureExcelSelectionForTranslation(
@@ -1564,15 +1564,15 @@ namespace Scribble.UI
 
         private async void HandleSendMessage(
             string rawText,
-            KoreanWorkbookSnapshot koreanWorkbookSnapshot = null)
+            KoreanWorkbookSnapshot koreanWorkbookSnapshot = null, string displayLabel = null)
         {
-            try { await HandleSendMessageCore(rawText, koreanWorkbookSnapshot); }
+            try { await HandleSendMessageCore(rawText, koreanWorkbookSnapshot, displayLabel); }
             catch (Exception exception) { SetStatus(exception.Message, true); SetBusy(false); }
         }
 
         private async Task HandleSendMessageCore(
             string rawText,
-            KoreanWorkbookSnapshot koreanWorkbookSnapshot = null)
+            KoreanWorkbookSnapshot koreanWorkbookSnapshot = null, string displayLabel = null)
         {
             if (_busy)
             {
@@ -1765,7 +1765,8 @@ namespace Scribble.UI
             _memory.TopicLocked = true;
             PushTopicLock(false);
             var turnId = Guid.NewGuid().ToString("N");
-            AppendUserTurn(prompt);
+            AppendUserTurn(string.IsNullOrWhiteSpace(displayLabel) ? prompt : TextBoundary.PlainText(displayLabel, 160));
+            if (_resumeRecovery == null) { _pendingRecovery = null; PublishTaskRecovery(); }
             SetBusy(true);
             _requestStartedAt = DateTime.UtcNow;
             var generation = ++_requestGeneration;
@@ -1991,6 +1992,7 @@ namespace Scribble.UI
             }
 
             var taskContext = new TaskContextManager(request, _hostKind, prompt, resume: _resumeRecovery);
+            _diagnostics.RecordEvent("Local diagnostic ID: " + taskContext.State.Id);
             _currentTask = taskContext;
             if (_resumeRecovery == null)
             {
@@ -2094,8 +2096,10 @@ namespace Scribble.UI
                         _hostKind,
                         name);
                     MailboxToolResult result;
+                    var invalidArguments = taskContext.ValidateArguments(toolCall);
+                    if (invalidArguments != null) { results.Add(invalidArguments); continue; }
                     taskContext.BeforeTool(toolCall, isDraftCall && name != WorkbookToolCatalog.WriteSelectionOutput && name != WorkbookToolCatalog.WriteKoreanTranslations);
-                    if (name == TaskContextManager.ReadEvidenceTool)
+                    if (TaskContextManager.IsTaskTool(name))
                     {
                         result = taskContext.ReadEvidence(toolCall);
                     }
@@ -2118,7 +2122,7 @@ namespace Scribble.UI
                     {
                         result = await _draftHost.ExecuteAsync(
                             toolCall, draftAuthorization, toolCalls.Count == 1, prompt,
-                            _client, _settings, cancellationToken,
+                            _client, _settings.ForModel(activeModel), cancellationToken,
                             (done, total) => SetStatus("Verified " + done + " of " + total + " output rows", false));
                     }
                     else if (McpToolHost.IsMcpTool(name) &&
@@ -2146,7 +2150,7 @@ namespace Scribble.UI
                         // tool bounds the result and marks it
                         // untrusted.
                         result = await Task.Run(
-                            () => WebReadTool.Execute(toolCall),
+                            () => WebReadTool.Execute(toolCall, taskContext),
                             cancellationToken);
                     }
                     else if (workbookTools != null)

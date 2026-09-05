@@ -27,6 +27,7 @@ namespace GuardrailTests
     internal static class Program
     {
         private static int _passed;
+        private static string _filter;
 
         private static int Main(string[] args)
         {
@@ -68,6 +69,7 @@ namespace GuardrailTests
 
             try
             {
+                if (args.Length == 2 && args[0] == "--filter") _filter = args[1];
                 Run("Samsung layouts preserve content and enforce overflow bounds", SamsungSlideTests.LayoutsAndOverflow);
                 Run("Samsung slide numbers require verified source evidence", SamsungSlideTests.EvidenceAndNumbers);
                 Run("PowerPoint and Outlook slide tool calls reach independent review", SlideToolCallsReachReview);
@@ -356,8 +358,13 @@ namespace GuardrailTests
                     SettingsAlwaysApplyRecommendedLimits);
                 Run("150 requests retain paired evidence across context rejection and restart", TaskContinuationTests.ContextRecoveryAndPairing);
                 Run("Mailbox scales to 1000 messages and long bodies", ScaleTaskTests.MailboxPagination);
+                Run("Sparse mailbox advances through the real coordinator", HardeningTests.SparseMailboxThroughCoordinator);
+                Run("Typed outcomes and encrypted diagnostic tail", HardeningTests.TypedOutcomesAndDiagnostics);
+                Run("Web reads cache and preserve redirect identity", HardeningTests.WebCacheAndRedirects);
+                Run("Source spans and shared tool contracts reject malformed writes", HardeningTests.SourceSpansAndContracts);
                 Run("Actual 20000-row writes reconcile before/after interruption", DurableTransformTests.TwentyThousandRows);
                 Console.WriteLine("PASS: " + _passed + " guardrail tests");
+                if (_passed == 0) throw new InvalidOperationException("No tests matched the requested filter.");
                 return 0;
             }
             catch (Exception exception)
@@ -369,6 +376,7 @@ namespace GuardrailTests
 
         private static void Run(string name, Action test)
         {
+            if (_filter != null && name.IndexOf(_filter, StringComparison.OrdinalIgnoreCase) < 0) return;
             test();
             _passed++;
             Console.WriteLine("PASS: " + name);
@@ -2212,6 +2220,7 @@ namespace GuardrailTests
         {
             var fields = typeof(ChatCompletionRequest)
                 .GetProperties(BindingFlags.Instance | BindingFlags.Public)
+                .Where(property => !property.IsDefined(typeof(System.Web.Script.Serialization.ScriptIgnoreAttribute), true))
                 .Select(property => property.Name)
                 .OrderBy(name => name)
                 .ToArray();
@@ -8181,7 +8190,14 @@ namespace GuardrailTests
 
         public object Items { get; set; }
 
-        public object GetTable(string filter) { return new FakeMailTable(((FakeSearchItems)Items).AllItems); }
+        public bool RejectDateFilter { get; set; }
+        public List<string> Filters { get; } = new List<string>();
+        public object GetTable(string filter)
+        {
+            Filters.Add(filter);
+            if (RejectDateFilter && filter.Contains("datereceived")) throw new InvalidOperationException("Provider does not support date restriction");
+            return new FakeMailTable(((FakeSearchItems)Items).AllItems);
+        }
     }
 
     public sealed class FakeMailTable

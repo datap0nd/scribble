@@ -133,6 +133,41 @@ async function handleOperatorMessage(port, state, message) {
     return;
   }
 
+  if (message.type === "inspectSemantics") {
+    const requestId = boundWorkerText(message.requestId, 100), tabId = Number(message.tabId);
+    try {
+      if (!Number.isInteger(tabId) || !state.workTabs.has(tabId)) throw new Error("Perception requires a registered work tab.");
+      const tab = await chrome.tabs.get(tabId);
+      if (!/^https?:/i.test(String(tab.url || ""))) throw new Error("This browser page does not permit inspection.");
+      attachedTabs.set(tabId, port);
+      await chrome.debugger.attach({ tabId }, CDP_VERSION);
+      try {
+        const dom = await chrome.debugger.sendCommand({ tabId }, "DOMSnapshot.captureSnapshot", {
+          computedStyles: ["display", "visibility", "opacity"], includeDOMRects: true
+        });
+        const ax = await chrome.debugger.sendCommand({ tabId }, "Accessibility.getFullAXTree", {});
+        const observation = collectPerception(dom, ax, message.query, message.offset);
+        let screenshotDataUrl = "";
+        if (message.captureImage === true) {
+          const screenshot = await chrome.debugger.sendCommand({ tabId }, "Page.captureScreenshot", {
+            format: "jpeg", quality: 65, captureBeyondViewport: false
+          });
+          if (screenshot.data?.length <= 4 * 1024 * 1024) screenshotDataUrl = "data:image/jpeg;base64," + screenshot.data;
+        }
+        postOperator(port, { type: "perceptionResult", requestId, observation, screenshotDataUrl });
+      } finally {
+        intentionalDetaches.add(tabId);
+        await chrome.debugger.detach({ tabId });
+        attachedTabs.delete(tabId);
+        setTimeout(() => intentionalDetaches.delete(tabId), 1000);
+      }
+    } catch (error) {
+      attachedTabs.delete(tabId);
+      postOperator(port, { type: "cdpError", requestId, error: boundWorkerText(error?.message, 500) });
+    }
+    return;
+  }
+
   if (message.type !== "cdpAction") {
     return;
   }
@@ -190,6 +225,41 @@ async function handleOperatorMessage(port, state, message) {
       error: boundWorkerText(error instanceof Error ? error.message : String(error || ""), 500)
     });
   }
+}
+
+// A fixed read-only protocol, separate from the trusted-input command allowlist.
+// Never return DOM input values, scripts, cookies, headers or arbitrary protocol data.
+function collectPerception(snapshot, accessibility, query = "", offset = 0) {
+  const strings = snapshot.strings || [], output = [];
+  const roles = new Set(["button", "link", "checkbox", "radio", "switch", "slider", "spinbutton", "combobox", "textbox", "searchbox", "tab", "treeitem", "menuitem", "menuitemcheckbox", "menuitemradio", "option", "gridcell"]);
+  const axByNode = new Map((accessibility.nodes || []).filter(n => !n.ignored && n.backendDOMNodeId).map(n => [n.backendDOMNodeId, n]));
+  const filter = String(query || "").toLowerCase().slice(0, 200);
+  for (const [documentIndex, doc] of (snapshot.documents || []).entries()) {
+    const nodes = doc.nodes || {}, layout = doc.layout || {};
+    const clickable = new Set(nodes.isClickable?.index || []);
+    for (let row = 0; row < (layout.nodeIndex || []).length; row++) {
+      const index = layout.nodeIndex[row], backendId = nodes.backendNodeId?.[index], ax = axByNode.get(backendId);
+      const role = ax?.role?.value || "", listener = clickable.has(index);
+      if (!listener && !roles.has(role)) continue;
+      const styles = (layout.styles?.[row] || []).map(i => strings[i]);
+      if (styles[0] === "none" || ["hidden", "collapse"].includes(styles[1])) continue;
+      const bounds = layout.bounds?.[row];
+      if (!bounds || bounds[2] < 1 || bounds[3] < 1) continue;
+      const attrs = nodes.attributes?.[index] || [], attributes = {};
+      for (let i = 0; i < attrs.length; i += 2) attributes[strings[attrs[i]]] = strings[attrs[i + 1]];
+      if (["hidden", "password"].includes(attributes.type)) continue;
+      const name = String(ax?.name?.value || attributes["aria-label"] || attributes.title || attributes.alt || "").slice(0, 220);
+      if (filter && !`${role} ${name}`.toLowerCase().includes(filter)) continue;
+      output.push({ backendId, role, name, tag: strings[nodes.nodeName?.[index]], listener,
+        topDocument: documentIndex === 0, frameId: strings[doc.frameId],
+        x: bounds[0] - (doc.scrollOffsetX || 0), y: bounds[1] - (doc.scrollOffsetY || 0), width: bounds[2], height: bounds[3],
+        states: (ax?.properties || []).filter(p => ["checked", "selected", "expanded", "disabled", "readonly", "level"].includes(p.name))
+          .map(p => ({ name: p.name, value: p.value?.value })) });
+    }
+  }
+  const start = Math.max(0, Number(offset) || 0);
+  return { methods: ["DOMSnapshot", "Accessibility"], controls: output.slice(start, start + 80),
+    total: output.length, nextOffset: start + 80 < output.length ? start + 80 : null };
 }
 
 function validateCdpParams(command, raw) {

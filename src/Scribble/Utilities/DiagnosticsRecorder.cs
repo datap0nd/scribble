@@ -15,7 +15,7 @@ namespace Scribble.Utilities
     public sealed class DiagnosticsRecorder
     {
         public const int MaxRequests = 5;
-        private const int MaxEventsPerRequest = 24;
+        private const int MaxEventsPerRequest = 128;
         private const int MaxLineCharacters = 300;
 
         private sealed class RequestRecord
@@ -24,6 +24,7 @@ namespace Scribble.Utilities
             internal string Host = string.Empty;
             internal string Model = string.Empty;
             internal bool DraftAllowed;
+            internal long TotalEvents;
             internal string ExposedTools = string.Empty;
             internal readonly List<string> Events =
                 new List<string>();
@@ -82,10 +83,11 @@ namespace Scribble.Utilities
             lock (_gate)
             {
                 var current = Current();
-                if (current != null &&
-                    current.Events.Count < MaxEventsPerRequest)
+                if (current != null)
                 {
+                    current.TotalEvents++;
                     current.Events.Add(Line(text));
+                    if (current.Events.Count > MaxEventsPerRequest) current.Events.RemoveAt(0);
                 }
             }
         }
@@ -146,6 +148,7 @@ namespace Scribble.Utilities
                             request.ExposedTools);
                     }
 
+                    report.AppendLine("Events: " + request.TotalEvents + "; retained tail: " + request.Events.Count);
                     foreach (var entry in request.Events)
                     {
                         report.AppendLine("  " + entry);

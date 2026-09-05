@@ -43,6 +43,7 @@ namespace Scribble.BrowserHost
 
     internal sealed class BrowserNativeToolResult
     {
+        public string screenshotDataUrl { get; set; }
         public string id { get; set; }
 
         public string content { get; set; }
@@ -574,7 +575,8 @@ namespace Scribble.BrowserHost
                     results.Add(new BrowserExchangeResult
                     {
                         Id = toolResult.id,
-                        Content = content
+                        Content = content,
+                        ScreenshotDataUrl = BrowserChatRequestFactory.NormalizeScreenshot(toolResult.screenshotDataUrl)
                     });
                 }
 

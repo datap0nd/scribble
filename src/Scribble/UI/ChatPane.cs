@@ -769,7 +769,7 @@ namespace Scribble.UI
                 HandleNewChat();
             }
 
-            HandleSendMessage(SkillStore.ExpandPrompt(skill.Prompt));
+            HandleSendMessage(SkillStore.ExpandPrompt(skill.Prompt), skill.Name);
         }
 
         private void UpdateDraftState()
@@ -2062,13 +2062,13 @@ namespace Scribble.UI
             DiscoverTaskRecovery();
         }
 
-        private async void HandleSendMessage(string rawText)
+        private async void HandleSendMessage(string rawText, string displayLabel = null)
         {
-            try { await HandleSendMessageCore(rawText); }
+            try { await HandleSendMessageCore(rawText, displayLabel); }
             catch (Exception exception) { SetStatus(exception.Message, true); SetBusy(false); }
         }
 
-        private async Task HandleSendMessageCore(string rawText)
+        private async Task HandleSendMessageCore(string rawText, string displayLabel = null)
         {
             if (_busy)
             {
@@ -2190,7 +2190,8 @@ namespace Scribble.UI
             _memory.TopicLocked = true;
             PushTopicLock(false);
             var turnId = Guid.NewGuid().ToString("N");
-            AppendUserTurn(prompt);
+            AppendUserTurn(string.IsNullOrWhiteSpace(displayLabel) ? prompt : TextBoundary.PlainText(displayLabel, 160));
+            if (_resumeRecovery == null) { _pendingRecovery = null; PublishTaskRecovery(); }
             SetBusy(true);
             _requestStartedAt = DateTime.UtcNow;
             var generation = ++_requestGeneration;
@@ -2459,6 +2460,7 @@ namespace Scribble.UI
                 }
 
                 var taskContext = new TaskContextManager(request, "outlook", prompt, resume: _resumeRecovery);
+                _diagnostics.RecordEvent("Local diagnostic ID: " + taskContext.State.Id);
                 _currentTask = taskContext;
                 if (_resumeRecovery == null)
                 {
@@ -2557,8 +2559,10 @@ namespace Scribble.UI
                             CrossAppToolCatalog.IsCrossAppTool(
                                 toolCall?.function?.name);
                         MailboxToolResult result;
+                        var invalidArguments = taskContext.ValidateArguments(toolCall);
+                        if (invalidArguments != null) { results.Add(invalidArguments); continue; }
                         taskContext.BeforeTool(toolCall, isDraftCall || isCrossAppCall);
-                        if (toolCall?.function?.name == TaskContextManager.ReadEvidenceTool)
+                        if (TaskContextManager.IsTaskTool(toolCall?.function?.name))
                         {
                             result = taskContext.ReadEvidence(toolCall);
                         }
@@ -2588,7 +2592,7 @@ namespace Scribble.UI
                                 toolCall,
                                 crossAppAuthorization,
                                 toolCalls.Count == 1,
-                                prompt, _client, _settings, cancellationToken, null);
+                                prompt, _client, _settings.ForModel(activeModel), cancellationToken, null);
                         }
                         else if (McpToolHost.IsMcpTool(
                             toolCall?.function?.name))

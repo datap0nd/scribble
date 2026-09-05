@@ -69,6 +69,11 @@
     <Compile Include="Chat\BrowserTaskSession.cs" />
     <Compile Include="Chat\TaskRecoveryInput.cs" />
     <Compile Include="Chat\TaskContextManager.cs" />
+    <Compile Include="Chat\ToolOutcome.cs" />
+    <Compile Include="Chat\TaskDiagnostics.cs" />
+    <Compile Include="Chat\TaskSources.cs" />
+    <Compile Include="Chat\ToolContractValidator.cs" />
+    <Compile Include="Chat\ModelContractProbe.cs" />
     <Compile Include="Outlook\MailboxPageCursor.cs" />
     <Compile Include="Outlook\MailboxAttachmentPages.cs" />
     <Compile Include="Chat\BrowserChatRequestFactory.cs" />

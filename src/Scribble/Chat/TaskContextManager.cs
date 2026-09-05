@@ -23,10 +23,12 @@ namespace Scribble.Chat
         private int _budget = 96000;
         private int _stalled;
         private string _previousExchange;
+        private readonly ChatCompletionRequest _request;
 
         public TaskContextManager(ChatCompletionRequest request, string host, string objective,
             TaskCheckpointStore store = null, DurableTaskState resume = null)
         {
+            _request = request;
             _store = store ?? new TaskCheckpointStore();
             _state = resume ?? new DurableTaskState { Host = host, Objective = objective, ProcessSession = TaskRecoveryInput.ProcessSession };
             string priorProgress;
@@ -36,6 +38,20 @@ namespace Scribble.Chat
             if (_state.OriginalDecisions.Count == 0) _state.OriginalDecisions.Add(objective);
             _prefixCount = request.messages.Count;
             if (request.tools == null) request.tools = new List<ChatToolDefinition>();
+            if (Scribble.Security.DocumentDraftIntentPolicy.AllowsDraft(objective) &&
+                request.tools.Any(t => t.function.name == PresentationToolCatalog.AddDraftSlides || t.function.name == CrossAppToolCatalog.SendToPowerPoint))
+            {
+                var count = System.Text.RegularExpressions.Regex.Match(objective ?? "",
+                    @"\b(?<count>\d+|one|two|three|four|five|six|seven|eight|nine|ten|a)\s+(?:powerpoint\s+)?slides?\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                if (count.Success)
+                {
+                    var word = count.Groups["count"].Value.ToLowerInvariant();
+                    int number;
+                    if (!int.TryParse(word, out number)) number = word == "a" ? 1 : Array.IndexOf(new[] { "", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten" }, word);
+                    _state.RequiredPresentationSlides = Math.Max(_state.RequiredPresentationSlides, Math.Max(1, number));
+                }
+            }
+            request.tools.Add(TaskSources.Definition());
             request.tools.Add(new ChatToolDefinition
             {
                 type = "function",
@@ -68,11 +84,30 @@ namespace Scribble.Chat
             }
             _state.Lifecycle = TaskLifecycle.Running;
             _state.UserPaused = false;
+            Diagnostics = new TaskDiagnostics(_store, _state);
+            request.Diagnostics = Diagnostics;
             SaveRequest(request);
+            Diagnostics.Record(resume == null ? "task_started" : "task_resumed", new { model = request.model,
+                schema_hash = TaskCheckpointStore.Fingerprint(_json.Serialize(request.tools)), host });
         }
 
         public DurableTaskState State { get { return _state; } }
         public TaskCheckpointStore Store { get { return _store; } }
+        public TaskDiagnostics Diagnostics { get; private set; }
+        public TaskSources Sources { get { return new TaskSources(this); } }
+
+        public static bool IsTaskTool(string name) { return name == ReadEvidenceTool || name == TaskSources.ReadSourcesTool; }
+
+        public MailboxToolResult ValidateArguments(ChatToolCall call)
+        {
+            var definition = _request.tools.FirstOrDefault(t => t.function.name == call?.function?.name);
+            if (definition == null || McpToolHost.IsMcpTool(call?.function?.name)) return null;
+            var errors = ToolContractValidator.Validate(call, definition);
+            if (errors.Count == 0) return null;
+            Diagnostics.Record("argument_validation_failed", new { call.id, tool = call.function.name, errors });
+            return new MailboxToolResult(call.id, _json.Serialize(new { error_code = "TOOL_ARGUMENTS_INVALID", stage = "ARGUMENTS",
+                permission_consumed = false, field_errors = errors, diagnostic_id = _state.Id }), "Repair the indicated tool arguments");
+        }
 
         public void SaveRequest(ChatCompletionRequest request)
         {
@@ -86,6 +121,15 @@ namespace Scribble.Chat
 
         public void Checkpoint() { _store.Save(_state); }
 
+        public string RegisterEvidence(string text)
+        {
+            var id = _store.PutEvidence(_state.Id, text);
+            _evidence.Add(id);
+            _state.EvidenceIds = _evidence.ToList();
+            Checkpoint();
+            return id;
+        }
+
         public void PrepareExchange(ChatCompletionResponseMessage response, ChatCompletionRequest request)
         {
             // The request's assistant message retains this list. Clearing the
@@ -98,6 +142,7 @@ namespace Scribble.Chat
 
         public void BeforeTool(ChatToolCall call, bool changesDocument)
         {
+            Diagnostics.Record("tool_start", new { call.id, call.function, changesDocument });
             if (!changesDocument) return;
             string spent;
             var permissionKey = _state.Host == "chrome" ? "generic_write_spent:" + call.function.name : "generic_write_spent";
@@ -114,16 +159,18 @@ namespace Scribble.Chat
 
         public void AfterTool(ChatToolCall call, MailboxToolResult result)
         {
+            Sources.CaptureRead(call, result);
+            Diagnostics.Record("tool_result", new { call.id, name = call.function.name, result.Content,
+                result.Outcome.Failed, result.Outcome.Stage, result.Outcome.ErrorCode,
+                image_hashes = result.VisionImages.Select(i => TaskCheckpointStore.Fingerprint(i.DataUrl)) });
             _state.PendingResults.Add(new ChatCompletionToolResultMessage { role = "tool", tool_call_id = call.id, content = result.Content });
             var write = _state.Writes.FirstOrDefault(w => w.Id == "tool:" + call.id);
             if (write != null)
             {
                 // An error may have occurred after the side effect. Never presume that it did not execute.
-                write.Status = (result.Content.Contains("\"error_code\"") ||
-                    System.Text.RegularExpressions.Regex.IsMatch(result.Content, @"^\[[A-Z_]*(FAILED|INVALID|NOT_AUTHORIZED)\]")) &&
-                    !result.Content.Contains("\"permission_consumed\":false") ? "uncertain" : "verified";
+                write.Status = result.Outcome.Failed && result.Outcome.PermissionConsumed != false ? "uncertain" : "verified";
                 write.AfterFingerprint = TaskCheckpointStore.Fingerprint(result.Content);
-                if (!result.Content.Contains("\"permission_consumed\":false")) _state.HostData[_state.Host == "chrome" ? "generic_write_spent:" + call.function.name : "generic_write_spent"] = "true";
+                if (result.Outcome.PermissionConsumed != false) _state.HostData[_state.Host == "chrome" ? "generic_write_spent:" + call.function.name : "generic_write_spent"] = "true";
             }
             Checkpoint();
         }
@@ -139,6 +186,7 @@ namespace Scribble.Chat
         {
             if (!_state.CanComplete(false)) throw new InvalidOperationException("Task coverage or write recovery is incomplete.");
             _state.Lifecycle = TaskLifecycle.Completed;
+            Diagnostics.Record("task_completed", new { outputs = _state.Writes, batches = _state.Batches.Count });
             SaveRequest(request);
         }
 
@@ -175,6 +223,7 @@ namespace Scribble.Chat
         {
             _state.Lifecycle = TaskLifecycle.Paused;
             _state.Blocker = reason;
+            Diagnostics.Record("task_paused", new { reason, outputs = _state.Writes });
             _store.Save(_state);
         }
 
@@ -182,6 +231,7 @@ namespace Scribble.Chat
         {
             try
             {
+                if (call.function.name == TaskSources.ReadSourcesTool) return Sources.Read(call);
                 var args = _json.Deserialize<Dictionary<string, object>>(call.function.arguments);
                 var id = Convert.ToString(args["id"]);
                 var offset = Convert.ToInt32(args["offset"]);
@@ -242,10 +292,15 @@ namespace Scribble.Chat
 
         public void RecordExchange(ChatCompletionRequest request, ChatCompletionResponseMessage response, IList<MailboxToolResult> results)
         {
+            foreach (var result in results)
+            {
+                var sourceCall = response.tool_calls.FirstOrDefault(c => c.id == result.ToolCallId);
+                if (sourceCall != null) Sources.CaptureRead(sourceCall, result);
+            }
             foreach (var call in response.tool_calls.Where(c => c.function != null && PromptHelperTool.IsTool(c.function.name)))
             {
                 var answer = results.FirstOrDefault(r => r.ToolCallId == call.id);
-                if (answer == null || answer.Content.Contains("\"error_code\"")) continue;
+                if (answer == null || answer.Outcome.Failed) continue;
                 _state.OriginalDecisions.Add(answer.Content);
                 request.messages.Insert(_prefixCount++, new ChatCompletionInputMessage
                 {
@@ -258,8 +313,18 @@ namespace Scribble.Chat
                 calls = response.tool_calls.Select(c => c.function),
                 results = results.Select(r => r.Content)
             }));
-            var failed = results.Count > 0 && results.All(r => r.Content.Contains("\"error_code\"") || r.Content.StartsWith("[BROWSER_TOOL_FAILED]"));
+            var failed = results.Count > 0 && results.All(r => r.Outcome.Failed);
             _stalled = failed || signature == _previousExchange ? _stalled + 1 : 0;
+            string priorOperations;
+            var recent = _state.HostData.TryGetValue("recent_operations", out priorOperations)
+                ? _json.Deserialize<List<string>>(priorOperations) : new List<string>();
+            recent.Add(signature);
+            if (recent.Count > 24) recent.RemoveAt(0);
+            _state.HostData["recent_operations"] = _json.Serialize(recent);
+            // Alternating the same rejected write with the same source read is
+            // also a loop. Real scan/source/state changes produce different keys.
+            var cycleCount = recent.Count(s => s == signature);
+            if (cycleCount >= 6) _stalled = Math.Max(_stalled, cycleCount);
             _previousExchange = signature;
             _state.HostData["stalled_count"] = _stalled.ToString();
             _state.HostData["last_progress_signature"] = signature;
@@ -317,6 +382,7 @@ namespace Scribble.Chat
                 _evidence.Add(id);
                 var summaryRequest = new ChatCompletionRequest
                 {
+                    Diagnostics = Diagnostics,
                     model = request.model, max_tokens = 2048, messages = new List<object>
                     {
                         new ChatCompletionInputMessage { role = "system", content =

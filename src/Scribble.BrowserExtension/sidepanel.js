@@ -782,6 +782,7 @@ function updateBrowserProgress(toolRequests, results, stagnantCount) {
 function compactExchange(exchange) {
   const retained = exchange;
   const newestSnapshotIds = new Set();
+  const newestImage = [...exchange].reverse().flatMap(turn => [...(turn.results || [])].reverse()).find(result => result.screenshotDataUrl)?.id;
   for (let turnIndex = retained.length - 1;
        turnIndex >= 0 && newestSnapshotIds.size < 6;
        turnIndex--) {
@@ -805,7 +806,8 @@ function compactExchange(exchange) {
       const call = (Array.isArray(turn.toolCalls) ? turn.toolCalls : [])
         .find((candidate) => candidate.id === result.id);
       if (newestSnapshotIds.has(result.id) || call?.name === "ask_user") {
-        return { id: result.id, content: boundText(result.content, MAX_TOOL_RESULT_CHARS) };
+        return { id: result.id, content: boundText(result.content, MAX_TOOL_RESULT_CHARS),
+          screenshotDataUrl: result.id === newestImage ? result.screenshotDataUrl || "" : "" };
       }
       let args = {};
       try {
@@ -841,6 +843,8 @@ let workTabIds = [null, null, null, null, null];
 let lastWorkSlot = 0;
 const lastSnapshotFingerprintBySlot = new Map();
 const lastSnapshotBySlot = new Map();
+const perceptionByTab = new Map();
+const snapshotImagesByTab = new Map();
 const actionReceiptsBySlot = new Map();
 let latestValidatedEvidence = null;
 
@@ -1014,7 +1018,10 @@ async function executeBrowserTool(toolRequest) {
     }
 
     if (name === "browser_snapshot") {
-      return { id, content: await snapshotWorkTab(toolRequest) };
+      const content = await snapshotWorkTab(toolRequest);
+      let args = {}; try { args = JSON.parse(toolRequest.arguments || "{}"); } catch { }
+      const target = await resolveWorkTab(args.tab);
+      return { id, content, screenshotDataUrl: snapshotImagesByTab.get(target.tab.id) || "" };
     }
 
     if (name === "browser_act") {
@@ -1550,7 +1557,7 @@ async function runVerifiedAction(target, args, knownSnapshot = null, allowRetry 
     await runPageAgent(target.tab.id, "invalidate", {});
   }
   let afterSnapshot = await settleAndInspectWorkTab(target.tab.id);
-  let effect = observedActionEffect(
+  let effect = execution.verifiedState || observedActionEffect(
     beforeSnapshot,
     afterSnapshot,
     execution.descriptor,
@@ -1680,9 +1687,9 @@ async function performAction(target, args, knownSnapshot = null) {
   if (/condition/i.test(`${descriptor.groupLabel} ${descriptor.htmlName}`) && ["click", "check", "select"].includes(action) && !comparisonRequested()) {
     const choice = String(args.value || descriptor.name || "").trim();
     const instructions = `${currentRequestPrompt} ${currentClarificationAnswers.join(" ")}`;
-    const conditionWords = choice.match(/flawless|excellent|good|fair|poor|broken|pristine|damaged|like new|acceptable|faulty|mint/ig) || [choice];
-    if (!conditionWords.some(word => instructions.toLowerCase().includes(word.toLowerCase()))) {
-      const answer = await askUser({id:`condition-${Date.now()}`,arguments:JSON.stringify({questions:[{id:"condition",question:"Which trade-in condition applies? Choose Compare all to get a verified quote for every condition.",options:[choice,"Compare all"]}]})});
+    const normalizeChoice = value => String(value || "").normalize("NFKC").replace(/\s+/g, " ").trim().toLowerCase();
+    if (!normalizeChoice(instructions).includes(normalizeChoice(choice))) {
+      const answer = await askUser({id:`condition-${Date.now()}`,arguments:JSON.stringify({questions:[{id:"condition",question:`Which option applies to ${descriptor.groupLabel || "this condition"}? Choose Compare all to inspect every option.`,options:[choice,"Compare all"]}]})});
       throw new Error(`Condition decision recorded: ${answer}. Inspect the condition controls and continue using that decision.`);
     }
   }
@@ -1750,6 +1757,7 @@ async function performAction(target, args, knownSnapshot = null) {
     return { descriptor, popupCount: 0 };
   }
   if (action === "click" || action === "check") {
+    if (action === "check" && descriptor.selected) return { descriptor, popupCount: 0, verifiedState: "the control was already checked" };
     const popupCount = await withPopupAdoption(target.tab.id, () =>
       clickAt(target.tab.id, resolved.x, resolved.y));
     return { descriptor, popupCount };
@@ -1890,6 +1898,7 @@ async function dispatchCdpBatch(tabId, commands) {
 }
 
 async function inspectWorkTab(tabId, query = "", offset = 0, frame = 0, options_ref = "") {
+  snapshotImagesByTab.delete(tabId);
   let snapshot;
   try {
     snapshot = await runPageAgent(tabId, "snapshot", {
@@ -1906,6 +1915,29 @@ async function inspectWorkTab(tabId, query = "", offset = 0, frame = 0, options_
       "I couldn't inspect the work tab; a protected page or inaccessible widget may be blocking me.";
     stopRequested = true;
     throw new Error(operatorDetachError);
+  }
+  // Browser-provided click listeners and accessibility nodes supplement DOM
+  // semantics. Only fixed read commands run in the broker; no model scripts.
+  if (!frame && !options_ref) {
+    const cacheKey = `${snapshot.stateFingerprint}:${query}:${offset}`;
+    let perception = perceptionByTab.get(tabId);
+    if (perception?.key !== cacheKey || snapshot.unresolvedSurfaces?.some(s => s.kind !== "iframe")) {
+      try {
+        await registerOperatorWorkTabs();
+        const result = await sendOperatorMessage({ type: "inspectSemantics", tabId, query, offset,
+          captureImage: snapshot.unresolvedSurfaces?.some(s => s.kind !== "iframe") === true });
+        perception = { key: cacheKey, ...result };
+        perceptionByTab.set(tabId, perception);
+      } catch (error) {
+        perception = { key: cacheKey, error: boundText(error?.message, 300) };
+      }
+    }
+    if (perception.observation) {
+      const adopted = await runPageAgent(tabId, "adoptPerception", { controls: perception.observation.controls });
+      if (adopted?.adopted) snapshot = await runPageAgent(tabId, "snapshot", { query, offset, frame, options_ref });
+      snapshot.accessibility = { ...perception.observation, controls: perception.observation.controls.filter(c => !(adopted?.resolvedIds || []).includes(c.backendId)) };
+      snapshotImagesByTab.set(tabId, perception.screenshotDataUrl || "");
+    } else snapshot.perceptionLimitation = perception.error || "Supplementary browser observations unavailable.";
   }
   const obstructionText = `${snapshot.title} ${snapshot.visibleText}`;
   const hasCredentialField = snapshot.controls.some((control) =>
@@ -2007,13 +2039,50 @@ function pageAgent(command, payload) {
     String(value || "").replace(/\s+/g, " ").trim().slice(0, maximum);
   const state = globalThis.__scribblePageAgent ||
     (globalThis.__scribblePageAgent = { sequence: 0, revision: "", controls: new Map() });
-  const visible = (element) => {
+  const renderedTree = element => {
+    if (!element.isConnected) return false;
+    for (let parent = element; parent; parent = parent.parentElement || parent.getRootNode()?.host) {
+      const style = parent.ownerDocument.defaultView.getComputedStyle(parent);
+      if (parent.hasAttribute('hidden') || parent.hasAttribute('inert') || style.display === 'none' || ['hidden','collapse'].includes(style.visibility)) return false;
+    }
+    return true;
+  };
+  const hasLayout = (element) => {
     const view = element.ownerDocument?.defaultView;
     if (!view) return false;
     const style = view.getComputedStyle(element);
     const rect = element.getBoundingClientRect();
-    return style.visibility !== "hidden" && style.display !== "none" &&
-      Number(style.opacity || 1) !== 0 && rect.width >= 1 && rect.height >= 1;
+    return !element.closest('[hidden], [inert]') && style.visibility !== "hidden" &&
+      style.visibility !== "collapse" && style.display !== "none" && rect.width >= 1 && rect.height >= 1;
+  };
+  const painted = element => {
+    if (!hasLayout(element)) return false;
+    for (let parent = element; parent; parent = parent.parentElement || parent.getRootNode()?.host)
+      if (Number(parent.ownerDocument.defaultView.getComputedStyle(parent).opacity || 1) === 0) return false;
+    return true;
+  };
+  // Styled controls often place a transparent native input on top of a visible
+  // label/checkmark. Retain its semantics and bind actions to its visible proxy.
+  const proxyOf = element => {
+    if (!element.matches('input:not([type="hidden"]), select')) return null;
+    const labels = Array.from(element.labels || []);
+    for (const label of labels) if (painted(label)) return label;
+    if (!element.matches('input[type="checkbox"],input[type="radio"],select') ||
+        !element.parentElement || element.parentElement.matches('body,html,main,form')) return null;
+    const rect = element.getBoundingClientRect();
+    for (const sibling of Array.from(element.parentElement?.children || []))
+      if (sibling !== element && painted(sibling)) {
+        const other = sibling.getBoundingClientRect();
+        if (rect.left < other.right && rect.right > other.left && rect.top < other.bottom && rect.bottom > other.top) return sibling;
+      }
+    return null;
+  };
+  const visible = element => renderedTree(element) && (painted(element) || Boolean(proxyOf(element)));
+  const actionTarget = element => {
+    const rect = element.getBoundingClientRect(), style = element.ownerDocument.defaultView.getComputedStyle(element);
+    const visuallyClipped = rect.width <= 2 || rect.height <= 2 || (style.clip && style.clip !== 'auto') ||
+      (style.clipPath && style.clipPath !== 'none');
+    return painted(element) && !visuallyClipped ? element : (proxyOf(element) || element);
   };
   const roleOf = (element) => {
     const explicit = element.getAttribute("role");
@@ -2026,8 +2095,12 @@ function pageAgent(command, payload) {
     if (tag === "option") return "option";
     if (type === "checkbox") return "checkbox";
     if (type === "radio") return "radio";
+    if (type === "range") return "slider";
+    if (type === "number") return "spinbutton";
+    if (tag === "summary") return "button";
+    if (element.isContentEditable) return "textbox";
     if (tag === "textarea" || tag === "input") return type === "search" ? "searchbox" : "textbox";
-    return "control";
+    return "button";
   };
   const usableLabel = (value) => {
     const text = normalize(value, 240);
@@ -2039,14 +2112,16 @@ function pageAgent(command, payload) {
     const labelled = normalize(element.getAttribute("aria-labelledby"), 120);
     const labelledText = labelled
       ? labelled.split(/\s+/).map((id) =>
-          element.ownerDocument.getElementById(id)?.textContent || "").join(" ")
+          (element.getRootNode().getElementById?.(id) || element.ownerDocument.getElementById(id))?.textContent || "").join(" ")
       : "";
     const labelText = element.labels?.length
       ? Array.from(element.labels).map((item) => item.textContent || "").join(" ")
       : "";
     return usableLabel(labelledText) ||
       usableLabel(element.getAttribute("aria-label")) ||
-      usableLabel(labelText);
+      usableLabel(labelText) || usableLabel(element.getAttribute("alt")) ||
+      usableLabel(element.querySelector('img[alt]')?.getAttribute('alt')) ||
+      usableLabel(element.querySelector('svg > title')?.textContent);
   };
   const visibleLabelOf = (element) =>
     usableLabel(element.innerText || element.textContent);
@@ -2055,7 +2130,12 @@ function pageAgent(command, payload) {
     for (let depth = 0; current && depth < 5; depth++, current = current.parentElement) {
       if (/^(body|html|form)$/i.test(current.tagName || "")) break;
       const text = usableLabel(current.innerText || current.textContent);
-      if (text && text.length <= 240) return text;
+      if (text) {
+        // Prefer the card's short title to its terms/descriptive bullet list.
+        const title = Array.from(current.querySelectorAll('legend,h1,h2,h3,h4,[role="heading"],span'))
+          .find(node => node.children.length === 0 && painted(node) && usableLabel(node.textContent));
+        return title ? usableLabel(title.textContent) : text;
+      }
     }
     return "";
   };
@@ -2079,7 +2159,7 @@ function pageAgent(command, payload) {
   const nameOf = (element) => {
     const safeButtonValue = /^(button|submit|reset)$/i.test(element.type || "")
       ? element.value : "";
-    return normalize(accessibleNameOf(element) || visibleLabelOf(element) ||
+    return normalize(accessibleNameOf(element) || state.axNames?.get(element) || visibleLabelOf(element) ||
       usableLabel(safeButtonValue) || usableLabel(element.title) ||
       cardLabelOf(element) || groupLabelOf(element), 200);
   };
@@ -2146,7 +2226,8 @@ function pageAgent(command, payload) {
     };
   };
   const describe = (element, ref, revision) => {
-    const rect = element.getBoundingClientRect();
+    const target = actionTarget(element);
+    const rect = target.getBoundingClientRect();
     const offset = frameOffset(element.ownerDocument);
     const topLeft = offset.x + rect.left;
     const topTop = offset.y + rect.top;
@@ -2158,8 +2239,10 @@ function pageAgent(command, payload) {
       fieldFlags.formHasPassword || fieldFlags.formHasPayment ||
       fieldFlags.formHasPersonalData;
     let valueState = "";
-    if (!sensitive && (role === "checkbox" || role === "radio")) {
-      valueState = element.checked ? "checked" : "not checked";
+    if (!sensitive && ["checkbox", "radio", "switch", "menuitemcheckbox", "menuitemradio"].includes(role)) {
+      valueState = element.getAttribute("aria-checked") || (element.checked ? "checked" : "not checked");
+    } else if (!sensitive && ["slider", "spinbutton"].includes(role)) {
+      valueState = normalize(element.getAttribute("aria-valuetext") || element.getAttribute("aria-valuenow") || element.value, 100);
     } else if (!sensitive && tagName === "select") {
       valueState = normalize(element.selectedOptions?.[0]?.textContent, 100);
     } else if (!sensitive &&
@@ -2170,6 +2253,9 @@ function pageAgent(command, payload) {
     return {
       ref,
       revision,
+      proxy: target !== element,
+      expanded: element.getAttribute("aria-expanded"),
+      description: normalize(element.getAttribute("aria-description") || "", 200),
       tagName,
       inputType,
       role,
@@ -2211,11 +2297,14 @@ function pageAgent(command, payload) {
       let elements = [];
       try {
         elements = Array.from(root.querySelectorAll(
-          'a[href], button, input, select, textarea, [role="button"], [role="link"], [role="textbox"], [role="searchbox"], [role="combobox"], [role="checkbox"], [role="radio"], [role="option"], [role="menuitem"], [role="tab"], [contenteditable="true"]'
+          'a[href], area[href], button, input, select, textarea, summary, label, [role="button"], [role="link"], [role="textbox"], [role="searchbox"], [role="combobox"], [role="checkbox"], [role="radio"], [role="switch"], [role="slider"], [role="spinbutton"], [role="treeitem"], [role="gridcell"], [role="option"], [role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"], [role="tab"], [contenteditable]:not([contenteditable="false"]), [tabindex]:not([tabindex="-1"]), [onclick]'
         ));
       } catch { return; }
-      for (const element of elements) {
-
+      for (let element of elements) {
+        if (element.tagName === "LABEL") {
+          if (!element.control) continue;
+          element = element.control;
+        }
         if (!visible(element) || seen.has(element)) continue;
         seen.add(element);
         candidates.push({ element, nested: root !== document });
@@ -2223,6 +2312,15 @@ function pageAgent(command, payload) {
       let all = [];
       try { all = Array.from(root.querySelectorAll("*")); } catch { return; }
       for (const element of all) {
+        // Delegated click handlers do not expose onclick. A short, leaf-like
+        // pointer surface is a candidate; actionability and policy still apply.
+        if (!seen.has(element) && /^(DIV|SPAN|LI|IMG|SVG)$/i.test(element.tagName) && painted(element) &&
+            element.ownerDocument.defaultView.getComputedStyle(element).cursor === "pointer" &&
+            !element.querySelector('input,button,select,textarea,a[href],[role],[tabindex]') &&
+            !element.parentElement?.closest('button,a[href],label,[role="button"],[role="option"]') &&
+            (element.children.length === 0 || Array.from(element.children).every(child => /^(IMG|SVG)$/i.test(child.tagName))) && nameOf(element)) {
+          seen.add(element); candidates.push({element, nested: root !== document});
+        }
         if (element.shadowRoot) visit(element.shadowRoot);
         if (element.tagName === "IFRAME") {
           try { if (element.contentDocument) visit(element.contentDocument); } catch { /* Cross-origin frame. */ }
@@ -2230,6 +2328,11 @@ function pageAgent(command, payload) {
       }
     };
     visit(document);
+    for (const element of state.observedControls || []) {
+      if (element.isConnected && visible(element) && !seen.has(element)) {
+        seen.add(element); candidates.push({ element, nested: false });
+      }
+    }
     return candidates;
   };
   const orderCandidates = (candidates) => {
@@ -2267,6 +2370,7 @@ function pageAgent(command, payload) {
         control.enabled ? "1" : "0",
         control.selected ? "1" : "0",
         control.valueState,
+        element.getAttribute("aria-expanded") || "",
         control.linkTarget,
         control.inViewport ? "1" : "0"
       ].join("|");
@@ -2296,6 +2400,34 @@ function pageAgent(command, payload) {
     if (optionElement) { selectRef = `${state.revision}:select`; state.controls.set(selectRef, optionElement); }
     return { output, ordered, offset, selectRef, total: filtered.length, nextOffset: offset + selected.length < filtered.length ? offset + selected.length : null };
   };
+  if (command === "adoptPerception") {
+    state.observedControls = (state.observedControls || []).filter(e => e.isConnected);
+    state.axNames ||= new WeakMap();
+    const resolvedIds = [];
+    let adopted = 0;
+    for (const control of (payload.controls || []).slice(0, 80)) {
+      if (!control.topDocument || control.width <= 0 || control.height <= 0) continue;
+      const x = control.x + control.width / 2, y = control.y + control.height / 2;
+      let element = document.elementFromPoint(x, y);
+      while (element?.shadowRoot) {
+        const nested = element.shadowRoot.elementFromPoint(x, y);
+        if (!nested || nested === element) break;
+        element = nested;
+      }
+      for (let depth = 0; element && depth < 5 && !/^(HTML|BODY)$/.test(element.tagName); depth++, element = element.parentElement) {
+        const rect = element.getBoundingClientRect();
+        if (element.tagName.toLowerCase() === String(control.tag).toLowerCase() &&
+            Math.abs(rect.x - control.x) < 2 && Math.abs(rect.y - control.y) < 2 &&
+            Math.abs(rect.width - control.width) < 2 && Math.abs(rect.height - control.height) < 2 && painted(element)) {
+          resolvedIds.push(control.backendId);
+          if (control.name) state.axNames.set(element, control.name);
+          if (!state.observedControls.includes(element)) { state.observedControls.push(element); adopted++; }
+          break;
+        }
+      }
+    }
+    return { adopted, resolvedIds };
+  }
   if (command === "frameRect") {
     const matches = [];
     const visit = (root) => {
@@ -2326,16 +2458,23 @@ function pageAgent(command, payload) {
     const scanned = scan(query);
     if (scanned.error) return {error:scanned.error};
     const controls = scanned.output;
-    const bodyText = normalize(document.body?.innerText, maxVisibleTextCharacters);
+    // Preserve lines until filtering. Normalizing first used to turn the whole
+    // page into one line, making targeted text queries silently miss later text.
+    const rawLines = String(document.body?.innerText || "").split(/\n+/);
+    const bodyText = (query ? rawLines.filter(line => line.toLowerCase().includes(query)) : rawLines)
+      .map(line => normalize(line, maxVisibleTextCharacters)).join("\n").slice(0, maxVisibleTextCharacters);
+    const unresolved = Array.from(document.querySelectorAll('*')).filter(element =>
+      /^(CANVAS|OBJECT|EMBED|IFRAME)$/.test(element.tagName) || (element.localName.includes('-') && !element.shadowRoot && !element.children.length))
+      .filter(painted).map(element => ({ kind: element.tagName.toLowerCase(),
+        name: nameOf(element), reason: element.tagName === "IFRAME" ? "Inspect the frame separately" : "Visual inspection may be required" })).slice(0, 40);
     const stateFingerprint = fingerprintFor(scanned.ordered);
     return {
       revision: state.revision,
       stateFingerprint,
       title: normalize(document.title, 300),
       url: normalize(location.href, 1_000),
-      visibleText: query
-        ? bodyText.split(/\n+/).filter((line) => line.toLowerCase().includes(query)).join("\n").slice(0, maxVisibleTextCharacters)
-        : bodyText,
+      visibleText: bodyText,
+      unresolvedSurfaces: unresolved,
       controls, query, selectRef: scanned.selectRef, totalControls: scanned.total, nextOffset: scanned.nextOffset, offset: scanned.offset
     };
   }
@@ -2355,10 +2494,11 @@ function pageAgent(command, payload) {
   }
   const descriptor = describe(element, ref, state.revision);
   if (command === "actionability") {
-    const rect = element.getBoundingClientRect();
-    const root = element.getRootNode();
+    const target = actionTarget(element);
+    const rect = target.getBoundingClientRect();
+    const root = target.getRootNode();
     const hit = (root.elementFromPoint ? root : element.ownerDocument).elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
-    return { receivesEvents: hit === element || element.contains(hit), enabled: descriptor.enabled, x: descriptor.x, y: descriptor.y, editable: !element.readOnly && element.getAttribute("aria-readonly") !== "true" };
+    return { receivesEvents: hit === element || element.contains(hit) || hit === target || target.contains(hit), enabled: descriptor.enabled, x: descriptor.x, y: descriptor.y, editable: !element.readOnly && element.getAttribute("aria-readonly") !== "true" };
   }
   if (command === "resolve") {
     return {
@@ -2388,7 +2528,7 @@ function pageAgent(command, payload) {
     };
   }
   if (command === "bringIntoView") {
-    element.scrollIntoView({ block: "center", inline: "center" });
+    actionTarget(element).scrollIntoView({ block: "center", inline: "center" });
     const prepared = describe(element, ref, state.revision);
     return {
       revision: state.revision,
@@ -2460,6 +2600,8 @@ function serializeSnapshot(slot, snapshot, status) {
       control.optionCount ? `options=${control.optionCount}; use options_ref=${control.ref} to enumerate` : "",
       control.enabled ? "enabled" : "disabled",
       control.selected ? "selected" : "",
+      control.expanded !== null && control.expanded !== undefined ? `expanded=${control.expanded}` : "",
+      control.proxy ? "visible proxy" : "",
       control.isSubmit ? "submit" : "",
       control.valueState ? `state=${control.valueState}` : "",
       control.linkTarget ? `href=${control.linkTarget}` : "",
@@ -2472,6 +2614,12 @@ function serializeSnapshot(slot, snapshot, status) {
     `${progressMarker(slot, fingerprint)}\n` +
     `Work tab ${slot} of ${MAX_WORK_TABS}. Document revision: ${snapshot.revision}\n` +
     `Controls: ${snapshot.totalControls ?? snapshot.controls.length}; offset=${snapshot.offset || 0}; next_offset=${snapshot.nextOffset ?? "complete"}. select_ref=${snapshot.selectRef || "none"}. Frames: ${JSON.stringify(snapshot.frames || [])}\n` +
+    `Unresolved surfaces: ${JSON.stringify(snapshot.unresolvedSurfaces || [])}. An unreadable surface is not proof of completion.\n` +
+    `Supplementary accessibility: ${JSON.stringify(snapshot.accessibility ? {methods:snapshot.accessibility.methods,
+      total:snapshot.accessibility.total,next_offset:snapshot.accessibility.nextOffset,
+      unbound_controls:snapshot.accessibility.controls.slice(0,12),
+      additional_unbound:Math.max(0,snapshot.accessibility.controls.length-12)} : {})}. Nodes without a snapshot ref are observed but not safely bound for action; narrow the snapshot query to inspect them.\n` +
+    (snapshot.perceptionLimitation ? `Observation limitation: ${snapshot.perceptionLimitation}\n` : "") +
     `Title: ${snapshot.title}\nURL: ${snapshot.url}\nObserved at: ${new Date().toISOString()}\n` +
     `<visible_text>\n${boundText(snapshot.visibleText, MAX_VISIBLE_TEXT_CHARS)}\n</visible_text>\n` +
     `<controls>\n`;

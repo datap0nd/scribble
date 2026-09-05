@@ -17,10 +17,10 @@ built or run on Linux — the Windows CI workflow
   push immediately after each change set.** The user pulls `main` on a work
   machine to test. Do not create side branches or pull requests unless
   explicitly asked.
-- Every push to `main` triggers CI: MSBuild, guardrail tests
-  (`tests/GuardrailTests`), the static capability scan
-  (`scripts/Test-Guardrails.ps1`), and republishing the installer to the
-  `continuous` release that the README download link points at.
+- Every push to `main` triggers CI: MSBuild, guardrail/browser tests,
+  the static capability scan, and a candidate installer artifact.
+  Public `continuous` promotion requires native/model acceptance for
+  those exact bits through `scripts/Publish-ScribbleCandidate.ps1`.
 
 ## Code conventions
 

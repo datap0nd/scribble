@@ -17,7 +17,7 @@ namespace Scribble.UI
     public sealed class SettingsWindow : Form
     {
         private const int ModelDiscoveryTimeoutSeconds = 15;
-        private const int EndpointProbeTimeoutSeconds = 90;
+        private const int EndpointProbeTimeoutSeconds = 180;
 
         private readonly TextBox _endpoint = new TextBox();
         private readonly ComboBox _model = new ComboBox();
@@ -2540,28 +2540,13 @@ namespace Scribble.UI
                     probeTimeout.CancelAfter(
                         TimeSpan.FromSeconds(
                             EndpointProbeTimeoutSeconds));
-                    var probe = ChatRequestFactory.CreateEndpointCheck(
-                        settings.Model);
-                    var response = await _client.CompleteAsync(
-                        settings,
-                        probe,
-                        probeTimeout.Token);
-                    var validCall = response.tool_calls != null &&
-                        response.tool_calls.Any(call =>
-                            call?.function != null &&
-                            MailboxToolCatalog.IsApproved(
-                                call.function.name));
-                    if (!validCall)
-                    {
-                        throw new AiEndpointException(
-                            "MODEL_TOOL_CALL_UNSUPPORTED",
-                            "The endpoint answered, but this model did not return a compatible mailbox tool call.");
-                    }
+                    discoveryNote += " " + await ModelContractProbe.RunAsync(_client, settings,
+                        text => _testStatus.Text = text, probeTimeout.Token);
                 }
 
                 _testStatus.ForeColor = SuccessText;
                 _testStatus.Text =
-                    "Endpoint verified. Authentication, model, and mailbox tool calling passed." +
+                    "Endpoint contract checked. " +
                     discoveryNote;
             }
             catch (OperationCanceledException)

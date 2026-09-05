@@ -6,6 +6,8 @@ module.exports = defineConfig({
   timeout: 30_000,
   fullyParallel: false,
   use: {
+    trace: "retain-on-failure",
+    screenshot: "only-on-failure",
     headless: true,
     viewport: { width: 1000, height: 800 }
   }

@@ -32,6 +32,7 @@ namespace Scribble.Chat
         private readonly object _optionalToolControlSync = new object();
         private readonly HashSet<string> _optionalToolControlUnsupported =
             new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, DateTime> _emptyResponseCircuits = new Dictionary<string, DateTime>(StringComparer.Ordinal);
 
         public OpenAiCompatibleClient()
         {
@@ -163,7 +164,7 @@ namespace Scribble.Chat
                     "The configured endpoint is invalid.");
             }
 
-            var capabilityKey = endpoint.GetLeftPart(UriPartial.Authority);
+            var capabilityKey = endpoint.AbsoluteUri + "\n" + requestModel.model;
             var hasOptionalToolControls =
                 requestModel.temperature.HasValue ||
                 requestModel.parallel_tool_calls.HasValue;
@@ -201,10 +202,19 @@ namespace Scribble.Chat
                 CancellationToken cancellationToken,
                 bool retryEmptyResponse = true)
         {
+            var circuitKey = endpoint.AbsoluteUri + "\n" + requestModel.model;
+            lock (_optionalToolControlSync)
+            {
+                DateTime until;
+                if (retryEmptyResponse && _emptyResponseCircuits.TryGetValue(circuitKey, out until) && until > DateTime.UtcNow)
+                    throw new AiEndpointException("MODEL_CIRCUIT_OPEN", "This endpoint/model repeatedly returned empty completions. The task is retained. Wait 30 seconds or select another model before resuming.");
+            }
             var requestJson = _serializer.Serialize(
                 SerializablePayload(
                     requestModel,
                     includeOptionalToolControls));
+            requestModel.Diagnostics?.Record("inference_request", new { endpoint = endpoint.GetLeftPart(UriPartial.Path),
+                model = requestModel.model, request = requestJson });
 
             using (var request = new HttpRequestMessage(HttpMethod.Post, endpoint))
             {
@@ -268,10 +278,24 @@ namespace Scribble.Chat
                     }
 
                     var requestId = GetRequestId(response);
+                    requestModel.Diagnostics?.Record("inference_response", new { endpoint = endpoint.GetLeftPart(UriPartial.Path),
+                        model = requestModel.model, http_status = (int)response.StatusCode, request_id = requestId,
+                        server = response.Headers.Server.ToString(), response = responseText,
+                        request_hash = TaskCheckpointStore.Fingerprint(requestJson) });
                     if (!response.IsSuccessStatusCode)
                     {
                         var error = TryReadError(responseText);
                         var status = (int)response.StatusCode;
+                        if (retryEmptyResponse && (status == 429 || status == 502 || status == 503 || status == 504))
+                        {
+                            var hint = response.Headers.RetryAfter;
+                            var retryAfter = hint?.Delta ?? (hint?.Date.HasValue == true ? hint.Date.Value - DateTimeOffset.UtcNow : TimeSpan.FromSeconds(1));
+                            if (retryAfter >= TimeSpan.Zero && retryAfter <= TimeSpan.FromSeconds(2))
+                            {
+                                await Task.Delay(retryAfter, cancellationToken).ConfigureAwait(true);
+                                return await CompleteOpenAiAsync(settings, endpoint, requestModel, includeOptionalToolControls, cancellationToken, false).ConfigureAwait(true);
+                            }
+                        }
                         var reason = string.IsNullOrWhiteSpace(response.ReasonPhrase)
                             ? response.StatusCode.ToString()
                             : response.ReasonPhrase;
@@ -327,6 +351,7 @@ namespace Scribble.Chat
                                 requestModel, includeOptionalToolControls,
                                 cancellationToken, false).ConfigureAwait(true);
                         }
+                        lock (_optionalToolControlSync) _emptyResponseCircuits[circuitKey] = DateTime.UtcNow.AddSeconds(30);
                         throw new AiEndpointException(
                             "RESPONSE_MISSING_CONTENT",
                             "The AI endpoint returned an empty response twice. No new tool actions ran. The task is preserved; resume or choose another model.",
@@ -336,6 +361,7 @@ namespace Scribble.Chat
                     }
 
                     message.RawContent = TextBoundary.PlainText(message.content, TextBoundary.MaxHttpResponseCharacters);
+                    lock (_optionalToolControlSync) _emptyResponseCircuits.Remove(circuitKey);
                     message.content = TextBoundary.PlainText(
                         message.content,
                         TextBoundary.MaxAssistantCharacters);
