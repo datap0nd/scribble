@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using Scribble.Security;
 
 namespace Scribble.Office
@@ -17,7 +18,7 @@ namespace Scribble.Office
     // split is deliberate - a small local model cannot be trusted to
     // apply a corporate design system, but it can be trusted to
     // write the words.
-    internal static class PresentationDraftWriter
+    internal static partial class PresentationDraftWriter
     {
         internal const string DraftMarker = "[Scribble draft]";
         internal const int MaxDraftSlides = 10;
@@ -33,9 +34,9 @@ namespace Scribble.Office
 
         internal const int MaxCards = 4;
         internal const int MaxCardPoints = 6;
-        internal const int MaxTableRows = 14;
+        internal const int MaxTableRows = 200;
         internal const int MaxTableColumns = 8;
-        internal const int MaxCellCharacters = 80;
+        internal const int MaxCellCharacters = 400;
 
         // PowerPoint enumeration values used through late binding.
         private const int PpLayoutBlank = 12;
@@ -93,6 +94,14 @@ namespace Scribble.Office
             internal DraftTable Table { get; }
 
             internal DraftChart Chart { get; }
+
+            internal string Takeaway { get; set; } = "";
+            internal string Caption { get; set; } = "";
+            internal string Sources { get; set; } = "";
+            internal string Evidence { get; set; } = "";
+            internal DraftTable SecondaryTable { get; set; }
+            internal DraftChart SecondaryChart { get; set; }
+            internal IReadOnlyList<int> HighlightRows { get; set; } = new int[0];
         }
 
         // One card of the three-column strategy grid.
@@ -223,7 +232,8 @@ namespace Scribble.Office
             object powerPointApplication,
             IReadOnlyList<DraftSlide> slides,
             int? afterSlide,
-            bool inNewPresentation)
+            bool inNewPresentation,
+            Action<SamsungOutput> onRendered = null)
         {
             if (slides == null || slides.Count == 0)
             {
@@ -232,6 +242,7 @@ namespace Scribble.Office
             }
 
             dynamic application = powerPointApplication;
+            var planned = ComposeSamsung(slides);
             dynamic presentation = null;
             if (!inNewPresentation)
             {
@@ -251,6 +262,14 @@ namespace Scribble.Office
             }
 
             var existing = (int)presentation.Slides.Count;
+            if (existing == 0)
+            {
+                presentation.PageSetup.SlideWidth = SamsungSlideDesign.Width;
+                presentation.PageSetup.SlideHeight = SamsungSlideDesign.Height;
+            }
+            else if (Math.Abs((double)presentation.PageSetup.SlideWidth - SamsungSlideDesign.Width) > .1 ||
+                     Math.Abs((double)presentation.PageSetup.SlideHeight - SamsungSlideDesign.Height) > .1)
+                throw new InvalidOperationException("SAMSUNG_CANVAS_MISMATCH: Use a new 960 x 540 presentation. Existing slides were not resized.");
             var anchor = existing;
             if (afterSlide.HasValue)
             {
@@ -270,21 +289,17 @@ namespace Scribble.Office
             var added = 0;
             var charts = 0;
             var tables = 0;
-            foreach (var slide in slides)
+            var owner = Guid.NewGuid().ToString("N");
+            foreach (var page in planned)
             {
-                if (added == MaxDraftSlides)
-                {
-                    break;
-                }
-
                 var index = anchor + added + 1;
                 dynamic created = presentation.Slides.Add(
                     index,
                     PpLayoutBlank);
-                var drawn = RenderSlide(
-                    created,
-                    presentation,
-                    slide);
+                var output = DrawSamsungPage((object)created, page, owner);
+                output.Image = ExportSamsung(output);
+                onRendered?.Invoke(output);
+                var drawn = (page.Elements.Any(e => e.Chart != null) ? 1 : 0) | (page.Elements.Any(e => e.Table != null) ? 2 : 0);
                 if ((drawn & 1) != 0)
                 {
                     charts++;
@@ -1729,7 +1744,7 @@ namespace Scribble.Office
             {
                 if (slides.Count == MaxDraftSlides)
                 {
-                    break;
+                    throw new InvalidOperationException("At most ten input slides per batch; continue in another call. No slides were silently omitted.");
                 }
 
                 var map = slideValue as
@@ -1739,6 +1754,8 @@ namespace Scribble.Office
                     throw new InvalidOperationException(
                         "Each slide must be an object with a title.");
                 }
+
+                ValidateSamsungInput(map);
 
                 object titleValue;
                 map.TryGetValue("title", out titleValue);
@@ -1811,7 +1828,16 @@ namespace Scribble.Office
                     bullets,
                     ParseCards(map),
                     ParseTable(map),
-                    ParseChart(map)));
+                    ParseChart(map))
+                {
+                    Takeaway = SamsungString(map, "takeaway", 400),
+                    Caption = SamsungString(map, "caption", 180),
+                    Sources = SamsungString(map, "sources", 2000),
+                    Evidence = SamsungString(map, "evidence", 12000),
+                    SecondaryTable = ParseTable(new Dictionary<string, object> { { "table", SamsungValue(map, "secondary_table") } }),
+                    SecondaryChart = ParseChart(new Dictionary<string, object> { { "chart", SamsungValue(map, "secondary_chart") } }),
+                    HighlightRows = SamsungIndices(map)
+                });
             }
 
             return slides;

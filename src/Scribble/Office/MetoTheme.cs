@@ -10,27 +10,27 @@ namespace Scribble.Office
     // model-adjustable; the tokens are compiled in.
     public static class MetoTheme
     {
-        public const string ThemeName = "METO Executive Dense";
+        public const string ThemeName = "Samsung MD 1.0";
 
         // --- Typography -------------------------------------------
         // Brand families first; Office falls back automatically on
         // machines without the Samsung Sharp Sans family installed,
         // which is why the body and label fonts stay universal.
         public const string TitleFont = "Samsung Sharp Sans Bold";
-        public const string SubtitleFont = "Samsung Sharp Sans Medium";
-        public const string BodyFont = "Calibri";
-        public const string LabelFont = "Arial";
-        public const string FootnoteFont = "Malgun Gothic";
+        public const string SubtitleFont = "Arial";
+        public const string BodyFont = "Arial";
+        public const string LabelFont = "Arial Narrow";
+        public const string FootnoteFont = "Arial Narrow";
 
         // --- Color tokens (hex; converted to the BGR longs the
         // Office object model expects) ------------------------------
-        public const string BrandBlueHex = "#1428A0";
+        public const string BrandBlueHex = "#4F81BD";
         public const string TextBlackHex = "#000000";
         public const string CharcoalHex = "#404040";
         public const string GrayHex = "#7F7F7F";
         public const string LightGrayHex = "#A6A6A6";
         public const string WhiteHex = "#FFFFFF";
-        public const string CardSlateHex = "#E7ECF0";
+        public const string CardSlateHex = "#F2F2F2";
         public const string GoodGreenHex = "#E2EFDA";
         public const string BadYellowHex = "#FFF2CC";
         public const string WarningAmberHex = "#FFC000";
@@ -129,8 +129,8 @@ namespace Scribble.Office
             return new[]
             {
                 Rgb(BrandBlueHex),
-                Rgb(GrayHex),
-                Rgb(LightGrayHex),
+                Rgb("#5B9BD5"),
+                Rgb("#F2F2F2"),
                 Rgb(WarningAmberHex),
                 Rgb(CharcoalHex)
             };
@@ -150,6 +150,7 @@ namespace Scribble.Office
             var kind = (requested ?? string.Empty)
                 .Trim()
                 .ToLowerInvariant();
+            if (Array.IndexOf(SamsungSlideDesign.Layouts, kind) >= 0) return kind;
             if (kind == "cover" ||
                 kind == "title" ||
                 kind == "cover_slide")

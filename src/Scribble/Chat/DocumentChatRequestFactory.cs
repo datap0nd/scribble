@@ -238,6 +238,7 @@ namespace Scribble.Chat
 
             if (allowDraftCreate)
             {
+                if (hostKind == "powerpoint") boundary += " " + SamsungPresentationReview.AuthoringInstructions;
                 var selectionInstruction = hasExcelSelection
                     ? " For a one-to-one transformation of the attached " +
                       "Excel selection, including translation, use " +

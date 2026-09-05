@@ -107,6 +107,10 @@
     <Compile Include="Office\WorkbookSelectionOutputWriter.cs" />
     <Compile Include="Office\PresentationToolHost.cs" />
     <Compile Include="Office\PresentationDraftWriter.cs" />
+    <Compile Include="Office\SamsungSlideDesign.cs" />
+    <Compile Include="Office\SamsungPresentationReview.cs" />
+    <Compile Include="Office\DocumentDraftHost.PowerPoint.cs" />
+    <Compile Include="Office\PresentationDraftWriter.Samsung.cs" />
     <Compile Include="Office\DocumentDraftHost.cs" />
     <Compile Include="Office\DocumentDraftHost.Tasks.cs" />
     <Compile Include="Chat\McpConnection.cs" />

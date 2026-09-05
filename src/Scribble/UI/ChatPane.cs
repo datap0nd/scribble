@@ -2472,6 +2472,7 @@ namespace Scribble.UI
                     taskContext.Checkpoint();
                 }
                 await mailboxTools.BindTaskAsync(taskContext, cancellationToken);
+                if (_crossAppTools != null) await _crossAppTools.BindTaskAsync(taskContext, cancellationToken);
                 _resumeRecovery = null;
                 var completionAttempts = 0;
             for (var round = 0; ; round++)
@@ -2583,11 +2584,11 @@ namespace Scribble.UI
                             // Mailbox content handed to Excel/
                             // PowerPoint/Word as a clearly marked
                             // draft, on the same one-shot permission.
-                            result = _crossAppTools.Execute(
+                            result = await _crossAppTools.ExecuteAsync(
                                 toolCall,
                                 crossAppAuthorization,
                                 toolCalls.Count == 1,
-                                prompt);
+                                prompt, _client, _settings, cancellationToken, null);
                         }
                         else if (McpToolHost.IsMcpTool(
                             toolCall?.function?.name))

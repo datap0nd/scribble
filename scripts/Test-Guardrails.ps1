@@ -607,11 +607,11 @@ if (-not $presentationWriterSource.Contains("AddDraftTag(")) {
 $themeSource = Get-Content (
     Join-Path $sourceRoot "Office\MetoTheme.cs") -Raw
 foreach ($requiredToken in @(
-    'ThemeName = "METO Executive Dense"',
+    'ThemeName = "Samsung MD 1.0"',
     'TitleFont = "Samsung Sharp Sans Bold"',
-    'BodyFont = "Calibri"',
-    'BrandBlueHex = "#1428A0"',
-    'CardSlateHex = "#E7ECF0"',
+    'BodyFont = "Arial"',
+    'BrandBlueHex = "#4F81BD"',
+    'CardSlateHex = "#F2F2F2"',
     'GoodGreenHex = "#E2EFDA"',
     'BadYellowHex = "#FFF2CC"',
     "MaxHighlightsPerStatus = 4"

@@ -101,7 +101,7 @@ namespace Scribble.Chat
             if (!changesDocument) return;
             string spent;
             var permissionKey = _state.Host == "chrome" ? "generic_write_spent:" + call.function.name : "generic_write_spent";
-            if (_state.HostData.TryGetValue(permissionKey, out spent) && spent == "true" && _state.Writes.All(w => w.Status == "verified"))
+            if (call.function.name != "add_draft_slides" && _state.HostData.TryGetValue(permissionKey, out spent) && spent == "true" && _state.Writes.All(w => w.Status == "verified"))
                 throw new InvalidOperationException("This task's document write already completed. Its saved receipt is authoritative; a second draft was not created.");
             if (_state.Writes.Any(w => w.Status != "verified" && w.Id.StartsWith("tool:")))
                 throw new InvalidOperationException("An interrupted document write is uncertain. Reopen and inspect the original marked draft; discard this task before starting a replacement. No write was retried.");

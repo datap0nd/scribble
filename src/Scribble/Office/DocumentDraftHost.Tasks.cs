@@ -92,6 +92,8 @@ namespace Scribble.Office
             CancellationToken token, Action<int, int> progress)
         {
             var name = call?.function?.name;
+            if (name == PresentationToolCatalog.AddDraftSlides || name == CrossAppToolCatalog.SendToPowerPoint)
+                return await ExecuteSamsungAsync(call, authorization, exclusive, prompt, client, settings, token);
             if (_durableExcel == null || (name != WorkbookToolCatalog.WriteSelectionOutput && name != WorkbookToolCatalog.WriteKoreanTranslations))
                 return Execute(call, authorization, exclusive, prompt);
             // Keep the original host argument and permission preflights; a review

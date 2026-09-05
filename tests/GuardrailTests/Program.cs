@@ -68,6 +68,8 @@ namespace GuardrailTests
 
             try
             {
+                Run("Samsung layouts preserve content and enforce overflow bounds", SamsungSlideTests.LayoutsAndOverflow);
+                Run("Samsung slide numbers require verified source evidence", SamsungSlideTests.EvidenceAndNumbers);
                 Run("Semantic repairs retain source alignment", TaskContinuationTests.ReviewRepairsAndAlignment);
                 Run("Changed source and occupied destination stop all writes", DurableTransformTests.ChangedRangesFailClosed);
                 Run("Attachment pages preserve evidence beyond 130000 characters", DurableTransformTests.AttachmentTail);
@@ -5799,16 +5801,16 @@ namespace GuardrailTests
         private static void CorporateThemeIsHardcoded()
         {
             Assert(
-                MetoTheme.ThemeName == "METO Executive Dense" &&
+                MetoTheme.ThemeName == "Samsung MD 1.0" &&
                 MetoTheme.TitleFont == "Samsung Sharp Sans Bold" &&
-                MetoTheme.BodyFont == "Calibri",
+                MetoTheme.BodyFont == "Arial",
                 "The corporate font stack changed unexpectedly.");
 
             // Office takes RGB longs in BGR order; a wrong
             // conversion would silently paint the wrong brand color.
             Assert(
                 MetoTheme.Rgb(MetoTheme.BrandBlueHex) ==
-                    (0x14 | (0x28 << 8) | (0xA0 << 16)) &&
+                    (0x4F | (0x81 << 8) | (0xBD << 16)) &&
                 MetoTheme.Rgb("#FFFFFF") == 0xFFFFFF &&
                 MetoTheme.Rgb("nonsense") == 0 &&
                 MetoTheme.Rgb(null) == 0,

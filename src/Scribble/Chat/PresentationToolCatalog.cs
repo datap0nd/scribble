@@ -172,11 +172,10 @@ namespace Scribble.Chat
                     {
                         "layout",
                         ToolSchema.String(
-                            "Optional layout: 'cover' for a title " +
-                            "page or 'agenda' for a contents page. " +
-                            "Omit for content slides - the layout " +
-                            "follows the content you supply " +
-                            "(cards, table, chart, or bullets).")
+                            "Host-owned Samsung layout: " + string.Join(", ", SamsungSlideDesign.Layouts) +
+                            ". Use two_pane for commentary plus two tables; annotated_chart for two charts; " +
+                            "visual_grid for up to four data/commentary blocks. roadmap and stack use cards. " +
+                            "action_list uses card heading, description points and final timing point. No pixel positions.")
                     },
                     {
                         "bullets",
@@ -203,6 +202,13 @@ namespace Scribble.Chat
                     { "cards", CardsSchema() },
                     { "table", TableSchema() },
                     { "chart", ChartSchema() },
+                    { "secondary_table", TableSchema() },
+                    { "secondary_chart", ChartSchema() },
+                    { "takeaway", ToolSchema.String("Evidence-backed conclusion in the bottom blue banner. At most two lines.") },
+                    { "caption", ToolSchema.String("Short table caption; use with matrix/table layouts.") },
+                    { "sources", ToolSchema.String("Exact source references and supporting evidence for claims and numbers. Retained in speaker notes.") },
+                    { "evidence", ToolSchema.String("Verbatim source excerpt supporting this slide, copied from user input or a read-tool receipt. Required for data slides. Preserve numbers and units. Never invent an excerpt.") },
+                    { "highlight_rows", new Dictionary<string, object> { { "type", "array" }, { "items", new { type = "integer", minimum = 1 } }, { "description", "1-based primary table rows or chart categories supporting the action title. The host draws red frames." } } },
                     {
                         "unit",
                         ToolSchema.String(
