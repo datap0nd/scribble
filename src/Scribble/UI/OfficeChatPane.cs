@@ -339,6 +339,12 @@ namespace Scribble.UI
                     string.Empty;
                 switch (type)
                 {
+                    case "testLabStatus":
+                        PostToWeb(new Dictionary<string, object> { { "type", "testLabStatus" }, { "enabled", Scribble.Testing.TestLab.Status() != null }, { "runId", Scribble.Testing.TestLab.ActiveRunId() }, { "captureState", Scribble.Testing.TestLab.CaptureState() } });
+                        break;
+                    case "openTestLab":
+                        Scribble.Testing.TestLabWindow.Open(HostName, () => { if (_busy) throw new InvalidOperationException("Stop the current request before starting a test."); HandleNewChat(); });
+                        break;
                     case "ready":
                         HandleWebReady();
                         break;
@@ -510,6 +516,9 @@ namespace Scribble.UI
 
         private void PostToWeb(IDictionary<string, object> payload)
         {
+            object eventType;
+            if (payload.TryGetValue("type", out eventType) && new[] { "user", "assistant", "askUser", "status", "draft" }.Contains(Convert.ToString(eventType)))
+                Scribble.Testing.TestLab.Record(Scribble.Testing.TestLab.ActiveRunId(), "pane", "pane_event", payload);
             PostRawToWeb(_serializer.Serialize(payload));
         }
 
@@ -1574,6 +1583,7 @@ namespace Scribble.UI
             string rawText,
             KoreanWorkbookSnapshot koreanWorkbookSnapshot = null, string displayLabel = null)
         {
+            Scribble.Testing.TestLab.CheckOfficeSource(_hostApplication, _hostKind);
             if (_busy)
             {
                 return;

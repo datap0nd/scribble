@@ -140,6 +140,7 @@ namespace Scribble.Chat
             string links = null,
             TopicConfig activeTopic = null)
         {
+            Scribble.Testing.TestLab.CheckBrowserSource(url);
             var safeScreenshot = NormalizeScreenshot(
                 screenshotDataUrl);
             var tools = BrowserToolCatalog.CreateDefinitions();

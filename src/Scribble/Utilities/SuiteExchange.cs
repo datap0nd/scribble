@@ -19,6 +19,7 @@ namespace Scribble.Utilities
 
         public sealed class Entry
         {
+            public string BenchmarkRunId { get; set; }
             public string Source { get; set; }
 
             public string Title { get; set; }
@@ -30,15 +31,18 @@ namespace Scribble.Utilities
 
         private static string FilePath
         {
-            get
-            {
+            get { return PathForRun(Scribble.Testing.TestLab.ActiveRunId()); }
+        }
+
+        private static string PathForRun(string run)
+        {
+                if (!string.IsNullOrEmpty(run)) return Path.Combine(Scribble.Testing.TestLab.RunDirectory(run), "suite-exchange.json");
                 return Path.Combine(
                     Environment.GetFolderPath(
                         Environment.SpecialFolder
                             .LocalApplicationData),
                     "Scribble",
                     "suite-exchange.json");
-            }
         }
 
         public static void Save(
@@ -50,6 +54,7 @@ namespace Scribble.Utilities
             {
                 var entry = new Entry
                 {
+                    BenchmarkRunId = Scribble.Testing.TestLab.ActiveRunId(),
                     Source = TextBoundary.SingleLine(source, 40),
                     Title = TextBoundary.SingleLine(title, 180),
                     Content = TextBoundary.PlainText(
@@ -62,10 +67,12 @@ namespace Scribble.Utilities
                     return;
                 }
 
-                var directory = Path.GetDirectoryName(FilePath);
+                Scribble.Testing.TestLab.Record(entry.BenchmarkRunId, "handoff", "handoff_created", new { entry.Source, entry.Title, entry.Content });
+                var destination = PathForRun(entry.BenchmarkRunId);
+                var directory = Path.GetDirectoryName(destination);
                 Directory.CreateDirectory(directory);
                 File.WriteAllText(
-                    FilePath,
+                    destination,
                     new JavaScriptSerializer().Serialize(entry),
                     new UTF8Encoding(false));
             }
@@ -79,7 +86,8 @@ namespace Scribble.Utilities
         {
             try
             {
-                if (!File.Exists(FilePath))
+                var sourcePath = FilePath;
+                if (!File.Exists(sourcePath))
                 {
                     return null;
                 }
@@ -87,13 +95,14 @@ namespace Scribble.Utilities
                 var entry = new JavaScriptSerializer()
                     .Deserialize<Entry>(
                         File.ReadAllText(
-                            FilePath,
+                            sourcePath,
                             Encoding.UTF8));
                 if (entry == null)
                 {
                     return null;
                 }
 
+                Scribble.Testing.TestLab.Record(entry.BenchmarkRunId, "handoff", "handoff_received", new { entry.Source, entry.Title });
                 entry.Source = TextBoundary.SingleLine(
                     entry.Source,
                     40);

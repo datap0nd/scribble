@@ -47,6 +47,7 @@ namespace Scribble.Outlook
                     originalMail,
                     source);
                 dynamic replyMail = reply;
+                Scribble.Testing.TestLab.RegisterMailOutput(reply);
                 var quotedHtml = SafeString(
                     () => replyMail.HTMLBody);
                 var draft = new DraftSession(
@@ -82,6 +83,7 @@ namespace Scribble.Outlook
             {
                 dynamic application = _outlookApplication;
                 draftItem = application.CreateItem(0);
+                Scribble.Testing.TestLab.RegisterMailOutput(draftItem);
                 var draft = new DraftSession(
                     draftItem,
                     "new",

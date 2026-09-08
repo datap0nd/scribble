@@ -70,6 +70,7 @@ namespace Scribble.Office
             if (workbook == null)
             {
                 workbook = application.Workbooks.Add();
+                Scribble.Testing.TestLab.RegisterOutput((object)workbook, "xlsx");
             }
 
             if (inNewWorkbook)

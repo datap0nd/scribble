@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Scribble benchmark event v1",
+  "type": "object",
+  "required": ["schema", "run_id", "task_id", "stage", "instance_id", "sequence", "utc", "detail"],
+  "properties": {
+    "schema": {"const": 1},
+    "run_id": {"type": "string", "pattern": "^[a-f0-9]{32}$"},
+    "task_id": {"type": "string"},
+    "stage": {"type": "string", "minLength": 1},
+    "instance_id": {"type": "string"},
+    "sequence": {"type": "integer", "minimum": 1},
+    "utc": {"type": "string"},
+    "detail": {}
+  }
+}

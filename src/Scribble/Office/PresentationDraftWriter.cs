@@ -265,6 +265,7 @@ namespace Scribble.Office
             {
                 // msoTrue window so the new unsaved deck is visible.
                 presentation = application.Presentations.Add(-1);
+                Scribble.Testing.TestLab.RegisterOutput((object)presentation, "pptx");
             }
 
             var existing = (int)presentation.Slides.Count;

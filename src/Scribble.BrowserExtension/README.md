@@ -121,3 +121,5 @@ Version 1.7.1 adds distinct inspection failure reasons and a single retry for a 
 - **The page cannot be read:** browser settings pages, extension galleries, PDF viewers, and some protected pages block injected scripts; those tabs are shared as address-only. Try a regular webpage.
 
 For diagnostics, open the extension entry on `chrome://extensions` and inspect the service worker or side-panel developer tools.
+
+Version 1.7.2 adds the default-off operator Test Lab entry and synthetic-session capture integration. Reload the extension after updating Scribble Setup to activate it.

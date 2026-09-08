@@ -1610,6 +1610,10 @@
     if (!m || !m.type) { return; }
     switch (m.type) {
       case "user": addUser(m.text || ""); break;
+      case "testLabStatus":
+        var lab = document.getElementById("testLabButton");
+        if (!lab) { lab = document.createElement("button"); lab.id = "testLabButton"; lab.style.cssText = "position:fixed;right:12px;top:4px;z-index:1000;font-size:10px"; lab.onclick = function () { post("openTestLab"); }; document.body.appendChild(lab); }
+        lab.hidden = !m.enabled; lab.textContent = m.runId ? "Test Lab • " + m.captureState : "Test Lab"; break;
       case "assistant": addAssistant(m.text || "", m.bold, m.md); break;
       case "activity": addActivity(m.text || "", m.kind); break;
       case "suggest": showSuggest(m.questions); break;
@@ -1789,6 +1793,8 @@
   document.getElementById("resumeTask").onclick = function () { if (!busy) post("resumeTask"); };
   document.getElementById("discardTask").onclick = function () { if (!busy) post("discardTask"); };
   post("ready");
+  post("testLabStatus");
+  setInterval(function () { post("testLabStatus"); }, 5000);
   input.focus();
 })();
 </script>
