@@ -1,3 +1,4 @@
+// Frozen v1 implementation for tasks started before workflow 2.
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -6,7 +7,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Web.Script.Serialization;
 
-namespace Scribble.Office
+namespace Scribble.Office.LegacySamsung
 {
     internal static partial class PresentationDraftWriter
     {
@@ -62,7 +63,7 @@ namespace Scribble.Office
                     var values = ValidateArray(SamsungValue(entry, "values"), MaxChartCategories, 0);
                     if (values.Length != categories.Length) throw new InvalidOperationException("Chart values must match every category; missing values cannot become zero.");
                     foreach (var value in values)
-                    { if (value == null) continue; double number; if (!double.TryParse(Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out number) || double.IsNaN(number) || double.IsInfinity(number)) throw new InvalidOperationException("Chart values must be finite numbers from the source."); }
+                    { double number; if (!double.TryParse(Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out number) || double.IsNaN(number) || double.IsInfinity(number)) throw new InvalidOperationException("Chart values must be finite numbers from the source."); }
                 }
             }
         }
@@ -80,8 +81,7 @@ namespace Scribble.Office
         {
             internal RectangleF Box;
             internal string Text = "", Font = "Arial", Fill, Color = "#000000";
-            internal float Size = SamsungSlideDesign.BodySize, Minimum = SamsungSlideDesign.BodyMinimum;
-            internal float[] ColumnWidths;
+            internal float Size = 18, Minimum = 14;
             internal bool Bold, Hollow;
             internal bool Circle, Connector;
             internal int Alignment = 1;
@@ -90,7 +90,6 @@ namespace Scribble.Office
             internal string ImageData;
             internal DraftChart HighlightChart;
             internal int HighlightCategory;
-            internal int HighlightSeries;
         }
         internal sealed class SamsungPage
         {
@@ -178,8 +177,8 @@ namespace Scribble.Office
             }
             else
             {
-                elements.Add(TextElement(draft.Title + (parts > 1 ? " (" + (part + 1) + "/" + parts + ")" : ""), SamsungSlideDesign.Title, SamsungSlideDesign.TitleSize, 18, MetoTheme.TitleFont, true));
-                elements.Add(TextElement(draft.Subtitle, SamsungSlideDesign.Action, SamsungSlideDesign.ActionSize, SamsungSlideDesign.ActionSize));
+                elements.Add(TextElement(draft.Title + (parts > 1 ? " (" + (part + 1) + "/" + parts + ")" : ""), SamsungSlideDesign.Title, 24, 18, MetoTheme.TitleFont, true));
+                elements.Add(TextElement(draft.Subtitle, SamsungSlideDesign.Action, 14, 14));
                 var queue = new Queue<SamsungElement>();
                 if (table != null) queue.Enqueue(new SamsungElement { Table = table });
                 if (draft.Chart != null) queue.Enqueue(new SamsungElement { Chart = draft.Chart });
@@ -231,7 +230,6 @@ namespace Scribble.Office
                 if (draft.Caption.Length > 0) elements.Add(TextElement(draft.Caption, SamsungSlideDesign.Percent(15.6f, 21f, 57, 3.5f), 14, 11, "Arial Narrow", true));
                 if (draft.Unit.Length > 0) { var unit = TextElement(draft.Unit, SamsungSlideDesign.Percent(80, 21.5f, 16.2f, 3.1f), 8, 8, "Calibri"); unit.Alignment = 3; elements.Add(unit); }
                 if (draft.Takeaway.Length > 0) elements.Add(TextElement(draft.Takeaway, SamsungSlideDesign.Takeaway, 14, 11, "Arial Narrow", true, SamsungSlideDesign.Blue, "#FFFFFF"));
-                AddSamsungAnnotations(elements, draft, table, secondaryTable, part, perPage);
                 // Semantic row references, never model-supplied coordinates.
                 var primary = elements.FirstOrDefault(e => e.Table != null || e.Chart != null);
                 foreach (var originalRow in draft.HighlightRows)
@@ -305,78 +303,17 @@ namespace Scribble.Office
             var table = element.Table;
             var columns = Math.Max(table.Headers.Count, table.Rows.Select(r => r.Count).DefaultIfEmpty(0).Max());
             var rows = table.Rows.Count + (table.Headers.Count > 0 ? 1 : 0);
-            if (columns == 0 || rows == 0) throw new InvalidOperationException("SLIDE_TABLE_EMPTY");
-            var weights = Enumerable.Range(0, columns).Select(c => (float)Math.Sqrt(Math.Max(4,
-                new[] { table.Headers }.Concat(table.Rows).Where(r => r.Count > c).Select(r => r[c].Length).DefaultIfEmpty(4).Max()))).ToArray();
-            var sum = weights.Sum();
-            element.ColumnWidths = weights.Select(w => element.Box.Width * w / sum).ToArray();
-            var size = SamsungSlideDesign.TableSize;
+            var box = new RectangleF(0, 0, element.Box.Width / columns - 4, element.Box.Height / rows);
+            var size = 10f;
             foreach (var row in new[] { table.Headers }.Concat(table.Rows))
-                for (var col = 0; col < row.Count; col++)
-                    size = Math.Min(size, SamsungSlideDesign.Fit(row[col], "Arial Narrow", new RectangleF(0, 0, element.ColumnWidths[col] - 4, element.Box.Height / rows), SamsungSlideDesign.TableSize, SamsungSlideDesign.TableMinimum));
-            element.Size = size; element.Minimum = SamsungSlideDesign.TableMinimum;
+                foreach (var text in row) size = Math.Min(size, SamsungSlideDesign.Fit(text, "Arial Narrow", box, 10, 7.5f));
+            element.Size = size; element.Minimum = 7.5f;
         }
 
-        internal static void ScaleSamsungPage(SamsungPage page, float scale)
-        {
-            foreach (var element in page.Elements)
-            {
-                var box = element.Box;
-                element.Box = new RectangleF(box.X * scale, box.Y * scale, box.Width * scale, box.Height * scale);
-                element.Size *= scale; element.Minimum *= scale;
-                if (element.ColumnWidths != null) element.ColumnWidths = element.ColumnWidths.Select(w => w * scale).ToArray();
-            }
-        }
-
-        private static void AddSamsungAnnotations(List<SamsungElement> elements, DraftSlide draft, DraftTable primary, DraftTable secondary, int part, int perPage)
-        {
-            if (draft.Annotations.Length > 24) throw new InvalidOperationException("Too many evidence annotations.");
-            foreach (var raw in draft.Annotations)
-            {
-                var annotation = SamsungAuthoringPolicy.ReadMap(raw);
-                var target = SamsungAuthoringPolicy.Text(annotation, "target");
-                var original = target == "table" ? draft.Table : target == "secondary_table" ? draft.SecondaryTable : null;
-                var chart = target == "chart" ? draft.Chart : target == "secondary_chart" ? draft.SecondaryChart : null;
-                var displayed = target == "table" ? primary : secondary;
-                var row = Convert.ToInt32(annotation["row"]);
-                var count = original != null ? original.Rows.Count : chart?.Categories.Count ?? 0;
-                if (row < 1 || row > count) throw new InvalidOperationException("SLIDE_ANNOTATION_INVALID: Missing evidence target.");
-                var element = elements.FirstOrDefault(e => original != null ? e.Table == displayed : e.Chart == chart);
-                if (element == null) throw new InvalidOperationException("SLIDE_ANNOTATION_INVALID: Target is not displayed.");
-                if (original != null)
-                {
-                    var local = row - part * perPage;
-                    if (local < 1 || local > displayed.Rows.Count) continue;
-                    var columns = displayed.Headers.Count > 0 ? displayed.Headers.Count : displayed.Rows[0].Count;
-                    var offset = displayed.Headers.Count > 0 ? 1 : 0;
-                    var h = element.Box.Height / (displayed.Rows.Count + offset);
-                    var box = new RectangleF(element.Box.X, element.Box.Y + (local - 1 + offset) * h, element.Box.Width, h);
-                    if (annotation.ContainsKey("column"))
-                    {
-                        var col = Convert.ToInt32(annotation["column"]);
-                        if (col < 1 || col > columns) throw new InvalidOperationException("SLIDE_ANNOTATION_INVALID: Missing table column.");
-                        FitTable(element);
-                        box.X += element.ColumnWidths.Take(col - 1).Sum(); box.Width = element.ColumnWidths[col - 1];
-                    }
-                    elements.Add(new SamsungElement { Box = box, Hollow = true });
-                }
-                else
-                {
-                    if (annotation.ContainsKey("series"))
-                    {
-                        var series = Convert.ToInt32(annotation["series"]);
-                        if (series < 1 || series > chart.Series.Count) throw new InvalidOperationException("SLIDE_ANNOTATION_INVALID: Missing chart series.");
-                        elements.Add(new SamsungElement { Box = element.Box, Hollow = true, HighlightChart = chart, HighlightCategory = row, HighlightSeries = series });
-                    }
-                    else elements.Add(new SamsungElement { Box = element.Box, Hollow = true, HighlightChart = chart, HighlightCategory = row });
-                }
-            }
-        }
-
-        internal static SamsungOutput DrawSamsungPage(object slideObject, SamsungPage page, string owner, int? displaySlideNumber = null)
+        internal static SamsungOutput DrawSamsungPage(object slideObject, SamsungPage page, string owner)
         {
             dynamic slide = slideObject;
-            page.PageNumber.Text = "- " + (displaySlideNumber ?? (int)slide.SlideIndex) + " -";
+            page.PageNumber.Text = "- " + (int)slide.SlideIndex + " -";
             slide.Tags.Add("ScribbleTask", owner);
             PaintBackground(slide, MetoTheme.Rgb(page.Background));
             var output = new SamsungOutput { Slide = slideObject, Page = page, Owner = owner };
@@ -397,13 +334,7 @@ namespace Scribble.Office
                         box = new RectangleF(area.X, area.Y + slot * area.Height / count, area.Width, area.Height / count);
                     }
                     else box = new RectangleF(area.X + (element.HighlightCategory - 1) * area.Width / count, area.Y, area.Width / count, area.Height);
-                    if (element.HighlightSeries > 0)
-                    {
-                        dynamic point = chartShape.Chart.SeriesCollection(element.HighlightSeries).Points(element.HighlightCategory);
-                        box = new RectangleF((float)chartShape.Left + (float)point.Left, (float)chartShape.Top + (float)point.Top, Math.Max(4, (float)point.Width), Math.Max(4, (float)point.Height));
-                    }
-                    dynamic canvas = slide.Parent;
-                    if (box.Left < 0 || box.Top < 0 || box.Right > (float)canvas.PageSetup.SlideWidth || box.Bottom > (float)canvas.PageSetup.SlideHeight) throw new InvalidOperationException("SLIDE_CHART_GEOMETRY_INVALID");
+                    if (!SamsungSlideDesign.InBounds(box)) throw new InvalidOperationException("SLIDE_CHART_GEOMETRY_INVALID");
                     element.Box = box;
                     ReleaseSamsungCom((object)chartShape);
                 }
@@ -444,8 +375,6 @@ namespace Scribble.Office
                     var columns = rows.Max(r => r.Count);
                     shape = slide.Shapes.AddTable(rows.Length, columns, box.X, box.Y, box.Width, box.Height);
                     dynamic table = shape.Table;
-                    if (element.ColumnWidths != null)
-                        for (var col = 0; col < columns; col++) table.Columns[col + 1].Width = element.ColumnWidths[col];
                     for (var row = 0; row < rows.Length; row++)
                     for (var col = 0; col < columns; col++)
                     {
@@ -453,7 +382,7 @@ namespace Scribble.Office
                         dynamic cellShape = cell.Shape;
                         cellShape.Fill.Solid(); cellShape.Fill.ForeColor.RGB = MetoTheme.Rgb(row == 0 ? SamsungSlideDesign.Gray : "#FFFFFF");
                         for (var edge = 1; edge <= 4; edge++) { cell.Borders(edge).Weight = .5f; cell.Borders(edge).ForeColor.RGB = MetoTheme.Rgb("#A6A6A6"); }
-                        ApplySamsungText(cellShape, TextElement(col < rows[row].Count ? rows[row][col] : "", new RectangleF(0, 0, element.ColumnWidths == null ? box.Width / columns : element.ColumnWidths[col], box.Height / rows.Length), element.Size, element.Minimum, "Arial Narrow", row == 0));
+                        ApplySamsungText(cellShape, TextElement(col < rows[row].Count ? rows[row][col] : "", new RectangleF(0, 0, box.Width / columns, box.Height / rows.Length), element.Size, 7.5f, "Arial Narrow", row == 0));
                     }
                 }
                 else
@@ -475,9 +404,7 @@ namespace Scribble.Office
             }
             // The complete source references stay in notes even when the visible
             // footer is short. No presentation is saved by this writer.
-            dynamic notes = slide.NotesPage.Shapes.Placeholders[2].TextFrame.TextRange;
-            var existingNotes = Convert.ToString(notes.Text) ?? "";
-            notes.InsertAfter((existingNotes.Length > 0 ? "\n\n" : "") + page.Source.Sources + "\n" + page.Source.Footnote + "\nEvidence:\n" + page.Source.Evidence);
+            slide.NotesPage.Shapes.Placeholders[2].TextFrame.TextRange.Text = DraftMarker + "\n" + SamsungSlideDesign.Version + "\n" + page.Source.Sources + "\n" + page.Source.Footnote + "\nEvidence:\n" + page.Source.Evidence;
             return output;
         }
         private static void ApplySamsungText(dynamic shape, SamsungElement element)
@@ -501,12 +428,6 @@ namespace Scribble.Office
             if ((double)range.BoundHeight > element.Box.Height || (double)range.BoundWidth > element.Box.Width)
                 throw new InvalidOperationException("SLIDE_OVERFLOW: PowerPoint text metrics require splitting this content.");
         }
-        internal static void SetSamsungPageNumber(SamsungOutput output, int index)
-        {
-            output.Page.PageNumber.Text = "- " + index + " -";
-            var element = output.Page.Elements.IndexOf(output.Page.PageNumber);
-            ApplySamsungText(((dynamic)output.Slide).Shapes[element + 1], output.Page.PageNumber);
-        }
         internal static string ExportSamsung(SamsungOutput output)
         {
             dynamic slide = output.Slide;
@@ -515,50 +436,24 @@ namespace Scribble.Office
             try { slide.Export(path, "PNG", 1600, 900); return "data:image/png;base64," + Convert.ToBase64String(File.ReadAllBytes(path)); }
             finally { if (File.Exists(path)) File.Delete(path); }
         }
-        internal static void ReplaceOwnedSamsung(SamsungOutput output, SamsungPage replacement)
+        internal static void RepairSamsung(SamsungOutput output)
         {
             dynamic slide = output.Slide;
-            if (ExportSamsung(output) != output.Image || (int)slide.Shapes.Count != output.ShapeIds.Count)
-                throw new InvalidOperationException("SLIDE_CHANGED_DURING_REPAIR");
+            if (!SamsungSlideDesign.SameOwner((string)slide.Tags["ScribbleTask"], output.Owner) || (int)slide.Shapes.Count != output.ShapeIds.Count)
+                throw new InvalidOperationException("SLIDE_OWNERSHIP_CHANGED: The draft was edited during review.");
             for (var i = 0; i < output.ShapeIds.Count; i++)
-                if ((int)slide.Shapes[i + 1].Id != output.ShapeIds[i] || !SamsungSlideDesign.SameOwner((string)slide.Shapes[i + 1].Tags["ScribbleTask"], output.Owner))
+            {
+                dynamic shape = slide.Shapes[i + 1];
+                if ((int)shape.Id != output.ShapeIds[i] || !SamsungSlideDesign.SameOwner((string)shape.Tags["ScribbleTask"], output.Owner))
                     throw new InvalidOperationException("SLIDE_OWNERSHIP_CHANGED");
-            dynamic originalDeck = slide.Parent;
-            dynamic temporary = slide.Application.Presentations.Add(0);
-            temporary.PageSetup.SlideWidth = originalDeck.PageSetup.SlideWidth;
-            temporary.PageSetup.SlideHeight = originalDeck.PageSetup.SlideHeight;
-            var scale = (float)originalDeck.PageSetup.SlideWidth / SamsungSlideDesign.Width;
-            if (Math.Abs(scale - 1) > .001) ScaleSamsungPage(replacement, scale);
-            dynamic staged = temporary.Slides.Add(1, PpLayoutBlank);
-            DrawSamsungPage((object)staged, replacement, output.Owner);
-            // Preserve live numbering when the staging deck contains one slide.
-            replacement.PageNumber.Text = "- " + (int)slide.SlideIndex + " -";
-            var numberIndex = replacement.Elements.IndexOf(replacement.PageNumber);
-            ApplySamsungText(staged.Shapes[numberIndex + 1], replacement.PageNumber);
-            PresentationRevision.ValidateNativeGeometry((object)staged);
-            // Preserve a native original until the replacement succeeds. This is an
-            // unsaved Office object and never a saved/exported presentation.
-            slide.Copy();
-            dynamic backupRange = temporary.Slides.Paste(2);
-            dynamic backup = backupRange[1];
-            try
-            {
-                if (ExportSamsung(output) != output.Image) throw new InvalidOperationException("SLIDE_CHANGED_DURING_REPAIR");
-                for (var i = (int)slide.Shapes.Count; i >= 1; i--) slide.Shapes[i].Delete();
-                PaintBackground(slide, MetoTheme.Rgb(replacement.Background));
-                staged.Shapes.Range().Copy(); slide.Shapes.Paste();
-                output.Page = replacement;
-                output.ShapeIds.Clear();
-                for (var i = 1; i <= (int)slide.Shapes.Count; i++) output.ShapeIds.Add((int)slide.Shapes[i].Id);
-                output.Image = ExportSamsung(output);
-                temporary.Close();
-            }
-            catch
-            {
-                // The native original remains available rather than falsely
-                // claiming successful recovery after an uncertain COM failure.
-                temporary.NewWindow();
-                throw new InvalidOperationException("SLIDE_REPAIR_RECOVERY_REQUIRED: The unsaved recovery presentation contains the original slide.");
+                var element = output.Page.Elements[i];
+                if (element.Chart == null && element.Table == null && element.ImageData == null && !element.Hollow && !element.Connector && !element.Circle)
+                {
+                    if (((string)shape.TextFrame.TextRange.Text).Replace("\r\n", "\n").Replace("\r", "\n") != element.Text.Replace("\r\n", "\n").Replace("\r", "\n")) throw new InvalidOperationException("SLIDE_CONTENT_CHANGED: User edits are preserved.");
+                    element.Size = Math.Max(element.Minimum, element.Size - 1f);
+                    ApplySamsungText(shape, element);
+                }
+                ReleaseSamsungCom((object)shape);
             }
         }
         private static void ReleaseSamsungCom(object value)

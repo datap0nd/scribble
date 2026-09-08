@@ -33,6 +33,14 @@ if ($actual.Count -ne 40 -or (Compare-Object ($required | Sort-Object) ($actual 
     throw 'All forty distinct native origin/destination/startup cases are required.'
 }
 $scenarios = @('browser_controls','morning_summary','five_slide_launch','outlook_to_powerpoint','recovery')
+if ($candidate.powerpoint_workflow -ge 2) {
+    $scenarios += @('samsung_executive_summary','samsung_performance_12','samsung_dense_comparison','samsung_bilingual_strategy','samsung_existing_revision')
+    if ($evidence.powerpoint.workflow_version -ne 2 -or $evidence.powerpoint.required_content_coverage -ne 1 -or
+        $evidence.powerpoint.editable_objects_verified -ne $true -or $evidence.powerpoint.unintended_changes -ne 0 -or
+        $evidence.powerpoint.saved_or_exported -ne $false -or $evidence.powerpoint.native_revision_passed -ne $true) {
+        throw 'Samsung v2 requires full native content coverage, editability, revision recovery and no unintended changes or presentation saves/exports.'
+    }
+}
 if (@($evidence.models).Count -eq 0) { throw 'No actual model configuration was tested.' }
 foreach ($model in $evidence.models) {
     if ($model.configuration_fingerprint -notmatch '^[a-f0-9]{64}$' -or $model.synthetic_contract_passed -ne $true -or

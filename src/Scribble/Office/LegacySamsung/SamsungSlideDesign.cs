@@ -1,31 +1,17 @@
+// Frozen v1 implementation for tasks started before workflow 2.
 using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Text;
 using System.Linq;
 
-namespace Scribble.Office
+namespace Scribble.Office.LegacySamsung
 {
     // Versioned, host-owned geometry. Percentages come from the supplied MD;
     // conflicting/off-canvas observations are normalized in the implementation notes.
     public static class SamsungSlideDesign
     {
-        public const string Version = "Samsung MD 2.0";
-        public const float TitleSize = 24, BodySize = 18, BodyMinimum = 14, ActionSize = 14;
-        public const float TableSize = 10, TableMinimum = 7.5f;
-        public static string RecipePurpose(string layout)
-        {
-            switch (layout)
-            {
-                case "matrix": case "table": return "Dense specification or performance comparison with complete rows.";
-                case "two_pane": return "Executive commentary beside two evidence tables.";
-                case "annotated_chart": return "Two related charts with semantic evidence highlights.";
-                case "roadmap": return "Proposed or confirmed actions with explicitly sourced dates and owners.";
-                case "stack": return "Layered strategy or operating model.";
-                case "visual_grid": return "Up to four related evidence figures.";
-                default: return "Samsung " + layout + " composition; retain all supplied evidence.";
-            }
-        }
+        public const string Version = "Samsung MD 1.0";
         public const float Width = 960f, Height = 540f;
         public const string Blue = "#4F81BD", SoftBlue = "#5B9BD5", Border = "#41719C";
         public const string Gray = "#F2F2F2", Red = "#C00000", Green = "#00B050";

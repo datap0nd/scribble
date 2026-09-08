@@ -77,7 +77,7 @@ namespace Scribble.Chat
         {
             var name = call.function.name;
             if (result.Outcome.Failed || name == TaskContextManager.ReadEvidenceTool || name == ReadSourcesTool ||
-                !(name.StartsWith("read_") || name == "search_mailbox" || name == "fetch_web_page" ||
+                !(name.StartsWith("read_") || name == PresentationToolCatalog.InspectSlide || name == "search_mailbox" || name == "fetch_web_page" ||
                   name == BrowserToolCatalog.ReadPage || name == BrowserToolCatalog.SnapshotPage)) return;
             var strings = new List<string>();
             try { Collect(_json.DeserializeObject(result.Content), strings); }

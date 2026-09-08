@@ -1,4 +1,4 @@
-$ErrorActionPreference = "Stop"
+﻿$ErrorActionPreference = "Stop"
 
 $sourceRoot = Join-Path $PSScriptRoot "..\src\Scribble"
 $sourceFiles = Get-ChildItem $sourceRoot -Recurse -Filter *.cs
@@ -16,6 +16,8 @@ foreach ($pattern in $forbidden) {
     $matches = $sourceFiles | Select-String -Pattern $pattern |
         Where-Object {
             $_.Line -notmatch 'File\.Delete' -and
+            -not ($pattern -eq "\.Delete\s*\(" -and
+                ($_.Path -like '*\Office\PresentationRevision.cs' -or $_.Path -like '*\Office\PresentationDraftWriter.Samsung.cs')) -and
             -not ($_.Path -like '*\Chat\TaskCoordinator.cs' -and
                 ($_.Line.Trim() -eq 'if (Directory.Exists(path)) Directory.Delete(path, true);' -or
                  $_.Line.Trim() -eq 'else File.Move(temporary, path);')) -and
@@ -415,6 +417,19 @@ $officeGuardedFiles = @(
     (Join-Path $sourceRoot "Office\WorkbookToolHost.cs"),
     (Join-Path $sourceRoot "Office\WorkbookDraftWriter.cs"),
     (Join-Path $sourceRoot "Office\PresentationToolHost.cs"),
+    (Join-Path $sourceRoot "Office\PresentationInspection.cs"),
+    (Join-Path $sourceRoot "Office\SamsungGenerationJournal.cs"),
+    (Join-Path $sourceRoot "Office\SamsungRepairPolicy.cs"),
+    (Join-Path $sourceRoot "Office\PresentationChartEdit.cs"),
+    (Join-Path $sourceRoot "Office\DocumentDraftHost.LegacySamsung.cs"),
+    (Join-Path $sourceRoot "Office\LegacySamsung\PresentationDraftWriter.cs"),
+    (Join-Path $sourceRoot "Office\LegacySamsung\PresentationDraftWriter.Samsung.cs"),
+    (Join-Path $sourceRoot "Office\PresentationRevision.cs"),
+    (Join-Path $sourceRoot "Office\PresentationRevision.Recovery.cs"),
+    (Join-Path $sourceRoot "Office\PresentationDraftWriter.Samsung.cs"),
+    (Join-Path $sourceRoot "Office\DocumentDraftHost.Revisions.cs"),
+    (Join-Path $sourceRoot "Office\DocumentDraftHost.PowerPoint.cs"),
+    (Join-Path $sourceRoot "Office\DocumentDraftHost.SlideRepair.cs"),
     (Join-Path $sourceRoot "Office\PresentationDraftWriter.cs"),
     (Join-Path $sourceRoot "Office\WordToolHost.cs"),
     (Join-Path $sourceRoot "Office\WordDraftWriter.cs"),
@@ -439,7 +454,10 @@ foreach ($guardedFile in $officeGuardedFiles) {
             Where-Object {
                 $_.Line -notmatch '_settingsStore\.Save' -and
                 $_.Line -notmatch 'SuiteExchange\.Save' -and
-                $_.Line -notmatch 'dataWorkbook\.Close'
+                $_.Line -notmatch 'dataWorkbook\.Close' -and
+                -not (($_.Path -like '*\Office\PresentationDraftWriter.Samsung.cs' -or $_.Path -like '*\Office\LegacySamsung\PresentationDraftWriter.Samsung.cs') -and $_.Line.Trim() -eq 'image.Save(path, System.Drawing.Imaging.ImageFormat.Png);') -and
+                -not ($_.Path -like '*\Office\PresentationDraftWriter.Samsung.cs' -and $_.Line.Trim() -eq 'temporary.Close();') -and
+                -not ($_.Path -like '*\Office\PresentationRevision.cs' -and ($_.Line -match 'working\.Close\(\)' -or $_.Line -match 'recovery\.Close\(\)'))
             }
         if ($hits) {
             throw "Forbidden document capability $pattern in $guardedFile."
@@ -479,6 +497,9 @@ $presentationToolNames = [regex]::Matches(
 if (Compare-Object $presentationToolNames (@(
     "list_slides",
     "read_slide",
+    "inspect_slide",
+    "revise_slides",
+    "revert_scribble_changes",
     "add_draft_slides") | Sort-Object)) {
     throw "Presentation tool catalog contains an unexpected capability."
 }
@@ -608,7 +629,7 @@ if (-not $presentationWriterSource.Contains("AddDraftTag(")) {
 $themeSource = Get-Content (
     Join-Path $sourceRoot "Office\MetoTheme.cs") -Raw
 foreach ($requiredToken in @(
-    'ThemeName = "Samsung MD 1.0"',
+    'ThemeName = SamsungSlideDesign.Version',
     'TitleFont = "Samsung Sharp Sans Bold"',
     'BodyFont = "Arial"',
     'BrandBlueHex = "#4F81BD"',

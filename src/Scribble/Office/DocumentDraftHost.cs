@@ -75,6 +75,7 @@ namespace Scribble.Office
             {
                 "slides",
                 "plan",
+                "briefs",
                 "after_slide"
             };
 
@@ -123,6 +124,8 @@ namespace Scribble.Office
             string hostKind,
             string name)
         {
+            if (name == PresentationToolCatalog.ReviseSlides || name == PresentationToolCatalog.RevertSlides)
+                return hostKind == "powerpoint" && PresentationRevisionAcceptance.Enabled;
             if (name == CrossAppToolCatalog.OpenInChrome)
                 return hostKind == "outlook" || hostKind == "excel" || hostKind == "powerpoint" || hostKind == "word";
             if (CrossAppToolCatalog.IsCrossAppTool(name))

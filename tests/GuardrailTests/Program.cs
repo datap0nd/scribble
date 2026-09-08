@@ -29,8 +29,10 @@ namespace GuardrailTests
         private static int _passed;
         private static string _filter;
 
+        [STAThread]
         private static int Main(string[] args)
         {
+            if (args.Length == 2 && args[0] == "--native-powerpoint") return SamsungNativeAcceptance.Run(args[1]);
             // The MCP round-trip test relaunches this same exe as a
             // scripted stdio MCP server, so the test needs no
             // external interpreter and stays deterministic. The
@@ -75,6 +77,13 @@ namespace GuardrailTests
                 Run("QA structured XLS preserves positions multilingual values and sheets", QaStructuredXls);
                 Run("QA sample slide evidence accepts user values without external quotes", QaSampleEvidence);
                 Run("QA draft grounding rejects invented facts and stale future dates", QaDraftGrounding);
+                Run("Samsung v2 interrupted native generation reconciles without duplication", SamsungRecoveryTests.GenerationRecovery);
+                Run("Samsung v2 revision snapshots reconcile and preserve user edits", SamsungRecoveryTests.RevisionRecovery);
+                Run("Samsung v2 repair scope and chart source bindings", SamsungRecoveryTests.RepairScopeAndChartBindings);
+                Run("Samsung legacy renderer remains version pinned", SamsungRecoveryTests.LegacyRenderer);
+                Run("Samsung v2 evidence calculations and sample isolation", SamsungWorkflowTests.Evidence);
+                Run("Samsung v2 native chart gaps and semantic annotations", SamsungWorkflowTests.ChartGapsAndAnnotations);
+                Run("Samsung v2 shared policy and final completion gate", SamsungWorkflowTests.PolicyAndCompletion);
                 Run("Samsung layouts preserve content and enforce overflow bounds", SamsungSlideTests.LayoutsAndOverflow);
                 Run("Samsung slide numbers require verified source evidence", SamsungSlideTests.EvidenceAndNumbers);
                 Run("PowerPoint and Outlook slide tool calls reach independent review", SlideToolCallsReachReview);
@@ -5820,7 +5829,7 @@ namespace GuardrailTests
         private static void CorporateThemeIsHardcoded()
         {
             Assert(
-                MetoTheme.ThemeName == "Samsung MD 1.0" &&
+                MetoTheme.ThemeName == SamsungSlideDesign.Version &&
                 MetoTheme.TitleFont == "Samsung Sharp Sans Bold" &&
                 MetoTheme.BodyFont == "Arial",
                 "The corporate font stack changed unexpectedly.");
@@ -6726,6 +6735,7 @@ namespace GuardrailTests
             Assert(
                 presentationNames.SequenceEqual(new[]
                 {
+                    "inspect_slide",
                     "list_slides",
                     "read_slide"
                 }),
@@ -7720,7 +7730,7 @@ namespace GuardrailTests
                 var launches = 0;
                 try
                 {
-                    using (var server = new FakeEndpoint(target == "outlook" ? new[] { callResponse, approved, done } : target != "powerpoint" ? new[] { callResponse, done } : new[] { callResponse, approved, approved, continuation, approved, approved, done }))
+                    using (var server = new FakeEndpoint(target == "outlook" ? new[] { callResponse, approved, done } : target != "powerpoint" ? new[] { callResponse, done } : new[] { callResponse, approved, approved, approved, continuation, approved, approved, approved, approved, done }))
                     {
                         var settings = EndpointSettings(server.BaseUrl); settings.Model = "qwen3-vl";
                         using (var service = new BrowserChatService(settings, progId => {
@@ -7930,6 +7940,7 @@ namespace GuardrailTests
                 using (var host = new DocumentDraftHost(hostKind, new object()))
                 {
                     var settings = EndpointSettings(server.BaseUrl);
+                    settings.Model = "qwen3-vl";
                     var message = client.CompleteAsync(settings, MakeRequest(new List<ChatTurn>()), CancellationToken.None).GetAwaiter().GetResult();
                     var authorization = new OneShotDraftAuthorization(true);
                     var result = host.ExecuteAsync(message.tool_calls.Single(), authorization, true,

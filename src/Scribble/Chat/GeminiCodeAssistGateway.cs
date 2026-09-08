@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
@@ -1750,9 +1751,14 @@ namespace Scribble.Chat
                 switch (pair.Key)
                 {
                     case "type":
-                        result["type"] =
-                            (Convert.ToString(pair.Value) ??
-                             "object").ToUpperInvariant();
+                        var typeChoices = pair.Value as System.Collections.IEnumerable;
+                        if (typeChoices != null && !(pair.Value is string))
+                        {
+                            var names = typeChoices.Cast<object>().Select(Convert.ToString).ToArray();
+                            result["type"] = names.First(n => n != "null").ToUpperInvariant();
+                            if (names.Contains("null")) result["nullable"] = true;
+                        }
+                        else result["type"] = (Convert.ToString(pair.Value) ?? "object").ToUpperInvariant();
                         break;
                     case "description":
                     case "required":

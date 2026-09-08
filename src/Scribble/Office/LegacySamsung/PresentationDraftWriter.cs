@@ -1,10 +1,11 @@
+// Frozen v1 implementation for tasks started before workflow 2.
 using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Scribble.Security;
 
-namespace Scribble.Office
+namespace Scribble.Office.LegacySamsung
 {
     // The single PowerPoint write surface of the suite. Draft slides
     // are added to the presentation, every added slide carries the
@@ -104,7 +105,6 @@ namespace Scribble.Office
             internal List<string> ImageData { get; } = new List<string>();
             internal DraftTable SecondaryTable { get; set; }
             internal DraftChart SecondaryChart { get; set; }
-            internal object[] Annotations { get; set; } = new object[0];
             internal IReadOnlyList<int> HighlightRows { get; set; } = new int[0];
         }
 
@@ -177,15 +177,15 @@ namespace Scribble.Office
         {
             internal DraftChartSeries(
                 string name,
-                IReadOnlyList<double?> values)
+                IReadOnlyList<double> values)
             {
                 Name = name ?? string.Empty;
-                Values = values ?? new double?[0];
+                Values = values ?? new double[0];
             }
 
             internal string Name { get; }
 
-            internal IReadOnlyList<double?> Values { get; }
+            internal IReadOnlyList<double> Values { get; }
         }
 
         // A bullet line with its outline level (1-5). Sub-bullets
@@ -238,8 +238,7 @@ namespace Scribble.Office
             int? afterSlide,
             bool inNewPresentation,
             Action<SamsungOutput> onRendered = null,
-            object boundPresentation = null,
-            SamsungGenerationJournal journal = null)
+            object boundPresentation = null)
         {
             if (slides == null || slides.Count == 0)
             {
@@ -273,13 +272,9 @@ namespace Scribble.Office
                 presentation.PageSetup.SlideWidth = SamsungSlideDesign.Width;
                 presentation.PageSetup.SlideHeight = SamsungSlideDesign.Height;
             }
-            else if (Math.Abs((double)presentation.PageSetup.SlideWidth / (double)presentation.PageSetup.SlideHeight - 16.0 / 9) > .01)
-                throw new InvalidOperationException("SAMSUNG_CANVAS_MISMATCH: Samsung reconstruction needs a 16:9 deck. Existing slides were not resized.");
-            var canvasScale = (float)presentation.PageSetup.SlideWidth / SamsungSlideDesign.Width;
-            if (Math.Abs(canvasScale - 1) > .001f)
-                foreach (var page in planned) ScaleSamsungPage(page, canvasScale);
-            journal?.Bind((object)presentation, planned.Count);
-            if (journal != null) existing = journal.Data.OriginalIds.Length;
+            else if (Math.Abs((double)presentation.PageSetup.SlideWidth - SamsungSlideDesign.Width) > .1 ||
+                     Math.Abs((double)presentation.PageSetup.SlideHeight - SamsungSlideDesign.Height) > .1)
+                throw new InvalidOperationException("SAMSUNG_CANVAS_MISMATCH: Use a new 960 x 540 presentation. Existing slides were not resized.");
             var anchor = existing;
             if (afterSlide.HasValue)
             {
@@ -299,18 +294,15 @@ namespace Scribble.Office
             var added = 0;
             var charts = 0;
             var tables = 0;
-            var owner = journal?.Data.Owner ?? Guid.NewGuid().ToString("N");
+            var owner = Guid.NewGuid().ToString("N");
             foreach (var page in planned)
             {
                 var index = anchor + added + 1;
-                var output = journal?.Resume(page, added);
-                if (output == null)
-                {
-                    dynamic created = presentation.Slides.Add(index, PpLayoutBlank);
-                    output = DrawSamsungPage((object)created, page, owner);
-                    output.Image = ExportSamsung(output);
-                    journal?.Record(output, added);
-                }
+                dynamic created = presentation.Slides.Add(
+                    index,
+                    PpLayoutBlank);
+                var output = DrawSamsungPage((object)created, page, owner);
+                output.Image = ExportSamsung(output);
                 onRendered?.Invoke(output);
                 var drawn = (page.Elements.Any(e => e.Chart != null) ? 1 : 0) | (page.Elements.Any(e => e.Table != null) ? 2 : 0);
                 if ((drawn & 1) != 0)
@@ -1350,7 +1342,7 @@ namespace Scribble.Office
                             series + 2].Value2 =
                             category < values.Count
                                 ? values[category]
-                                : (double?)null;
+                                : 0d;
                     }
                 }
 
@@ -1400,19 +1392,10 @@ namespace Scribble.Office
                 for (var s = 0; s < chart.Series.Count; s++)
                 {
                     var actual = ((IEnumerable)slideChart.SeriesCollection(s + 1).Values).Cast<object>().Select(Convert.ToDouble).ToArray();
-                    for (var point = 0; point < chart.Series[s].Values.Count; point++)
-                    {
-                        var expected = chart.Series[s].Values[point];
-                        // Native series may expose a blank as zero; verify the
-                        // embedded cell itself so a missing value is never written as zero.
-                        object cellValue = dataSheet.Cells[point + 2, s + 2].Value2;
-                        if (!expected.HasValue ? cellValue != null : point >= actual.Length || actual[point] != expected.Value)
-                            throw new InvalidOperationException("Chart data readback failed.");
-                    }
+                    if (!actual.SequenceEqual(chart.Series[s].Values)) throw new InvalidOperationException("Chart data readback failed.");
                     var labels = ((IEnumerable)slideChart.SeriesCollection(s + 1).XValues).Cast<object>().Select(Convert.ToString).ToArray();
                     if (!labels.SequenceEqual(chart.Categories)) throw new InvalidOperationException("Chart category readback failed.");
                 }
-                slideChart.DisplayBlanksAs = 1; // xlNotPlotted: preserve gaps.
                 StyleChart(slideChart, chart);
 
                 try
@@ -1869,7 +1852,6 @@ namespace Scribble.Office
                     Sources = SamsungString(map, "sources", 2000),
                     Evidence = SamsungString(map, "evidence", 12000),
                     Id = SamsungString(map, "id", 80),
-                    Annotations = SamsungAuthoringPolicy.Array(map, "annotations"),
                     ImageNames = ValidateArray(SamsungValue(map, "image_names"), 4, 250).Select(Convert.ToString).ToArray(),
                     SecondaryTable = ParseTable(new Dictionary<string, object> { { "table", SamsungValue(map, "secondary_table") } }),
                     SecondaryChart = ParseChart(new Dictionary<string, object> { { "chart", SamsungValue(map, "secondary_chart") } }),
@@ -2090,7 +2072,7 @@ namespace Scribble.Office
                     entryMap.TryGetValue(
                         "values",
                         out valuesValue);
-                    var values = new List<double?>();
+                    var values = new List<double>();
                     var valueList = valuesValue as IEnumerable;
                     if (valueList != null &&
                         !(valuesValue is string))
@@ -2103,7 +2085,6 @@ namespace Scribble.Office
                                 break;
                             }
 
-                            if (value == null) { values.Add(null); continue; }
                             double parsed;
                             values.Add(double.TryParse(
                                 Convert.ToString(

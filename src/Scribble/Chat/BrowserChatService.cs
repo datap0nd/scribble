@@ -272,7 +272,7 @@ namespace Scribble.Chat
                 activeTopic);
 
             var savedTask = BrowserTaskSession.Load(chatId, turnId) ?? new DurableTaskState {
-                Id = BrowserTaskSession.Id(chatId, turnId), Host = "chrome", Objective = safePrompt };
+                Id = BrowserTaskSession.Id(chatId, turnId), Host = "chrome", Objective = safePrompt, SamsungWorkflowVersion = Scribble.Office.SamsungAuthoringPolicy.WorkflowVersion };
             var pending = savedTask.PendingCalls.ToArray();
             var incoming = (exchange ?? new BrowserExchangeTurn[0]).SelectMany(t => t.Results ?? new List<BrowserExchangeResult>()).ToArray();
             foreach (var call in pending)

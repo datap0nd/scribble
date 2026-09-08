@@ -86,6 +86,9 @@ namespace Scribble.Chat
         public int PrefixCount { get; set; }
         public int ContextBudget { get; set; } = 96000;
         public int RequiredPresentationSlides { get; set; }
+        public int SamsungWorkflowVersion { get; set; }
+        public bool PresentationReviewRequired { get; set; }
+        public string PresentationReviewReceipt { get; set; }
         public bool UserPaused { get; set; }
         public string ProcessSession { get; set; }
         public List<ChatToolCall> PendingCalls { get; set; } = new List<ChatToolCall>();
@@ -104,7 +107,8 @@ namespace Scribble.Chat
         {
             var expected = new HashSet<string>(ExpectedSourceIds, StringComparer.Ordinal);
             var covered = Batches.SelectMany(b => b.CoveredSourceIds).ToArray();
-            return EnumerationComplete && Outstanding().Length == 0 &&
+            return (!PresentationReviewRequired || !string.IsNullOrEmpty(PresentationReviewReceipt)) &&
+                EnumerationComplete && Outstanding().Length == 0 &&
                 (RequiredPresentationSlides == 0 || covered.Count(id => id.StartsWith("ppt:", StringComparison.Ordinal)) >= RequiredPresentationSlides) &&
                 covered.Distinct(StringComparer.Ordinal).Count() == covered.Length &&
                 Batches.All(b => b.Failures.Count == 0 && b.CoveredSourceIds.All(expected.Contains)) &&

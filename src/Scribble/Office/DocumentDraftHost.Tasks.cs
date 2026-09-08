@@ -71,6 +71,19 @@ namespace Scribble.Office
         {
             get
             {
+                if (_taskContext != null && _taskContext.State.HostData.ContainsKey("samsung_pending"))
+                {
+                    var pending = _serializer.Deserialize<SamsungGenerationJournal.State>(_taskContext.State.HostData["samsung_pending"]);
+                    string evidence;
+                    _taskContext.State.HostData.TryGetValue("samsung_recovery_payload", out evidence);
+                    return "An interrupted Samsung generation has native receipts. Read the original payload with read_task_evidence (id: " + evidence + ", offset: 0), then resume " + pending.ToolName +
+                        " with that payload unchanged. The host verifies surviving native IDs and fingerprints before any write. Do not create a replacement deck or change the original plan.";
+                }
+                if (_taskContext != null && _taskContext.State.HostData.ContainsKey("powerpoint_revision_snapshot") && _taskContext.State.Writes.Any(w => w.Status != "verified"))
+                {
+                    string evidence; _taskContext.State.HostData.TryGetValue("powerpoint_revision_payload", out evidence);
+                    return "An interrupted PowerPoint revision has native recovery receipts. Read the original payload with read_task_evidence (id: " + evidence + ", offset: 0), then resume revise_slides unchanged. The host reconciles surviving state; never repeat uncertain edits.";
+                }
                 if (_durableExcel == null) return "";
                 var offset = _durableExcel.State.Staged;
                 var selected = new List<ExcelTaskCell>();
@@ -109,8 +122,10 @@ namespace Scribble.Office
                 var review = await DraftContentReview.ReviewAsync(call, _taskContext, prompt, client, settings, token);
                 if (review != null) return review;
             }
+            if (name == PresentationToolCatalog.ReviseSlides || name == PresentationToolCatalog.RevertSlides)
+                return await ExecuteRevisionAsync(call, authorization, exclusive, prompt, client, settings, token, progress);
             if (name == PresentationToolCatalog.AddDraftSlides || name == CrossAppToolCatalog.SendToPowerPoint)
-                return await ExecuteSamsungAsync(call, authorization, exclusive, prompt, client, settings, token);
+                return await ExecuteSamsungAsync(call, authorization, exclusive, prompt, client, settings, token, progress);
             if (_durableExcel == null || (name != WorkbookToolCatalog.WriteSelectionOutput && name != WorkbookToolCatalog.WriteKoreanTranslations))
                 return Execute(call, authorization, exclusive, prompt);
             // Keep the original host argument and permission preflights; a review

@@ -36,6 +36,26 @@ try {
     if (-not $rejected) { throw 'Gate accepted a missing native route.' }
     $evidence.routes = $routes
     $evidence | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $evidencePath
+    $candidate.powerpoint_workflow = 2
+    $candidate | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $fixtureDirectory 'candidate.json')
+    $rejected = $false
+    try { & $validator -CandidateDirectory $fixtureDirectory -EvidencePath $evidencePath | Out-Null } catch { $rejected = $true }
+    if (-not $rejected) { throw 'Gate accepted Samsung v2 without native workflow evidence.' }
+    # Synthetic validator records only; these are never release acceptance receipts.
+    $evidence.powerpoint = @{workflow_version=2;required_content_coverage=1;editable_objects_verified=$true;unintended_changes=0;saved_or_exported=$false;native_revision_passed=$true}
+    foreach ($scenario in @('samsung_executive_summary','samsung_performance_12','samsung_dense_comparison','samsung_bilingual_strategy','samsung_existing_revision')) {
+        1..20 | ForEach-Object { $runs += @{scenario=$scenario;run_id="$scenario-$_";passed=$true;native=$true;receipt_sha256=$hash} }
+    }
+    $evidence.models[0].runs = $runs
+    $evidence | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $evidencePath
+    & $validator -CandidateDirectory $fixtureDirectory -EvidencePath $evidencePath | Out-Null
+    $evidence.powerpoint.saved_or_exported = $true
+    $evidence | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $evidencePath
+    $rejected = $false
+    try { & $validator -CandidateDirectory $fixtureDirectory -EvidencePath $evidencePath | Out-Null } catch { $rejected = $true }
+    if (-not $rejected) { throw 'Gate accepted a Samsung workflow that saved/exported a presentation.' }
+    $evidence.powerpoint.saved_or_exported = $false
+    $evidence | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $evidencePath
     'Different candidate bytes' | Set-Content -LiteralPath $installer
     $rejected = $false
     try { & $validator -CandidateDirectory $fixtureDirectory -EvidencePath $evidencePath | Out-Null } catch { $rejected = $true }

@@ -117,7 +117,27 @@
     <Compile Include="Office\PresentationDraftWriter.cs" />
     <Compile Include="Office\SamsungSlideDesign.cs" />
     <Compile Include="Office\SamsungPresentationReview.cs" />
+    <Compile Include="Office\SamsungAuthoringPolicy.cs" />
+    <Compile Include="Office\SamsungDeckOverview.cs" />
+    <Compile Include="Office\SamsungEvidence.cs" />
+    <Compile Include="Office\SamsungGenerationJournal.cs" />
+    <Compile Include="Office\SamsungRepairPolicy.cs" />
+    <Compile Include="Office\PresentationInspection.cs" />
+    <Compile Include="Office\PresentationRevision.cs" />
+    <Compile Include="Office\PresentationRevision.Recovery.cs" />
+    <Compile Include="Office\PresentationChartEdit.cs" />
+    <Compile Include="Office\PresentationRevisionAcceptance.cs" />
+    <Compile Include="Office\DocumentDraftHost.Revisions.cs" />
+    <Compile Include="Office\DocumentDraftHost.SlideRepair.cs" />
+    <Compile Include="Chat\SamsungWorkflowSchema.cs" />
     <Compile Include="Office\DocumentDraftHost.PowerPoint.cs" />
+    <Compile Include="Office\LegacySamsung\PresentationDraftWriter.cs" />
+    <Compile Include="Office\LegacySamsung\PresentationDraftWriter.Samsung.cs" />
+    <Compile Include="Office\LegacySamsung\SamsungSlideDesign.cs" />
+    <Compile Include="Office\LegacySamsung\MetoTheme.cs" />
+    <Compile Include="Office\LegacySamsung\SamsungPresentationReview.cs" />
+    <Compile Include="Office\DocumentDraftHost.LegacySamsung.cs" />
+
     <Compile Include="Office\PresentationDraftWriter.Samsung.cs" />
     <Compile Include="Office\DocumentDraftHost.cs" />
     <Compile Include="Office\OfficeThread.cs" />

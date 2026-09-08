@@ -108,6 +108,7 @@ namespace Scribble.Chat
                 {
                     tools.Add(
                         PresentationToolCatalog.DraftDefinition());
+                    tools.AddRange(PresentationToolCatalog.RevisionDefinitions());
                 }
 
                 tools.AddRange(
@@ -238,7 +239,11 @@ namespace Scribble.Chat
 
             if (allowDraftCreate)
             {
-                if (hostKind == "powerpoint") boundary += " " + SamsungPresentationReview.AuthoringInstructions;
+                if (hostKind == "powerpoint")
+                {
+                    boundary += " " + SamsungPresentationReview.AuthoringInstructions;
+                    if (PresentationRevisionAcceptance.Enabled) boundary += " The revise_slides tool supports explicitly requested in-place edits to presentation content, including slide deletion/reordering. File deletion, file moving, saving and export remain unavailable. Use inspect_slide first. Revert Scribble changes restores only the latest unchanged revision batch in this Office session.";
+                }
                 var selectionInstruction = hasExcelSelection
                     ? " For a one-to-one transformation of the attached " +
                       "Excel selection, including translation, use " +

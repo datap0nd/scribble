@@ -1,3 +1,4 @@
+// Frozen v1 implementation for tasks started before workflow 2.
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -6,11 +7,23 @@ using System.Text.RegularExpressions;
 using System.Web.Script.Serialization;
 using Scribble.Chat;
 
-namespace Scribble.Office
+namespace Scribble.Office.LegacySamsung
 {
     public static class SamsungPresentationReview
     {
-        public const string AuthoringInstructions = SamsungAuthoringPolicy.Instructions;
+        public const string AuthoringInstructions =
+            "For substantial slide decks, establish the brief before drafting: audience, intended decision, depth, and source completeness. " +
+            "Use ask_user for two or three relevant missing details; do not repeat answers already supplied. If the user asks you to proceed, make explicit assumptions. " +
+            "Read sources fully, then outline the storyline and choose a Samsung layout for each slide. " +
+            "The first batch must include plan, an ordered list of IDs for the whole deck; each slide must have its matching id. Complete every planned ID across batches. " +
+            "A slide needs a concise title and a separate single-line action title in subtitle. " +
+            "Read retained source passages with read_task_sources and cite their host-issued span_id values in source_spans. Multiple spans may support one slide. " +
+            "The host resolves evidence from these IDs; you do not need to copy it. Legacy evidence accepts whitespace-normalized verbatim text. Never invent numbers or quotes. " +
+            "When the user explicitly requests sample/synthetic/illustrative/example data, use their supplied values and labels as the evidence; no external business evidence is needed. Mark this content Sample data. " +
+            "Use takeaway for the conclusion, and highlight_rows for the data rows/categories that support it. " +
+            "The host independently checks evidence, renders editable slides, reviews each rendered image, and repairs owned draft shapes. " +
+            "Never claim completion when a review reports a blocker. Themes and positions are host-controlled. " +
+            "Content may be quantitative tables/charts, diagrams, action lists, or concise summaries as appropriate; do not invent a table just to fill space.";
 
         public static bool PrepareSampleEvidence(IDictionary<string, object> slide, string userInstruction)
         {
@@ -18,10 +31,6 @@ namespace Scribble.Office
             // Email text and model-provided evidence cannot switch this mode on.
             if (!Regex.IsMatch(userInstruction ?? "", @"\b(sample|synthetic|illustrative|example)\s+(data|values|numbers)\b", RegexOptions.IgnoreCase) ||
                 Regex.IsMatch(userInstruction ?? "", @"\b(no|not|without|never)\b.{0,30}\b(sample|synthetic|illustrative|example)\b", RegexOptions.IgnoreCase)) return false;
-            // A source-backed factual slide in a mixed deck cannot inherit sample mode.
-            var kind = SamsungAuthoringPolicy.Text(slide, "content_kind");
-            if (kind != "sample" && (kind.Length > 0 || slide.ContainsKey("source_spans") || slide.ContainsKey("evidence"))) return false;
-            slide["content_kind"] = "sample";
             slide["evidence"] = userInstruction;
             slide["sources"] = "Sample data — supplied by the user; not actual business results";
             slide.Remove("source_spans");
@@ -41,7 +50,7 @@ namespace Scribble.Office
                 throw new InvalidOperationException("SLIDE_EVIDENCE_UNVERIFIED: The excerpt does not occur in the original input or read receipts. Read the source and copy an exact passage.");
             // Metadata is not a numeric claim. Layout indices and outline levels
             // are not facts either. Inspect displayed content recursively.
-            var content = string.Join(" ", data.Where(p => !new[] { "id", "sources", "evidence", "source_spans", "layout", "highlight_rows", "image_names", "purpose", "content_kind", "claims", "calculations", "annotations" }.Contains(p.Key)).SelectMany(p => DisplayedStrings(p.Value, p.Key)));
+            var content = string.Join(" ", data.Where(p => !new[] { "id", "sources", "evidence", "source_spans", "layout", "highlight_rows", "image_names" }.Contains(p.Key)).SelectMany(p => DisplayedStrings(p.Value, p.Key)));
             if (content.Length > 36000) throw new InvalidOperationException("Slide content must be split into smaller review batches.");
             var allowed = new HashSet<string>(Numbers(special && string.IsNullOrWhiteSpace(evidence) ? actualSource : evidence));
             foreach (Match range in Regex.Matches(evidence ?? "", @"\b(?:weeks?|days?|months?|years?)\s+(\d+)\s*[-–]\s*(\d+)\b", RegexOptions.IgnoreCase))
@@ -50,13 +59,10 @@ namespace Scribble.Office
                 if (int.TryParse(range.Groups[1].Value, out from) && int.TryParse(range.Groups[2].Value, out to) && to >= from && to - (long)from <= 100)
                     for (var value = (long)from; value <= to; value++) allowed.Add(value.ToString(System.Globalization.CultureInfo.InvariantCulture));
             }
-            foreach (var value in SamsungEvidence.ValidateCalculations(data, evidence)) allowed.Add(value);
-            SamsungEvidence.ValidateClaims(data, evidence);
             var missing = Numbers(content).Where(n => !allowed.Contains(n)).Distinct().ToArray();
             if (missing.Length > 0) throw new InvalidOperationException("SLIDE_NUMBERS_UNVERIFIED: Values absent from cited evidence: " + string.Join(", ", missing));
             if (special) return;
-            var explanatory = SamsungAuthoringPolicy.Text(data, "purpose") == "explanatory";
-            if (!explanatory && (!data.TryGetValue("subtitle", out raw) || string.IsNullOrWhiteSpace(Convert.ToString(raw))))
+            if (!data.TryGetValue("subtitle", out raw) || string.IsNullOrWhiteSpace(Convert.ToString(raw)))
                 throw new InvalidOperationException("SLIDE_ACTION_TITLE_REQUIRED");
             if (!data.TryGetValue("sources", out raw) || string.IsNullOrWhiteSpace(Convert.ToString(raw)))
                 throw new InvalidOperationException("SLIDE_CITATION_REQUIRED");

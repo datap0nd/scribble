@@ -1,0 +1,36 @@
+{
+  "schema": 1,
+  "workflow_version": 2,
+  "policy": "Samsung executive authoring 2.0",
+  "synthetic_sources": true,
+  "measurement_fields": ["model_configuration_fingerprint", "elapsed_seconds", "repair_cycles", "factual_defects", "visual_defects", "required_content_coverage", "editable_objects_verified", "false_completions", "samsung_fidelity_score", "narrative_clarity_score"],
+  "comparison": "Run identical inputs and model configuration against the previous build and candidate. Keep unmeasured values null. Human scores use 1-5 and require an identified reviewer; do not substitute model self-ratings.",
+  "cases": [
+    {
+      "scenario": "samsung_executive_summary",
+      "prompt": "Create exactly three Samsung executive slides, including any cover, using this sample data. Explain the business performance and proposed next actions. Sales Q1: 100 units. Sales Q2: 120 units. Returns Q1: 5 units. Returns Q2: 4 units. Do not invent owners or dates.",
+      "checks": ["exactly 3 slides", "sales growth 20% if calculated", "returns decrease 1 unit", "proposals distinguished from facts", "no repeated conclusion in title/subtitle/takeaway"]
+    },
+    {
+      "scenario": "samsung_performance_12",
+      "prompt": "Create a 12-slide dense Samsung performance review for regional leadership, including a cover and closing decision summary. Use supplied sample data: North Q1 100 units Q2 120 units; South Q1 80 units Q2 72 units; East Q1 60 units Q2 66 units; West Q1 40 units Q2 42 units. Cover regional performance, total performance, comparison, growth calculations, risks as hypotheses and proposed follow-up. Preserve each regional value. Do not fabricate additional metrics.",
+      "checks": ["exactly 12 slides", "total Q1 280 units Q2 300 units", "all four regions retained", "no invented commercial facts", "complete final-deck receipt", "consistent numbering across batches"]
+    },
+    {
+      "scenario": "samsung_dense_comparison",
+      "prompt": "Create a dense Samsung specification comparison from the supplied fixture. Keep all 20 rows and all seven columns visible. Use continuation slides if needed. These are sample values, not product claims.",
+      "fixture": { "headers": ["Attribute", "A", "B", "C", "D", "E", "F"], "row_count": 20, "row_rule": "For i from 1 to 20: Attribute i; i; i+1; i+2; i+3; i+4; i+5. Expand the fixture before giving it to Scribble." },
+      "checks": ["20 unique rows preserved", "seven aligned columns", "native editable table", "font never below 7.5 pt", "no clipped labels"]
+    },
+    {
+      "scenario": "samsung_bilingual_strategy",
+      "prompt": "Create four Samsung strategy slides in English and Korean using this sample data: Channel A Q1 100 units Q2 110 units. Channel B Q1 80 units Q2 88 units. Include a comparison and proposed roadmap. Keep names and numbers identical between languages. Owners and dates are not supplied.",
+      "checks": ["exactly 4 slides", "Korean text readable", "numeric meaning preserved", "no invented roadmap owners or dates", "notes contain source references only, not review commentary"]
+    },
+    {
+      "scenario": "samsung_existing_revision",
+      "prompt": "In the open synthetic deck, update the specified Q2 table cell from 120 to 125 and the matching chart point. Shorten the specified title, preserving its meaning. Preserve every other slide, all notes, hyperlinks and artwork. Then test Revert Scribble changes in a separate request.",
+      "checks": ["stable IDs and fingerprints used", "review before applying", "chart and table values agree", "unrelated content unchanged", "native editability retained", "revert restores original formatting", "concurrent edits stop overwrite", "no saving or presentation export"]
+    }
+  ]
+}

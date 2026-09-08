@@ -792,6 +792,7 @@ jobs:
             version = '2.0.${{ github.run_number }}.0'
             extension_version = $manifest.version
             installer_sha256 = (Get-FileHash artifacts/ScribbleSetup.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+            powerpoint_workflow = 2
             status = 'automated_checks_passed'
           } | ConvertTo-Json | Set-Content artifacts/candidate.json -Encoding utf8
 

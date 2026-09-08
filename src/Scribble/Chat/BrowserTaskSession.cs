@@ -24,7 +24,7 @@ namespace Scribble.Chat
         public static void SaveUi(string chat, string turn, string prompt, string data)
         {
             if (data == null || data.Length > 700000) throw new ArgumentException("The browser recovery page exceeds the transport budget.");
-            var state = Load(chat, turn) ?? new DurableTaskState { Id = Id(chat, turn), Host = "chrome", Objective = prompt };
+            var state = Load(chat, turn) ?? new DurableTaskState { Id = Id(chat, turn), Host = "chrome", Objective = prompt, SamsungWorkflowVersion = Scribble.Office.SamsungAuthoringPolicy.WorkflowVersion };
             if (state.Objective != prompt) throw new InvalidOperationException("The original browser instruction cannot change during a task.");
             state.HostData["recovery_input"] = "{}";
             state.HostData["browser_ui"] = data;

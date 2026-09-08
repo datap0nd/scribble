@@ -17,19 +17,30 @@ namespace Scribble.Chat
     {
         public const string ListSlides = "list_slides";
         public const string ReadSlide = "read_slide";
+        public const string InspectSlide = "inspect_slide";
+        public const string ReviseSlides = "revise_slides";
+        public const string RevertSlides = "revert_scribble_changes";
         public const string AddDraftSlides = "add_draft_slides";
 
         public static readonly IReadOnlyList<string> ApprovedNames =
             new[]
             {
                 ListSlides,
-                ReadSlide
+                ReadSlide,
+                InspectSlide
             };
 
         public static List<ChatToolDefinition> CreateDefinitions()
         {
             return new List<ChatToolDefinition>
             {
+                new ChatToolDefinition { type = "function", function = new ChatToolFunctionDefinition {
+                    name = InspectSlide, description = "Inspect one slide with stable presentation/slide/shape IDs, fingerprint, paginated structured content, tables, chart data, notes, geometry, styling, groups and unsupported objects. Read every page before editing. Optional preview is a private PNG, never a presentation export.",
+                    parameters = ToolSchema.Build(new Dictionary<string, object> {
+                        { "index", ToolSchema.Integer("1-based position from list_slides; response provides stable slide_id.", 1, 1000) },
+                        { "offset", ToolSchema.Integer("Character offset; follow next_offset until null.", 0, int.MaxValue) },
+                        { "preview", new { type = "boolean" } }
+                    }, "index") } },
                 new ChatToolDefinition
                 {
                     type = "function",
@@ -94,13 +105,7 @@ namespace Scribble.Chat
                         "down to headings, and never invent " +
                         "filler. Give each data slide its unit " +
                         "indicator and a source footnote. Write " +
-                        "takeaway sentences as titles and use the " +
-                        "standard abbreviations (M/S, G/R, A/R, " +
-                        "S/I, S/O, YTD, MP) and the markers " +
-                        "\u2191 growth, \u2193 decline, " +
-                        "\u25B3 negative or deficit, " +
-                        "\u2192 transition. Select supporting rows with highlight_rows; " +
-                        "explicit Strong/Neutral/Weak status cells receive indicators. " +
+                        "a concise subject title and evidence-backed action subtitle. Use Samsung abbreviations only when appropriate for the audience. " +
                         "At most " +
                         PresentationDraftWriter.MaxDraftSlides +
                         " slides per call, and you may call this " +
@@ -112,6 +117,7 @@ namespace Scribble.Chat
                     parameters = ToolSchema.Build(
                         new Dictionary<string, object>
                         {
+                            { "briefs", SamsungWorkflowSchema.Briefs() },
                             { "plan", new Dictionary<string, object> { { "type", "array" }, { "items", new { type = "string" } }, { "description", "Required on the first batch: ordered unique slide IDs for the complete storyline. Later batches retain this plan and supply only remaining slide IDs. Continuation pages are host-generated." } } },
                             {
                                 "slides",
@@ -143,7 +149,7 @@ namespace Scribble.Chat
         // Schema of one slide. Kept as a method so the cross-app
         // send_to_powerpoint definition shares the exact same
         // contract.
-        private static Dictionary<string, object> SlideSchema()
+        internal static Dictionary<string, object> SlideSchema()
         {
             return ToolSchema.Build(
                 new Dictionary<string, object>
@@ -152,16 +158,12 @@ namespace Scribble.Chat
                     {
                         "title",
                         ToolSchema.String(
-                            "Slide title - state the takeaway, not " +
-                            "a label (e.g. 'Flagship S/I recovers " +
-                            "on FE launch').")
+                            "Concise subject title, e.g. MENA sell-in. The analytical finding belongs in subtitle.")
                     },
                     {
                         "subtitle",
                         ToolSchema.String(
-                            "Optional one-line scope or metric " +
-                            "indicator shown under the title (e.g. " +
-                            "'MENA, 25 MP vs 24 YTD').")
+                            "One-line evidence-backed action title. Optional for cover, divider, closing, agenda and explanatory slides.")
                     },
                     {
                         "layout",
@@ -193,6 +195,11 @@ namespace Scribble.Chat
                             }
                         }
                     },
+                    { "purpose", ToolSchema.String("analytical or explanatory; default analytical.") },
+                    { "content_kind", ToolSchema.String("fact, proposal, placeholder or sample. Sample requires explicit user authorization for this slide.") },
+                    { "claims", SamsungWorkflowSchema.Claims() },
+                    { "calculations", SamsungWorkflowSchema.Calculations() },
+                    { "annotations", SamsungWorkflowSchema.Annotations() },
                     { "cards", CardsSchema() },
                     { "table", TableSchema() },
                     { "chart", ChartSchema() },
@@ -433,7 +440,7 @@ namespace Scribble.Chat
                                                             "items",
                                                             new Dictionary<string, object>
                                                             {
-                                                                { "type", "number" }
+                                                                { "type", new[] { "number", "null" } }
                                                             }
                                                         }
                                                     }
@@ -464,6 +471,36 @@ namespace Scribble.Chat
                 },
                 { "additionalProperties", false }
             };
+        }
+
+        public static IEnumerable<ChatToolDefinition> RevisionDefinitions()
+        {
+            if (!PresentationRevisionAcceptance.Enabled) yield break;
+            var operation = ToolSchema.Build(new Dictionary<string, object> {
+                { "kind", new { type = "string", @enum = new[] { "replace_text", "table_cell", "chart_point", "move", "delete", "replace_slide", "insert", "annotate", "notes_append" } } },
+                { "slide_id", ToolSchema.Integer("Stable ID from inspect_slide.", 1, int.MaxValue) },
+                { "fingerprint", ToolSchema.String("Exact current fingerprint from inspect_slide.") },
+                { "shape_id", ToolSchema.Integer("Stable target shape ID, required for text/table/chart edits.", 1, int.MaxValue) },
+                { "before", ToolSchema.String("Exact existing unique text span or cell text.") },
+                { "text", ToolSchema.String("Replacement text.") },
+                { "row", ToolSchema.Integer("1-based native table row, including headers.", 1, 1000) },
+                { "column", ToolSchema.Integer("1-based table column.", 1, 100) },
+                { "series", ToolSchema.Integer("1-based chart series.", 1, 100) },
+                { "category", ToolSchema.Integer("1-based chart category.", 1, 1000) },
+                { "before_value", new { type = "number" } }, { "value", new { type = "number" } },
+                { "slide", SlideSchema() },
+                { "notes", ToolSchema.String("Source references or explicitly requested notes to append, preserving existing notes.") },
+                { "new_index", ToolSchema.Integer("Final 1-based position for an explicitly requested move.", 1, 1000) }
+            }, "kind", "slide_id", "fingerprint");
+            yield return new ChatToolDefinition { type = "function", function = new ChatToolFunctionDefinition {
+                name = ReviseSlides, description = "Revise explicitly requested existing slides in place. Inspect complete structured content first. Stage and review changes before applying; preserve unrelated content. No saving or export. Native session recovery is available. " + SamsungAuthoringPolicy.Instructions,
+                parameters = ToolSchema.Build(new Dictionary<string, object> {
+                    { "presentation_id", ToolSchema.String("Exact live presentation ID returned by inspect_slide.") },
+                    { "operations", SamsungWorkflowSchema.List(operation) }
+                }, "presentation_id", "operations") } };
+            yield return new ChatToolDefinition { type = "function", function = new ChatToolFunctionDefinition {
+                name = RevertSlides, description = "Revert the latest Scribble revision batch when the user asks. Reject if subsequent user edits would be overwritten. Available only in the current Office session; nothing is saved.",
+                parameters = ToolSchema.Build(new Dictionary<string, object> { { "presentation_id", ToolSchema.String("Live presentation ID from inspect_slide.") } }, "presentation_id") } };
         }
 
         public static bool IsApproved(string name)

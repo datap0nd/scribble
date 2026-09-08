@@ -41,7 +41,18 @@ namespace Scribble.Chat
         {
             if (schema == null || errors.Count >= 12) return;
             object raw;
+            if (schema.TryGetValue("type", out raw) && raw is IList)
+            {
+                foreach (var option in ((IList)raw).Cast<object>().Select(Convert.ToString))
+                {
+                    var candidate = new Dictionary<string, object>(schema) { ["type"] = option };
+                    var candidateErrors = new List<string>(); Visit(value, candidate, path, candidateErrors);
+                    if (candidateErrors.Count == 0) return;
+                }
+                errors.Add(path + ": value does not match an allowed type."); return;
+            }
             var type = schema.TryGetValue("type", out raw) ? Convert.ToString(raw) : "";
+            if (type == "null") { if (value != null) errors.Add(path + ": must be null."); return; }
             if (schema.TryGetValue("enum", out raw) && raw is IEnumerable && !((IEnumerable)raw).Cast<object>().Any(v => Equals(v, value)))
                 errors.Add(path + ": value is not one of the allowed choices.");
             if (type == "object")

@@ -59,6 +59,19 @@ namespace Scribble.Office
                 {
                     case PresentationToolCatalog.ListSlides:
                         return ListSlides(call.id);
+                    case PresentationToolCatalog.InspectSlide:
+                        dynamic inspectedDeck = ActivePresentation();
+                        if (inspectedDeck == null) throw new InvalidOperationException("No presentation is open.");
+                        var inspectedIndex = ToolArguments.GetInteger(arguments, "index", 0, 1, (int)inspectedDeck.Slides.Count);
+                        object previewValue;
+                        var preview = arguments.TryGetValue("preview", out previewValue) && previewValue is bool && (bool)previewValue;
+                        var inspected = PresentationInspection.ReadPage((object)inspectedDeck, (object)inspectedDeck.Slides[inspectedIndex],
+                            ToolArguments.GetInteger(arguments, "offset", 0, 0, int.MaxValue), preview);
+                        var inspectionJson = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
+                        var inspectionPayload = inspectionJson.Deserialize<Dictionary<string, object>>(inspectionJson.Serialize(inspected));
+                        var imageUrl = Convert.ToString(inspectionPayload["image"]); inspectionPayload.Remove("image");
+                        return new MailboxToolResult(call.id, inspectionJson.Serialize(inspectionPayload), "Inspected slide " + inspectedIndex,
+                            preview ? new[] { new VisionImagePayload("slide-" + inspectedIndex + ".png", imageUrl) } : null);
                     case PresentationToolCatalog.ReadSlide:
                         return ReadSlide(call.id, arguments);
                     default:

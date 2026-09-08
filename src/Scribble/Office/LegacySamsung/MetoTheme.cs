@@ -1,6 +1,7 @@
+// Frozen v1 implementation for tasks started before workflow 2.
 using System;
 
-namespace Scribble.Office
+namespace Scribble.Office.LegacySamsung
 {
     // The hardcoded METO corporate deck theme. Draft slides are
     // painted entirely from these tokens by PresentationDraftWriter:
@@ -10,7 +11,7 @@ namespace Scribble.Office
     // model-adjustable; the tokens are compiled in.
     public static class MetoTheme
     {
-        public const string ThemeName = SamsungSlideDesign.Version;
+        public const string ThemeName = "Samsung MD 1.0";
 
         // --- Typography -------------------------------------------
         // Brand families first; Office falls back automatically on

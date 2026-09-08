@@ -12,6 +12,7 @@ namespace GuardrailTests
     // needed in CI; this does not stand in for native Office rendering QA.
     public sealed class CrossAppFixture : DynamicObject, IEnumerable
     {
+        [ThreadStatic] internal static Action<string> BeforeNativeCall;
         private readonly Dictionary<string, object> _values = new Dictionary<string, object>();
         private readonly List<CrossAppFixture> _items = new List<CrossAppFixture>();
         private readonly string _path;
@@ -32,8 +33,11 @@ namespace GuardrailTests
             switch (binder.Name)
             {
                 case "Count": result = _items.Count; return true;
-                case "Id": case "SlideIndex": case "End": result = 1; return true;
+                case "Id": case "SlideID": case "SlideIndex": case "End": result = 1; return true;
                 case "BoundHeight": case "BoundWidth": result = 1d; return true;
+                case "HasTable": case "HasChart": case "Hidden": case "FollowMasterBackground": case "Bold": case "RGB": case "Rotation": case "ZOrderPosition": result = 0; return true;
+                case "Type": result = 1; return true;
+                case "Width": case "Height": case "Top": case "Left": case "BoundLeft": case "BoundTop": case "Transparency": case "Size": result = 0f; return true;
                 case "Text": case "Name": case "Path": case "FullName": result = ""; return true;
                 case "HasTextFrame": result = -1; return true;
                 case "Worksheets":
@@ -61,6 +65,7 @@ namespace GuardrailTests
         }
         public override bool TryInvokeMember(InvokeMemberBinder binder, object[] args, out object result)
         {
+            BeforeNativeCall?.Invoke(_path + "." + binder.Name);
             _events.Add(_path + "." + binder.Name + "(" + string.Join(",", args.Select(Convert.ToString)) + ")");
             if (new[] { "Save", "SaveAs", "Send", "Close", "Quit", "Delete" }.Contains(binder.Name))
                 throw new InvalidOperationException("Forbidden operation: " + binder.Name);
@@ -76,6 +81,7 @@ namespace GuardrailTests
                 var child = new CrossAppFixture(_path + "[" + (_items.Count + 1) + "]", _events);
                 child._values["Id"] = _items.Count + 1;
                 child._values["SlideIndex"] = _items.Count + 1;
+                child._values["SlideID"] = _items.Count + 1;
                 if (_path.EndsWith(".Slides")) child._values["Parent"] = _parent;
                 _items.Add(child); result = child; return true;
             }

@@ -2013,7 +2013,7 @@ namespace Scribble.UI
             if (_draftHost != null)
             {
                 await _draftHost.BindTaskAsync(taskContext, cancellationToken);
-                await _draftHost.ResumeReadyExcelAsync(cancellationToken, (done, total) => SetStatus("Verified " + done + " of " + total + " output rows", false));
+                await _draftHost.ResumeReadyExcelAsync(cancellationToken, (done, total) => SetStatus(_hostKind == "powerpoint" ? "Reviewing slide " + done + " of " + total : "Verified " + done + " of " + total + " output rows", false));
                 if (_draftHost.RecoveryNote.Length > 0) request.messages.Add(new ChatCompletionInputMessage { role = "user", content = _draftHost.RecoveryNote });
                 taskContext.SaveRequest(request);
             }
@@ -2123,7 +2123,7 @@ namespace Scribble.UI
                         result = await _draftHost.ExecuteAsync(
                             toolCall, draftAuthorization, toolCalls.Count == 1, prompt,
                             _client, _settings.ForModel(activeModel), cancellationToken,
-                            (done, total) => SetStatus("Verified " + done + " of " + total + " output rows", false));
+                            (done, total) => SetStatus(_hostKind == "powerpoint" ? "Reviewing slide " + done + " of " + total : "Verified " + done + " of " + total + " output rows", false));
                     }
                     else if (McpToolHost.IsMcpTool(name) &&
                              mcpHost != null)

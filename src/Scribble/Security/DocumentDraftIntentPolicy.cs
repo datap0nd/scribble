@@ -275,6 +275,9 @@ namespace Scribble.Security
                     userPrompt,
                     TextBoundary.MaxUserPromptCharacters)
                 .ToLowerInvariant();
+            if (System.Text.RegularExpressions.Regex.IsMatch(prompt, @"\b(revert|undo|restore)\b.*\bscribble changes\b") ||
+                (System.Text.RegularExpressions.Regex.IsMatch(prompt, @"\b(delete|remove|move|reorder)\b") &&
+                 System.Text.RegularExpressions.Regex.IsMatch(prompt, @"\b(slides?|presentation|deck)\b"))) return true;
             foreach (var phrase in DraftPhrases)
             {
                 if (prompt.IndexOf(
