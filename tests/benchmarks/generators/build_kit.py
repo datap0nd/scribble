@@ -29,7 +29,15 @@ def make_doc(path,title,paragraphs):
     normal.paragraph_format.space_after=Pt(9)
     doc.styles['Title'].font.color.rgb=RGBColor(0,0,0)
     doc.add_paragraph(title,'Title')
-    for p in paragraphs: doc.add_paragraph(p)
+    for p in paragraphs:
+        if path=='evaluator-only/reference-summary.docx' and p.startswith('Sources:'):
+            table=doc.add_table(rows=1,cols=3);table.style='Table Grid'
+            for cell,value in zip(table.rows[0].cells,['Owner','Planned action','Due date']):
+                cell.text=value
+                for run in cell.paragraphs[0].runs:run.bold=True
+            for row in [('Mira Cole','Review South B freight costs','10 July 2026'),('Leon Park','Confirm supplier recovery plan','12 July 2026')]:
+                for cell,value in zip(table.add_row().cells,row):cell.text=value
+        doc.add_paragraph(p)
     doc.core_properties.author='Atlas synthetic benchmark'; doc.core_properties.created=STAMP; doc.core_properties.modified=STAMP
     doc.save(KIT/path)
 
@@ -66,7 +74,7 @@ def generate():
     make_doc('evaluator-only/reference-summary.docx','Atlas June executive memo',[
         'June revenue reached EUR 120000, up 20% from May, but EUR 10000 below the EUR 130000 budget, a 7.69% shortfall. Gross profit was EUR 46000. Gross margin fell from 40% to 38.33%, a decline of 1.67 percentage points.',
         'North delivered EUR 70000 and South EUR 50000. Products A and B delivered EUR 65000 and EUR 55000. North A and South B each missed budget by EUR 5000. South B margin was 32%. The sales table does not establish the cause of higher cost.',
-        'June on-time delivery was 94%, below the 97% target by 3 percentage points. Mira Cole will review South B freight costs by 10 July 2026. Leon Park will confirm the supplier recovery plan by 12 July 2026. Both actions are planned.',
+        'June on-time delivery was 94%, below the 97% target by 3 percentage points. The actions below are planned; no savings are yet established.',
         'Sources: final sales.csv and budget.csv, finance final email, and Atlas-operations-note.pdf.'])
     from reportlab.pdfgen import canvas
     from reportlab.lib.pagesizes import A4

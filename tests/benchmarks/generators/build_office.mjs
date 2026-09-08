@@ -31,8 +31,12 @@ summary.getRange('B2:C4').setNumberFormat('#,##0.00');summary.getRange('B5:D5').
 summary.getRange('D5').setNumberFormat('0.00" pp"');
 summary.getRange('F1:G3').values=[['June','EUR'],['Actual',null],['Budget',null]];summary.getRange('G2:G3').formulas=[['=C2'],['=C6']];
 const chart=summary.charts.add('bar',summary.getRange('F1:G3'));chart.title='June actual versus budget';chart.setPosition('F5','N20');chart.hasLegend=false;
+chart.yAxis={min:0,max:140000,numberFormatCode:'#,##0',numberFormatSourceLinked:false,textStyle:{typeface:'Arial',fontSize:14}};
+chart.xAxis={axisType:'textAxis',textStyle:{typeface:'Arial',fontSize:14}};
 summary.getRange('A11:D15').values=[['June drivers','Actual EUR','Budget EUR','Variance EUR'],['North A',40000,45000,null],['South A',25000,25000,null],['North B',30000,30000,null],['South B',25000,30000,null]];
 summary.getRange('D12:D15').formulas=[['=B12-C12'],['=B13-C13'],['=B14-C14'],['=B15-C15']];
+summary.getRange('B12:D15').setNumberFormat('#,##0.00');summary.getRange('C6:C7').setNumberFormat('#,##0.00');summary.getRange('D3:D4').setNumberFormat('#,##0.00');summary.getRange('G2:G3').setNumberFormat('#,##0.00');
+summary.getRange('A11:D11').format={fill:'#18344D',font:{bold:true,color:'#FFFFFF'}};
 w.recalculate();await (await SpreadsheetFile.exportXlsx(w)).save(path.join(kit,'evaluator-only/expected-analysis.xlsx'));
 await fs.writeFile(path.join(qa,'reference-values.json'),JSON.stringify(summary.getRange('A1:D8').values,null,2));
 const p=await w.render({sheetName:'Scribble Draft',range:'A1:N21',scale:1,format:'png'});await fs.writeFile(path.join(qa,'analysis.png'),new Uint8Array(await p.arrayBuffer()));
@@ -79,6 +83,6 @@ await fs.mkdir(path.join(kit,'evaluator-only/reference-deck-slides'),{recursive:
 let i=0;for(const sl of deck.slides.items){i++;const img=await deck.export({slide:sl,format:'png',scale:1});await fs.writeFile(path.join(kit,'evaluator-only/reference-deck-slides',`slide-${i}.png`),new Uint8Array(await img.arrayBuffer()));}
 const starter=Presentation.create({slideSize:{width:1280,height:720}});s=slide(starter,'Atlas June review source brief',1);box(s,'Create draft slides for the executive review.\nPreserve this source slide.\nUse final finance and operations evidence.',65,240,1110,260,32);s.speakerNotes.textFrame.setText('SOURCE: Atlas-review-brief.docx. Preserve this original slide.');await (await PresentationFile.exportPptx(starter)).save(path.join(kit,'inputs/powerpoint/Atlas-start.pptx'));
 const crowded=Presentation.create({slideSize:{width:1280,height:720}});
-for(let j=0;j<6;j++){s=slide(crowded,'[Scribble draft] June review '+(j+1),j+1);box(s,'Revenue EUR 120000. Budget EUR 130000. Gross margin 38.33%. Delivery 94%. '.repeat(8),60,220,700,120,34);s.speakerNotes.textFrame.setText('Sources: sales.csv; budget.csv; Atlas-operations-note.pdf. Deliberate overflow fixture.');}
+for(let j=0;j<6;j++){s=slide(crowded,'[Scribble draft] June review '+(j+1),j+1);box(s,'Revenue EUR 120000. Budget EUR 130000. Gross margin 38.33%. Delivery 94%. '.repeat(8),60,220,700,120,34);s.speakerNotes.textFrame.setText('Sources: sales.csv; budget.csv; Atlas-operations-note.pdf. Deliberate overflow fixture.');if(j===0)s.charts.add('bar',{position:{left:860,top:240,width:260,height:160},categories:['Actual','Budget'],series:[{name:'EUR',values:[120000,130000]}],hasLegend:false,xAxis:{textStyle:{typeface:'Arial',fontSize:8}}});}
 await (await PresentationFile.exportPptx(crowded)).save(path.join(kit,'inputs/powerpoint/Atlas-crowded.pptx'));
 console.log('Generated four workbooks and three presentations.');

@@ -23,7 +23,7 @@ def inspect_office(data,ext):
         if sum(i.file_size for i in z.infolist())>100*1024*1024:raise ValueError('Oversized Office package')
         names=z.namelist()
         if any('vbaProject' in n for n in names):raise ValueError('Unexpected macro payload')
-        xml={n:ET.fromstring(z.read(n)) for n in names if n.endswith('.xml') and (n.startswith('xl/worksheets/') or re.match(r'ppt/(slides/slide\d+|notesSlides/notesSlide\d+|charts/chart\d+)\.xml$',n) or n=='word/document.xml')}
+        xml={n:ET.fromstring(z.read(n)) for n in names if n.endswith('.xml') and (n.startswith('xl/worksheets/') or re.match(r'ppt/(slides/slide\d+|notesSlides/notesSlide\d+|(?:slides/)?charts/chart\d+)\.xml$',n) or n=='word/document.xml')}
         text='\n'.join(' '.join(n.itertext()) for n in xml.values())
         formulas=sum(len(n.findall('.//{*}f')) for name,n in xml.items() if name.startswith('xl/worksheets/'))
         formula_errors=[v.text for n in xml.values() for c in n.findall('.//{*}c') if c.get('t')=='e' for v in c.findall('{*}v')]
@@ -36,7 +36,8 @@ def inspect_office(data,ext):
                 if name=='xl/sharedStrings.xml':text+='\n'+' '.join(ET.fromstring(z.read(name)).itertext())
         charts=[n for n in names if re.match(r'(?:xl/(?:drawings/)?|ppt/(?:slides/)?)charts/chart\d+\.xml$',n)]
         slides=[n for n in names if re.match(r'ppt/slides/slide\d+\.xml$',n)]
-        return {'text':text,'numbers':numbers,'formula_count':formulas,'formula_errors':formula_errors,'chart_count':len(charts),'slide_count':len(slides),'notes_count':sum(n.startswith('ppt/notesSlides/notesSlide') and n.endswith('.xml') for n in names)}
+        notes=[' '.join(v.itertext()) for n,v in xml.items() if n.startswith('ppt/notesSlides/')]
+        return {'text':text,'numbers':numbers,'formula_count':formulas,'formula_errors':formula_errors,'chart_count':len(charts),'slide_count':len(slides),'notes_count':len(notes),'substantive_notes_count':sum(len(n.strip())>=30 for n in notes)}
 
 def evaluate(run_zip,kit,review=None):
     files=read_archive(run_zip);run=json.loads(files['run.json']);manifest=json.loads(files['export-manifest.json']);checks=[]
@@ -77,7 +78,7 @@ def evaluate(run_zip,kit,review=None):
         if name.endswith('.pptx'):
             expected=4 if case['id']=='PP02' else 6
             check('slide_count_'+name,item['slide_count'] in [expected,expected+1], 'Allows one preserved source slide; reviewer must verify draft count.')
-            if case['id']!='PP03':check('source_notes_'+name,item['notes_count']>=expected)
+            if case['id']!='PP03':check('source_notes_'+name,item['substantive_notes_count']>=expected)
     joined='\n'.join(a['text'] for a in artifacts.values())+'\n'+'\n'.join(response_text)
     numbers=[v for a in artifacts.values() for v in a['numbers']]
     numbers += [float(x.replace(',','')) for x in re.findall(r'\b\d[\d,]*(?:\.\d+)?', '\n'.join(response_text))]

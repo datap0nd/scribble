@@ -14,5 +14,5 @@ const result=await finalizePresentation({workspaceDir:base,candidatePath,finalPa
  layoutValidatorPath:path.join(skill,'container_tools/inspect_presentation_layout_geometry.py'),
  layoutArgs:['--expected-slide-size-emu','12192000,6858000','--validate-heading-fit'],
  explicitTotalSlideCount:6,requiredNativeChartOwnerSlides:[2,3],materializeLiteralChartWorkbooks:true,
- fontPolicy:{basis:'design',families:['Arial']},verifyArtifactToolImport:true,receiptPath:path.join(base,'generated/qa/reference-deck-validation.json')});
+ fontPolicy:{basis:'design',families:['Arial']},verifyArtifactToolImport:true,receiptPath:path.join(base,'generated/qa/reference-deck-validation-'+Date.now()+'.json')});
 await fs.copyFile(finalPath,candidatePath);console.log(JSON.stringify(result));

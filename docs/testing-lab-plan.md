@@ -1,6 +1,6 @@
 # Scribble testing lab: implementation and evaluation plan
 
-Status: proposed implementation, 8 September 2026. This document plans the feature and downloadable fixture ZIP; neither is implemented by this planning task.
+Status: original implementation specification, 8 September 2026. The delivered feature and operating instructions are documented in [testing-lab.md](testing-lab.md); this document preserves the planned benchmark and evaluation criteria.
 
 ## Outcome
 
