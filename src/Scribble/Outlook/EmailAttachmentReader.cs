@@ -343,6 +343,7 @@ namespace Scribble.Outlook
                         outlookAttachment.SaveAsFile(tempPath);
                         cancellationToken.ThrowIfCancellationRequested();
 
+                        Scribble.Testing.TestLab.CheckInputFile(tempPath);
                         var fileInfo = new FileInfo(tempPath);
                         if (!fileInfo.Exists)
                         {
@@ -556,6 +557,7 @@ namespace Scribble.Outlook
             string path,
             CancellationToken cancellationToken)
         {
+            Scribble.Testing.TestLab.CheckInputFile(path);
             try
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -620,6 +622,7 @@ namespace Scribble.Outlook
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var path = selected[index];
+                Scribble.Testing.TestLab.CheckInputFile(path);
                 var fileName = Path.GetFileName(path);
                 if (progress != null)
                 {

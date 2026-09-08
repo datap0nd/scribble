@@ -61,6 +61,9 @@
     <EmbeddedResource Include="Skills\PublicSkills.json" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Testing\TestLab.cs" />
+    <Compile Include="Testing\TestLabWindow.cs" />
+    <Compile Include="Testing\BenchmarkArtifactCollector.cs" />
     <Compile Include="AddIn.cs" />
     <Compile Include="ExcelAddIn.cs" />
     <Compile Include="PowerPointAddIn.cs" />

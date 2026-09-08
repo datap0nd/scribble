@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Scribble benchmark case v1",
+  "type": "object",
+  "required": ["id", "version", "host", "prompt", "inputs", "artifacts", "setup"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^[A-Z]{2}[0-9]{2}$"},
+    "version": {"const": 1},
+    "host": {"enum": ["Excel", "PowerPoint", "Outlook", "Word", "Chrome"]},
+    "prompt": {"type": "string", "minLength": 1},
+    "prerequisite_prompt": {"type": "string"},
+    "inputs": {"type": "array", "items": {"type": "string", "pattern": "^inputs/"}},
+    "artifacts": {"type": "array", "items": {"enum": ["xlsx", "pptx", "docx", "msg", "pdf"]}},
+    "setup": {"type": "string"}
+  }
+}

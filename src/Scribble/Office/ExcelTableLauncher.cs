@@ -62,6 +62,7 @@ namespace Scribble.Office
                 workbooks = excel.Workbooks;
                 dynamic workbookCollection = workbooks;
                 workbook = workbookCollection.Add();
+                Scribble.Testing.TestLab.RegisterOutput(workbook, "xlsx");
                 dynamic newWorkbook = workbook;
                 dynamic sheet = newWorkbook.ActiveSheet;
 

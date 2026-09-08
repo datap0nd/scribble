@@ -15,12 +15,14 @@ namespace Scribble.Chat
         private readonly DurableTaskState _state;
         private readonly JavaScriptSerializer _json = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
         private readonly object _gate = new object();
+        private readonly string _benchmarkRun = Scribble.Testing.TestLab.ActiveRunId();
 
         public TaskDiagnostics(TaskCheckpointStore store, DurableTaskState state) { _store = store; _state = state; }
         public string Id { get { return _state.Id; } }
 
         public void Record(string stage, object detail)
         {
+            Scribble.Testing.TestLab.Record(_benchmarkRun, Id, stage, detail);
             lock (_gate)
             {
                 string previous;

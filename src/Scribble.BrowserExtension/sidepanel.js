@@ -563,6 +563,16 @@ async function captureFromTab(tab) {
 }
 
 async function sendChatMessage(recovery = null) {
+  if (globalThis.scribbleLabEnabled && !isSending && !recovery) {
+    try {
+      const labReply = await sendNativeMessage({type: "testLabStatus"}, PING_TIMEOUT_MS);
+      const labState = labReply.ok ? JSON.parse(labReply.content) : null;
+      if (labState?.runId && globalThis.scribbleLabRun !== labState.runId) {
+        await clearChat();
+        globalThis.scribbleLabRun = labState.runId;
+      }
+    } catch { setActivity("Test Lab could not verify the active session. Retry the native connection."); return; }
+  }
   const prompt = recovery?.prompt || boundText(elements.prompt.value, MAX_PROMPT_CHARS).trim();
   if (!prompt || isSending) {
     return;
@@ -3776,3 +3786,22 @@ class NativeResponseError extends Error {
 }
 
 setInterval(() => { void discoverBrowserTask().catch(error => setActivity(error.message)); }, 2000);
+
+// Operator surface. Native state, not webpage content, controls visibility.
+async function refreshTestLab() {
+  try {
+    const reply = await sendNativeMessage({type: "testLabStatus"}, PING_TIMEOUT_MS);
+    const status = reply.ok ? JSON.parse(reply.content) : {enabled: false};
+    globalThis.scribbleLabEnabled = !!status.enabled;
+    let button = document.getElementById("testLabButton");
+    if (!button && status.enabled) {
+      button = document.createElement("button"); button.id = "testLabButton";
+      button.style.cssText = "position:fixed;right:12px;top:4px;z-index:1000;font-size:10px";
+      button.onclick = () => sendNativeMessage({type: "openTestLab"}, SETTINGS_TIMEOUT_MS);
+      document.body.appendChild(button);
+    }
+    if (button) { button.hidden = !status.enabled; button.textContent = status.runId ? "Test Lab • " + status.captureState : "Test Lab"; }
+  } catch { const button = document.getElementById("testLabButton"); if (button) button.hidden = true; }
+}
+void refreshTestLab();
+setInterval(refreshTestLab, 15000);

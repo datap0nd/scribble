@@ -113,6 +113,7 @@ namespace Scribble.Office
             if (mode == 2)
             {
                 document = application.Documents.Add();
+                Scribble.Testing.TestLab.RegisterOutput((object)document, "docx");
                 AppendParagraph(
                     document,
                     new DraftTextLayout.Paragraph(

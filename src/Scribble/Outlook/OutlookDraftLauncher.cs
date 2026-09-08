@@ -46,6 +46,7 @@ namespace Scribble.Outlook
                 application = applicationResolver == null ? ResolveOutlookApplication() : applicationResolver("Outlook.Application");
                 dynamic outlook = application;
                 draftItem = outlook.CreateItem(0);
+                Scribble.Testing.TestLab.RegisterMailOutput(draftItem);
                 dynamic mail = draftItem;
                 if (safeTo.Length > 0)
                 {

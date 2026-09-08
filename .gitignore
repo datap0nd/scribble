@@ -9,3 +9,9 @@ artifacts/
 TestResults/
 .DS_Store
 .impeccable/screenshots/
+tests/benchmarks/generated/
+tests/benchmarks/generators/node_modules/
+**/__pycache__/
+.testlab-*.py
+.local-build.targets
+tests/benchmarks/.chart-data*/

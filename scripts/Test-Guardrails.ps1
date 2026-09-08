@@ -16,6 +16,8 @@ foreach ($pattern in $forbidden) {
     $matches = $sourceFiles | Select-String -Pattern $pattern |
         Where-Object {
             $_.Line -notmatch 'File\.Delete' -and
+            -not ($_.Path -like '*\Testing\TestLab.cs' -and
+                $_.Line.Trim() -eq 'if (File.Exists(Descriptor)) File.Replace(temporary, Descriptor, null); else File.Move(temporary, Descriptor);') -and
             -not ($pattern -eq "\.Delete\s*\(" -and
                 ($_.Path -like '*\Office\PresentationRevision.cs' -or $_.Path -like '*\Office\PresentationDraftWriter.Samsung.cs')) -and
             -not ($_.Path -like '*\Chat\TaskCoordinator.cs' -and
@@ -1374,7 +1376,7 @@ if ($draftLauncherSource -match '\.(Send|Delete|Move|SaveAs)\s*\(') {
     throw "The browser draft launcher must not send, delete, move, or export mail."
 }
 $sidePanelSource = Get-Content -LiteralPath (
-    Join-Path $browserExtensionRoot "sidepanel.js") -Raw
+    Join-Path $browserExtensionRoot "sidepanel.js") -Raw -Encoding UTF8
 if (-not $sidePanelSource.Contains(
         'parsed.protocol !== "https:" && parsed.protocol !== "http:"')) {
     throw "Side-panel navigation must stay restricted to http and https URLs."

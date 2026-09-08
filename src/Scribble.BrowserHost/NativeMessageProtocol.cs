@@ -262,6 +262,13 @@ namespace Scribble.BrowserHost
             try
             {
                 service = new BrowserChatService();
+                if (request.type == "testLabStatus") return Success(service, requestId, Scribble.Testing.TestLab.Serialize(new { enabled = Scribble.Testing.TestLab.Status() != null, runId = Scribble.Testing.TestLab.ActiveRunId(), captureState = Scribble.Testing.TestLab.CaptureState() }), service.Model, false);
+                if (request.type == "openTestLab")
+                {
+                    if (Scribble.Testing.TestLab.Status() == null) return Error(requestId, "TEST_LAB_DISABLED", "Test Lab is disabled.", service);
+                    using (var lab = new Scribble.Testing.TestLabWindow("Chrome")) lab.ShowDialog();
+                    return Success(service, requestId, "Test Lab closed.", service.Model, false);
+                }
                 if (string.Equals(
                     request.type,
                     "ping",

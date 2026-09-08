@@ -29,6 +29,7 @@ namespace Scribble.Office
 
         public MailboxToolResult Execute(ChatToolCall call)
         {
+            Scribble.Testing.TestLab.CheckOfficeSource(_wordApplication, "word");
             if (call?.function == null ||
                 string.IsNullOrWhiteSpace(call.id))
             {

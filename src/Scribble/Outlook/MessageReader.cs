@@ -215,6 +215,7 @@ namespace Scribble.Outlook
 
         internal static MessageSnapshot CaptureItem(object item, bool metadataOnly = false, bool fullBody = false)
         {
+            if (item != null) Scribble.Testing.TestLab.CheckMailSource(item);
             if (item == null)
             {
                 throw new ArgumentNullException(nameof(item));
