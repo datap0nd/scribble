@@ -230,10 +230,12 @@ jobs:
           python tests/benchmarks/evaluator/test_kit.py
           if ($LASTEXITCODE -ne 0) { throw 'Fixture kit validation failed.' }
           Expand-Archive -LiteralPath tests/benchmarks/releases/scribble-test-kit-v1.zip -DestinationPath tests/benchmarks/generated -Force
-          ./tests/benchmarks/Test-TestLab.ps1
-          ./tests/benchmarks/Test-TestLabLoader.ps1
-          ./tests/benchmarks/Test-TestLabPreparation.ps1
-          ./tests/benchmarks/Test-TestLabReport.ps1 -RenderPdf
+          foreach ($testScript in @('Test-TestLab.ps1','Test-TestLabLoader.ps1','Test-TestLabPreparation.ps1')) {
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path 'tests/benchmarks' $testScript)
+            if ($LASTEXITCODE -ne 0) { throw "Benchmark check failed: $testScript" }
+          }
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/benchmarks/Test-TestLabReport.ps1 -RenderPdf
+          if ($LASTEXITCODE -ne 0) { throw 'PDF report validation failed.' }
 
       - name: Upload synthetic PDF report validation
         if: always()
