@@ -2885,11 +2885,6 @@ function siteLabel(value) {
 }
 
 function askUser(toolRequest) {
-  if (new URLSearchParams(location.search).has("suite")) {
-    suiteRequestError = "The model requested an operator answer: " + (toolRequest?.arguments || "");
-    throw new Error(suiteRequestError);
-  }
-
   let questions = [];
   try {
     const parsedArguments = JSON.parse(toolRequest?.arguments || "{}");
@@ -2926,6 +2921,17 @@ function askUser(toolRequest) {
 
   if (questions.length === 0) {
     return Promise.resolve("[ASK_FAILED] At least one question is required.");
+  }
+
+  if (new URLSearchParams(location.search).has("suite")) {
+    const answers = {};
+    for (const question of questions) {
+      const answer = suitePresetAnswer(question.question);
+      if (!answer) { suiteRequestError = "The model requested an answer outside the kit presets: " + (toolRequest?.arguments || ""); throw new Error(suiteRequestError); }
+      answers[question.id] = answer; currentClarificationAnswers.push(answer);
+    }
+    appendMessage("user", "Test Lab preset: " + Object.values(answers).join("; "));
+    return Promise.resolve(`The user answered: ${JSON.stringify(answers)}`);
   }
 
   return new Promise((resolve) => {
@@ -3851,6 +3857,7 @@ async function executeSuiteCommand(command) {
       const tabs = await chrome.tabs.query({url: command.sourceUrl});
       if (!tabs.length) throw new Error("I could not find the prepared fixture tab.");
       globalThis.scribbleSuiteSourceTab = tabs[tabs.length - 1].id;
+      globalThis.scribbleSuiteAnswers = command.answers || {};
       await clearChat();
       globalThis.scribbleLabEnabled = true;
       globalThis.scribbleLabRun = command.runId;
@@ -3880,3 +3887,9 @@ async function pollSuite() {
   finally { suitePolling = false; }
 }
 if (suiteParameters.has("suite")) setInterval(pollSuite, 1000);
+
+function suitePresetAnswer(question) {
+  return Object.entries(globalThis.scribbleSuiteAnswers || {})
+    .filter(([key]) => ["audience", "period", "currency", "format"].includes(key) && new RegExp("\\b" + key + "\\b", "i").test(question))
+    .map(([,value]) => value).join("; ");
+}

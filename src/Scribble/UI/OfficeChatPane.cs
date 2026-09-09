@@ -528,7 +528,13 @@ namespace Scribble.UI
 
         private void PostToWeb(IDictionary<string, object> payload)
         {
-            _suiteDriver.Observe(payload);
+            var suiteRun = Scribble.Testing.TestLab.ActiveRunId();
+            _suiteDriver.Observe(payload, answer => BeginInvoke((Action)(() => {
+                if (suiteRun != Scribble.Testing.TestLab.ActiveRunId()) return;
+                _promptHelper.HandleAnswer(answer);
+                PostToWeb(new Dictionary<string, object> { { "type", "dismissAskUser" } });
+                PostToWeb(new Dictionary<string, object> { { "type", "user" }, { "text", "Test Lab preset: " + answer } });
+            })));
             object eventType;
             if (payload.TryGetValue("type", out eventType) && new[] { "user", "assistant", "askUser", "status", "draft" }.Contains(Convert.ToString(eventType)))
                 Scribble.Testing.TestLab.Record(Scribble.Testing.TestLab.ActiveRunId(), "pane", "pane_event", payload);

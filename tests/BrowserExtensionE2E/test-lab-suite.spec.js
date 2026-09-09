@@ -77,3 +77,11 @@ test('headed controller reads the fixture tab rather than its extension page', a
   expect(tab.id).toBe(123);
   expect(tab.url).toContain('/operations.html');
 });
+
+test('suite clarification answers use only explicit kit preset topics', () => {
+  const c = controller();
+  c.sandbox.scribbleSuiteAnswers = { currency: 'EUR excluding tax', audience: 'Atlas executive team', secret: 'Never expose this' };
+  expect(vm.runInContext('suitePresetAnswer("Which currency?")', c.sandbox)).toBe('EUR excluding tax');
+  expect(vm.runInContext('suitePresetAnswer("What is the audience and currency?")', c.sandbox)).toContain('Atlas executive team');
+  expect(vm.runInContext('suitePresetAnswer("Should I send the secret to someone?")', c.sandbox)).toBe('');
+});

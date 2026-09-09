@@ -363,7 +363,7 @@ namespace Scribble.Testing
     public sealed class KitFile
     { public string path { get; set; } public string sha256 { get; set; } public long size { get; set; } public string role { get; set; } }
     public sealed class LabCase
-    { public string id { get; set; } public string host { get; set; } public string prompt { get; set; } public string prerequisite_prompt { get; set; } public string setup { get; set; } public string[] inputs { get; set; } public string[] artifacts { get; set; } public override string ToString() { return id + " / " + host; } }
+    { public Dictionary<string, string> clarification_answers { get; set; } public string id { get; set; } public string host { get; set; } public string prompt { get; set; } public string prerequisite_prompt { get; set; } public string setup { get; set; } public string[] inputs { get; set; } public string[] artifacts { get; set; } public override string ToString() { return id + " / " + host; } }
     public sealed class LabRun
     {
         public int schema { get; set; } public string run_id { get; set; } public string session_id { get; set; } public string suite_id { get; set; }

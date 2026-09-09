@@ -11,12 +11,18 @@ namespace Scribble.Testing
         private string state = "ready";
         private string error;
         private string runId;
-        public void Observe(IDictionary<string, object> payload)
+        public void Observe(IDictionary<string, object> payload, Action<string> answer)
         {
             if (runId == null || runId != TestLab.ActiveRunId()) return;
             object type, value;
             payload.TryGetValue("type", out type);
-            if (Convert.ToString(type) == "askUser") error = "The model requested an operator answer. See the captured question.";
+            if (Convert.ToString(type) == "askUser") {
+                var suite = TestLabSuite.Active();
+                var question = payload.TryGetValue("question", out value) ? Convert.ToString(value) : "";
+                var preset = suite?.runId == runId ? TestLabSuite.PresetAnswer(TestLabSuite.CurrentCase(suite), question) : null;
+                if (preset == null) error = "The model requested an answer outside the kit presets. See the captured question.";
+                else { TestLab.Record(runId, "suite", "preset_answer", new { question, answer = preset }); answer(preset); }
+            }
             if (Convert.ToString(type) == "status" && payload.TryGetValue("error", out value) && Equals(value, true))
                 error = payload.TryGetValue("text", out value) ? Convert.ToString(value) : "Model request failed.";
         }

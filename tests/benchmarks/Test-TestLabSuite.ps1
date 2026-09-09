@@ -27,6 +27,8 @@ try {
         else { Reject { [Scribble.Testing.TestLabSuite]::Prompt($case,1) } 'Unexpected second phase accepted.' }
         Reject { [Scribble.Testing.TestLabSuite]::Prompt($case,2) } 'Arbitrary phase accepted.'
     }
+    Assert ([Scribble.Testing.TestLabSuite]::PresetAnswer($cases[0],'Which currency?') -eq 'EUR excluding tax') 'Kit preset answer not used.'
+    Assert ($null -eq [Scribble.Testing.TestLabSuite]::PresetAnswer($cases[0],'Should I contact someone?')) 'Invented a response outside the kit presets.'
     $run=[Scribble.Testing.TestLab]::Start('EX01','Excel',$true)
     $state.caseId='EX01';$state.host='Excel';$state.runId=$run.run_id
     [Scribble.Testing.TestLabSuite]::Save($state)

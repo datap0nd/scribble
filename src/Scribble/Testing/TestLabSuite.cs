@@ -29,6 +29,7 @@ namespace Scribble.Testing
     public sealed class SuiteChromeCommand
     {
         public string id, action, prompt, sourceUrl, runId;
+        public Dictionary<string, string> answers;
     }
     public static class TestLabSuite
     {
@@ -62,6 +63,13 @@ namespace Scribble.Testing
             if (phase == 0) return string.IsNullOrEmpty(c.prerequisite_prompt) ? c.prompt : c.prerequisite_prompt;
             if (phase == 1 && !string.IsNullOrEmpty(c.prerequisite_prompt)) return c.prompt;
             throw new InvalidOperationException("Invalid test phase.");
+        }
+        public static string PresetAnswer(LabCase c, string question)
+        {
+            var known = (c.clarification_answers ?? new Dictionary<string, string>()).Where(p =>
+                new[] { "audience", "period", "currency", "format" }.Contains(p.Key) &&
+                Regex.IsMatch(question ?? "", @"\b" + p.Key + @"\b", RegexOptions.IgnoreCase)).Select(p => p.Value).ToArray();
+            return known.Length == 0 ? null : string.Join("; ", known);
         }
         public static bool OwnsSource(string runId, string path)
         {
@@ -290,7 +298,7 @@ namespace Scribble.Testing
             var id = Guid.NewGuid().ToString("N"); var started = DateTime.UtcNow; var progress = started; bool accepted = false;
             var folder = TestLab.SafeChild(State.folder, "cases/" + State.caseId);
             if (State.host == "Chrome") {
-                var command = new SuiteChromeCommand { id = id, action = action, prompt = action == "submit" ? TestLabSuite.Prompt(TestLabSuite.CurrentCase(State), phase) : null, sourceUrl = State.sourceUrl, runId = State.runId };
+                var command = new SuiteChromeCommand { id = id, action = action, prompt = action == "submit" ? TestLabSuite.Prompt(TestLabSuite.CurrentCase(State), phase) : null, sourceUrl = State.sourceUrl, runId = State.runId, answers = TestLabSuite.CurrentCase(State).clarification_answers };
                 var file = Path.Combine(folder, "chrome-command.json"); var temp = file + ".tmp"; File.WriteAllText(temp, TestLab.Serialize(command)); if (File.Exists(file)) File.Replace(temp, file, null); else File.Move(temp, file);
             }
             Log(State.caseId + ": " + action + (action == "submit" ? " phase " + phase : ""));
