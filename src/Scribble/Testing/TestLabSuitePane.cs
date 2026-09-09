@@ -1,4 +1,4 @@
-﻿﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
@@ -33,7 +33,7 @@ namespace Scribble.Testing
             if (action == "stop") { stop(); return TestLab.Serialize(new SuiteReply { state = busy() || state == "running" ? "running" : "done", error = error }); }
             if (!ready) return TestLab.Serialize(new SuiteReply { state = "initializing" });
             if (action == "status") return TestLab.Serialize(new SuiteReply { state = busy() || state == "running" ? "running" : state, error = error });
-            if (id == commandId) return TestLab.Serialize(new SuiteReply { state = state, error = error });
+            if (id == commandId) return TestLab.Serialize(new SuiteReply { state = state, error = error, hostModule = typeof(TestLab).Assembly.ManifestModule.ModuleVersionId.ToString(), captureRoot = TestLab.Root });
             if (busy() || state == "running") throw new InvalidOperationException("The pane already has a request in progress.");
             var c = TestLabSuite.CurrentCase(suite);
             if (action != "load" && action != "submit") throw new InvalidOperationException("Unknown suite action.");
