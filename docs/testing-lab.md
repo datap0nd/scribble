@@ -6,7 +6,9 @@ Download the kit from `tests/benchmarks/releases/scribble-test-kit-v1.zip` and f
 
 ## Execution and isolation
 
-Starting from an Office pane clears that pane's conversation and context. Add the case emails/attachments after Start. Chrome clears its old conversation before the first request in a new benchmark run. Later prompts and recovery within the same run retain the normal context. Other panes used manually should also start with a clean chat.
+The operator's **Prepare case** action runs the verified kit's preparation script in a separate hidden Windows PowerShell STA process. It opens the case's input files and required output apps, imports/selects exact synthetic Outlook messages, checks Office add-in connections, and opens Chrome fixture pages with a dependency-free loopback server. Reports list completed setup and remaining steps. Stop preparation terminates only that helper. Sources are opened read-only and existing unsaved fixture edits are reported rather than discarded. Preparation never submits a prompt and cannot run during capture.
+
+Starting from an Office pane clears that pane's conversation, adds the case's files or selected emails through the normal context readers, and fills the first prompt. Chrome fills the prompt once after its Test Lab window closes; operator edits and later prompts are retained. Start is restricted to the case's declared source app. Verify the context tray and submit manually while recording. Other panes used manually should also start with a clean chat.
 
 The original production request factories, model choice, tool contracts, limits, policies and draft writers remain in use. Run metadata is not sent to the model. Source attachment hashes are checked against the current case, including attachments from selected fixture emails. Mail reads check source identity/body; Office reads validate a fixture path/hash or a run tag on a newly generated document. The Chrome case stays on the loopback fixture site. Mismatches stop capture and mark the run incomplete.
 
@@ -21,6 +23,8 @@ Trace storage has a 250 MB limit; individual artifacts have a 100 MB limit and t
 The operator can capture tagged new Excel/PPT/Word documents and open Outlook drafts. Excel/PowerPoint save copies; Word's native Flat OPC is packaged as DOCX without rebinding its path; PDF/slide exports are derivatives. Outlook captures MSG, rendered HTML and native message/attachment metadata and refuses sent messages. Existing fixture documents with added draft sheets/slides require Save As to a separate output, followed by manual collection. This avoids granting model-facing save capabilities or automatically exporting unrelated source documents.
 
 Export contains `run.json`, a merged `timeline.jsonl`, marker CSV, artifact receipts, `scorecard.json`, incomplete markers and an export hash manifest. Sorting timestamps assists video review; causal ordering uses task/tool IDs and per-instance sequences. The evaluator checks hashes, structure and factual presence and leaves semantic, source-preservation and native/visual review explicit. A score is never declared passed from chat wording or file presence alone.
+
+The operator export then renders a shareable PDF with a screenshot-friendly overview, error-like events, output previews and the complete timestamped trace. It also writes a plain-text summary for the Copy report summary button. These reports are added to the evidence ZIP and its hash manifest, and saved beside it. Rendering uses installed Chrome or Edge with a separate headless profile and no untrusted HTML execution. Native binary outputs remain available in the ZIP; workbook previews are limited to 200 rows per sheet and do not recalculate formulas. PDF failure preserves the evidence ZIP, HTML and summary with an explicit error. The low-level TestLab.Export API remains an evidence-only snapshot; operator exports call TestLabReport.Create afterward.
 
 ## Regression and release workflow
 

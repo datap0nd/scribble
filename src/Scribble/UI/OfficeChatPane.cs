@@ -343,7 +343,10 @@ namespace Scribble.UI
                         PostToWeb(new Dictionary<string, object> { { "type", "testLabStatus" }, { "enabled", Scribble.Testing.TestLab.Status() != null }, { "runId", Scribble.Testing.TestLab.ActiveRunId() }, { "captureState", Scribble.Testing.TestLab.CaptureState() } });
                         break;
                     case "openTestLab":
-                        Scribble.Testing.TestLabWindow.Open(HostName, () => { if (_busy) throw new InvalidOperationException("Stop the current request before starting a test."); HandleNewChat(); });
+                        Scribble.Testing.TestLabWindow.Open(HostName, () => { if (_busy) throw new InvalidOperationException("Stop the current request before starting a test."); HandleNewChat(); }, c => {
+                            PostToWeb(new Dictionary<string, object> { { "type", "restorePrompt" }, { "text", string.IsNullOrEmpty(c.prerequisite_prompt) ? c.prompt : c.prerequisite_prompt } });
+                            AddExternalFiles(Scribble.Testing.TestLabPreparation.ContextFiles(c));
+                        });
                         break;
                     case "ready":
                         HandleWebReady();

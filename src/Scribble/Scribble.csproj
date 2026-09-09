@@ -63,6 +63,8 @@
   <ItemGroup>
     <Compile Include="Testing\TestLab.cs" />
     <Compile Include="Testing\TestLabWindow.cs" />
+    <Compile Include="Testing\TestLabPreparation.cs" />
+    <Compile Include="Testing\TestLabReport.cs" />
     <Compile Include="Testing\BenchmarkArtifactCollector.cs" />
     <Compile Include="AddIn.cs" />
     <Compile Include="ExcelAddIn.cs" />

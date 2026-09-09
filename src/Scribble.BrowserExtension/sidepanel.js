@@ -3797,10 +3797,18 @@ async function refreshTestLab() {
     if (!button && status.enabled) {
       button = document.createElement("button"); button.id = "testLabButton";
       button.style.cssText = "position:fixed;right:12px;top:4px;z-index:1000;font-size:10px";
-      button.onclick = () => sendNativeMessage({type: "openTestLab"}, SETTINGS_TIMEOUT_MS);
+        button.onclick = async () => { await sendNativeMessage({type: "openTestLab"}, SETTINGS_TIMEOUT_MS); await refreshTestLab(); };
       document.body.appendChild(button);
     }
-    if (button) { button.hidden = !status.enabled; button.textContent = status.runId ? "Test Lab • " + status.captureState : "Test Lab"; }
+      if (button) { button.hidden = !status.enabled; button.textContent = status.runId ? "Test Lab • " + status.captureState : "Test Lab"; }
+      if (status.enabled && status.runId && status.host === "Chrome" && status.prompt
+          && !isSending && globalThis.scribbleLabRun !== status.runId) {
+        await clearChat();
+        globalThis.scribbleLabRun = status.runId;
+        elements.prompt.value = status.prompt;
+        elements.prompt.dispatchEvent(new Event("input", {bubbles: true}));
+        elements.prompt.focus();
+      }
   } catch { const button = document.getElementById("testLabButton"); if (button) button.hidden = true; }
 }
 void refreshTestLab();

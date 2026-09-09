@@ -1,10 +1,18 @@
 #requires -Version 5.1
 [CmdletBinding()]
-param([string]$FixtureRoot=(Split-Path $PSScriptRoot -Parent),[string]$AssemblyPath)
+param([string]$FixtureRoot=(Split-Path $PSScriptRoot -Parent),[string]$AssemblyPath,[string]$CaseId)
 . (Join-Path $PSScriptRoot 'TestLab.Common.ps1') -AssemblyPath $AssemblyPath
 $fixture=(Resolve-Path -LiteralPath $FixtureRoot).Path
 [void][Scribble.Testing.TestLab]::VerifyKit($fixture)
 $index=Get-Content -LiteralPath (Join-Path $fixture 'operator\mail-index.json') -Raw | ConvertFrom-Json
+if ($CaseId) {
+    $allCases=Get-Content -LiteralPath (Join-Path $fixture 'operator\cases.json') -Raw | ConvertFrom-Json
+    $case=@($allCases | Where-Object id -eq $CaseId)
+    if ($case.Count -ne 1) { throw 'Unknown case ID.' }
+    $case=$case[0]
+    $index=@($index | Where-Object { $case.inputs -contains $_.path })
+    if ($index.Count -eq 0) { throw 'This case has no Outlook input messages.' }
+}
 $importRoot=Join-Path ([Scribble.Testing.TestLab]::Root) 'mail'
 New-Item -ItemType Directory -Path $importRoot -Force | Out-Null
 $pst=Join-Path $importRoot 'Atlas-v1.pst'
@@ -53,5 +61,17 @@ foreach($source in $index) {
 }
 $receipts | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $importRoot 'import-receipts.json') -Encoding utf8
 $explorer=$outlook.ActiveExplorer()
-if($explorer) { $explorer.CurrentFolder=$folder } else { $folder.GetExplorer().Display() }
-Write-Output 'Imported five synthetic messages into the isolated local PST. Select the exact case messages and Add email to Scribble. Unscoped mailbox search does not search this test folder.'
+if($explorer) { $explorer.CurrentFolder=$folder; $explorer.Display() } else { $explorer=$folder.GetExplorer(); $explorer.Display() }
+if ($CaseId) {
+    $selected=$false
+    for ($attempt=0;$attempt -lt 12;$attempt++) {
+        try {
+            $explorer.ClearSelection()
+            foreach ($receipt in $receipts) { $explorer.AddToSelection($session.GetItemFromID($receipt.entry_id,$receipt.store_id)) }
+            if ($explorer.Selection.Count -ne $receipts.Count) { throw 'Selection is not ready.' }
+            $selected=$true; break
+        } catch { Start-Sleep -Milliseconds 250 }
+    }
+    if (-not $selected) { throw 'Imported messages, but Outlook could not select the exact case set. Select the listed messages in the Atlas fixtures folder manually.' }
+    Write-Output "Prepared and selected $($receipts.Count) synthetic messages for $CaseId."
+} else { Write-Output 'Imported synthetic messages into the isolated local PST. Select the exact case messages and Add email to Scribble. Unscoped mailbox search does not search this test folder.' }
