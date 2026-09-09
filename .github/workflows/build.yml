@@ -238,6 +238,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'PDF report validation failed.' }
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/benchmarks/Test-TestLabSuite.ps1
           if ($LASTEXITCODE -ne 0) { throw 'Suite runner validation failed.' }
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/benchmarks/Test-TestLabLaunch.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Test Lab launch/recovery checks failed." }
 
       - name: Upload synthetic PDF report validation
         if: always()

@@ -13,8 +13,11 @@ namespace Scribble.BrowserHost
             // Explicit local operator launch, separate from native messaging and Office lifetimes.
             if (args != null && args.Length == 1 && args[0] == "--test-lab-suite") {
                 System.Windows.Forms.Application.EnableVisualStyles();
-                using (var lab = new Scribble.Testing.TestLabSuiteWindow()) lab.ShowDialog();
-                return 0;
+                try { using (var lab = new Scribble.Testing.TestLabSuiteWindow()) lab.ShowDialog(); return 0; }
+                catch (Exception error) {
+                    System.Windows.Forms.MessageBox.Show("Test Lab could not start.\r\n\r\n" + error, "Scribble Test Lab startup error", System.Windows.Forms.MessageBoxButtons.OK, System.Windows.Forms.MessageBoxIcon.Error);
+                    return 1;
+                }
             }
             if (args != null &&
                 args.Length > 0 &&

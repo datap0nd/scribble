@@ -50,6 +50,32 @@ namespace Scribble.Testing
                 return state;
             } catch { return null; }
         }
+        public static string RecoverIncomplete(string destination)
+        {
+            Directory.CreateDirectory(TestLab.Root);
+            using (var ownership = new FileStream(Path.Combine(TestLab.Root, "suite.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None)) {
+                if (Active() != null) throw new InvalidOperationException("A suite is still running. Stop it before recovery.");
+                var runId = TestLab.ActiveRunId();
+                if (runId == null) throw new InvalidOperationException("There is no unfinished capture to recover. Close this window and click Test Lab again.");
+                var current = Process.GetCurrentProcess();
+                var running = new List<string>();
+                foreach (var name in new[] { "EXCEL", "POWERPNT", "WINWORD", "OUTLOOK", "chrome", "ScribbleBrowserHost" })
+                    foreach (var process in Process.GetProcessesByName(name)) using (process)
+                        if (process.Id != current.Id && process.SessionId == current.SessionId) running.Add(name);
+                if (running.Count > 0) throw new InvalidOperationException("Save your work and close these apps, then click Recover incomplete run again: " + string.Join(", ", running.Distinct()) + ". No app was closed automatically.");
+                TestLab.Finish(false);
+                MarkRecovery(runId);
+                var evidence = TestLab.Export(runId, destination);
+                var report = Path.Combine(destination, "recovered-report.html");
+                File.WriteAllText(report, TestLabReport.BuildHtml(evidence, Path.Combine(destination, "recovered-summary.txt")), new UTF8Encoding(false));
+                TestLab.Disable();
+                return report;
+            }
+        }
+        private static void MarkRecovery(string runId)
+        {
+            TestLab.MarkIncomplete(runId, "Recovered after the operator closed all Office/browser model hosts. Prior capture remains incomplete; no model task was resumed.");
+        }
         public static SuiteState Require(string id, string host)
         {
             var s = Active();
@@ -180,7 +206,7 @@ namespace Scribble.Testing
         {
             Directory.CreateDirectory(TestLab.Root);
             using (var ownership = new FileStream(Path.Combine(TestLab.Root, "suite.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None)) {
-                if (TestLab.ActiveRunId() != null) throw new InvalidOperationException("Finish the existing manual test run before running the suite.");
+                if (TestLab.ActiveRunId() != null) throw new InvalidOperationException("An unfinished capture is active. Use Recover incomplete run in this window after saving work and closing Office and Chrome.");
                 TestLabSuite.Save(State);
                 try {
                     Log("Downloading the latest test kit from main...");

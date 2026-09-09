@@ -25,12 +25,20 @@ namespace Scribble.Testing
         {
             var active = TestLabSuite.Active();
             if (active != null) {
+                File.WriteAllText(Path.Combine(TestLab.Root, "activate-" + active.id), "activate");
                 using (var process = Process.GetProcessById(active.pid)) { var handle = process.MainWindowHandle; if (handle != IntPtr.Zero) { ShowWindow(handle, 9); SetForegroundWindow(handle); } }
                 return;
             }
             var host = Path.Combine(Path.GetDirectoryName(typeof(TestLab).Assembly.Location), "ScribbleBrowserHost.exe");
             if (!File.Exists(host)) throw new FileNotFoundException("Install the current Scribble build to use the standalone Test Lab runner.", host);
-            using (var process = Process.Start(new ProcessStartInfo(host, "--test-lab-suite") { UseShellExecute = false, CreateNoWindow = true, WindowStyle = ProcessWindowStyle.Hidden })) { }
+            using (var process = Process.Start(new ProcessStartInfo(host, "--test-lab-suite") { UseShellExecute = false, CreateNoWindow = true, WindowStyle = ProcessWindowStyle.Normal })) {
+                if (process.WaitForExit(1000)) {
+                    var detail = "Test Lab exited before opening (exit " + process.ExitCode + ", 0x" + process.ExitCode.ToString("X8") + ").\r\nExecutable: " + host;
+                    Directory.CreateDirectory(TestLab.Root);
+                    File.WriteAllText(Path.Combine(TestLab.Root, "launcher-error.log"), DateTime.UtcNow.ToString("O") + " " + detail);
+                    MessageBox.Show(detail, "Scribble Test Lab startup error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
         }
         public TestLabSuiteWindow()
         {
@@ -40,11 +48,26 @@ namespace Scribble.Testing
             Directory.CreateDirectory(folder);
             var controls = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 80, Padding = new Padding(8) };
             Add(controls, "Stop suite", () => { cancellation.Cancel(); Append("Stopping after the current operation; evidence will be saved."); });
+            Add(controls, "Recover incomplete run", () => {
+                if (!finished) throw new InvalidOperationException("Stop the current suite and wait for its report before recovering.");
+                var report = TestLabSuite.RecoverIncomplete(folder);
+                Append("Preserved unfinished capture: " + report);
+                TestLabSuiteWindow.Open(); Close();
+            });
             Add(controls, "Copy summary", () => Clipboard.SetText(File.Exists(Path.Combine(folder, "summary.txt")) ? File.ReadAllText(Path.Combine(folder, "summary.txt")) : log.Text));
             Add(controls, "Open results folder", () => Process.Start(new ProcessStartInfo(folder) { UseShellExecute = true }));
             Add(controls, "Open HTML report", () => { var path = Path.Combine(folder, "report.html"); if (!File.Exists(path)) throw new InvalidOperationException("The HTML report is created when the suite finishes or stops."); Process.Start(new ProcessStartInfo(path) { UseShellExecute = true }); });
             Controls.Add(log); Controls.Add(new Label { Dock = DockStyle.Top, Height = 58, Text = "Runs the synthetic suite visibly using your configured model. Prompts and outputs are recorded locally; emails remain unsent drafts.\r\nResults: " + folder }); Controls.Add(controls);
-            Shown += async (s, e) => await Run();
+            var activation = new System.Windows.Forms.Timer { Interval = 500 };
+            activation.Tick += (s, e) => {
+                var active = TestLabSuite.Active();
+                if (active == null || active.pid != Process.GetCurrentProcess().Id) return;
+                var signal = Path.Combine(TestLab.Root, "activate-" + active.id);
+                if (!File.Exists(signal)) return;
+                try { File.Delete(signal); Show(); WindowState = FormWindowState.Normal; Activate(); } catch (IOException) { }
+            };
+            activation.Start(); FormClosed += (s, e) => activation.Dispose();
+            Shown += async (s, e) => { Activate(); await Run(); };
             FormClosing += (s, e) => { if (!finished) { e.Cancel = true; cancellation.Cancel(); Append("Stopping and saving the report before closing. Keep this window open until export finishes."); } };
         }
         private void Add(FlowLayoutPanel panel, string text, Action action)
@@ -78,6 +101,10 @@ namespace Scribble.Testing
         }
         private async Task Run()
         {
+            Append("Test Lab runner " + FileVersionInfo.GetVersionInfo(typeof(TestLab).Assembly.Location).FileVersion);
+            if (TestLab.ActiveRunId() != null) {
+                Append("An unfinished capture is still active. Save your work, close Excel, PowerPoint, Word, Outlook and Chrome, then click Recover incomplete run here. The old evidence will be preserved before a fresh suite opens.");
+            }
             var runner = new TestLabSuiteRunner(folder, Append, cancellation.Token);
             try { await RunOnSta(runner.Run); }
             catch (Exception e) { runner.Log("Cannot run suite: " + e); }
@@ -97,7 +124,7 @@ namespace Scribble.Testing
         private static string E(string text) => WebUtility.HtmlEncode(text ?? "");
         public static string BuildHtml(SuiteState s, SuiteCaseResult[] results)
         {
-            var summary = new StringBuilder("SCRIBBLE TEST LAB\nSuite: " + s.id + "\nMain: " + s.commit + "\nKit SHA256: " + s.kitHash + "\nResults: " + s.folder + "\n");
+            var summary = new StringBuilder("SCRIBBLE TEST LAB\nRunner build: " + FileVersionInfo.GetVersionInfo(typeof(TestLab).Assembly.Location).FileVersion + "\nSuite: " + s.id + "\nMain: " + s.commit + "\nKit SHA256: " + s.kitHash + "\nResults: " + s.folder + "\n");
             summary.AppendLine("Needs review: " + results.Count(r => r.status == "needs_review") + " | Blocked/stopped: " + results.Count(r => r.status == "blocked" || r.status == "stopped" || r.status == "incomplete") + " | Not run: " + results.Count(r => r.status == "not_run"));
             summary.AppendLine("Completion is not a correctness pass. See native output and visual review in the evidence.");
             foreach (var r in results) summary.AppendLine(r.id + " " + r.host + " — " + r.status + (string.IsNullOrEmpty(r.error) ? "" : " — " + (r.error.Split('\n')[0].Length > 140 ? r.error.Split('\n')[0].Substring(0, 140) + "…" : r.error.Split('\n')[0])));

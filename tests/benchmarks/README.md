@@ -48,3 +48,7 @@ The evaluator-only reference files are for human comparison. Never add them to Q
 Use the bundled Python and Node runtime with `python-docx`, `reportlab`, and `@oai/artifact-tool`. Link the generator's `node_modules` to the bundled package directory. Run `generators/build_kit.py`, then `generators/build_office.mjs`, native/render QA, `generators/build_kit.py --pack`, and `evaluator/test_kit.py`. The committed ZIP is independently downloadable under `tests/benchmarks/releases/` on main.
 
 Expected outputs include formula-based reference analysis, a six-slide editable deck, a memo, a draft email, operations PDF, and slide images. All amounts exclude tax. Margin changes are percentage points. Exact expected facts and the scoring rubric live under `evaluator-only/`.
+
+## Recover an unfinished capture
+
+Test Lab opens a visible standalone window. If the previous run was interrupted, save your work and close Office and Chrome, then click **Recover incomplete run** in that window. Recovery refuses while another Office/browser model host is running, preserves the old run as incomplete in `recovered-report.html` with its evidence, and opens a fresh suite. No application is closed automatically. The report header records the runner build separately from the downloaded kit commit.
