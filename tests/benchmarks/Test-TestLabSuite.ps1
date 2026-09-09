@@ -38,6 +38,8 @@ try {
     $fixtureInput=Join-Path $kit $run.input_paths[0]
     Assert ([Scribble.Testing.TestLabSuite]::OwnsSource($run.run_id,$fixtureInput)) 'Suite-owned source not collectable.'
     Assert (-not [Scribble.Testing.TestLabSuite]::OwnsSource($run.run_id,(Join-Path $folder 'unrelated.xlsx'))) 'Unrelated source accepted.'
+    $csvInput=$run.input_paths | Where-Object { $_.EndsWith('.csv') } | Select-Object -First 1
+    Assert (-not [Scribble.Testing.TestLabSuite]::OwnsNativeSource($run.run_id,(Join-Path $kit $csvInput),'Excel')) 'CSV would be mislabeled as XLSX.'
     # Exercise the production pane driver without Office/model dependencies.
     $driverType=[Scribble.Testing.TestLab].Assembly.GetType('Scribble.Testing.TestLabSuitePane')
     $driver=[Activator]::CreateInstance($driverType,$true);$method=$driverType.GetMethod('Command')

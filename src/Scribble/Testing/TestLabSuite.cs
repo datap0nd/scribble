@@ -80,6 +80,12 @@ namespace Scribble.Testing
             return string.Equals(root, run.fixture_root, StringComparison.OrdinalIgnoreCase) &&
                 (run.input_paths ?? new string[0]).Any(p => string.Equals(TestLab.SafeChild(root, p), path, StringComparison.OrdinalIgnoreCase));
         }
+        public static bool OwnsNativeSource(string runId, string path, string kind)
+        {
+            var extension = kind == "Excel" ? ".xlsx" : kind == "PowerPoint" ? ".pptx" : kind == "Word" ? ".docx" : null;
+            // SaveCopyAs preserves Excel's source format: a CSV must never be mislabeled as XLSX.
+            return extension != null && string.Equals(Path.GetExtension(path), extension, StringComparison.OrdinalIgnoreCase) && OwnsSource(runId, path);
+        }
         // Native messaging uses a case-specific nonce and a single controller claim. Old tabs cannot submit a later case.
         public static string Chrome(string data)
         {
@@ -220,7 +226,8 @@ namespace Scribble.Testing
                             }
                         } finally {
                             if (submitted && !quiescent) keepCaptureActive = true;
-                            TestLabPreparation.Stop(preparation); preparation = null;
+                            try { TestLabPreparation.Stop(preparation); } catch (Exception e) { Log("Preparation helper stop error: " + e.Message); }
+                            preparation = null;
                             if (State.runId != null) {
                                 try { Log(BenchmarkArtifactCollector.Capture(State.runId)); } catch (Exception e) { Log("Output capture error: " + e.Message); result.error += "\nOutput capture: " + e; result.status = "blocked"; }
                                 try {

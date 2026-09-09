@@ -30,7 +30,7 @@ namespace Scribble.Testing
                         object value = documents.Item(i); dynamic document = value;
                         try
                         {
-                            if (!TestLab.IsRunOutput(value, run.run_id) && !TestLabSuite.OwnsSource(run.run_id, Convert.ToString(document.FullName))) continue;
+                            if (!TestLab.IsRunOutput(value, run.run_id) && !TestLabSuite.OwnsNativeSource(run.run_id, Convert.ToString(document.FullName), kind)) continue;
                             var stem = Path.Combine(directory, kind + "-" + i);
                             var extension = kind == "Excel" ? ".xlsx" : kind == "PowerPoint" ? ".pptx" : ".docx";
                             if (kind == "Excel") document.SaveCopyAs(stem + extension);
