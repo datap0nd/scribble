@@ -33,7 +33,7 @@ namespace GuardrailTests
             try {
                 var request = Request(); request.tools = new List<ChatToolDefinition> { WorkbookToolCatalog.DraftDefinition() };
                 var task = new TaskContextManager(request, "excel", "Create a draft analysis", new TaskCheckpointStore(root));
-                var first = Call(WorkbookToolCatalog.WriteDraftSheet, "{\"rows\":[[\"Metric\",\"Value\"],[\"Revenue\",120000]]}");
+                var first = Call(WorkbookToolCatalog.WriteDraftSheet, "{\"rows\":[[\"Metric\",\"Value\"],[\"Revenue\",\"120000\"]]}");
                 Check(task.ValidateArguments(first) == null, "Initial draft was rejected.");
                 task.BeforeTool(first, true);
                 task.AfterTool(first, new MailboxToolResult(first.id, "{\"ok\":true,\"permission_consumed\":true}", "Created synthetic draft receipt"));
