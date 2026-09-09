@@ -79,10 +79,19 @@ foreach ($name in $apps | Where-Object { $_ -ne 'Chrome' }) {
             for ($i=1;$i -le $collection.Count;$i++) { if ($collection.Item($i).FullName -eq $path) { $document=$collection.Item($i); break } }
             if ($document -and -not $document.Saved) { throw "The fixture $relative has unsaved edits. Save a separate output and close it before preparing again." }
             if (-not $document) {
-                if ($name -eq 'Excel') { $document=$app.Workbooks.Open($path,0,$true) }
+                if ($name -eq 'Excel') {
+                    for ($j=1;$j -le $app.Workbooks.Count;$j++) {
+                        $opened=$app.Workbooks.Item($j)
+                        if ([IO.Path]::GetFileName($opened.FullName) -eq [IO.Path]::GetFileName($path) -and $opened.FullName -ne $path) {
+                            throw "Excel already has a different workbook named $([IO.Path]::GetFileName($path)) open at $($opened.FullName). Save its generated output and close that workbook before retrying this case."
+                        }
+                    }
+                    $document=$app.Workbooks.Open($path,0,$true)
+                }
                 elseif ($name -eq 'PowerPoint') { $document=$app.Presentations.Open($path,-1,0,-1) }
                 else { $document=$app.Documents.Open($path,$false,$true) }
             }
+            if ($null -eq $document) { throw "$name did not open $relative. Check its visible file-open dialog." }
             if ($name -eq 'PowerPoint') { $document.Windows.Item(1).Activate() } else { $document.Activate() }
             $completed.Add("Opened $relative in $name (source opened read-only).")
         }
