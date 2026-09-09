@@ -1,4 +1,4 @@
-﻿using System;
+﻿﻿using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
@@ -44,6 +44,7 @@ namespace Scribble.Testing
                     loaded_module = typeof(TestLab).Assembly.ManifestModule.ModuleVersionId.ToString(),
                     assembly = typeof(TestLab).Assembly.Location, capture_root = TestLab.Root });
                 reset(); load(c); state = "done";
+                return TestLab.Serialize(new SuiteReply { state = state, hostModule = typeof(TestLab).Assembly.ManifestModule.ModuleVersionId.ToString(), captureRoot = TestLab.Root });
             }
             else { state = "running"; Execute(send, prompt); }
             return TestLab.Serialize(new SuiteReply { state = busy() || state == "running" ? "running" : state, error = error });
@@ -55,5 +56,5 @@ namespace Scribble.Testing
             finally { state = "done"; }
         }
     }
-    public sealed class SuiteReply { public string state { get; set; } public string error { get; set; } }
+    public sealed class SuiteReply { public string hostModule { get; set; } public string captureRoot { get; set; } public string state { get; set; } public string error { get; set; } }
 }

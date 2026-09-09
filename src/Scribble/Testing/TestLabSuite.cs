@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -326,7 +326,15 @@ namespace Scribble.Testing
                 }
                 if (reply != null) {
                     if (!string.IsNullOrEmpty(reply.error) && action != "stop") throw new InvalidOperationException(reply.error);
-                    if (reply.state == "done") return;
+                    if (reply.state == "done") {
+                        if (action == "load" && State.host != "Chrome") {
+                            Log(State.host + " loaded module: " + (reply.hostModule ?? "not reported") + "; capture root: " + (reply.captureRoot ?? "not reported"));
+                            if (reply.hostModule != typeof(TestLab).Assembly.ManifestModule.ModuleVersionId.ToString() ||
+                                !string.Equals(reply.captureRoot, TestLab.Root, StringComparison.OrdinalIgnoreCase))
+                                throw new InvalidOperationException("The running " + State.host + " add-in differs from this Test Lab runner. Close and restart Office after updating Scribble, then rerun Test Lab.");
+                        }
+                        return;
+                    }
                 }
                 if (DateTime.UtcNow - progress > TimeSpan.FromSeconds(15)) { Log(State.caseId + ": waiting for " + action + " (" + (int)(DateTime.UtcNow - started).TotalSeconds + " seconds)"); progress = DateTime.UtcNow; }
                 await Task.Delay(750);
