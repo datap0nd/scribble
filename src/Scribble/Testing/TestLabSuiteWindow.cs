@@ -4,6 +4,7 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -14,15 +15,22 @@ namespace Scribble.Testing
 {
     public sealed class TestLabSuiteWindow : Form
     {
-        private static TestLabSuiteWindow window;
+        [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr window);
+        [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr window, int command);
         private readonly TextBox log = new TextBox { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Both, WordWrap = false, Dock = DockStyle.Fill };
         private readonly CancellationTokenSource cancellation = new CancellationTokenSource();
         private readonly string folder;
         private bool finished;
         public static void Open()
         {
-            if (window != null && !window.IsDisposed) { window.Show(); window.Activate(); return; }
-            window = new TestLabSuiteWindow(); window.Show();
+            var active = TestLabSuite.Active();
+            if (active != null) {
+                using (var process = Process.GetProcessById(active.pid)) { var handle = process.MainWindowHandle; if (handle != IntPtr.Zero) { ShowWindow(handle, 9); SetForegroundWindow(handle); } }
+                return;
+            }
+            var host = Path.Combine(Path.GetDirectoryName(typeof(TestLab).Assembly.Location), "ScribbleBrowserHost.exe");
+            if (!File.Exists(host)) throw new FileNotFoundException("Install the current Scribble build to use the standalone Test Lab runner.", host);
+            using (var process = Process.Start(new ProcessStartInfo(host, "--test-lab-suite") { UseShellExecute = false, CreateNoWindow = true, WindowStyle = ProcessWindowStyle.Hidden })) { }
         }
         public TestLabSuiteWindow()
         {

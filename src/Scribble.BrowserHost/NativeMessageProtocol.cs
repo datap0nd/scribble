@@ -274,8 +274,8 @@ namespace Scribble.BrowserHost
                 }
                 if (request.type == "openTestLab")
                 {
-                    using (var lab = new Scribble.Testing.TestLabSuiteWindow()) lab.ShowDialog();
-                    return Success(service, requestId, "Test Lab closed.", service.Model, false);
+                    Scribble.Testing.TestLabSuiteWindow.Open();
+                    return Success(service, requestId, "Test Lab opened in its own window.", service.Model, false);
                 }
                 if (string.Equals(
                     request.type,

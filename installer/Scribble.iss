@@ -91,8 +91,9 @@ Source: "..\src\Scribble\bin\Release\runtimes\win-x86\native\WebView2Loader.dll"
 Source: "..\src\Scribble\bin\Release\runtimes\win-x64\native\WebView2Loader.dll"; DestDir: "{app}\runtimes\win-x64\native"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\src\Scribble\bin\Release\runtimes\win-arm64\native\WebView2Loader.dll"; DestDir: "{app}\runtimes\win-arm64\native"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\src\Scribble\bin\Release\WebView2Loader.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
-Source: "..\src\Scribble.BrowserHost\bin\Release\ScribbleBrowserHost.exe"; DestDir: "{app}"; Flags: ignoreversion; Components: browser
-Source: "..\src\Scribble.BrowserHost\bin\Release\ScribbleBrowserHost.exe.config"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist; Components: browser
+; The host also runs the standalone Test Lab, including Office-only installations.
+Source: "..\src\Scribble.BrowserHost\bin\Release\ScribbleBrowserHost.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\src\Scribble.BrowserHost\bin\Release\ScribbleBrowserHost.exe.config"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\src\Scribble.BrowserHost\com.scribble.browser.json"; DestDir: "{app}"; Flags: ignoreversion; Components: browser
 Source: "..\src\Scribble.BrowserExtension\manifest.json"; DestDir: "{app}\BrowserExtension"; Flags: ignoreversion; Components: browser
 Source: "..\src\Scribble.BrowserExtension\background.js"; DestDir: "{app}\BrowserExtension"; Flags: ignoreversion; Components: browser
