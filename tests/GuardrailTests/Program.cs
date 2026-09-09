@@ -1,4 +1,4 @@
-using System;
+﻿﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
@@ -373,6 +373,8 @@ namespace GuardrailTests
                 Run("150 requests retain paired evidence across context rejection and restart", TaskContinuationTests.ContextRecoveryAndPairing);
                 Run("Mailbox scales to 1000 messages and long bodies", ScaleTaskTests.MailboxPagination);
                 Run("Sparse mailbox advances through the real coordinator", HardeningTests.SparseMailboxThroughCoordinator);
+                Run("Native report readback retains scalar cell formulas", HardeningTests.NativeReportReadback);
+                Run("Duplicate document writes return a recoverable result", HardeningTests.DuplicateDraftIsRecoverable);
                 Run("Typed outcomes and encrypted diagnostic tail", HardeningTests.TypedOutcomesAndDiagnostics);
                 Run("Web reads cache and preserve redirect identity", HardeningTests.WebCacheAndRedirects);
                 Run("Source spans and shared tool contracts reject malformed writes", HardeningTests.SourceSpansAndContracts);

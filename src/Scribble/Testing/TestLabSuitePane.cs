@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
@@ -39,7 +39,12 @@ namespace Scribble.Testing
             if (action != "load" && action != "submit") throw new InvalidOperationException("Unknown suite action.");
             var prompt = TestLabSuite.Prompt(c, phase);
             commandId = id; runId = suite.runId; error = null;
-            if (action == "load") { reset(); load(c); state = "done"; }
+            if (action == "load") {
+                TestLab.Record(runId, "suite", "host_connected", new { host,
+                    loaded_module = typeof(TestLab).Assembly.ManifestModule.ModuleVersionId.ToString(),
+                    assembly = typeof(TestLab).Assembly.Location, capture_root = TestLab.Root });
+                reset(); load(c); state = "done";
+            }
             else { state = "running"; Execute(send, prompt); }
             return TestLab.Serialize(new SuiteReply { state = busy() || state == "running" ? "running" : state, error = error });
         }

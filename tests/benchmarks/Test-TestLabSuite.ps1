@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 param([string]$AssemblyPath=(Join-Path $PSScriptRoot '../../src/Scribble/bin/Release/Scribble.dll'),[switch]$RenderPdf)
 $ErrorActionPreference='Stop'
 Add-Type -Path (Resolve-Path -LiteralPath $AssemblyPath).Path
@@ -121,7 +121,17 @@ try {
     Assert ($html.Contains('&lt;script&gt;') -and -not $html.Contains('<script>alert')) 'Report executes source text.'
     Assert ((Get-Content -LiteralPath (Join-Path $folder 'summary.txt') -Raw).Contains('EX01 Excel')) 'Pasteable summary missing case.'
     Assert ((Get-Content -LiteralPath (Join-Path $folder 'summary.txt') -Raw).Contains('END_OF_ERROR')) 'Copy summary lost the first failure diagnostic.'
-    if($RenderPdf) { $pdf=[Scribble.Testing.TestLabSuiteReport]::Create($state,@($result));Assert ((Get-Item -LiteralPath $pdf).Length -gt 1000) 'Suite PDF empty.';Write-Output "Suite PDF sample: $pdf" }
+    $reportPath=[Scribble.Testing.TestLabSuiteReport]::Create($state,@($result))
+    Assert ($reportPath.EndsWith('report.html') -and (Test-Path $reportPath)) 'Suite must produce HTML without a PDF renderer.'
+    Assert (-not (Test-Path (Join-Path $folder 'report.pdf'))) 'Suite unexpectedly created a PDF.'
+    $diagnostics=Get-Content -LiteralPath (Join-Path $folder 'diagnostics.txt') -Raw
+    Assert ($diagnostics.Contains('<script>alert(1)</script>') -and $diagnostics.Contains('END_OF_ERROR')) 'Diagnostic text lost escaped error content.'
+    $payload=('recorded event ' * 3000)+'TAIL_SENTINEL'
+    $parts=[Scribble.Testing.TestLabSuiteReport]::SplitDiagnostics($state.id,$payload)
+    $reassembled=($parts | ForEach-Object { $_.Substring($_.IndexOf("`n")+1) }) -join ''
+    Assert ($parts.Length -gt 1 -and $reassembled -ceq $payload) 'Relay chunks lost or duplicated diagnostic text.'
+    Assert ($html.Contains('data-copy=') -and $html.Contains('script-src')) 'HTML relay controls missing.'
+    Write-Output "Suite HTML sample: $reportPath"
     Write-Output 'PASS: 16 cases, exact phases, source ownership, lease expiry, Chrome controller exclusivity, startup stderr, ZIP traversal, suite report.'
 } finally {
     [Scribble.Testing.TestLabPreparation]::Stop($preparation)

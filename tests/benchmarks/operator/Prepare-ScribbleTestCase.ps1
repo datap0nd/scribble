@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 [CmdletBinding()]
 param([Parameter(Mandatory=$true)][string]$CaseId,
       [string]$FixtureRoot=(Split-Path $PSScriptRoot -Parent), [string]$AssemblyPath,
@@ -39,9 +39,10 @@ function Assert-Idle {
     $now=[Scribble.Testing.TestLab]::Status()
     if (-not $now -or $now.session_id -ne $session.session_id -or $now.run_id) { throw 'Preparation stopped because the test session changed or a run started.' }
 }
+function Progress($text) { Write-Output ([DateTime]::UtcNow.ToString('O')+' '+$text) }
 function Get-App($name) {
-    try { return [Runtime.InteropServices.Marshal]::GetActiveObject($name+'.Application') }
-    catch { return New-Object -ComObject ($name+'.Application') }
+    try { return ,([Runtime.InteropServices.Marshal]::GetActiveObject($name+'.Application')) }
+    catch { return ,(New-Object -ComObject ($name+'.Application')) }
 }
 $progids=@{Excel='Scribble.ExcelAddIn';PowerPoint='Scribble.PowerPointAddIn';Word='Scribble.WordAddIn';Outlook='Scribble.AddIn'}
 Report 'preparing'
@@ -56,8 +57,12 @@ try {
 foreach ($name in $apps | Where-Object { $_ -ne 'Chrome' }) {
     try {
         Assert-Idle
+        Progress "Connecting to $name..."
         $app=Get-App $name
-        if ($name -ne 'Outlook') { $app.Visible=$true }
+        if ($null -eq $app) { throw "No $name application object was returned." }
+        if ($name -eq 'PowerPoint') { $app.Visible=-1 }
+        elseif ($name -ne 'Outlook') { $app.Visible=$true }
+        Progress "$name connected; checking Scribble add-in..."
         try {
             if (-not $app.COMAddIns.Item($progids[$name]).Connect) { $remaining.Add("Enable the Scribble add-in in $name.") }
             else { $completed.Add("$name`: Scribble add-in connected.") }
@@ -65,6 +70,7 @@ foreach ($name in $apps | Where-Object { $_ -ne 'Chrome' }) {
         # Open CSVs before native workbooks so the case workbook is active last.
         foreach ($relative in @($documents | Where-Object { $formats[[IO.Path]::GetExtension($_)] -eq $name } | Sort-Object { [IO.Path]::GetExtension($_) -ne '.csv' })) {
             Assert-Idle
+            Progress "Opening $relative in $name..."
             $path=[Scribble.Testing.TestLab]::SafeChild($fixture,$relative)
             if ($name -eq 'Excel') { $collection=$app.Workbooks }
             elseif ($name -eq 'PowerPoint') { $collection=$app.Presentations }
@@ -82,7 +88,8 @@ foreach ($name in $apps | Where-Object { $_ -ne 'Chrome' }) {
         }
         if ($name -eq 'Outlook' -and $mail.Count -gt 0) {
             Assert-Idle
-            & (Join-Path $PSScriptRoot 'Import-ScribbleTestMail.ps1') -FixtureRoot $fixture -AssemblyPath $resolvedAssembly -CaseId $CaseId | Out-Null
+            Progress 'Importing and selecting Outlook fixtures...'
+            & (Join-Path $PSScriptRoot 'Import-ScribbleTestMail.ps1') -FixtureRoot $fixture -AssemblyPath $resolvedAssembly -CaseId $CaseId
             $completed.Add("Selected $($mail.Count) synthetic messages in the isolated Outlook PST.")
         }
         elseif ($name -eq 'Outlook') {
@@ -90,7 +97,7 @@ foreach ($name in $apps | Where-Object { $_ -ne 'Chrome' }) {
             if ($explorer) { $explorer.Display() } else { $app.Session.GetDefaultFolder(6).GetExplorer().Display() }
             $completed.Add('Opened Outlook for the expected unsent draft.')
         }
-    } catch { $remaining.Add("$name`: $($_.Exception.Message)") }
+    } catch { $remaining.Add("$name`: $($_.Exception.Message) | $($_.InvocationInfo.PositionMessage)") }
     Report 'preparing'
 }
 foreach ($relative in $plan.pdfs) {

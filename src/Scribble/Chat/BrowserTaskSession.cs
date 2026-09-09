@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using System.Collections.Generic;
@@ -49,6 +49,7 @@ namespace Scribble.Chat
             if (state == null) return;
             state.UserPaused = true; state.Lifecycle = TaskLifecycle.Paused;
             state.Blocker = "Paused by user. Resume from the saved browser state.";
+            new TaskDiagnostics(new TaskCheckpointStore(), state).Record("task_paused", new { reason = state.Blocker });
             new TaskCheckpointStore().Save(state);
         }
         public static void ThrowIfPaused(string chat, string turn)

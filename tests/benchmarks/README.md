@@ -12,13 +12,14 @@ A live window shows UTC progress and captured errors, including PowerShell stdou
 
 Results go to **Documents/Scribble Testcases/suite-<UTC timestamp>-<id>/**:
 
-- `report.pdf`: final summary, full errors, timestamps, per-case traces and available output previews.
-- `summary.txt`: use **Copy summary** to paste this into chat; the first PDF page is also suitable for a screenshot.
+- `report.html`: final summary, full errors, timestamps, per-case traces and available output previews.
+- `summary.txt`: use **Copy summary** to paste this into chat; the HTML summary is also suitable for a screenshot.
+- `diagnostics.txt`: complete report text, also available as numbered copyable parts in the HTML.
 - `suite.log` and `suite.json`: live log and structured case outcomes.
 - `cases/<case>/`: preparation logs, case report, evidence ZIP with original collected Office/email outputs, and that case's isolated fixtures.
 - `test-kit.zip`: the verified download; no manual ZIP management is needed.
 
-Use **Stop suite** to stop and export what is available. PDF rendering requires installed Chrome or Edge; if it fails, HTML, summary, native evidence and the renderer error log remain in the folder. A model response or an existing output file is never automatically declared correct. Cases are marked for review, incomplete, blocked, stopped or not run.
+Use **Stop suite** to stop and export what is available. The final HTML is generated without a PDF renderer. A model response or an existing output file is never automatically declared correct. Cases are marked for review, incomplete, blocked, stopped or not run.
 
 The suite leaves opened apps visible for recording and inspection. Emails are unsent drafts. Existing unrelated files are not saved or closed. Synthetic source files open read-only; the collector can save generated changes from the suite-owned copies, as well as new run-tagged documents. Answer keys remain evaluator-only and are added to the report after execution. Full native Office/Qwen acceptance still needs a run on a machine with the apps, connected add-ins and configured model; infrastructure checks do not certify model output quality.
 
@@ -30,9 +31,9 @@ If a script reports `Unable to find type [Scribble.Testing.TestLab]`, install th
 
 ## Evidence and evaluation
 
-The PDF starts with case/run/build/model identity, UTC timestamps, capture completeness, missing output types and initial error highlights. Later pages contain the prompt, expected result, video markers, full error-like events, model responses, output receipts, available slide PNGs, native text previews and the complete recorded timeline without shortened event bodies. Spreadsheet previews show the first 200 rows per sheet and formulas without recalculation. Original Excel/PowerPoint/Word/PDF/Outlook files remain in the ZIP; their presence does not certify correctness. Edge or Chrome renders the PDF in a separate headless process with an isolated profile. If rendering fails, the ZIP, HTML report, summary and renderer diagnostics are retained with an explicit error.
+The HTML starts with case/run/build/model identity, UTC timestamps, capture completeness, missing output types and initial error highlights. It includes prompts, expected results, video markers, full error events, model responses, receipts, available slide images, native text previews and the complete recorded timeline. Spreadsheet previews show all recorded rows with formulas and cached values; these are not recalculated or proof of native correctness.
 
-For quick feedback, paste the summary and add screenshots of page one and the relevant result/error page. For a full diagnosis, attach the PDF or evidence ZIP; a video remains useful for UI delays, clicks and visual problems. Very long runs can produce a long PDF because the full captured timeline is retained.
+Paste **Copy summary** first. Open **HTML report**, expand a numbered diagnostic part, and click **Copy part**. Paste parts in order as needed; each carries the suite ID and part count. Clipboard restrictions fall back to selecting the text for Ctrl+C. Errors and event bodies are not shortened in the diagnostic parts. Use screenshots from the UGREEN feed of relevant report previews or the visible Office app to review layouts and charts. No HTML, ZIP, PDF or video upload is required. Original outputs remain locally available for inspection; text and screenshots cannot prove every native file property.
 
 Full permitted request and response bodies, tool calls/results, returned provider reasoning, source hashes, handoffs and timestamps are captured locally in encrypted event files. No API key or Authorization header is intentionally captured. The trace contains exactly the context sent through Scribble, which may already be bounded by normal extraction limits. Provider reasoning is available only if the endpoint returned it.
 

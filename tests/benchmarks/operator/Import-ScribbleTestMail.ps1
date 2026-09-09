@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 [CmdletBinding()]
 param([string]$FixtureRoot=(Split-Path $PSScriptRoot -Parent),[string]$AssemblyPath,[string]$CaseId)
 . (Join-Path $PSScriptRoot 'TestLab.Common.ps1') -AssemblyPath $AssemblyPath
@@ -16,17 +16,23 @@ if ($CaseId) {
 $importRoot=Join-Path ([Scribble.Testing.TestLab]::Root) 'mail'
 New-Item -ItemType Directory -Path $importRoot -Force | Out-Null
 $pst=Join-Path $importRoot 'Atlas-v1.pst'
-$outlook=New-Object -ComObject Outlook.Application
+function MailProgress($text) { Write-Output ([DateTime]::UtcNow.ToString('O')+' Outlook import: '+$text) }
+MailProgress 'connecting to the running application'
+try { $outlook=[Runtime.InteropServices.Marshal]::GetActiveObject('Outlook.Application') } catch { $outlook=New-Object -ComObject Outlook.Application }
+MailProgress 'reading the MAPI session'
 $session=$outlook.Session
+MailProgress 'locating the isolated Atlas PST'
 $store=@($session.Stores | Where-Object { $_.FilePath -eq $pst }) | Select-Object -First 1
-if (-not $store) { $session.AddStoreEx($pst,2); $store=@($session.Stores | Where-Object { $_.FilePath -eq $pst }) | Select-Object -First 1 }
+if (-not $store) { MailProgress 'adding the isolated Atlas PST (check Outlook for a policy or profile dialog)'; $session.AddStoreEx($pst,2); $store=@($session.Stores | Where-Object { $_.FilePath -eq $pst }) | Select-Object -First 1 }
 if (-not $store) { throw 'Could not create the isolated Atlas local PST.' }
+MailProgress 'opening the fixture folder'
 $root=$store.GetRootFolder()
 $root.Name='Scribble synthetic Atlas v1'
 $folder=@($root.Folders | Where-Object Name -eq 'Atlas fixtures') | Select-Object -First 1
 if (-not $folder) { $folder=$root.Folders.Add('Atlas fixtures',6) }
 $receipts=@()
 foreach($source in $index) {
+    MailProgress ("verifying/importing "+$source.id)
     $existing=@($folder.Items | Where-Object Subject -eq $source.subject)
     if ($existing.Count -gt 1) { throw "Duplicate imported subject: $($source.subject). Resolve manually in the test PST." }
     if ($existing.Count -eq 1) { $item=$existing[0] }
@@ -45,6 +51,7 @@ foreach($source in $index) {
         }
         # Received/read message flags: never invoke Send or submit to a transport.
         $pa.SetProperty('http://schemas.microsoft.com/mapi/proptag/0x0E070003',1)
+        MailProgress ('saving synthetic message '+$source.id)
         $item.Save()
     }
     if($item.SenderEmailAddress -ne $source.sender -or $item.Attachments.Count -ne $source.attachments.Count) { throw "Native import verification failed for $($source.subject). The incomplete fixture remains isolated in the local PST." }
@@ -60,6 +67,7 @@ foreach($source in $index) {
     $receipts += [ordered]@{source_id=$source.id;entry_id=$item.EntryID;store_id=$folder.StoreID;subject=$item.Subject;sender=$item.SenderEmailAddress;received_utc=$item.ReceivedTime.ToUniversalTime().ToString('O');attachments=$item.Attachments.Count}
 }
 $receipts | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $importRoot 'import-receipts.json') -Encoding utf8
+MailProgress 'opening the fixture folder and selecting the exact messages'
 $explorer=$outlook.ActiveExplorer()
 if($explorer) { $explorer.CurrentFolder=$folder; $explorer.Display() } else { $explorer=$folder.GetExplorer(); $explorer.Display() }
 if ($CaseId) {

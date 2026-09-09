@@ -1,4 +1,4 @@
-using System;
+﻿﻿using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
@@ -42,7 +42,7 @@ namespace Scribble.Testing
             Add(controls, "Stop suite", () => { cancellation.Cancel(); Append("Stopping after the current operation; evidence will be saved."); });
             Add(controls, "Copy summary", () => Clipboard.SetText(File.Exists(Path.Combine(folder, "summary.txt")) ? File.ReadAllText(Path.Combine(folder, "summary.txt")) : log.Text));
             Add(controls, "Open results folder", () => Process.Start(new ProcessStartInfo(folder) { UseShellExecute = true }));
-            Add(controls, "Open final PDF", () => { var path = Path.Combine(folder, "report.pdf"); if (!File.Exists(path)) throw new InvalidOperationException("The PDF is created when the suite finishes or stops."); Process.Start(new ProcessStartInfo(path) { UseShellExecute = true }); });
+            Add(controls, "Open HTML report", () => { var path = Path.Combine(folder, "report.html"); if (!File.Exists(path)) throw new InvalidOperationException("The HTML report is created when the suite finishes or stops."); Process.Start(new ProcessStartInfo(path) { UseShellExecute = true }); });
             Controls.Add(log); Controls.Add(new Label { Dock = DockStyle.Top, Height = 58, Text = "Runs the synthetic suite visibly using your configured model. Prompts and outputs are recorded locally; emails remain unsent drafts.\r\nResults: " + folder }); Controls.Add(controls);
             Shown += async (s, e) => await Run();
             FormClosing += (s, e) => { if (!finished) { e.Cancel = true; cancellation.Cancel(); Append("Stopping and saving the report before closing. Keep this window open until export finishes."); } };
@@ -82,12 +82,12 @@ namespace Scribble.Testing
             try { await RunOnSta(runner.Run); }
             catch (Exception e) { runner.Log("Cannot run suite: " + e); }
             try {
-                Append("Creating the final PDF, including errors and all available case evidence...");
+                Append("Creating the HTML report with copyable diagnostics and available output previews...");
                 await Task.Run(() => TestLabSuiteReport.Create(runner.State, runner.Results.ToArray()));
-                Append("Saved " + Path.Combine(folder, "report.pdf") + ". Use Copy summary to relay the result.");
+                Append("Saved " + Path.Combine(folder, "report.html") + ". Open HTML report to copy diagnostic parts or take screenshots.");
             } catch (Exception e) {
-                runner.Log("PDF export failed: " + e);
-                File.AppendAllText(Path.Combine(folder, "summary.txt"), "\nPDF EXPORT FAILED: " + e.Message + "\nFull logs and HTML are preserved.\n");
+                runner.Log("HTML export failed: " + e);
+                File.AppendAllText(Path.Combine(folder, "summary.txt"), "\nHTML EXPORT FAILED: " + e.Message + "\nRecorded logs are preserved.\n");
             }
             finally { finished = true; Text = "Scribble Test Lab — finished"; }
         }
@@ -103,17 +103,17 @@ namespace Scribble.Testing
             foreach (var r in results) summary.AppendLine(r.id + " " + r.host + " — " + r.status + (string.IsNullOrEmpty(r.error) ? "" : " — " + (r.error.Split('\n')[0].Length > 140 ? r.error.Split('\n')[0].Substring(0, 140) + "…" : r.error.Split('\n')[0])));
             if (results.Length == 0) summary.AppendLine("No cases ran. See the startup/download error below.");
             var logPath = Path.Combine(s.folder, "suite.log"); var log = File.Exists(logPath) ? File.ReadAllText(logPath) : "No suite log was produced.";
-            if (results.Length == 0) summary.AppendLine(log.Length > 1600 ? log.Substring(0, 1600) + "\n[Full error in the PDF log]" : log);
+            if (results.Length == 0) summary.AppendLine(log.Length > 1600 ? log.Substring(0, 1600) + "\n[Full error in the HTML log]" : log);
             var pasteable = summary.ToString();
             var firstFailure = results.FirstOrDefault(r => !string.IsNullOrEmpty(r.error));
             if (firstFailure != null) {
                 var diagnostic = firstFailure.error;
                 pasteable += "\nFIRST FAILURE DETAILS (" + firstFailure.id + ")\n" +
-                    (diagnostic.Length > 20000 ? diagnostic.Substring(0, 20000) + "\n[Continued in report.pdf and suite.log]" : diagnostic);
+                    (diagnostic.Length > 20000 ? diagnostic.Substring(0, 20000) + "\n[Continued in report.html and suite.log]" : diagnostic);
             }
             File.WriteAllText(Path.Combine(s.folder, "summary.txt"), pasteable, new UTF8Encoding(false));
-            var html = new StringBuilder("<!doctype html><html><head><meta charset='utf-8'><meta http-equiv='Content-Security-Policy' content=\"default-src 'none'; style-src 'unsafe-inline'; img-src data:\"><title>Scribble suite report</title><style>@page{size:A4;margin:14mm}body{font:10pt Arial;color:#172033}h1{font-size:22pt}h2{font-size:16pt}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:8pt Consolas}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccd5e0;padding:5px;text-align:left}img{max-width:100%}.case{break-before:page}.cover{break-after:page}</style></head><body><section class='cover'><h1>Scribble Test Lab</h1><pre>");
-            html.Append(E(summary.ToString())).Append("</pre><p>Share summary.txt by copy/paste, a screenshot of this page, or this PDF. Full machine-readable events and native outputs are in each case’s evidence ZIP.</p></section><h2>Timestamped suite log</h2><pre>").Append(E(log)).Append("</pre>");
+            var html = new StringBuilder("<!doctype html><html><head><meta charset='utf-8'><meta http-equiv='Content-Security-Policy' content=\"default-src 'none'; style-src 'unsafe-inline'; img-src data:\"><title>Scribble suite report</title><style>@page{size:A4;margin:14mm}body{font:11pt/1.5 Arial;color:#172033;max-width:1100px;margin:24px auto;padding:0 24px}button,summary{cursor:pointer;padding:10px}textarea{font:11pt Consolas}details{margin:10px 0;border:1px solid #ccd5e0;padding:8px}h1{font-size:22pt}h2{font-size:16pt}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:8pt Consolas}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccd5e0;padding:5px;text-align:left}img{max-width:100%}.case{break-before:page}.cover{break-after:page}</style></head><body><section class='cover'><h1>Scribble Test Lab</h1><pre>");
+            html.Append(E(summary.ToString())).Append("</pre><p>Start by pasting the summary. Then use the numbered diagnostic parts below to relay logs and results in chat. Take screenshots of the relevant output previews or visible apps for layout review. No file upload is required.</p></section><h2>Timestamped suite log</h2><pre>").Append(E(log)).Append("</pre>");
             foreach (var r in results) {
                 html.Append("<section class='case'><h1>").Append(E(r.id + " / " + r.host)).Append("</h1><p>").Append(E(r.status + " | " + r.started + " → " + r.finished)).Append("</p><pre>").Append(E(r.error)).Append("</pre>");
                 var caseHtml = TestLab.SafeChild(s.folder, "cases/" + r.id + "/report.html");
@@ -123,12 +123,41 @@ namespace Scribble.Testing
                 }
                 html.Append("</section>");
             }
-            return html.Append("</body></html>").ToString();
+            var report = html.Append("</body></html>").ToString();
+            var diagnostics = ToText(report);
+            File.WriteAllText(Path.Combine(s.folder, "diagnostics.txt"), diagnostics, new UTF8Encoding(false));
+            var parts = SplitDiagnostics(s.id, diagnostics);
+            var relay = new StringBuilder("<section id='relay'><h2>Copy diagnostics into chat</h2><p>Send the summary first, then these numbered parts in order when needed. Each part includes the suite ID. Click Copy part; if clipboard access is unavailable, the text is selected: press Ctrl+C. Screenshots of output previews help assess layout.</p>");
+            for (int i = 0; i < parts.Length; i++) relay.Append("<details><summary>Diagnostic part ").Append(i + 1).Append(" / ").Append(parts.Length).Append("</summary><button type='button' data-copy='part-").Append(i).Append("'>Copy part ").Append(i + 1).Append("</button><textarea readonly id='part-").Append(i).Append("' style='width:100%;height:240px'>").Append(E(parts[i])).Append("</textarea></details>");
+            relay.Append("<p id='copy-status' role='status'></p></section>");
+            var nonce = Guid.NewGuid().ToString("N");
+            report = report.Replace("default-src 'none';", "default-src 'none'; script-src 'nonce-" + nonce + "';");
+            report = report.Replace("</body>", "<script nonce='" + nonce + "'>document.querySelectorAll('[data-copy]').forEach(function(b){b.addEventListener('click',async function(){var t=document.getElementById(b.getAttribute('data-copy'));t.focus();t.select();try{await navigator.clipboard.writeText(t.value);document.getElementById('copy-status').textContent='Copied '+b.textContent;}catch(e){document.getElementById('copy-status').textContent='Text selected. Press Ctrl+C to copy.';}});});</script></body>");
+            return report.Replace("</section><h2>Timestamped suite log", "</section>" + relay + "<h2>Timestamped suite log");
         }
         public static string Create(SuiteState s, SuiteCaseResult[] results)
         {
-            var html = Path.Combine(s.folder, "report.html"); var pdf = Path.Combine(s.folder, "report.pdf");
-            File.WriteAllText(html, BuildHtml(s, results), new UTF8Encoding(false)); TestLabReport.RenderHtml(html, pdf); return pdf;
+            var html = Path.Combine(s.folder, "report.html");
+            File.WriteAllText(html, BuildHtml(s, results), new UTF8Encoding(false)); return html;
+        }
+        public static string ToText(string html)
+        {
+            html = Regex.Replace(html, @"<(script|style)\b[^>]*>[\s\S]*?</\1>", "", RegexOptions.IgnoreCase);
+            html = Regex.Replace(html, @"<img\b[^>]*>", "\n[Image preview: take a screenshot in the HTML report.]\n", RegexOptions.IgnoreCase);
+            html = Regex.Replace(html, @"</?(?:h[1-6]|p|pre|section|article|tr|div|br)\b[^>]*>", "\n", RegexOptions.IgnoreCase);
+            return WebUtility.HtmlDecode(Regex.Replace(html, "<[^>]*>", ""));
+        }
+        public static string[] SplitDiagnostics(string suiteId, string text)
+        {
+            const int size = 12000;
+            var chunks = new System.Collections.Generic.List<string>();
+            for (int offset = 0; offset < text.Length;) {
+                int length = Math.Min(size, text.Length - offset);
+                if (offset + length < text.Length && char.IsHighSurrogate(text[offset + length - 1])) length--;
+                chunks.Add(text.Substring(offset, length)); offset += length;
+            }
+            if (chunks.Count == 0) chunks.Add("");
+            return chunks.Select((chunk, i) => "SCRIBBLE DIAGNOSTICS | Suite " + suiteId + " | Part " + (i + 1) + "/" + chunks.Count + "\n" + chunk).ToArray();
         }
     }
 }

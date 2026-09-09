@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 param([string]$AssemblyPath=(Join-Path $PSScriptRoot '../../src/Scribble/bin/Release/Scribble.dll'),
       [string]$KitRoot=(Join-Path $PSScriptRoot 'generated/scribble-test-kit-v1'),[switch]$RenderPdf)
 $ErrorActionPreference='Stop'
@@ -41,5 +41,10 @@ try {
         } finally { $archive.Dispose() }
         Write-Output "Sample PDF: $pdf"
     }
+    $eventFolder=Join-Path ([Scribble.Testing.TestLab]::RunDirectory($run.run_id)) 'events'
+    [IO.File]::WriteAllBytes((Join-Path $eventFolder 'corrupt.bin'),[byte[]](1,2,3,4))
+    $brokenZip=[Scribble.Testing.TestLab]::Export($run.run_id,$destination)
+    $brokenHtml=[Scribble.Testing.TestLabReport]::BuildHtml($brokenZip,$summary)
+    Assert ($brokenHtml.Contains('Recorded event could not be read:') -and $brokenHtml.Contains('corrupt.bin')) 'Unreadable event was silently dropped.'
     Write-Output 'PASS: screenshot summary, full diagnostic tail, escaped HTML, missing-output status, video markers and report export.'
 } finally { [Scribble.Testing.TestLab]::Disable() }

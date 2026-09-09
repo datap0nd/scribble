@@ -3854,8 +3854,11 @@ async function executeSuiteCommand(command) {
       if (!connection.connected || !connection.configured) throw new Error("Configure the Scribble native connection and model before running Chrome tests.");
       const url = new URL(command.sourceUrl);
       if (url.hostname !== "127.0.0.1" || url.protocol !== "http:" || url.pathname !== "/operations.html") throw new Error("Invalid suite source page.");
-      const tabs = await chrome.tabs.query({url: command.sourceUrl});
-      if (!tabs.length) throw new Error("I could not find the prepared fixture tab.");
+      let tabs = await chrome.tabs.query({url: command.sourceUrl});
+      // The shell may have opened a different Chrome profile. Create the verified
+      // fixture URL in this controller's own profile when it is missing.
+      if (!tabs.length) tabs = [await chrome.tabs.create({url: command.sourceUrl, active: true})];
+      await waitForTabComplete(tabs[tabs.length - 1].id);
       globalThis.scribbleSuiteSourceTab = tabs[tabs.length - 1].id;
       globalThis.scribbleSuiteAnswers = command.answers || {};
       await clearChat();
