@@ -145,7 +145,7 @@ namespace Scribble.Testing
             html = Regex.Replace(html, @"<(script|style)\b[^>]*>[\s\S]*?</\1>", "", RegexOptions.IgnoreCase);
             html = Regex.Replace(html, @"<img\b[^>]*>", "\n[Image preview: take a screenshot in the HTML report.]\n", RegexOptions.IgnoreCase);
             html = Regex.Replace(html, @"</?(?:h[1-6]|p|pre|section|article|tr|div|br)\b[^>]*>", "\n", RegexOptions.IgnoreCase);
-            return WebUtility.HtmlDecode(Regex.Replace(html, "<[^>]*>", ""));
+            return WebUtility.HtmlDecode(Regex.Replace(html, "<[^>]*>", "")).Replace("\r\n", "\n").Replace("\r", "\n");
         }
         public static string[] SplitDiagnostics(string suiteId, string text)
         {

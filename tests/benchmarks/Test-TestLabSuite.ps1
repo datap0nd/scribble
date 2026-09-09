@@ -126,6 +126,7 @@ try {
     Assert (-not (Test-Path (Join-Path $folder 'report.pdf'))) 'Suite unexpectedly created a PDF.'
     $diagnostics=Get-Content -LiteralPath (Join-Path $folder 'diagnostics.txt') -Raw
     Assert ($diagnostics.Contains('<script>alert(1)</script>') -and $diagnostics.Contains('END_OF_ERROR')) 'Diagnostic text lost escaped error content.'
+    Assert ([Scribble.Testing.TestLabSuiteReport]::ToText("<pre>a`r`nb`rc</pre>") -eq "`na`nb`nc`n") 'HTML clipboard line endings differ from diagnostic text.'
     $payload=('recorded event ' * 3000)+'TAIL_SENTINEL'
     $parts=[Scribble.Testing.TestLabSuiteReport]::SplitDiagnostics($state.id,$payload)
     $reassembled=($parts | ForEach-Object { $_.Substring($_.IndexOf("`n")+1) }) -join ''
