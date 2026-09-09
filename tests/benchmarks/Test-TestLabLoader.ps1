@@ -19,7 +19,9 @@ try {
 $loader = Join-Path $PSScriptRoot 'operator\TestLab.Common.ps1'
 $shell = Join-Path $PSHOME 'powershell.exe'
 $output = & $shell -NoProfile -File $runner $loader $testRoot 2>&1
-if ($LASTEXITCODE -ne 0 -or -not ($output -contains "TYPE_LOCATION=$current")) {
+$loaded=@($output | Where-Object { $_ -like 'TYPE_LOCATION=*' }) | Select-Object -First 1
+if ($LASTEXITCODE -ne 0 -or -not $loaded -or
+    (Get-FileHash -LiteralPath $loaded.Substring(14)).Hash -ne (Get-FileHash -LiteralPath $current).Hash) {
     throw "Current installation was not preferred over legacy DLL: $output"
 }
 $output = & $shell -NoProfile -File $runner $loader $testRoot $legacy 2>&1

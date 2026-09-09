@@ -123,3 +123,5 @@ Version 1.7.1 adds distinct inspection failure reasons and a single retry for a 
 For diagnostics, open the extension entry on `chrome://extensions` and inspect the service worker or side-panel developer tools.
 
 Version 1.7.2 adds the default-off operator Test Lab entry and synthetic-session capture integration. Reload the extension after updating Scribble Setup to activate it.
+
+Version 1.7.3 fills the exact first Chrome test prompt when returning from Test Lab, without submitting it or replacing subsequent operator edits. Case preparation opens the fixture pages and server through the operator helper.

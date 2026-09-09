@@ -343,7 +343,16 @@ namespace Scribble.UI
                         PostToWeb(new Dictionary<string, object> { { "type", "testLabStatus" }, { "enabled", Scribble.Testing.TestLab.Status() != null }, { "runId", Scribble.Testing.TestLab.ActiveRunId() }, { "captureState", Scribble.Testing.TestLab.CaptureState() } });
                         break;
                     case "openTestLab":
-                        Scribble.Testing.TestLabWindow.Open("Outlook", () => { if (_busy) throw new InvalidOperationException("Stop the current request before starting a test."); HandleNewChat(); });
+                        Scribble.Testing.TestLabWindow.Open("Outlook", () => { if (_busy) throw new InvalidOperationException("Stop the current request before starting a test."); HandleNewChat(); }, c => {
+                            var expected = (c.inputs ?? new string[0]).Count(p => p.EndsWith(".eml", StringComparison.OrdinalIgnoreCase));
+                            if (expected > 0) {
+                                var messages = new MessageReader(_outlookApplication).CaptureActiveSelectionMany();
+                                if (messages.Count != expected) throw new InvalidOperationException("Select the " + expected + " case emails in Outlook, then use Add email. The run has started; no prompt was submitted.");
+                                ApplySelectedMessages(messages);
+                            }
+                            PostToWeb(new Dictionary<string, object> { { "type", "restorePrompt" }, { "text", string.IsNullOrEmpty(c.prerequisite_prompt) ? c.prompt : c.prerequisite_prompt } });
+                            AddExternalFiles(Scribble.Testing.TestLabPreparation.ContextFiles(c));
+                        });
                         break;
                     case "ready":
                         HandleWebReady();
