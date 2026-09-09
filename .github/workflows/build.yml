@@ -234,6 +234,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Fixture kit validation failed.' }
           Expand-Archive -LiteralPath tests/benchmarks/releases/scribble-test-kit-v1.zip -DestinationPath tests/benchmarks/generated -Force
           ./tests/benchmarks/Test-TestLab.ps1
+          ./tests/benchmarks/Test-TestLabLoader.ps1
 
       - name: Upload interconnectivity test matrix
         uses: actions/upload-artifact@v4

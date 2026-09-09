@@ -16,6 +16,14 @@ The kit contains fictional Atlas Office Supplies data, 16 exact prompts and eval
 
 PowerPoint PP01 uses the starter deck plus three attachments: sales, budget and the operations PDF. Word WD01 uses the open brief plus the same three attachments. For follow-up cases, Start copies the prerequisite prompt first; run it, then use Copy prompt for the actual follow-up. A native output from that prerequisite is the next input, never the reference answer.
 
+If activation reports `Unable to find type [Scribble.Testing.TestLab]`, install Scribble 2.0.132.0 or newer from the [official installer](https://github.com/datap0nd/scribble/releases/latest/download/ScribbleSetup.exe), then open a new Windows PowerShell process. From the extracted `operator` folder, run:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Enable-ScribbleTestLab.ps1 -AssemblyPath "$env:LOCALAPPDATA\Programs\Scribble\Scribble.dll"
+```
+
+The script is named `Enable-ScribbleTestLab.ps1`. The loader prefers the current install folder over the legacy `%LOCALAPPDATA%\Scribble` folder and prints the DLL it loaded. For a custom installation, supply that installation's DLL path instead.
+
 ## Evidence and evaluation
 
 Full permitted request and response bodies, tool calls/results, returned provider reasoning, source hashes, handoffs and timestamps are captured locally in encrypted event files. No API key or Authorization header is intentionally captured. The trace contains exactly the context sent through Scribble, which may already be bounded by normal extraction limits. Provider reasoning is available only if the endpoint returned it.
