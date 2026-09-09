@@ -38,8 +38,6 @@ try {
     $fixtureInput=Join-Path $kit $run.input_paths[0]
     Assert ([Scribble.Testing.TestLabSuite]::OwnsSource($run.run_id,$fixtureInput)) 'Suite-owned source not collectable.'
     Assert (-not [Scribble.Testing.TestLabSuite]::OwnsSource($run.run_id,(Join-Path $folder 'unrelated.xlsx'))) 'Unrelated source accepted.'
-    $csvInput=$run.input_paths | Where-Object { $_.EndsWith('.csv') } | Select-Object -First 1
-    Assert (-not [Scribble.Testing.TestLabSuite]::OwnsNativeSource($run.run_id,(Join-Path $kit $csvInput),'Excel')) 'CSV would be mislabeled as XLSX.'
     # Exercise the production pane driver without Office/model dependencies.
     $driverType=[Scribble.Testing.TestLab].Assembly.GetType('Scribble.Testing.TestLabSuitePane')
     $driver=[Activator]::CreateInstance($driverType,$true);$method=$driverType.GetMethod('Command')
@@ -64,6 +62,15 @@ try {
     Assert ($done.state -eq 'done') 'Completed task remained running.'
     [Scribble.Testing.TestLab]::Finish($false)
     [Scribble.Testing.TestLab]::Disable()
+    $pptKit=[Scribble.Testing.TestLabSuite]::Extract($zip,(Join-Path $folder 'cases/PP01'))
+    [Scribble.Testing.TestLab]::Enable($pptKit)
+    $pptRun=[Scribble.Testing.TestLab]::Start('PP01','PowerPoint',$true)
+    $state.caseId='PP01';$state.host='PowerPoint';$state.runId=$pptRun.run_id
+    [Scribble.Testing.TestLabSuite]::Save($state)
+    $csvInput=Join-Path $pptKit 'inputs/data/sales.csv'
+    Assert ([Scribble.Testing.TestLabSuite]::OwnsSource($pptRun.run_id,$csvInput)) 'CSV must be an allowed supporting input for this test.'
+    Assert (-not [Scribble.Testing.TestLabSuite]::OwnsNativeSource($pptRun.run_id,$csvInput,'Excel')) 'Supporting CSV would be mislabeled as XLSX.'
+    [Scribble.Testing.TestLab]::Finish($false);[Scribble.Testing.TestLab]::Disable()
     $chromeKit=[Scribble.Testing.TestLabSuite]::Extract($zip,(Join-Path $folder 'cases/CH01'))
     [Scribble.Testing.TestLab]::Enable($chromeKit)
     $chromeRun=[Scribble.Testing.TestLab]::Start('CH01','Chrome',$true)
