@@ -21,6 +21,7 @@ namespace Scribble.Testing
         {
             var d = value as IDictionary<string, object>;
             if (d != null) return d.Any(p => ((p.Key == "error" || p.Key == "exception") && p.Value != null && Convert.ToString(p.Value) != "False" && Convert.ToString(p.Value).Length > 0) ||
+                ((p.Key == "ok" || p.Key == "success") && p.Value is bool && !(bool)p.Value) ||
                 ((p.Key == "status" || p.Key == "outcome") && new[] { "failed", "error", "rejected", "cancelled" }.Contains(Convert.ToString(p.Value))) || ErrorLike(p.Value));
             var array = value as object[];
             return array != null && array.Any(ErrorLike);
@@ -60,7 +61,7 @@ namespace Scribble.Testing
                     var text = Pretty(error.ContainsKey("detail") ? error["detail"] : error).Replace('\n', ' ').Replace('\r', ' ');
                     summary += "\n" + Value(error, "utc") + " | " + Value(error, "stage") + " | " + (text.Length > 220 ? text.Substring(0, 220) + "... [full event in PDF]" : text);
                 }
-                summary += "\n\nOutputs: " + string.Join(", ", outputs.Select(e => Path.GetFileName(e.FullName))) +
+                summary += "\n\nOutputs: " + string.Join(", ", outputs.Take(6).Select(e => Path.GetFileName(e.FullName))) + (outputs.Length > 6 ? " (and " + (outputs.Length - 6) + " more; full inventory in PDF)" : "") +
                     "\n\nPlease diagnose this run using the attached PDF. The ZIP contains the full machine trace and original outputs.\n";
                 File.WriteAllText(summaryPath, summary, new UTF8Encoding(false));
                 var h = new StringBuilder("<!doctype html><html><head><meta charset='utf-8'><meta http-equiv='Content-Security-Policy' content=\"default-src 'none'; style-src 'unsafe-inline'; img-src data:\"><title>Scribble test report</title><style>");

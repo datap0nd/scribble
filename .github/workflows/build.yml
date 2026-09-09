@@ -224,9 +224,6 @@ jobs:
           ./scripts/Sign-File.ps1 -Path "src\Scribble\bin\Release\Scribble.dll"
           ./scripts/Sign-File.ps1 -Path "src\Scribble.BrowserHost\bin\Release\ScribbleBrowserHost.exe"
 
-      - name: Run guardrail tests
-        run: tests\GuardrailTests\bin\Release\GuardrailTests.exe
-
       - name: Verify synthetic benchmark kit and capture infrastructure
         shell: powershell
         run: |
@@ -237,6 +234,17 @@ jobs:
           ./tests/benchmarks/Test-TestLabLoader.ps1
           ./tests/benchmarks/Test-TestLabPreparation.ps1
           ./tests/benchmarks/Test-TestLabReport.ps1 -RenderPdf
+
+      - name: Upload synthetic PDF report validation
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: TestLabReportSample
+          path: tests/benchmarks/generated/report-test-*/
+          if-no-files-found: ignore
+
+      - name: Run guardrail tests
+        run: tests\GuardrailTests\bin\Release\GuardrailTests.exe
 
       - name: Upload interconnectivity test matrix
         uses: actions/upload-artifact@v4
