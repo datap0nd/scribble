@@ -32,6 +32,14 @@ namespace Scribble.Testing
                         {
                             if (!TestLab.IsRunOutput(value, run.run_id) && !TestLabSuite.OwnsNativeSource(run.run_id, Convert.ToString(document.FullName), kind)) continue;
                             var stem = Path.Combine(directory, kind + "-" + i);
+                            try {
+                                var readback = ReadNative(value, kind);
+                                File.WriteAllText(stem + "-readback.json", TestLab.Serialize(new { schema = 1, run_id = runId,
+                                    host = kind, captured_utc = DateTime.UtcNow.ToString("O"), native_readback = true,
+                                    run_created_output = TestLab.IsRunOutput(value, runId), text = readback }), Encoding.UTF8);
+                                TestLab.Collect(runId, stem + "-readback.json");
+                                report.Add("Captured " + kind + " cell/text/structure readback.");
+                            } catch (Exception ex) { report.Add(kind + " readback failed: " + ex.Message); }
                             var extension = kind == "Excel" ? ".xlsx" : kind == "PowerPoint" ? ".pptx" : ".docx";
                             if (kind == "Excel") document.SaveCopyAs(stem + extension);
                             else if (kind == "PowerPoint") document.SaveCopyAs(stem + extension, 24);
@@ -96,6 +104,61 @@ namespace Scribble.Testing
             finally { if (outlookInstance != null && Marshal.IsComObject(outlookInstance)) Marshal.ReleaseComObject(outlookInstance); }
             if (report.Count == 0) report.Add("No new run-owned document found. For drafts inside a source workbook/deck, save a separate copy and use Collect saved outputs. Save Outlook drafts as MSG.");
             return string.Join(Environment.NewLine, report);
+        }
+        private static object At(object value, int row, int column)
+        {
+            var array = value as Array;
+            return array == null ? value : array.GetValue(row + array.GetLowerBound(0), column + array.GetLowerBound(1));
+        }
+        private static string ReadNative(object value, string kind)
+        {
+            dynamic document = value;
+            var text = new StringBuilder();
+            if (kind == "Word") return Convert.ToString(document.Content.Text);
+            if (kind == "Excel") {
+                for (int n = 1; n <= (int)document.Worksheets.Count; n++) {
+                    dynamic sheet = document.Worksheets.Item(n); dynamic used = sheet.UsedRange;
+                    int rows = (int)used.Rows.Count, columns = (int)used.Columns.Count;
+                    text.AppendLine("Worksheet: " + Convert.ToString(sheet.Name) + " | used range: " + Convert.ToString(used.Address));
+                    if ((long)rows * columns > 100000) { text.AppendLine("READBACK LIMIT: range exceeds 100000 cells. Screenshot the relevant range in Excel."); continue; }
+                    object values = used.Value2, formulas = used.Formula;
+                    for (int r = 0; r < rows; r++) for (int c = 0; c < columns; c++) {
+                        var cell = At(values, r, c); var formula = Convert.ToString(At(formulas, r, c));
+                        if (cell == null && string.IsNullOrEmpty(formula)) continue;
+                        text.Append("R").Append((int)used.Row + r).Append("C").Append((int)used.Column + c)
+                            .Append(": ").Append(Convert.ToString(cell, System.Globalization.CultureInfo.InvariantCulture));
+                        if (formula.StartsWith("=", StringComparison.Ordinal)) text.Append(" | formula: ").Append(formula);
+                        text.AppendLine();
+                    }
+                    dynamic charts = sheet.ChartObjects();
+                    text.AppendLine("Native charts: " + (int)charts.Count);
+                    for (int c = 1; c <= (int)charts.Count; c++) {
+                        dynamic chart = charts.Item(c).Chart;
+                        text.AppendLine("Chart " + c + " | type: " + Convert.ToString(chart.ChartType) + " | title: " + ((bool)chart.HasTitle ? Convert.ToString(chart.ChartTitle.Text) : ""));
+                        dynamic series = chart.SeriesCollection();
+                        for (int j = 1; j <= (int)series.Count; j++) text.AppendLine("Series " + j + ": " + Convert.ToString(series.Item(j).Formula));
+                    }
+                }
+                text.AppendLine("Values are native cached readback; no recalculation was forced. Screenshot charts and formatting for visual review.");
+            } else {
+                text.AppendLine("Slide count: " + (int)document.Slides.Count);
+                for (int n = 1; n <= (int)document.Slides.Count; n++) {
+                    dynamic slide = document.Slides.Item(n); text.AppendLine("Slide " + n);
+                    for (int j = 1; j <= (int)slide.Shapes.Count; j++) {
+                        dynamic shape = slide.Shapes.Item(j);
+                        text.AppendLine("Shape " + j + " | type " + Convert.ToString(shape.Type) + " | x,y,w,h: " +
+                            Convert.ToString(shape.Left) + "," + Convert.ToString(shape.Top) + "," + Convert.ToString(shape.Width) + "," + Convert.ToString(shape.Height));
+                        if ((int)shape.HasTextFrame != 0) text.AppendLine(Convert.ToString(shape.TextFrame.TextRange.Text));
+                        if ((int)shape.HasTable != 0) {
+                            dynamic table = shape.Table;
+                            for (int r = 1; r <= (int)table.Rows.Count; r++) for (int c = 1; c <= (int)table.Columns.Count; c++)
+                                text.AppendLine("Table R" + r + "C" + c + ": " + Convert.ToString(table.Cell(r, c).Shape.TextFrame.TextRange.Text));
+                        }
+                        if ((int)shape.HasChart != 0) text.AppendLine("Native chart type: " + Convert.ToString(shape.Chart.ChartType));
+                    }
+                }
+            }
+            return text.ToString();
         }
         public static void SaveFlatOpc(string xml, string path)
         {

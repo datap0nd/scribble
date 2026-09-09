@@ -59,10 +59,10 @@ namespace Scribble.Testing
                     "\nMissing types: " + (missing.Length == 0 ? "none" : missing) + "\n";
                 foreach (var error in errors.Take(3)) {
                     var text = Pretty(error.ContainsKey("detail") ? error["detail"] : error).Replace('\n', ' ').Replace('\r', ' ');
-                    summary += "\n" + Value(error, "utc") + " | " + Value(error, "stage") + " | " + (text.Length > 220 ? text.Substring(0, 220) + "... [full event in PDF]" : text);
+                    summary += "\n" + Value(error, "utc") + " | " + Value(error, "stage") + " | " + (text.Length > 220 ? text.Substring(0, 220) + "... [full event in report]" : text);
                 }
-                summary += "\n\nOutputs: " + string.Join(", ", outputs.Take(6).Select(e => Path.GetFileName(e.FullName))) + (outputs.Length > 6 ? " (and " + (outputs.Length - 6) + " more; full inventory in PDF)" : "") +
-                    "\n\nPlease diagnose this run using the attached PDF. The ZIP contains the full machine trace and original outputs.\n";
+                summary += "\n\nOutputs: " + string.Join(", ", outputs.Take(6).Select(e => Path.GetFileName(e.FullName))) + (outputs.Length > 6 ? " (and " + (outputs.Length - 6) + " more; full inventory in report)" : "") +
+                    "\n\nRelay the report diagnostics by copy/paste and screenshot the relevant output previews. Original outputs remain local for inspection.\n";
                 File.WriteAllText(summaryPath, summary, new UTF8Encoding(false));
                 var h = new StringBuilder("<!doctype html><html><head><meta charset='utf-8'><meta http-equiv='Content-Security-Policy' content=\"default-src 'none'; style-src 'unsafe-inline'; img-src data:\"><title>Scribble test report</title><style>");
                 h.Append("@page{size:A4;margin:16mm}*{box-sizing:border-box}body{font:11px/1.45 Arial,sans-serif;color:#173047;margin:0}h1{font-size:27px;margin:0 0 8px}h2{font-size:18px;color:#16717a;border-bottom:1px solid #bed5d9;padding-bottom:6px;margin-top:24px}h3{font-size:12px;margin-bottom:6px}pre{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;font:10px/1.45 Consolas,monospace;margin:8px 0}table{width:100%;border-collapse:collapse;table-layout:fixed}td,th{padding:7px;border:1px solid #ccdbe0;text-align:left;overflow-wrap:anywhere;vertical-align:top}th{background:#edf4f5}img{max-width:100%;max-height:230mm;object-fit:contain}section{break-before:page}article{margin:14px 0}.badge{padding:12px;background:#edf4f5;font-size:16px;font-weight:bold}.muted{color:#587080}.cover pre{font:12px/1.5 Arial,sans-serif}.preview{break-inside:avoid}thead{display:table-header-group}</style></head><body>");
@@ -77,11 +77,11 @@ namespace Scribble.Testing
                     h.Append("<h3>Reference facts for comparison</h3><p>Apply the case requirements above. Margin is a fraction; delivery is a percentage. Reference answers are included only in this post-run report.</p><pre>" + E(string.Join("\n", keys.Select(k => k.Replace('_', ' ') + ": " + Value(answers, k)))) + "</pre>");
                 } catch { h.Append("<p>Original kit is unavailable. Use the case rubric from the downloaded kit.</p>"); }
                 h.Append("<h3>Capture limitations</h3><pre>" + E("Native output correctness and visual review: pending\nAssembly SHA-256: " + run.assembly_sha256 + "\nKit SHA-256: " + run.manifest_sha256) + "</pre>");
-                foreach (var entry in zip.Entries.Where(e => e.FullName.StartsWith("incomplete-", StringComparison.Ordinal))) h.Append("<pre>" + E(Read(zip, entry.FullName)) + "</pre>");
+                foreach (var entry in zip.Entries.Where(e => e.FullName.StartsWith("incomplete-", StringComparison.Ordinal))) h.Append("<pre>" + E(entry.FullName.EndsWith(".json", StringComparison.OrdinalIgnoreCase) ? Pretty(json.DeserializeObject(Read(zip, entry.FullName))) : Read(zip, entry.FullName)) + "</pre>");
                 h.Append("<h3>Video markers (UTC)</h3><pre>" + E(Read(zip, "video-markers.csv")) + "</pre></section><section><h2>Errors and interruptions</h2>");
                 if (errors.Length == 0) h.Append("<p>No error-like events were detected. This does not establish a successful result.</p>");
                 foreach (var v in errors) Event(h, v);
-                h.Append("</section><section><h2>Results and collected outputs</h2><p>These are actual collected files and model responses, not reference answers. Text previews do not verify formulas or native rendering. Original editable files and PDFs are retained in the evidence ZIP.</p>");
+                h.Append("</section><section><h2>Results and collected outputs</h2><p>These are actual collected files and model responses, not reference answers. Package text previews and captured native readback are diagnostic evidence; visual correctness needs screenshots. Original editable files and PDFs are retained in the evidence ZIP.</p>");
                 foreach (var v in events.Where(v => { object detail; return v.TryGetValue("detail", out detail) && Value(detail as IDictionary<string, object>, "type") == "assistant"; })) Event(h, v);
                 if (outputs.Length == 0) h.Append("<p>No output files were collected.</p>");
                 foreach (var entry in outputs)
@@ -92,7 +92,7 @@ namespace Scribble.Testing
                     } else if (new[] { ".xlsx", ".pptx", ".docx" }.Contains(Path.GetExtension(entry.FullName).ToLowerInvariant())) {
                         try { h.Append("<pre>" + E(NativePreview(entry)) + "</pre>"); } catch (Exception e) { h.Append("<p>Preview unavailable: " + E(e.Message) + ". Inspect the original file in the ZIP.</p>"); }
                     } else if (entry.FullName.EndsWith(".json", StringComparison.OrdinalIgnoreCase) || entry.FullName.EndsWith(".eml", StringComparison.OrdinalIgnoreCase)) {
-                        h.Append("<pre>" + E(Read(zip, entry.FullName)) + "</pre>");
+                        h.Append("<pre>" + E(entry.FullName.EndsWith(".json", StringComparison.OrdinalIgnoreCase) ? Pretty(json.DeserializeObject(Read(zip, entry.FullName))) : Read(zip, entry.FullName)) + "</pre>");
                     } else { h.Append("<p>Open the original file in the ZIP for its full native or rendered result.</p>"); }
                     h.Append("</article>");
                 }
@@ -124,8 +124,8 @@ namespace Scribble.Testing
                     if (shared != null) using (var stream = shared.Open()) strings = XDocument.Load(stream).Descendants().Where(n => n.Name.LocalName == "si").Select(n => string.Concat(n.Descendants().Where(x => x.Name.LocalName == "t").Select(x => x.Value))).ToArray();
                     foreach (var part in package.Entries.Where(e => System.Text.RegularExpressions.Regex.IsMatch(e.FullName, @"^xl/worksheets/sheet\d+\.xml$")))
                     {
-                        text.AppendLine(part.FullName + " - first 200 rows; formulas are shown, not recalculated");
-                        using (var stream = part.Open()) foreach (var row in XDocument.Load(stream).Descendants().Where(n => n.Name.LocalName == "row").Take(200))
+                        text.AppendLine(part.FullName + " - all recorded rows; formulas and cached values are shown, not recalculated");
+                        using (var stream = part.Open()) foreach (var row in XDocument.Load(stream).Descendants().Where(n => n.Name.LocalName == "row"))
                             foreach (var cell in row.Elements().Where(n => n.Name.LocalName == "c")) {
                                 var value = string.Join(" ", cell.Descendants().Where(n => n.Name.LocalName == "v" || n.Name.LocalName == "t").Select(n => n.Value));
                                 int index; if ((string)cell.Attribute("t") == "s" && int.TryParse(value, out index) && index >= 0 && index < strings.Length) value = strings[index];

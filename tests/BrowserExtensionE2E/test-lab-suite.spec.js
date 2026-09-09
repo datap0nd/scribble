@@ -14,7 +14,7 @@ function controller() {
     connection: { connected: true, configured: true }, isSending: false, activeRecovery: null,
     elements: { prompt: { value: '', dispatchEvent() {} }, composer: { requestSubmit() { sandbox.isSending = false; } } },
     chrome: { tabs: { query: async () => [{ id: 123 }], get: async id => ({ id, url: 'http://127.0.0.1:9999/operations.html' }) } },
-    clearChat: async () => {}, renderCurrentTab: async () => {}, setActivity: text => activities.push(text),
+    waitForTabComplete: async () => {}, clearChat: async () => {}, renderCurrentTab: async () => {}, setActivity: text => activities.push(text),
     sendChatMessage: async () => { prompts.push(sandbox.elements.prompt.value); },
     sendNativeMessage: async message => {
       const data = JSON.parse(message.taskData);
@@ -84,4 +84,15 @@ test('suite clarification answers use only explicit kit preset topics', () => {
   expect(vm.runInContext('suitePresetAnswer("Which currency?")', c.sandbox)).toBe('EUR excluding tax');
   expect(vm.runInContext('suitePresetAnswer("What is the audience and currency?")', c.sandbox)).toContain('Atlas executive team');
   expect(vm.runInContext('suitePresetAnswer("Should I send the secret to someone?")', c.sandbox)).toBe('');
+});
+
+
+test('suite opens a missing fixture in the controller profile before reading it', async () => {
+  const c = controller(); const opened = [];
+  c.sandbox.chrome.tabs.query = async () => [];
+  c.sandbox.chrome.tabs.create = async options => { opened.push(options); return { id: 456 }; };
+  await c.execute({ id: 'load-missing', action: 'load', runId: 'run', sourceUrl: 'http://127.0.0.1:9999/operations.html' });
+  expect(opened).toEqual([{ url: 'http://127.0.0.1:9999/operations.html', active: true }]);
+  expect(c.sandbox.scribbleSuiteSourceTab).toBe(456);
+  expect(c.replies[0].error).toBe('');
 });

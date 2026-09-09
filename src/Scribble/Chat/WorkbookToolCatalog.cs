@@ -131,7 +131,9 @@ namespace Scribble.Chat
                         "build a summary on top of it. The workbook is " +
                         "never saved. Call it only after gathering the " +
                         "needed context, as the only tool call in that " +
-                        "response.",
+                        "response. This user turn has one draft-write permission: " +
+                        "include all requested analysis sections, formulas and " +
+                        "the chart in this single draft call.",
                     parameters = ToolSchema.Build(
                         new Dictionary<string, object>
                         {

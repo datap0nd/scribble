@@ -329,7 +329,12 @@ namespace Scribble.Testing
                 foreach (var file in Directory.GetFiles(Path.Combine(folder, "events"), "*.bin"))
                 {
                     try { timeline.Add(Encoding.UTF8.GetString(ProtectedData.Unprotect(File.ReadAllBytes(file), null, DataProtectionScope.CurrentUser))); }
-                    catch { run.trace_complete = false; }
+                    catch (Exception error) {
+                        run.trace_complete = false;
+                        Write(Path.Combine(stage, "incomplete-read-" + Path.GetFileNameWithoutExtension(file) + ".json"), new {
+                            reason = "Recorded event could not be read: " + error.GetType().Name + ": " + error.Message,
+                            file = Path.GetFileName(file), utc = DateTime.UtcNow.ToString("O") });
+                    }
                 }
                 var ordered = timeline.Select(t => new { text = t, data = Json.Deserialize<Dictionary<string, object>>(t) })
                     .OrderBy(t => Convert.ToString(t.data["utc"])).ThenBy(t => Convert.ToString(t.data["instance_id"]))

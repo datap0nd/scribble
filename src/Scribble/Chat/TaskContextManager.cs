@@ -107,7 +107,15 @@ namespace Scribble.Chat
                 "Tool is outside the current request scope");
             if (McpToolHost.IsMcpTool(call?.function?.name)) return null;
             var errors = ToolContractValidator.Validate(call, definition);
-            if (errors.Count == 0) return null;
+            if (errors.Count == 0) {
+                if (DocumentWriteSpent(call)) {
+                    Diagnostics.Record("duplicate_write_rejected", new { call.id, tool = call.function.name });
+                    return new MailboxToolResult(call.id, _json.Serialize(new { error_code = "DOCUMENT_WRITE_ALREADY_COMPLETED",
+                        permission_consumed = false, message = "The earlier document write already completed. Use its saved tool receipt. Do not repeat or replace the draft. Explain any unmet requirements in your final response.",
+                        writes = _state.Writes }), "Earlier draft retained; repeated write rejected");
+                }
+                return null;
+            }
             Diagnostics.Record("argument_validation_failed", new { call.id, tool = call.function.name, errors });
             return new MailboxToolResult(call.id, _json.Serialize(new { error_code = "TOOL_ARGUMENTS_INVALID", stage = "ARGUMENTS",
                 permission_consumed = false, field_errors = errors, diagnostic_id = _state.Id }), "Repair the indicated tool arguments");
@@ -142,6 +150,18 @@ namespace Scribble.Chat
             _state.PendingResults.Clear();
             _state.PendingAssistantText = response.content;
             SaveRequest(request);
+        }
+
+        private bool DocumentWriteSpent(ChatToolCall call)
+        {
+            var name = call?.function?.name;
+            if (name == WorkbookToolCatalog.WriteSelectionOutput || name == WorkbookToolCatalog.WriteKoreanTranslations) return false;
+            if (!(Scribble.Office.DocumentDraftHost.IsDraftTool(_state.Host, name) || name == "open_excel_table" || name == "open_outlook_draft")) return false;
+            string spent;
+            var key = _state.Host == "chrome" ? "generic_write_spent:" + name : "generic_write_spent";
+            var continuing = name == PresentationToolCatalog.ReviseSlides || name == PresentationToolCatalog.RevertSlides || name == "add_draft_slides" ||
+                (name == "send_to_powerpoint" && _state.HostData.ContainsKey("samsung_destination"));
+            return !continuing && _state.HostData.TryGetValue(key, out spent) && spent == "true" && _state.Writes.All(w => w.Status == "verified");
         }
 
         public void BeforeTool(ChatToolCall call, bool changesDocument)

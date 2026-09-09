@@ -320,6 +320,7 @@ namespace Scribble.Chat
                     if (!taskContext.State.CanComplete(false)) throw new InvalidOperationException("A document write has no verified receipt. Inspect the original draft before continuing; it was not repeated.");
                     // Extension reconciles quote coverage before accepting completion.
                     taskContext.State.Lifecycle = TaskLifecycle.AwaitingUser;
+                    taskContext.Diagnostics.Record("task_paused", new { reason = "Model response returned; extension will reconcile coverage before accepting completion." });
                     taskContext.SaveRequest(request);
                     topicTools?.CompleteSession();
                     return new BrowserChatResult(

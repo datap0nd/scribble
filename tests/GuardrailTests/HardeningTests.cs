@@ -19,6 +19,34 @@ namespace GuardrailTests
         private static ChatToolCall Call(string name, string args) { return new ChatToolCall { id = Guid.NewGuid().ToString("N"), type = "function", function = new ChatToolCallFunction { name = name, arguments = args } }; }
         private static ChatCompletionRequest Request() { return new ChatCompletionRequest { model = "synthetic", messages = new List<object>() }; }
 
+        public static void NativeReportReadback()
+        {
+            var read = typeof(Scribble.Testing.BenchmarkArtifactCollector).GetMethod("ReadNative", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            var text = (string)read.Invoke(null, new object[] { new ReportWorkbook(), "Excel" });
+            Check(text.Contains("Scribble Draft") && text.Contains("R4C2: 120000 | formula: =SUM(Sales!E2:E9)") && text.Contains("Native charts: 0"),
+                "Native readback lost worksheet identity, offsets, value or formula.");
+        }
+
+        public static void DuplicateDraftIsRecoverable()
+        {
+            var root = Path.Combine(Path.GetTempPath(), "scribble-repeat-" + Guid.NewGuid().ToString("N"));
+            try {
+                var request = Request(); request.tools = new List<ChatToolDefinition> { WorkbookToolCatalog.DraftDefinition() };
+                var task = new TaskContextManager(request, "excel", "Create a draft analysis", new TaskCheckpointStore(root));
+                var first = Call(WorkbookToolCatalog.WriteDraftSheet, "{\"rows\":[[\"Metric\",\"Value\"],[\"Revenue\",\"120000\"]]}");
+                Check(task.ValidateArguments(first) == null, "Initial draft was rejected.");
+                task.BeforeTool(first, true);
+                task.AfterTool(first, new MailboxToolResult(first.id, "{\"ok\":true,\"permission_consumed\":true}", "Created synthetic draft receipt"));
+                var retry = Call(WorkbookToolCatalog.WriteDraftSheet, first.function.arguments);
+                var rejected = task.ValidateArguments(retry);
+                Check(rejected != null && rejected.Content.Contains("DOCUMENT_WRITE_ALREADY_COMPLETED") && rejected.Outcome.PermissionConsumed == false,
+                    "Duplicate draft must return a recoverable tool error without authorizing a write.");
+                Check(task.State.Writes.Count == 1, "Duplicate validation changed the write journal.");
+                task.State.EnumerationComplete = true; task.CompleteTask(request);
+                Check(task.State.Lifecycle == TaskLifecycle.Completed, "The model cannot explain the retained draft and finish.");
+            } finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+        }
+
         public static void SparseMailboxThroughCoordinator()
         {
             foreach (var rejectFilter in new[] { false, true })
@@ -164,4 +192,19 @@ namespace GuardrailTests
             }
         }
     }
+    public sealed class ReportWorkbook { public ReportSheets Worksheets { get; } = new ReportSheets(); }
+    public sealed class ReportSheets { public int Count => 1; public ReportSheet Item(int index) => new ReportSheet(); }
+    public sealed class ReportSheet {
+        public string Name => "Scribble Draft";
+        public ReportRange UsedRange { get; } = new ReportRange();
+        public ReportCharts ChartObjects() => new ReportCharts();
+    }
+    public sealed class ReportCharts { public int Count => 0; }
+    public sealed class ReportCount { public int Count => 1; }
+    public sealed class ReportRange {
+        public string Address => "$B$4"; public int Row => 4; public int Column => 2;
+        public ReportCount Rows { get; } = new ReportCount(); public ReportCount Columns { get; } = new ReportCount();
+        public object Value2 => 120000.0; public object Formula => "=SUM(Sales!E2:E9)";
+    }
+
 }

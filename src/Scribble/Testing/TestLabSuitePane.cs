@@ -33,13 +33,19 @@ namespace Scribble.Testing
             if (action == "stop") { stop(); return TestLab.Serialize(new SuiteReply { state = busy() || state == "running" ? "running" : "done", error = error }); }
             if (!ready) return TestLab.Serialize(new SuiteReply { state = "initializing" });
             if (action == "status") return TestLab.Serialize(new SuiteReply { state = busy() || state == "running" ? "running" : state, error = error });
-            if (id == commandId) return TestLab.Serialize(new SuiteReply { state = state, error = error });
+            if (id == commandId) return TestLab.Serialize(new SuiteReply { state = state, error = error, hostModule = typeof(TestLab).Assembly.ManifestModule.ModuleVersionId.ToString(), captureRoot = TestLab.Root });
             if (busy() || state == "running") throw new InvalidOperationException("The pane already has a request in progress.");
             var c = TestLabSuite.CurrentCase(suite);
             if (action != "load" && action != "submit") throw new InvalidOperationException("Unknown suite action.");
             var prompt = TestLabSuite.Prompt(c, phase);
             commandId = id; runId = suite.runId; error = null;
-            if (action == "load") { reset(); load(c); state = "done"; }
+            if (action == "load") {
+                TestLab.Record(runId, "suite", "host_connected", new { host,
+                    loaded_module = typeof(TestLab).Assembly.ManifestModule.ModuleVersionId.ToString(),
+                    assembly = typeof(TestLab).Assembly.Location, capture_root = TestLab.Root });
+                reset(); load(c); state = "done";
+                return TestLab.Serialize(new SuiteReply { state = state, hostModule = typeof(TestLab).Assembly.ManifestModule.ModuleVersionId.ToString(), captureRoot = TestLab.Root });
+            }
             else { state = "running"; Execute(send, prompt); }
             return TestLab.Serialize(new SuiteReply { state = busy() || state == "running" ? "running" : state, error = error });
         }
@@ -50,5 +56,5 @@ namespace Scribble.Testing
             finally { state = "done"; }
         }
     }
-    public sealed class SuiteReply { public string state { get; set; } public string error { get; set; } }
+    public sealed class SuiteReply { public string hostModule { get; set; } public string captureRoot { get; set; } public string state { get; set; } public string error { get; set; } }
 }
