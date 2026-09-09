@@ -306,7 +306,9 @@ namespace Scribble.Testing
             var folder = TestLab.SafeChild(State.folder, "cases/" + State.caseId);
             if (State.host == "Chrome") {
                 var command = new SuiteChromeCommand { id = id, action = action, prompt = action == "submit" ? TestLabSuite.Prompt(TestLabSuite.CurrentCase(State), phase) : null, sourceUrl = State.sourceUrl, runId = State.runId, answers = TestLabSuite.CurrentCase(State).clarification_answers };
-                var file = Path.Combine(folder, "chrome-command.json"); var temp = file + ".tmp"; File.WriteAllText(temp, TestLab.Serialize(command)); if (File.Exists(file)) File.Replace(temp, file, null); else File.Move(temp, file);
+                var file = Path.Combine(folder, "chrome-command.json"); var temp = file + ".tmp";
+                File.WriteAllText(temp, TestLab.Serialize(command));
+                if (File.Exists(file)) File.Replace(temp, file, null); else File.Move(temp, file);
             }
             Log(State.caseId + ": " + action + (action == "submit" ? " phase " + phase : ""));
             while (DateTime.UtcNow - started < TimeSpan.FromSeconds(timeout)) {

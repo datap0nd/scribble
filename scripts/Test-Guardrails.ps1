@@ -18,6 +18,10 @@ foreach ($pattern in $forbidden) {
             $_.Line -notmatch 'File\.Delete' -and
             -not ($_.Path -like '*\Testing\TestLab.cs' -and
                 $_.Line.Trim() -eq 'if (File.Exists(Descriptor)) File.Replace(temporary, Descriptor, null); else File.Move(temporary, Descriptor);') -and
+            # Atomic operator lease/command files, not Outlook item operations.
+            -not ($_.Path -like '*\Testing\TestLabSuite.cs' -and
+                ($_.Line.Trim() -eq 'if (File.Exists(Descriptor)) File.Replace(temporary, Descriptor, null); else File.Move(temporary, Descriptor);' -or
+                 $_.Line.Trim() -eq 'if (File.Exists(file)) File.Replace(temp, file, null); else File.Move(temp, file);')) -and
             -not ($pattern -eq "\.Delete\s*\(" -and
                 ($_.Path -like '*\Office\PresentationRevision.cs' -or $_.Path -like '*\Office\PresentationDraftWriter.Samsung.cs')) -and
             -not ($_.Path -like '*\Chat\TaskCoordinator.cs' -and
