@@ -31,10 +31,9 @@ namespace Scribble.Testing
             }
             var host = Path.Combine(Path.GetDirectoryName(typeof(TestLab).Assembly.Location), "ScribbleBrowserHost.exe");
             if (!File.Exists(host)) throw new FileNotFoundException("Install the current Scribble build to use the standalone Test Lab runner.", host);
-            using (var process = Process.Start(new ProcessStartInfo(host, "--test-lab-suite") { UseShellExecute = false, CreateNoWindow = true, WindowStyle = ProcessWindowStyle.Normal, RedirectStandardError = true })) {
-                var startupError = process.StandardError.ReadToEndAsync();
+            using (var process = Process.Start(new ProcessStartInfo(host, "--test-lab-suite") { UseShellExecute = false, CreateNoWindow = true, WindowStyle = ProcessWindowStyle.Normal })) {
                 if (process.WaitForExit(1000)) {
-                    var detail = "Test Lab exited before opening (exit " + process.ExitCode + ").\r\n" + startupError.GetAwaiter().GetResult();
+                    var detail = "Test Lab exited before opening (exit " + process.ExitCode + ", 0x" + process.ExitCode.ToString("X8") + ").\r\nExecutable: " + host;
                     Directory.CreateDirectory(TestLab.Root);
                     File.WriteAllText(Path.Combine(TestLab.Root, "launcher-error.log"), DateTime.UtcNow.ToString("O") + " " + detail);
                     MessageBox.Show(detail, "Scribble Test Lab startup error", MessageBoxButtons.OK, MessageBoxIcon.Error);
