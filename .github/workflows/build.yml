@@ -761,6 +761,10 @@ jobs:
           foreach ($shared in @("ScribbleBrowserHost.exe", "ScribbleBrowserHost.exe.config")) {
             $installed = Join-Path $installedDir $shared
             $built = Join-Path "src\Scribble.BrowserHost\bin\Release" $shared
+            if ($shared.EndsWith(".config") -and -not (Test-Path -LiteralPath $built)) {
+              if (Test-Path -LiteralPath $installed) { throw "A stale shared runner config survived: $shared" }
+              continue
+            }
             if (-not (Test-Path -LiteralPath $installed) -or
                 (Get-FileHash -LiteralPath $installed).Hash -ne (Get-FileHash -LiteralPath $built).Hash) {
               throw "Office-only install lost or changed its shared Test Lab runner: $shared"
