@@ -756,8 +756,17 @@ jobs:
             $browserRoot.Dispose()
           }
           $installedDir = Join-Path $env:LOCALAPPDATA "Programs\Scribble"
+          # The executable is shared by native messaging and standalone Test Lab.
+          # An Office-only install keeps it, but not the browser integration below.
+          foreach ($shared in @("ScribbleBrowserHost.exe", "ScribbleBrowserHost.exe.config")) {
+            $installed = Join-Path $installedDir $shared
+            $built = Join-Path "src\Scribble.BrowserHost\bin\Release" $shared
+            if (-not (Test-Path -LiteralPath $installed) -or
+                (Get-FileHash -LiteralPath $installed).Hash -ne (Get-FileHash -LiteralPath $built).Hash) {
+              throw "Office-only install lost or changed its shared Test Lab runner: $shared"
+            }
+          }
           foreach ($gone in @(
-            (Join-Path $installedDir "ScribbleBrowserHost.exe"),
             (Join-Path $installedDir "com.scribble.browser.json"),
             (Join-Path $installedDir "BrowserExtension")
           )) {

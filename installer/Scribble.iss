@@ -105,8 +105,8 @@ Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 
 [InstallDelete]
-; These paths contain shipped browser files only. Clearing them before
-; reinstall also removes a browser component that the user deselected.
+; Refresh the shipped helper and browser files. The shared Test Lab helper
+; is reinstalled for every component selection; browser integration is optional.
 Type: filesandordirs; Name: "{app}\BrowserExtension"
 Type: files; Name: "{app}\ScribbleBrowserHost.exe"
 Type: files; Name: "{app}\ScribbleBrowserHost.exe.config"
