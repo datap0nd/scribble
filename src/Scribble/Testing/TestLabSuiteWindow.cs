@@ -20,6 +20,9 @@ namespace Scribble.Testing
         private readonly TextBox log = new TextBox { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Both, WordWrap = false, Dock = DockStyle.Fill };
         private readonly CancellationTokenSource cancellation = new CancellationTokenSource();
         private readonly string folder;
+        private readonly Button stopButton;
+        private readonly Button recoverButton;
+        private readonly Button reportButton;
         private bool finished;
         public static void Open()
         {
@@ -47,8 +50,8 @@ namespace Scribble.Testing
             folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Scribble Testcases", "suite-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N").Substring(0, 8));
             Directory.CreateDirectory(folder);
             var controls = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 80, Padding = new Padding(8) };
-            Add(controls, "Stop suite", () => { cancellation.Cancel(); Append("Stopping after the current operation; evidence will be saved."); });
-            Add(controls, "Recover incomplete run", () => {
+            stopButton = Add(controls, "Stop suite", () => { cancellation.Cancel(); stopButton.Enabled = false; Append("Stopping after the current operation; evidence will be saved."); });
+            recoverButton = Add(controls, "Recover incomplete run", () => {
                 if (!finished) throw new InvalidOperationException("Stop the current suite and wait for its report before recovering.");
                 var report = TestLabSuite.RecoverIncomplete(folder);
                 Append("Preserved unfinished capture: " + report);
@@ -56,7 +59,8 @@ namespace Scribble.Testing
             });
             Add(controls, "Copy summary", () => Clipboard.SetText(File.Exists(Path.Combine(folder, "summary.txt")) ? File.ReadAllText(Path.Combine(folder, "summary.txt")) : log.Text));
             Add(controls, "Open results folder", () => Process.Start(new ProcessStartInfo(folder) { UseShellExecute = true }));
-            Add(controls, "Open HTML report", () => { var path = Path.Combine(folder, "report.html"); if (!File.Exists(path)) throw new InvalidOperationException("The HTML report is created when the suite finishes or stops."); Process.Start(new ProcessStartInfo(path) { UseShellExecute = true }); });
+            reportButton = Add(controls, "Open HTML report", () => { var path = Path.Combine(folder, "report.html"); if (!File.Exists(path)) throw new InvalidOperationException("The HTML report is created when the suite finishes or stops."); Process.Start(new ProcessStartInfo(path) { UseShellExecute = true }); });
+            recoverButton.Enabled = false; reportButton.Enabled = false;
             Controls.Add(log); Controls.Add(new Label { Dock = DockStyle.Top, Height = 58, Text = "Runs the synthetic suite visibly using your configured model. Prompts and outputs are recorded locally; emails remain unsent drafts.\r\nResults: " + folder }); Controls.Add(controls);
             var activation = new System.Windows.Forms.Timer { Interval = 500 };
             activation.Tick += (s, e) => {
@@ -70,9 +74,10 @@ namespace Scribble.Testing
             Shown += async (s, e) => { Activate(); await Run(); };
             FormClosing += (s, e) => { if (!finished) { e.Cancel = true; cancellation.Cancel(); Append("Stopping and saving the report before closing. Keep this window open until export finishes."); } };
         }
-        private void Add(FlowLayoutPanel panel, string text, Action action)
+        private Button Add(FlowLayoutPanel panel, string text, Action action)
         {
             var b = new Button { Text = text, AutoSize = true }; b.Click += (s, e) => { try { action(); } catch (Exception ex) { Append(ex.Message); } }; panel.Controls.Add(b);
+            return b;
         }
         private void Append(string text)
         {
@@ -103,7 +108,11 @@ namespace Scribble.Testing
         {
             Append("Test Lab runner " + FileVersionInfo.GetVersionInfo(typeof(TestLab).Assembly.Location).FileVersion);
             if (TestLab.ActiveRunId() != null) {
-                Append("An unfinished capture is still active. Save your work, close Excel, PowerPoint, Word, Outlook and Chrome, then click Recover incomplete run here. The old evidence will be preserved before a fresh suite opens.");
+                finished = true; stopButton.Enabled = false; recoverButton.Enabled = true;
+                Text = "Scribble Test Lab — finished — recovery required";
+                Append("Recovery required: the previous capture is unfinished, but no suite is running in this window. Stop suite does not apply here.");
+                Append("Save your work, close Excel, PowerPoint, Word, Outlook and Chrome, then click Recover incomplete run. The old evidence will be preserved before a fresh suite opens.");
+                return;
             }
             var runner = new TestLabSuiteRunner(folder, Append, cancellation.Token);
             try { await RunOnSta(runner.Run); }
@@ -116,7 +125,12 @@ namespace Scribble.Testing
                 runner.Log("HTML export failed: " + e);
                 File.AppendAllText(Path.Combine(folder, "summary.txt"), "\nHTML EXPORT FAILED: " + e.Message + "\nRecorded logs are preserved.\n");
             }
-            finally { finished = true; Text = "Scribble Test Lab — finished"; }
+            finally {
+                finished = true; stopButton.Enabled = false; reportButton.Enabled = File.Exists(Path.Combine(folder, "report.html"));
+                recoverButton.Enabled = TestLab.ActiveRunId() != null;
+                Text = recoverButton.Enabled ? "Scribble Test Lab — finished — recovery required" : "Scribble Test Lab — finished";
+                if (recoverButton.Enabled) Append("A capture is still active. Stop the request in its visible app, close Office and Chrome, then click Recover incomplete run.");
+            }
         }
     }
     public static class TestLabSuiteReport

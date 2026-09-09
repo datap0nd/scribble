@@ -29,12 +29,12 @@ try {
  [Scribble.Testing.TestLabSuiteWindow]::Open()
  for($i=0;$i -lt 60;$i++) {
   $child=Get-Process ScribbleBrowserHost -ErrorAction SilentlyContinue | Where-Object { $_.Id -notin $before } | Select-Object -First 1
-  if($child) { $child.Refresh(); if($child.MainWindowTitle -like '*finished*' -and $child.MainWindowHandle -ne [IntPtr]::Zero){break} }
+  if($child) { $child.Refresh(); if($child.MainWindowTitle -like '*recovery required*' -and $child.MainWindowHandle -ne [IntPtr]::Zero){break} }
   Start-Sleep -Milliseconds 250
  }
  Assert ($null -ne $child) 'Test Lab button did not start an operator window.'
  Assert ([LabWindowVisibility]::IsWindowVisible($child.MainWindowHandle)) 'Test Lab operator window is hidden.'
- Assert ($child.MainWindowTitle -like '*finished*') 'Unfinished capture did not reach the recovery screen.'
+ Assert ($child.MainWindowTitle -like '*recovery required*') 'Unfinished capture did not reach the recovery screen.'
  Assert ([Scribble.Testing.TestLab]::ActiveRunId() -eq $run.run_id) 'Opening the recovery UI altered the active capture.'
  $rejected=$false;try{[void][Scribble.Testing.TestLabSuite]::RecoverIncomplete($folder)}catch{$rejected=$true}
  Assert $rejected 'Recovery must refuse while another operator/model host is still running.'
