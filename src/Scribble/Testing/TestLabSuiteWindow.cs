@@ -104,7 +104,14 @@ namespace Scribble.Testing
             if (results.Length == 0) summary.AppendLine("No cases ran. See the startup/download error below.");
             var logPath = Path.Combine(s.folder, "suite.log"); var log = File.Exists(logPath) ? File.ReadAllText(logPath) : "No suite log was produced.";
             if (results.Length == 0) summary.AppendLine(log.Length > 1600 ? log.Substring(0, 1600) + "\n[Full error in the PDF log]" : log);
-            File.WriteAllText(Path.Combine(s.folder, "summary.txt"), summary.ToString(), new UTF8Encoding(false));
+            var pasteable = summary.ToString();
+            var firstFailure = results.FirstOrDefault(r => !string.IsNullOrEmpty(r.error));
+            if (firstFailure != null) {
+                var diagnostic = firstFailure.error;
+                pasteable += "\nFIRST FAILURE DETAILS (" + firstFailure.id + ")\n" +
+                    (diagnostic.Length > 20000 ? diagnostic.Substring(0, 20000) + "\n[Continued in report.pdf and suite.log]" : diagnostic);
+            }
+            File.WriteAllText(Path.Combine(s.folder, "summary.txt"), pasteable, new UTF8Encoding(false));
             var html = new StringBuilder("<!doctype html><html><head><meta charset='utf-8'><meta http-equiv='Content-Security-Policy' content=\"default-src 'none'; style-src 'unsafe-inline'; img-src data:\"><title>Scribble suite report</title><style>@page{size:A4;margin:14mm}body{font:10pt Arial;color:#172033}h1{font-size:22pt}h2{font-size:16pt}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:8pt Consolas}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccd5e0;padding:5px;text-align:left}img{max-width:100%}.case{break-before:page}.cover{break-after:page}</style></head><body><section class='cover'><h1>Scribble Test Lab</h1><pre>");
             html.Append(E(summary.ToString())).Append("</pre><p>Share summary.txt by copy/paste, a screenshot of this page, or this PDF. Full machine-readable events and native outputs are in each case’s evidence ZIP.</p></section><h2>Timestamped suite log</h2><pre>").Append(E(log)).Append("</pre>");
             foreach (var r in results) {

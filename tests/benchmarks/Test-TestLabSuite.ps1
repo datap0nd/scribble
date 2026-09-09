@@ -120,6 +120,7 @@ try {
     Assert ($html.Contains('END_OF_ERROR') -and $html.Contains('2026-09-09T12:00:01Z')) 'Report omitted diagnostic tail or timestamps.'
     Assert ($html.Contains('&lt;script&gt;') -and -not $html.Contains('<script>alert')) 'Report executes source text.'
     Assert ((Get-Content -LiteralPath (Join-Path $folder 'summary.txt') -Raw).Contains('EX01 Excel')) 'Pasteable summary missing case.'
+    Assert ((Get-Content -LiteralPath (Join-Path $folder 'summary.txt') -Raw).Contains('END_OF_ERROR')) 'Copy summary lost the first failure diagnostic.'
     if($RenderPdf) { $pdf=[Scribble.Testing.TestLabSuiteReport]::Create($state,@($result));Assert ((Get-Item -LiteralPath $pdf).Length -gt 1000) 'Suite PDF empty.';Write-Output "Suite PDF sample: $pdf" }
     Write-Output 'PASS: 16 cases, exact phases, source ownership, lease expiry, Chrome controller exclusivity, startup stderr, ZIP traversal, suite report.'
 } finally {
