@@ -11,7 +11,7 @@ namespace Scribble.Testing
     public static class TestLabPreparation
     {
         private static readonly Dictionary<string, Process> Workers = new Dictionary<string, Process>();
-        public static string Launch(string caseId)
+        public static string Launch(string caseId, bool suite = false)
         {
             var session = TestLab.Status();
             if (session == null) throw new InvalidOperationException("Enable Test Lab first.");
@@ -24,9 +24,15 @@ namespace Scribble.Testing
             Directory.CreateDirectory(directory);
             var report = Path.Combine(directory, Guid.NewGuid().ToString("N") + ".json");
             var shell = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), @"WindowsPowerShell\v1.0\powershell.exe");
-            Workers[report] = Process.Start(new ProcessStartInfo(shell, "-NoProfile -STA -ExecutionPolicy Bypass -File " + Quote(script) +
-                " -CaseId " + Quote(caseId) + " -AssemblyPath " + Quote(typeof(TestLab).Assembly.Location) + " -ReportPath " + Quote(report))
-            { UseShellExecute = false, CreateNoWindow = true, WindowStyle = ProcessWindowStyle.Hidden });
+            var worker = new Process { StartInfo = new ProcessStartInfo(shell, "-NoProfile -STA -ExecutionPolicy Bypass -File " + Quote(script) +
+                " -FixtureRoot " + Quote(session.fixture_root) + " -CaseId " + Quote(caseId) + " -AssemblyPath " + Quote(typeof(TestLab).Assembly.Location) + " -ReportPath " + Quote(report) + (suite ? " -Suite" : ""))
+            { UseShellExecute = false, CreateNoWindow = true, WindowStyle = ProcessWindowStyle.Hidden, RedirectStandardOutput = true, RedirectStandardError = true } };
+            var sync = new object();
+            DataReceivedEventHandler capture = (sender, e) => { if (e.Data != null) lock (sync) { try { File.AppendAllText(report + ".log", DateTime.UtcNow.ToString("O") + " " + e.Data + Environment.NewLine); } catch (IOException) { } } };
+            worker.OutputDataReceived += capture; worker.ErrorDataReceived += capture;
+            File.WriteAllText(report + ".log", DateTime.UtcNow.ToString("O") + " Preparing " + caseId + Environment.NewLine);
+            try { worker.Start(); Workers[report] = worker; worker.BeginOutputReadLine(); worker.BeginErrorReadLine(); }
+            catch (Exception e) { File.AppendAllText(report + ".log", e.ToString()); worker.Dispose(); throw; }
             return report;
         }
         private static string Quote(string value)
@@ -43,16 +49,21 @@ namespace Scribble.Testing
             Process worker;
             if (Workers.TryGetValue(path, out worker) && worker.HasExited)
             {
-                if (report == null || report.status == "preparing") report = new PreparationReport { status = "failed", completed = report?.completed,
-                    remaining = new[] { "Preparation stopped before completion (exit " + worker.ExitCode + "). Run operator/Prepare-ScribbleTestCase.ps1 -CaseId <case> in Windows PowerShell to see the error." } };
+                worker.WaitForExit(); // Drain asynchronous stdout/stderr before publishing completion.
+                if (worker.ExitCode != 0 || report == null || report.status == "preparing") report = new PreparationReport { status = "failed", completed = report?.completed,
+                    remaining = new[] { "Preparation stopped before completion (exit " + worker.ExitCode + "). See the captured error below." } };
                 worker.Dispose(); Workers.Remove(path);
+                File.WriteAllText(path, TestLab.Serialize(report));
             }
+            if (Workers.TryGetValue(path, out worker) && !worker.HasExited && report != null) report.status = "preparing";
+            if (report != null) report.log = ReadLog(path);
             return report;
         }
+        public static string ReadLog(string path) { try { if (!File.Exists(path + ".log")) return ""; using (var stream = new FileStream(path + ".log", FileMode.Open, FileAccess.Read, FileShare.ReadWrite)) using (var reader = new StreamReader(stream)) return reader.ReadToEnd(); } catch (IOException) { return ""; } }
         public static void Stop(string path)
         {
             Process worker;
-            if (path != null && Workers.TryGetValue(path, out worker) && !worker.HasExited) worker.Kill();
+            if (path != null && Workers.TryGetValue(path, out worker)) { if (!worker.HasExited) worker.Kill(); if (worker.WaitForExit(2000)) ReadReport(path); }
         }
         public static string[] ContextFiles(LabCase c)
         {
@@ -68,6 +79,7 @@ namespace Scribble.Testing
     }
     public sealed class PreparationReport
     {
+        public string log { get; set; }
         public string case_id { get; set; }
         public string status { get; set; }
         public string[] completed { get; set; }

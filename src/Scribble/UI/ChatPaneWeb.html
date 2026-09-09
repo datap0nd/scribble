@@ -1613,7 +1613,7 @@
       case "testLabStatus":
         var lab = document.getElementById("testLabButton");
         if (!lab) { lab = document.createElement("button"); lab.id = "testLabButton"; lab.style.cssText = "position:fixed;right:12px;top:4px;z-index:1000;font-size:10px"; lab.onclick = function () { post("openTestLab"); }; document.body.appendChild(lab); }
-        lab.hidden = !m.enabled; lab.textContent = m.runId ? "Test Lab • " + m.captureState : "Test Lab"; break;
+        lab.hidden = false; lab.textContent = m.runId ? "Test Lab • " + m.captureState : "Test Lab"; break;
       case "assistant": addAssistant(m.text || "", m.bold, m.md); break;
       case "activity": addActivity(m.text || "", m.kind); break;
       case "suggest": showSuggest(m.questions); break;

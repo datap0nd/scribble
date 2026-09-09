@@ -142,6 +142,7 @@ async function resumeBrowserTask(saved) {
   await sendChatMessage(saved);
 }
 async function discoverBrowserTask() {
+  if (new URLSearchParams(location.search).has("suite")) return;
   if (recoveryChecked || isSending || !connection.configured) return;
   recoveryChecked = true;
   const response = await sendNativeMessage({type:"loadTask"},PING_TIMEOUT_MS);
@@ -444,6 +445,8 @@ async function openSettings() {
 }
 
 async function getActiveTab() {
+  if (globalThis.scribbleSuiteSourceTab) return await chrome.tabs.get(globalThis.scribbleSuiteSourceTab);
+
   const query = Number.isInteger(panelWindowId)
     ? { active: true, windowId: panelWindowId }
     : { active: true, currentWindow: true };
@@ -2882,6 +2885,11 @@ function siteLabel(value) {
 }
 
 function askUser(toolRequest) {
+  if (new URLSearchParams(location.search).has("suite")) {
+    suiteRequestError = "The model requested an operator answer: " + (toolRequest?.arguments || "");
+    throw new Error(suiteRequestError);
+  }
+
   let questions = [];
   try {
     const parsedArguments = JSON.parse(toolRequest?.arguments || "{}");
@@ -3794,14 +3802,14 @@ async function refreshTestLab() {
     const status = reply.ok ? JSON.parse(reply.content) : {enabled: false};
     globalThis.scribbleLabEnabled = !!status.enabled;
     let button = document.getElementById("testLabButton");
-    if (!button && status.enabled) {
+    if (!button) {
       button = document.createElement("button"); button.id = "testLabButton";
       button.style.cssText = "position:fixed;right:12px;top:4px;z-index:1000;font-size:10px";
-        button.onclick = async () => { await sendNativeMessage({type: "openTestLab"}, SETTINGS_TIMEOUT_MS); await refreshTestLab(); };
+        button.onclick = async () => { button.disabled = true; try { await sendNativeMessage({type: "openTestLab"}, 8 * 60 * 60 * 1000); } catch (error) { setActivity(describeNativeMessagingError(error)); } finally { button.disabled = false; await refreshTestLab(); } };
       document.body.appendChild(button);
     }
-      if (button) { button.hidden = !status.enabled; button.textContent = status.runId ? "Test Lab • " + status.captureState : "Test Lab"; }
-      if (status.enabled && status.runId && status.host === "Chrome" && status.prompt
+      if (button) { button.hidden = false; button.textContent = status.runId ? "Test Lab • " + status.captureState : "Test Lab"; }
+      if (!status.suiteId && !new URLSearchParams(location.search).has("suite") && status.enabled && status.runId && status.host === "Chrome" && status.prompt
           && !isSending && globalThis.scribbleLabRun !== status.runId) {
         await clearChat();
         globalThis.scribbleLabRun = status.runId;
@@ -3813,3 +3821,62 @@ async function refreshTestLab() {
 }
 void refreshTestLab();
 setInterval(refreshTestLab, 15000);
+
+// Headed suite controller. Commands come only from the active native operator lease.
+const suiteParameters = new URLSearchParams(location.search);
+const suiteController = crypto.randomUUID().replaceAll("-", "");
+let suiteLastCommand = "";
+let suitePolling = false;
+let suiteRequestError = "";
+async function suiteNative(extra = {}) {
+  const reply = await sendNativeMessage({type: "testLabSuite", taskData: JSON.stringify({
+    suite: suiteParameters.get("suite"), token: suiteParameters.get("token"), controller: suiteController, ...extra
+  })}, PING_TIMEOUT_MS);
+  if (!reply.ok) throw new Error(reply.error || "The test suite controller disconnected.");
+  return JSON.parse(reply.content || "null");
+}
+async function executeSuiteCommand(command) {
+  let error = "";
+  try {
+    if (command.action === "stop") {
+      if (isSending) elements.composer.requestSubmit();
+      const deadline = Date.now() + 55000;
+      while (isSending && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 200));
+      if (isSending) throw new Error("I have not finished stopping the browser request.");
+    } else if (command.action === "load") {
+      if (isSending) throw new Error("I already have a browser request running.");
+      if (!connection.connected || !connection.configured) throw new Error("Configure the Scribble native connection and model before running Chrome tests.");
+      const url = new URL(command.sourceUrl);
+      if (url.hostname !== "127.0.0.1" || url.protocol !== "http:" || url.pathname !== "/operations.html") throw new Error("Invalid suite source page.");
+      const tabs = await chrome.tabs.query({url: command.sourceUrl});
+      if (!tabs.length) throw new Error("I could not find the prepared fixture tab.");
+      globalThis.scribbleSuiteSourceTab = tabs[tabs.length - 1].id;
+      await clearChat();
+      globalThis.scribbleLabEnabled = true;
+      globalThis.scribbleLabRun = command.runId;
+      await renderCurrentTab();
+    } else if (command.action === "submit") {
+      if (isSending) throw new Error("I already have a browser request running.");
+      if (!connection.connected || !connection.configured) throw new Error("I am not ready: the model connection is unavailable.");
+      suiteRequestError = "";
+      elements.prompt.value = command.prompt;
+      elements.prompt.dispatchEvent(new Event("input", {bubbles: true}));
+      await sendChatMessage();
+      if (suiteRequestError || activeRecovery?.blocker) throw new Error(suiteRequestError || activeRecovery.blocker);
+    } else throw new Error("Unknown suite command.");
+  } catch (e) { error = String(e?.stack || e); setActivity(error); }
+  await suiteNative({action: "complete", id: command.id, error}).catch(e => setActivity(e.message));
+}
+async function pollSuite() {
+  if (!suiteParameters.has("suite") || suitePolling) return;
+  suitePolling = true;
+  try {
+    const command = await suiteNative();
+    if (command && command.id !== suiteLastCommand) {
+      suiteLastCommand = command.id;
+      void executeSuiteCommand(command);
+    }
+  } catch (e) { setActivity(e.message); }
+  finally { suitePolling = false; }
+}
+if (suiteParameters.has("suite")) setInterval(pollSuite, 1000);

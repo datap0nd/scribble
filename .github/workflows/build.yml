@@ -242,7 +242,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: TestLabReportSample
-          path: tests/benchmarks/generated/report-test-*/
+          path: |
+            tests/benchmarks/generated/report-test-*/
+            tests/benchmarks/generated/suite-test-*/
           if-no-files-found: ignore
 
       - name: Run guardrail tests

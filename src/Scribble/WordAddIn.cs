@@ -25,6 +25,20 @@ namespace Scribble
         private readonly TaskPaneRegistry _panes =
             new TaskPaneRegistry("word");
 
+        private OfficeChatPane _suitePane;
+        private string _suiteRun;
+        public string RunTestLabCommand(string suiteId, string commandId, string action, int phase)
+        {
+            var suite = Testing.TestLabSuite.Require(suiteId, "Word");
+            if (_suitePane == null || _suitePane.IsDisposed || _suiteRun != suite.runId) {
+                if (_ctpFactory == null) return Testing.TestLab.Serialize(new Testing.SuiteReply { state = "initializing" });
+                _suitePane = _panes.ShowForActiveWindow(_ctpFactory, _wordApplication);
+                _suiteRun = suite.runId;
+            }
+            if (_suitePane == null) throw new InvalidOperationException("The Scribble pane could not be opened.");
+            return _suitePane.RunTestLabCommand(suiteId, commandId, action, phase);
+        }
+
         public void OnConnection(
             object application,
             ExtConnectMode connectMode,
@@ -32,6 +46,7 @@ namespace Scribble
             ref Array custom)
         {
             _wordApplication = application;
+            ((dynamic)addInInstance).Object = this;
         }
 
         public void OnDisconnection(

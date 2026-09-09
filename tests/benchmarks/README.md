@@ -2,35 +2,31 @@
 
 The kit contains fictional Atlas Office Supplies data, 16 exact prompts and evaluator-only answers. Start with **EX01**, **PP01**, and **XA01**. Their expected June revenue is EUR 120000, budget gap EUR 10000 and margin 38.33%.
 
-## Start a recorded test
+## Run the whole suite with one button
 
-1. Install a Scribble build that includes Test Lab. Extract `scribble-test-kit-v1.zip` and verify its adjacent SHA-256. Use classic Office, a clean conversation and only the listed synthetic inputs.
-2. In Windows PowerShell 5.1, run `operator/Enable-ScribbleTestLab.ps1`. If the DLL is not found, pass `-AssemblyPath` with the installed `Scribble.dll` path. Activation expires after eight hours and is off by default.
-3. Open **Test Lab** in any Scribble pane, choose a case and click **Prepare case**. It opens the required Office apps and fixture documents, PDF files, and exact Outlook case messages in a separate synthetic PST. It also opens apps needed for the expected outputs. Source Office files open read-only; existing unsaved fixture edits require your attention. Other open documents are not closed or saved.
-4. For Chrome cases, preparation starts a fixture-only loopback server automatically and opens the required pages in Chrome. Python is not needed. The server chooses an available local port and stops when Test Lab is disabled or expires. Open the Scribble Chrome side panel yourself and check its native connection. Preparation reports missing apps/add-ins and remaining steps.
-5. In the case's starting app, open **Test Lab**, choose the same case and click **Start case**. Confirm the synthetic context. Start clears the Scribble conversation, adds the case's file or selected email context, and fills the prompt without submitting it. Close the Test Lab window to return to Chrome; its prompt fills on return. Check the context tray and wait for attachment reading to finish. The prompt is also on the clipboard.
-6. Start screen recording, add a video marker, then submit the prepared prompt yourself. Record questions, delays and errors. Do not silently fix outputs. Mark any unscripted coaching as assisted. For a follow-up case, execute its prerequisite as part of the same recorded attempt.
-7. Click **Capture new Office drafts** to copy newly created, run-tagged workbooks, decks, documents and open unsent email drafts, with PDFs and slide PNGs. Only drafts created in this run qualify. For draft sheets/slides inside the starter file, use Office **Save As** to a NEW run-folder file, then **Collect saved outputs**. That copies your selected files into the evidence bundle. Never overwrite an input fixture. Manual collection remains available when native copy/export fails.
-8. Finish the clean or assisted attempt, then **Export PDF + evidence**. This saves a PDF report, a pasteable `-summary.txt`, an HTML copy, and the evidence ZIP beside each other. The ZIP also contains the PDF, summary and original collected files. Use **Open report PDF** to screenshot its first page, or **Copy report summary** to paste directly into chat. To export later, use `Export-ScribbleTestRun.ps1 -RunId ... -DestinationDirectory ...`.
-9. Disable with `operator/Disable-ScribbleTestLab.ps1`. Disabling during a run leaves an incomplete evidence marker.
+Install the latest Scribble installer, restart Office, and make sure the Chrome extension is current. Configure the model you want to measure. Start your screen recording, then click **Test Lab** in any Scribble pane. The button is available without an activation script.
 
-PowerPoint PP01 uses the starter deck plus three attachments: sales, budget and the operations PDF. Word WD01 uses the open brief plus the same three attachments. For follow-up cases, Start copies the prerequisite prompt first; run it, then use Copy prompt for the actual follow-up. A native output from that prerequisite is the next input, never the reference answer.
+That click starts all 16 cases. Test Lab downloads the latest kit from an exact main commit, verifies its ZIP checksum and all manifest hashes, and opens a fresh case copy in the visible apps. It selects the synthetic Outlook messages, opens the Chrome fixture site and a visible extension controller, loads the source context, and submits the predefined prompts through the normal Scribble chat flow. Follow-up cases execute their prerequisites first. XA04 saves the generated deck before requesting its email attachment. RC01 observes a new workbook, stops, then submits the continuation; a missed stop boundary is recorded as blocked.
 
-Preparation can also run before opening a Scribble pane. From the extracted `operator` folder:
+A live window shows UTC progress and captured errors, including PowerShell stdout/stderr when preparation fails before writing its JSON report. Missing applications, disabled add-ins, unexpected model questions and timeouts are recorded as blockers. The runner stops that request before moving on. If it cannot confirm stopping, it aborts the remaining cases, retains the synthetic source guard and exports an incomplete evidence snapshot. Stop the request in its app before starting another suite.
 
-```powershell
-powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File .\Prepare-ScribbleTestCase.ps1 -CaseId PP01
-```
+Results go to **Documents/Scribble Testcases/suite-<UTC timestamp>-<id>/**:
 
-Replace `PP01` with `EX01`, `XA01`, or another case ID. Enable Test Lab first. `-PlanOnly` lists the required apps/files without opening them. **Stop preparation** stops the setup helper and leaves opened apps intact. If Office is waiting for sign-in or a first-run dialog, resolve it before retrying. Preparing is blocked during an active test run. Manual setup and the existing import/server scripts remain available if native automation is unavailable. A connected add-in check does not certify actual model or native artifact behavior.
+- `report.pdf`: final summary, full errors, timestamps, per-case traces and available output previews.
+- `summary.txt`: use **Copy summary** to paste this into chat; the first PDF page is also suitable for a screenshot.
+- `suite.log` and `suite.json`: live log and structured case outcomes.
+- `cases/<case>/`: preparation logs, case report, evidence ZIP with original collected Office/email outputs, and that case's isolated fixtures.
+- `test-kit.zip`: the verified download; no manual ZIP management is needed.
 
-If activation reports `Unable to find type [Scribble.Testing.TestLab]`, install Scribble 2.0.132.0 or newer from the [official installer](https://github.com/datap0nd/scribble/releases/latest/download/ScribbleSetup.exe), then open a new Windows PowerShell process. From the extracted `operator` folder, run:
+Use **Stop suite** to stop and export what is available. PDF rendering requires installed Chrome or Edge; if it fails, HTML, summary, native evidence and the renderer error log remain in the folder. A model response or an existing output file is never automatically declared correct. Cases are marked for review, incomplete, blocked, stopped or not run.
 
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Enable-ScribbleTestLab.ps1 -AssemblyPath "$env:LOCALAPPDATA\Programs\Scribble\Scribble.dll"
-```
+The suite leaves opened apps visible for recording and inspection. Emails are unsent drafts. Existing unrelated files are not saved or closed. Synthetic source files open read-only; the collector can save generated changes from the suite-owned copies, as well as new run-tagged documents. Answer keys remain evaluator-only and are added to the report after execution. Full native Office/Qwen acceptance still needs a run on a machine with the apps, connected add-ins and configured model; infrastructure checks do not certify model output quality.
 
-The script is named `Enable-ScribbleTestLab.ps1`. The loader prefers the current install folder over the legacy `%LOCALAPPDATA%\Scribble` folder and prints the DLL it loaded. For a custom installation, supply that installation's DLL path instead.
+## Manual operator scripts
+
+The ZIP and the `operator` scripts remain available for individual-case diagnosis and evidence exports. `Enable-ScribbleTestLab.ps1` loads the installed DLL, preferring `%LOCALAPPDATA%/Programs/Scribble/Scribble.dll`. `Prepare-ScribbleTestCase.ps1 -CaseId PP01 -PlanOnly` prints the setup plan without opening apps. The suite supplies `-Suite` to prepare without manual next-step instructions. `Export-ScribbleTestRun.ps1` exports an existing finished run. Do not run a separate manual capture during a suite.
+
+If a script reports `Unable to find type [Scribble.Testing.TestLab]`, install the [current Scribble installer](https://github.com/datap0nd/scribble/releases/latest/download/ScribbleSetup.exe), restart Office, and use its **Test Lab** button. The manual scripts accept `-AssemblyPath` for custom installations.
 
 ## Evidence and evaluation
 

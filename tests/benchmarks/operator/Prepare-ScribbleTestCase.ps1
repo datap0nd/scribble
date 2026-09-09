@@ -2,7 +2,7 @@
 [CmdletBinding()]
 param([Parameter(Mandatory=$true)][string]$CaseId,
       [string]$FixtureRoot=(Split-Path $PSScriptRoot -Parent), [string]$AssemblyPath,
-      [string]$ReportPath, [switch]$PlanOnly)
+      [string]$ReportPath, [switch]$PlanOnly, [switch]$Suite)
 . (Join-Path $PSScriptRoot 'TestLab.Common.ps1') -AssemblyPath $AssemblyPath
 $fixture=(Resolve-Path -LiteralPath $FixtureRoot).Path
 $manifest=[Scribble.Testing.TestLab]::VerifyKit($fixture)
@@ -47,7 +47,7 @@ $progids=@{Excel='Scribble.ExcelAddIn';PowerPoint='Scribble.PowerPointAddIn';Wor
 Report 'preparing'
 $preparationLock=$null
 trap {
-    if ($remaining) { $remaining.Add($_.Exception.Message); Report 'failed' }
+    if ($null -ne $remaining) { $remaining.Add($_.Exception.Message); Report 'failed' }
     if ($preparationLock) { $preparationLock.Dispose() }
     throw $_
 }
@@ -124,7 +124,7 @@ if ($apps -contains 'Chrome') {
         $urls=@($urls | Sort-Object { $_.EndsWith('/operations.html') })
         Start-Process -FilePath $chrome -ArgumentList (@('--new-window') + $urls)
         $completed.Add("Opened Chrome fixture pages at $baseUrl. The server stops when Test Lab is disabled or expires.")
-        $remaining.Add('Open the Scribble side panel in Chrome and verify its native connection; extension readiness cannot be confirmed from Office.')
+        if (-not $Suite) { $remaining.Add('Open the Scribble side panel in Chrome and verify its native connection; extension readiness cannot be confirmed from Office.') }
     } catch { $remaining.Add("Chrome: $($_.Exception.Message)") }
 }
 if ($case.host -ne 'Chrome') {
@@ -135,6 +135,6 @@ if ($case.host -ne 'Chrome') {
         else { $origin.ActiveWindow.Activate() }
     } catch { $remaining.Add("Return to $($case.host) to start this case: $($_.Exception.Message)") }
 }
-$remaining.Add("Open Scribble in $($case.host), select $CaseId and Start case. Record the screen before submitting the prepared prompt.")
-Report 'finished'
+if (-not $Suite) { $remaining.Add("Open Scribble in $($case.host), select $CaseId and Start case. Record the screen before submitting the prepared prompt.") }
+if ($Suite -and $remaining.Count -gt 0) { Report 'failed' } else { Report 'finished' }
 } finally { $preparationLock.Dispose() }

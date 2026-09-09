@@ -125,3 +125,5 @@ For diagnostics, open the extension entry on `chrome://extensions` and inspect t
 Version 1.7.2 adds the default-off operator Test Lab entry and synthetic-session capture integration. Reload the extension after updating Scribble Setup to activate it.
 
 Version 1.7.3 fills the exact first Chrome test prompt when returning from Test Lab, without submitting it or replacing subsequent operator edits. Case preparation opens the fixture pages and server through the operator helper.
+
+Version 1.7.4 adds the one-button Test Lab suite. A visible extension page controls only the active synthetic case using a native lease and case token; prompts execute through the regular browser chat flow. The controller reads the prepared fixture tab, submits each exact prompt once, and reports errors back to the suite PDF. Ordinary panels do not adopt an automated suite conversation.

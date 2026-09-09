@@ -25,7 +25,7 @@ test('starting a Chrome case fills the exact prompt once without submitting or o
   await expect(page.locator('#prompt')).toHaveValue('Operator edit');
 });
 
-test('test lab is hidden by default, reflects native capture failure, and disappears on disable',async({page})=>{
+test('test lab starts without manual activation and reflects native capture failures',async({page})=>{
   await page.setContent('<body><p>Ordinary Scribble pane</p></body>');
   await page.evaluate(code=>{
     window.PING_TIMEOUT_MS=10000;window.SETTINGS_TIMEOUT_MS=900000;
@@ -34,7 +34,7 @@ test('test lab is hidden by default, reflects native capture failure, and disapp
     window.eval(code);
   },lab);
   await page.evaluate(()=>refreshTestLab());
-  await expect(page.locator('#testLabButton')).toHaveCount(0);
+  await expect(page.locator('#testLabButton')).toBeVisible();
   await page.evaluate(()=>{nativeStatus={enabled:true,runId:'test',captureState:'capturing'};return refreshTestLab()});
   await expect(page.locator('#testLabButton')).toHaveText('Test Lab • capturing');
   await page.locator('#testLabButton').click();
@@ -42,7 +42,7 @@ test('test lab is hidden by default, reflects native capture failure, and disapp
   await page.evaluate(()=>{nativeStatus.captureState='incomplete';return refreshTestLab()});
   await expect(page.locator('#testLabButton')).toHaveText('Test Lab • incomplete');
   await page.evaluate(()=>{nativeStatus={enabled:false};return refreshTestLab()});
-  await expect(page.locator('#testLabButton')).toBeHidden();
+  await expect(page.locator('#testLabButton')).toBeVisible();
 });
 
 test('lost native connection hides the operator entry rather than retaining stale enabled state',async({page})=>{
