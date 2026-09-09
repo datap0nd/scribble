@@ -52,7 +52,7 @@ namespace Scribble.Testing
                 var missing = string.Join(", ", run.missing_artifacts ?? new string[0]);
                 var title = !run.trace_complete ? "INCOMPLETE CAPTURE" : missing.Length > 0 ? "MISSING OUTPUTS" : "READY FOR REVIEW";
                 var summary = "SCRIBBLE TEST REPORT\n" + title + " - correctness not yet reviewed\nCase: " + run.case_id + " | App: " + run.host +
-                    "\nRun: " + run.run_id + "\nBuild: " + run.assembly_version + " | Model: " + run.selected_model +
+                    "\nRun: " + run.run_id + "\nBuild: " + run.assembly_version + " | Model: " + (string.IsNullOrWhiteSpace(run.selected_model) ? "not recorded" : run.selected_model) +
                     "\nStarted UTC: " + run.started_utc + "\nFinished UTC: " + (run.finished_utc ?? "Not finished") +
                     "\nTrace: " + (run.trace_complete ? "complete" : "INCOMPLETE") + " | Assisted: " + run.assisted +
                     "\nEvents: " + events.Length + " | Error-like events: " + errors.Length + " | Collected outputs: " + outputs.Length +
@@ -72,6 +72,9 @@ namespace Scribble.Testing
                     var cases = json.Deserialize<Dictionary<string, object>[]>(File.ReadAllText(TestLab.SafeChild(run.fixture_root, "operator/cases.json")));
                     var c = cases.FirstOrDefault(v => Value(v, "id") == run.case_id);
                     if (c != null) h.Append("<h3>Expected</h3><pre>" + E(Value(c, "expected")) + "</pre><h3>Setup</h3><pre>" + E(Value(c, "setup")) + "</pre>");
+                    var answers = json.Deserialize<Dictionary<string, object>>(File.ReadAllText(TestLab.SafeChild(run.fixture_root, "evaluator-only/answers.json")));
+                    var keys = run.case_id == "EX03" ? new[] { "missing_known_subtotal" } : new[] { "june_revenue", "may_revenue", "june_cost", "june_profit", "june_margin", "budget", "budget_variance", "delivery_pct", "delivery_target_pct" };
+                    h.Append("<h3>Reference facts for comparison</h3><p>Apply the case requirements above. Margin is a fraction; delivery is a percentage. Reference answers are included only in this post-run report.</p><pre>" + E(string.Join("\n", keys.Select(k => k.Replace('_', ' ') + ": " + Value(answers, k)))) + "</pre>");
                 } catch { h.Append("<p>Original kit is unavailable. Use the case rubric from the downloaded kit.</p>"); }
                 h.Append("<h3>Capture limitations</h3><pre>" + E("Native output correctness and visual review: pending\nAssembly SHA-256: " + run.assembly_sha256 + "\nKit SHA-256: " + run.manifest_sha256) + "</pre>");
                 foreach (var entry in zip.Entries.Where(e => e.FullName.StartsWith("incomplete-", StringComparison.Ordinal))) h.Append("<pre>" + E(Read(zip, entry.FullName)) + "</pre>");
