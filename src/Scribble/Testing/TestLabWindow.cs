@@ -24,8 +24,7 @@ namespace Scribble.Testing
         private readonly Timer timer = new Timer { Interval = 2000 };
         public static void Open(string host, Action resetConversation = null, Action<LabCase> loadContext = null)
         {
-            if (TestLab.Status() == null) return;
-            var window = new TestLabWindow(host, resetConversation, loadContext); window.Show();
+            TestLabSuiteWindow.Open();
         }
         public TestLabWindow(string hostName, Action resetConversation = null, Action<LabCase> loadContext = null)
         {
@@ -81,7 +80,7 @@ namespace Scribble.Testing
                 var report = TestLabPreparation.ReadReport(preparationPath);
                 if (report != null)
                 {
-                    preparationText = string.Join("\r\n", report.completed ?? new string[0]) + "\r\n\r\nRemaining steps:\r\n" + string.Join("\r\n", report.remaining ?? new string[0]);
+                    preparationText = string.Join("\r\n", report.completed ?? new string[0]) + "\r\n\r\nRemaining steps:\r\n" + string.Join("\r\n", report.remaining ?? new string[0]) + "\r\n" + report.log;
                     if (report.status == "finished" || report.status == "failed") { preparing = false; cases.Enabled = true; }
                 }
                 if (preparing && DateTime.UtcNow - preparationStarted > TimeSpan.FromSeconds(90))

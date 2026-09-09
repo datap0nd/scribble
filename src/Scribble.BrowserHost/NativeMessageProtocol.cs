@@ -263,19 +263,19 @@ namespace Scribble.BrowserHost
             try
             {
                 service = new BrowserChatService();
+                if (request.type == "testLabSuite") return Success(service, requestId, Scribble.Testing.TestLabSuite.Chrome(request.taskData), service.Model, false);
                 if (request.type == "testLabStatus") {
                     var activeId = Scribble.Testing.TestLab.ActiveRunId();
                     var run = activeId == null ? null : Scribble.Testing.TestLab.GetRun(activeId);
                     var labCase = run == null ? null : Scribble.Testing.TestLab.Cases().FirstOrDefault(c => c.id == run.case_id);
                     return Success(service, requestId, Scribble.Testing.TestLab.Serialize(new { enabled = Scribble.Testing.TestLab.Status() != null, runId = activeId,
-                        captureState = Scribble.Testing.TestLab.CaptureState(), host = run?.host,
+                        captureState = Scribble.Testing.TestLab.CaptureState(), host = run?.host, suiteId = Scribble.Testing.TestLabSuite.Active()?.id,
                         prompt = labCase == null ? null : string.IsNullOrEmpty(labCase.prerequisite_prompt) ? labCase.prompt : labCase.prerequisite_prompt }), service.Model, false);
                 }
                 if (request.type == "openTestLab")
                 {
-                    if (Scribble.Testing.TestLab.Status() == null) return Error(requestId, "TEST_LAB_DISABLED", "Test Lab is disabled.", service);
-                    using (var lab = new Scribble.Testing.TestLabWindow("Chrome")) lab.ShowDialog();
-                    return Success(service, requestId, "Test Lab closed.", service.Model, false);
+                    Scribble.Testing.TestLabSuiteWindow.Open();
+                    return Success(service, requestId, "Test Lab opened in its own window.", service.Model, false);
                 }
                 if (string.Equals(
                     request.type,

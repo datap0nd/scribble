@@ -236,13 +236,17 @@ jobs:
           }
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/benchmarks/Test-TestLabReport.ps1 -RenderPdf
           if ($LASTEXITCODE -ne 0) { throw 'PDF report validation failed.' }
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/benchmarks/Test-TestLabSuite.ps1 -RenderPdf
+          if ($LASTEXITCODE -ne 0) { throw 'Suite runner validation failed.' }
 
       - name: Upload synthetic PDF report validation
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: TestLabReportSample
-          path: tests/benchmarks/generated/report-test-*/
+          path: |
+            tests/benchmarks/generated/report-test-*/
+            tests/benchmarks/generated/suite-test-*/
           if-no-files-found: ignore
 
       - name: Run guardrail tests
@@ -752,8 +756,21 @@ jobs:
             $browserRoot.Dispose()
           }
           $installedDir = Join-Path $env:LOCALAPPDATA "Programs\Scribble"
+          # The executable is shared by native messaging and standalone Test Lab.
+          # An Office-only install keeps it, but not the browser integration below.
+          foreach ($shared in @("ScribbleBrowserHost.exe", "ScribbleBrowserHost.exe.config")) {
+            $installed = Join-Path $installedDir $shared
+            $built = Join-Path "src\Scribble.BrowserHost\bin\Release" $shared
+            if ($shared.EndsWith(".config") -and -not (Test-Path -LiteralPath $built)) {
+              if (Test-Path -LiteralPath $installed) { throw "A stale shared runner config survived: $shared" }
+              continue
+            }
+            if (-not (Test-Path -LiteralPath $installed) -or
+                (Get-FileHash -LiteralPath $installed).Hash -ne (Get-FileHash -LiteralPath $built).Hash) {
+              throw "Office-only install lost or changed its shared Test Lab runner: $shared"
+            }
+          }
           foreach ($gone in @(
-            (Join-Path $installedDir "ScribbleBrowserHost.exe"),
             (Join-Path $installedDir "com.scribble.browser.json"),
             (Join-Path $installedDir "BrowserExtension")
           )) {

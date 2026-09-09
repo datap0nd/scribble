@@ -10,6 +10,12 @@ namespace Scribble.BrowserHost
         [STAThread]
         private static int Main(string[] args)
         {
+            // Explicit local operator launch, separate from native messaging and Office lifetimes.
+            if (args != null && args.Length == 1 && args[0] == "--test-lab-suite") {
+                System.Windows.Forms.Application.EnableVisualStyles();
+                using (var lab = new Scribble.Testing.TestLabSuiteWindow()) lab.ShowDialog();
+                return 0;
+            }
             if (args != null &&
                 args.Length > 0 &&
                 string.Equals(

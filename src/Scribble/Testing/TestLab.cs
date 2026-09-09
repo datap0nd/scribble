@@ -222,7 +222,7 @@ namespace Scribble.Testing
             Record(id, "source", "mail_verified", new { source_id = source.path, body_sha256 = Hash(Encoding.UTF8.GetBytes(body)) });
         }
         public static LabRun GetRun(string id) { return Read<LabRun>(Path.Combine(RunDirectory(id), "run.json")); }
-        private static void MarkIncomplete(string id, string reason)
+        internal static void MarkIncomplete(string id, string reason)
         {
             // A separate marker avoids competing read-modify-write updates from Office processes.
             Write(Path.Combine(RunDirectory(id), "incomplete-" + Instance + ".json"), new { reason, utc = DateTime.UtcNow.ToString("O") });
@@ -316,12 +316,14 @@ namespace Scribble.Testing
                 provenance = "operator_selected_saved_output", native_readback_verified = false });
             return target;
         }
-        public static string Export(string runId, string destinationDirectory)
+        public static string Export(string runId, string destinationDirectory) { return ExportCore(runId, destinationDirectory, false); }
+        internal static string ExportSnapshot(string runId, string destinationDirectory) { return ExportCore(runId, destinationDirectory, true); }
+        private static string ExportCore(string runId, string destinationDirectory, bool snapshot)
         {
             using (SessionLock())
             {
                 var folder = RunDirectory(runId); var run = GetRun(runId);
-                if (Status()?.run_id == runId) throw new InvalidOperationException("Finish the case before exporting.");
+                if (!snapshot && Status()?.run_id == runId) throw new InvalidOperationException("Finish the case before exporting.");
                 var stage = Path.Combine(Root, "exports", Guid.NewGuid().ToString("N")); Directory.CreateDirectory(stage);
                 var timeline = new List<string>();
                 foreach (var file in Directory.GetFiles(Path.Combine(folder, "events"), "*.bin"))
@@ -361,7 +363,7 @@ namespace Scribble.Testing
     public sealed class KitFile
     { public string path { get; set; } public string sha256 { get; set; } public long size { get; set; } public string role { get; set; } }
     public sealed class LabCase
-    { public string id { get; set; } public string host { get; set; } public string prompt { get; set; } public string prerequisite_prompt { get; set; } public string setup { get; set; } public string[] inputs { get; set; } public string[] artifacts { get; set; } public override string ToString() { return id + " / " + host; } }
+    { public Dictionary<string, string> clarification_answers { get; set; } public string id { get; set; } public string host { get; set; } public string prompt { get; set; } public string prerequisite_prompt { get; set; } public string setup { get; set; } public string[] inputs { get; set; } public string[] artifacts { get; set; } public override string ToString() { return id + " / " + host; } }
     public sealed class LabRun
     {
         public int schema { get; set; } public string run_id { get; set; } public string session_id { get; set; } public string suite_id { get; set; }

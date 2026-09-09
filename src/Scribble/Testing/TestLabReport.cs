@@ -137,12 +137,9 @@ namespace Scribble.Testing
                 }
             }
         }
-        public static string Create(string zipPath)
+        public static void RenderHtml(string html, string pdf)
         {
-            zipPath = Path.GetFullPath(zipPath);
-            var prefix = Path.Combine(Path.GetDirectoryName(zipPath), Path.GetFileNameWithoutExtension(zipPath));
-            var summary = prefix + "-summary.txt"; var html = prefix + "-report.html"; var pdf = prefix + "-report.pdf";
-            File.WriteAllText(html, BuildHtml(zipPath, summary), new UTF8Encoding(false));
+            var prefix = Path.Combine(Path.GetDirectoryName(pdf), Path.GetFileNameWithoutExtension(pdf));
             var browsers = new[] {
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), @"Google\Chrome\Application\chrome.exe"),
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"Google\Chrome\Application\chrome.exe"),
@@ -166,6 +163,14 @@ namespace Scribble.Testing
             }
             File.WriteAllText(prefix + "-report-render.log", rendererLog.ToString());
             if (!rendered) throw new IOException("PDF rendering failed. The HTML report, summary, renderer log and evidence ZIP are preserved at " + prefix + ".");
+        }
+        public static string Create(string zipPath)
+        {
+            zipPath = Path.GetFullPath(zipPath);
+            var prefix = Path.Combine(Path.GetDirectoryName(zipPath), Path.GetFileNameWithoutExtension(zipPath));
+            var summary = prefix + "-summary.txt"; var html = prefix + "-report.html"; var pdf = prefix + "-report.pdf";
+            File.WriteAllText(html, BuildHtml(zipPath, summary), new UTF8Encoding(false));
+            RenderHtml(html, pdf);
             using (var zip = ZipFile.Open(zipPath, ZipArchiveMode.Update))
             {
                 foreach (var pair in new[] { new[] { html, "report.html" }, new[] { summary, "summary.txt" }, new[] { pdf, "report.pdf" } }) {

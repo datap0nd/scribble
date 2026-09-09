@@ -62,6 +62,9 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Testing\TestLab.cs" />
+    <Compile Include="Testing\TestLabSuite.cs" />
+    <Compile Include="Testing\TestLabSuitePane.cs" />
+    <Compile Include="Testing\TestLabSuiteWindow.cs" />
     <Compile Include="Testing\TestLabWindow.cs" />
     <Compile Include="Testing\TestLabPreparation.cs" />
     <Compile Include="Testing\TestLabReport.cs" />

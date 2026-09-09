@@ -515,8 +515,30 @@ namespace Scribble.UI
             });
         }
 
+        private readonly Scribble.Testing.TestLabSuitePane _suiteDriver = new Scribble.Testing.TestLabSuitePane();
+        public string RunTestLabCommand(string suiteId, string commandId, string action, int phase)
+        {
+            return _suiteDriver.Command(suiteId, commandId, action, phase, "Outlook", _webReady && !_shutdown,
+                () => _busy, () => HandleNewChat(), c => {
+                    var expected = (c.inputs ?? new string[0]).Count(p => p.EndsWith(".eml", StringComparison.OrdinalIgnoreCase));
+                        if (expected > 0) {
+                            var messages = new MessageReader(_outlookApplication).CaptureActiveSelectionMany();
+                            if (messages.Count != expected) throw new InvalidOperationException("The expected synthetic messages are not selected.");
+                            ApplySelectedMessages(messages);
+                        }
+                    AddExternalFiles(Scribble.Testing.TestLabPreparation.ContextFiles(c));
+                }, prompt => HandleSendMessageCore(prompt), () => HandleStop());
+        }
+
         private void PostToWeb(IDictionary<string, object> payload)
         {
+            var suiteRun = Scribble.Testing.TestLab.ActiveRunId();
+            _suiteDriver.Observe(payload, answer => BeginInvoke((Action)(() => {
+                if (suiteRun != Scribble.Testing.TestLab.ActiveRunId()) return;
+                _promptHelper.HandleAnswer(answer);
+                PostToWeb(new Dictionary<string, object> { { "type", "dismissAskUser" } });
+                PostToWeb(new Dictionary<string, object> { { "type", "user" }, { "text", "Test Lab preset: " + answer } });
+            })));
             object eventType;
             if (payload.TryGetValue("type", out eventType) && new[] { "user", "assistant", "askUser", "status", "draft" }.Contains(Convert.ToString(eventType)))
                 Scribble.Testing.TestLab.Record(Scribble.Testing.TestLab.ActiveRunId(), "pane", "pane_event", payload);
@@ -2030,6 +2052,7 @@ namespace Scribble.UI
 
         private void DiscoverTaskRecovery()
         {
+            if (Scribble.Testing.TestLab.ActiveRunId() != null) return;
             if (_recoveryChecked || _busy) return;
             _recoveryChecked = true;
             var pending = new TaskCheckpointStore().FindUnfinished("outlook");
