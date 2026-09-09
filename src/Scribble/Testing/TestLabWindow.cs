@@ -117,11 +117,12 @@ namespace Scribble.Testing
                     var zip = await Task.Run(() => TestLab.Export(id, destination));
                     reportSummary = Path.Combine(Path.GetDirectoryName(zip), Path.GetFileNameWithoutExtension(zip) + "-summary.txt");
                     reportPdf = await Task.Run(() => TestLabReport.Create(zip));
+                    if (IsDisposed) return;
                     MessageBox.Show(this, "PDF: " + reportPdf + "\r\n\r\nUse Open report PDF for a screenshot, or Copy report summary to paste into chat. The evidence ZIP contains the report and original outputs.", "Report exported");
                 }
-            } catch (Exception e) { MessageBox.Show(this, e.Message, "Report export"); }
+            } catch (Exception e) { if (!IsDisposed) MessageBox.Show(this, e.Message, "Report export"); }
             finally { exporting = false; }
         }
-        protected override void Dispose(bool disposing) { if (disposing) timer.Dispose(); base.Dispose(disposing); }
+        protected override void Dispose(bool disposing) { if (disposing) { timer.Dispose(); if (preparing) TestLabPreparation.Stop(preparationPath); } base.Dispose(disposing); }
     }
 }
