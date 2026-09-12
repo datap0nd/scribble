@@ -254,7 +254,7 @@ namespace Scribble.Testing
                 {
                     if (!string.IsNullOrEmpty(s.transport_pipe) &&
                         (s.transport_pid != process.Id || s.transport_process_start != process.StartTime.ToUniversalTime().Ticks))
-                        TestLabTransport.Send(s.transport_pipe, "event", runId, "", payload);
+                        TestLabTransport.Transmit(s.transport_pipe, "event", runId, "", payload);
                     else PersistTransportedEvent(runId, payload);
                 }
             }

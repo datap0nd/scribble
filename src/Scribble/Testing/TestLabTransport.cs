@@ -25,7 +25,7 @@ namespace Scribble.Testing
             worker.Start();
         }
 
-        internal static void Send(string pipeName, string kind, string runId, string itemId, string payload)
+        internal static void Transmit(string pipeName, string kind, string runId, string itemId, string payload)
         {
             if (string.IsNullOrEmpty(pipeName)) throw new IOException("Test Lab transport is unavailable.");
             using (var client = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.None))

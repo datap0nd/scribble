@@ -121,7 +121,7 @@ namespace Scribble.Testing
                     var session = TestLab.Status();
                     if (session != null && !string.IsNullOrEmpty(session.transport_pipe) &&
                         (session.transport_pid != process.Id || session.transport_process_start != process.StartTime.ToUniversalTime().Ticks))
-                        TestLabTransport.Send(session.transport_pipe, "receipt", runId, id, payload);
+                        TestLabTransport.Transmit(session.transport_pipe, "receipt", runId, id, payload);
                     else PersistTransportedReceipt(runId, id, payload);
                 }
             }
