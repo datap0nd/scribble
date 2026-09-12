@@ -56,6 +56,6 @@ class KitTests(unittest.TestCase):
             with zipfile.ZipFile(archive,'w') as z:
                 for p,b in payload.items():z.writestr(p,b)
             report=evaluate(archive,kit)
-            self.assertFalse(report['passed']);self.assertTrue(any(c['name']=='required_xlsx' and not c['passed'] for c in report['checks']))
+            self.assertFalse(report['passed']);self.assertTrue(any(c['name']=='required_final_xlsx' and not c['passed'] for c in report['checks']))
 
 if __name__=='__main__':unittest.main()

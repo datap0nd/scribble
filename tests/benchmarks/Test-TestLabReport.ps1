@@ -2,7 +2,13 @@
 param([string]$AssemblyPath=(Join-Path $PSScriptRoot '../../src/Scribble/bin/Release/Scribble.dll'),
       [string]$KitRoot=(Join-Path $PSScriptRoot 'generated/scribble-test-kit-v1'),[switch]$RenderPdf)
 $ErrorActionPreference='Stop'
-Add-Type -Path (Resolve-Path -LiteralPath $AssemblyPath).Path
+$resolvedAssembly=(Resolve-Path -LiteralPath $AssemblyPath).Path
+Add-Type -TypeDefinition 'using System;using System.IO;using System.Reflection;public static class TestLabAssemblyResolver{public static void Install(string folder){AppDomain.CurrentDomain.AssemblyResolve+=(s,e)=>{var p=Path.Combine(folder,new AssemblyName(e.Name).Name+".dll");return File.Exists(p)?Assembly.LoadFrom(p):null;};}}'
+[TestLabAssemblyResolver]::Install((Split-Path $resolvedAssembly))
+foreach($dependency in @('Microsoft.Extensions.Logging.Abstractions.dll','PdfSharp.Shared.dll','PdfSharp.System.dll','PdfSharp-gdi.dll')) {
+    [void][Reflection.Assembly]::LoadFrom((Join-Path (Split-Path $resolvedAssembly) $dependency))
+}
+Add-Type -Path $resolvedAssembly
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 function Assert($value,$message) { if(-not $value) {throw $message} }
 $root=[Scribble.Testing.TestLab]::Root

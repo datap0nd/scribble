@@ -139,30 +139,7 @@ namespace Scribble.Testing
         }
         public static void RenderHtml(string html, string pdf)
         {
-            var prefix = Path.Combine(Path.GetDirectoryName(pdf), Path.GetFileNameWithoutExtension(pdf));
-            var browsers = new[] {
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), @"Google\Chrome\Application\chrome.exe"),
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"Google\Chrome\Application\chrome.exe"),
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), @"Microsoft\Edge\Application\msedge.exe"),
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), @"Microsoft\Edge\Application\msedge.exe") }.Where(File.Exists).Distinct().ToArray();
-            if (browsers.Length == 0) throw new InvalidOperationException("PDF export needs Microsoft Edge or Chrome. The evidence ZIP, HTML report and pasteable summary were saved at " + prefix + ".");
-            bool rendered = false; var rendererLog = new StringBuilder();
-            foreach (var browser in browsers) {
-                if (File.Exists(pdf)) File.Delete(pdf);
-                var profile = Path.Combine(TestLab.Root, "report-browser", Guid.NewGuid().ToString("N"));
-                var args = "--headless --disable-gpu --disable-extensions --disable-background-networking --no-first-run --no-default-browser-check --no-pdf-header-footer --user-data-dir=\"" + profile + "\" --print-to-pdf=\"" + pdf + "\" \"" + new Uri(html).AbsoluteUri + "\"";
-                try {
-                    using (var process = Process.Start(new ProcessStartInfo(browser, args) { UseShellExecute = false, CreateNoWindow = true, WindowStyle = ProcessWindowStyle.Hidden, RedirectStandardError = true })) {
-                        var stderr = process.StandardError.ReadToEndAsync();
-                        if (!process.WaitForExit(60000)) { process.Kill(); rendererLog.AppendLine(browser + ": exceeded 60 seconds"); continue; }
-                        rendererLog.AppendLine(browser + ": exit " + process.ExitCode + "\n" + stderr.GetAwaiter().GetResult());
-                        rendered = process.ExitCode == 0 && File.Exists(pdf) && new FileInfo(pdf).Length > 100;
-                    }
-                } catch (Exception e) { rendererLog.AppendLine(browser + ": " + e.Message); }
-                if (rendered) break;
-            }
-            File.WriteAllText(prefix + "-report-render.log", rendererLog.ToString());
-            if (!rendered) throw new IOException("PDF rendering failed. The HTML report, summary, renderer log and evidence ZIP are preserved at " + prefix + ".");
+            TestLabPdfWriter.CreateText(html, pdf);
         }
         public static string Create(string zipPath)
         {

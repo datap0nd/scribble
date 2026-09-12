@@ -10,6 +10,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using Scribble.Configuration;
 
 namespace Scribble.Testing
 {
@@ -17,72 +18,275 @@ namespace Scribble.Testing
     {
         [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr window);
         [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr window, int command);
+        private static string WindowDescriptor => Path.Combine(TestLab.Root, "suite-window.json");
         private readonly TextBox log = new TextBox { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Both, WordWrap = false, Dock = DockStyle.Fill };
-        private readonly CancellationTokenSource cancellation = new CancellationTokenSource();
-        private readonly string folder;
+        private readonly Label status = new Label { AutoSize = true };
+        private readonly Label progress = new Label { AutoSize = true };
+        private readonly Label currentCase = new Label { AutoSize = true };
+        private readonly Label elapsed = new Label { AutoSize = true };
+        private CancellationTokenSource cancellation;
+        private string folder;
+        private string finalPdf;
+        private readonly string nonce;
+        private DateTime runStarted;
+        private TestLabSuiteRunner activeRunner;
+        private readonly Button startButton;
         private readonly Button stopButton;
-        private readonly Button recoverButton;
         private readonly Button reportButton;
-        private bool finished;
+        private bool running;
+        private bool finalizing;
+
         public static void Open()
         {
-            var active = TestLabSuite.Active();
-            if (active != null) {
-                File.WriteAllText(Path.Combine(TestLab.Root, "activate-" + active.id), "activate");
-                using (var process = Process.GetProcessById(active.pid)) { var handle = process.MainWindowHandle; if (handle != IntPtr.Zero) { ShowWindow(handle, 9); SetForegroundWindow(handle); } }
-                return;
-            }
-            var host = Path.Combine(Path.GetDirectoryName(typeof(TestLab).Assembly.Location), "ScribbleBrowserHost.exe");
-            if (!File.Exists(host)) throw new FileNotFoundException("Install the current Scribble build to use the standalone Test Lab runner.", host);
-            using (var process = Process.Start(new ProcessStartInfo(host, "--test-lab-suite") { UseShellExecute = false, CreateNoWindow = true, WindowStyle = ProcessWindowStyle.Normal })) {
-                if (process.WaitForExit(1000)) {
-                    var detail = "Test Lab exited before opening (exit " + process.ExitCode + ", 0x" + process.ExitCode.ToString("X8") + ").\r\nExecutable: " + host;
-                    Directory.CreateDirectory(TestLab.Root);
-                    File.WriteAllText(Path.Combine(TestLab.Root, "launcher-error.log"), DateTime.UtcNow.ToString("O") + " " + detail);
+            Directory.CreateDirectory(TestLab.Root);
+            using (var launch = new Mutex(false, @"Local\ScribbleTestLabWindow"))
+            {
+                bool held = false;
+                try
+                {
+                    try { held = launch.WaitOne(TimeSpan.FromSeconds(10)); }
+                    catch (AbandonedMutexException) { held = true; }
+                    if (!held) throw new TimeoutException("Another Test Lab launch did not release ownership within 10 seconds. See " + TestLab.Root + ".");
+                    if (ActivateExisting()) return;
+                    var host = Path.Combine(Path.GetDirectoryName(typeof(TestLab).Assembly.Location), "ScribbleBrowserHost.exe");
+                    if (!File.Exists(host)) throw new FileNotFoundException("Install the current Scribble build to use the standalone Test Lab runner.", host);
+                    var launchNonce = Guid.NewGuid().ToString("N");
+                    using (var process = Process.Start(new ProcessStartInfo(host, "--test-lab-suite " + launchNonce)
+                    { UseShellExecute = false, CreateNoWindow = true, WindowStyle = ProcessWindowStyle.Normal }))
+                    {
+                        var started = DateTime.UtcNow;
+                        while (DateTime.UtcNow - started < TimeSpan.FromSeconds(10))
+                        {
+                            process.Refresh();
+                            if (process.HasExited) throw new InvalidOperationException("Test Lab exited before window_ready (exit " + process.ExitCode + ", 0x" + process.ExitCode.ToString("X8") + ").");
+                            var ready = ReadWindow();
+                            if (ready != null && ready.nonce == launchNonce && ready.pid == process.Id && ready.ready) return;
+                            Thread.Sleep(100);
+                        }
+                        throw new TimeoutException("Test Lab did not acknowledge window_ready within 10 seconds. Executable: " + host);
+                    }
+                }
+                catch (Exception error)
+                {
+                    var detail = "Stage: standalone runner launch\r\n" + error.Message + "\r\nDiagnostics: " + Path.Combine(TestLab.Root, "launcher-error.log");
+                    File.WriteAllText(Path.Combine(TestLab.Root, "launcher-error.log"), DateTime.UtcNow.ToString("O") + " " + error);
                     MessageBox.Show(detail, "Scribble Test Lab startup error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
+                finally { if (held) launch.ReleaseMutex(); }
             }
         }
-        public TestLabSuiteWindow()
+
+        private static bool ActivateExisting()
         {
-            Text = "Scribble Test Lab — running all cases"; Size = new Size(960, 700); MinimumSize = new Size(720, 500);
+            var existing = ReadWindow();
+            if (existing == null) return false;
+            try
+            {
+                using (var process = Process.GetProcessById(existing.pid))
+                {
+                    if (process.HasExited || process.StartTime.ToUniversalTime().Ticks != existing.processStart) return false;
+                    if (existing.module != typeof(TestLab).Assembly.ManifestModule.ModuleVersionId.ToString())
+                        throw new InvalidOperationException("A Test Lab window from a different Scribble build is already running. Close it before launching this build.");
+                    File.WriteAllText(Path.Combine(TestLab.Root, "activate-window-" + existing.nonce), "activate");
+                    var handle = process.MainWindowHandle;
+                    if (handle != IntPtr.Zero) { ShowWindow(handle, 9); SetForegroundWindow(handle); }
+                    return true;
+                }
+            }
+            catch (ArgumentException) { return false; }
+        }
+
+        private static SuiteWindowState ReadWindow()
+        {
+            try { return File.Exists(WindowDescriptor) ? TestLabSuite.Read<SuiteWindowState>(WindowDescriptor) : null; }
+            catch { return null; }
+        }
+
+        public static bool HasLiveWindow(int exceptPid)
+        {
+            var existing = ReadWindow();
+            if (existing == null || existing.pid == exceptPid) return false;
+            try { using (var process = Process.GetProcessById(existing.pid)) return !process.HasExited && process.StartTime.ToUniversalTime().Ticks == existing.processStart; }
+            catch (ArgumentException) { return false; }
+        }
+
+        public TestLabSuiteWindow() : this(Guid.NewGuid().ToString("N")) { }
+
+        public TestLabSuiteWindow(string launchNonce)
+        {
+            if (!Regex.IsMatch(launchNonce ?? "", "^[a-f0-9]{32}$")) throw new ArgumentException("Invalid Test Lab launch nonce.");
+            nonce = launchNonce;
+            Text = "Scribble Test Lab — idle"; Size = new Size(960, 700); MinimumSize = new Size(720, 500);
             Font = new Font("Segoe UI", 10); StartPosition = FormStartPosition.CenterScreen;
-            folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Scribble Testcases", "suite-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N").Substring(0, 8));
-            Directory.CreateDirectory(folder);
-            var controls = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 80, Padding = new Padding(8) };
-            stopButton = Add(controls, "Stop suite", () => { cancellation.Cancel(); stopButton.Enabled = false; Append("Stopping after the current operation; evidence will be saved."); });
-            recoverButton = Add(controls, "Recover incomplete run", () => {
-                if (!finished) throw new InvalidOperationException("Stop the current suite and wait for its report before recovering.");
-                var report = TestLabSuite.RecoverIncomplete(folder);
-                Append("Preserved unfinished capture: " + report);
-                TestLabSuiteWindow.Open(); Close();
-            });
-            Add(controls, "Copy summary", () => Clipboard.SetText(File.Exists(Path.Combine(folder, "summary.txt")) ? File.ReadAllText(Path.Combine(folder, "summary.txt")) : log.Text));
-            Add(controls, "Open results folder", () => Process.Start(new ProcessStartInfo(folder) { UseShellExecute = true }));
-            reportButton = Add(controls, "Open HTML report", () => { var path = Path.Combine(folder, "report.html"); if (!File.Exists(path)) throw new InvalidOperationException("The HTML report is created when the suite finishes or stops."); Process.Start(new ProcessStartInfo(path) { UseShellExecute = true }); });
-            recoverButton.Enabled = false; reportButton.Enabled = false;
-            Controls.Add(log); Controls.Add(new Label { Dock = DockStyle.Top, Height = 58, Text = "Runs the synthetic suite visibly using your configured model. Prompts and outputs are recorded locally; emails remain unsent drafts.\r\nResults: " + folder }); Controls.Add(controls);
-            var activation = new System.Windows.Forms.Timer { Interval = 500 };
-            activation.Tick += (s, e) => {
-                var active = TestLabSuite.Active();
-                if (active == null || active.pid != Process.GetCurrentProcess().Id) return;
-                var signal = Path.Combine(TestLab.Root, "activate-" + active.id);
+            var actions = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 58, Padding = new Padding(8) };
+            startButton = Add(actions, "Start", async () => await StartRun());
+            stopButton = Add(actions, "Stop", Stop);
+            reportButton = Add(actions, "View final PDF", ViewReport);
+            var details = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 98, Padding = new Padding(10), FlowDirection = FlowDirection.TopDown, WrapContents = false };
+            var configured = "not configured";
+            try { configured = new SettingsStore().Load().Model; if (string.IsNullOrWhiteSpace(configured)) configured = "not configured"; } catch { }
+            details.Controls.Add(new Label { AutoSize = true, Font = new Font(Font, FontStyle.Bold), Text = "Configured model: " + configured });
+            details.Controls.Add(status); details.Controls.Add(progress); details.Controls.Add(currentCase); details.Controls.Add(elapsed);
+            Controls.Add(log); Controls.Add(details); Controls.Add(actions);
+            finalPdf = ReadLastReport();
+            var unfinished = TestLab.ActiveRunId();
+            if (unfinished == null) SetIdle("Idle — Start will create a new isolated run. Opening this window made no model request.");
+            else
+            {
+                status.Text = "Prior task still unconfirmed — click Stop to recheck and preserve its report.";
+                startButton.Enabled = false; stopButton.Enabled = true; reportButton.Enabled = finalPdf != null;
+                currentCase.Text = "Active capture: " + unfinished;
+            }
+            var timer = new System.Windows.Forms.Timer { Interval = 250 };
+            timer.Tick += (s, e) => {
+                if (running || finalizing) elapsed.Text = "Elapsed: " + (DateTime.UtcNow - runStarted).ToString(@"hh\:mm\:ss");
+                if (activeRunner != null) {
+                    var terminal = activeRunner.Results.Count(r => r.status != "not_run" && r.status != "running");
+                    progress.Text = "Progress: " + terminal + " / " + activeRunner.Results.Count;
+                    currentCase.Text = "Current case/stage: " + (activeRunner.State.caseId ?? "preflight") + " / " + (activeRunner.State.host ?? "preparing");
+                }
+                var signal = Path.Combine(TestLab.Root, "activate-window-" + nonce);
                 if (!File.Exists(signal)) return;
                 try { File.Delete(signal); Show(); WindowState = FormWindowState.Normal; Activate(); } catch (IOException) { }
             };
-            activation.Start(); FormClosed += (s, e) => activation.Dispose();
-            Shown += async (s, e) => { Activate(); await Run(); };
-            FormClosing += (s, e) => { if (!finished) { e.Cancel = true; cancellation.Cancel(); Append("Stopping and saving the report before closing. Keep this window open until export finishes."); } };
+            timer.Start();
+            FormClosed += (s, e) => { timer.Dispose(); RemoveWindow(); if (cancellation != null) cancellation.Dispose(); };
+            Shown += (s, e) => Activate();
+            FormClosing += (s, e) => { if (running || finalizing) { e.Cancel = true; Stop(); Append("The window will remain open until mandatory report finalization finishes."); } };
+            RegisterWindow();
         }
-        private Button Add(FlowLayoutPanel panel, string text, Action action)
+
+        private Button Add(FlowLayoutPanel panel, string text, Func<Task> action)
         {
-            var b = new Button { Text = text, AutoSize = true }; b.Click += (s, e) => { try { action(); } catch (Exception ex) { Append(ex.Message); } }; panel.Controls.Add(b);
+            var b = new Button { Text = text, AutoSize = true, Height = 34 };
+            b.Click += async (s, e) => { try { await action(); } catch (Exception ex) { Append(ex.ToString()); status.Text = "Error — " + ex.Message; } };
+            panel.Controls.Add(b);
             return b;
         }
+
+        private Button Add(FlowLayoutPanel panel, string text, Action action)
+        { return Add(panel, text, () => { action(); return Task.FromResult(true); }); }
+
         private void Append(string text)
         {
             if (InvokeRequired) { BeginInvoke((Action)(() => Append(text))); return; }
             log.AppendText(text + Environment.NewLine);
+        }
+
+        private void SetIdle(string message)
+        {
+            running = false; finalizing = false; activeRunner = null;
+            Text = "Scribble Test Lab — idle"; status.Text = message;
+            progress.Text = "Progress: 0 / 0"; currentCase.Text = "Current case/stage: none"; elapsed.Text = "Elapsed: 00:00:00";
+            startButton.Enabled = TestLab.ActiveRunId() == null; stopButton.Enabled = TestLab.ActiveRunId() != null;
+            reportButton.Enabled = TestLabPdfWriter.IsValid(finalPdf);
+        }
+
+        private static string CreateRunFolder()
+        {
+            var name = "suite-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N").Substring(0, 8);
+            var candidates = new[] {
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Scribble Testcases", name),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Scribble", "Testcases", name) };
+            Exception failure = null;
+            foreach (var candidate in candidates)
+            {
+                try {
+                    Directory.CreateDirectory(candidate); var probe = Path.Combine(candidate, ".write-probe");
+                    File.WriteAllText(probe, "ok"); if (File.ReadAllText(probe) != "ok") throw new IOException("Output probe could not be read back.");
+                    File.Delete(probe); return candidate;
+                } catch (Exception error) { failure = error; }
+            }
+            throw new IOException("No writable Test Lab output folder is available.", failure);
+        }
+
+        private async Task StartRun()
+        {
+            if (running || finalizing) return;
+            if (TestLab.ActiveRunId() != null) { SetIdle("Prior task still unconfirmed — click Stop to recheck it first."); return; }
+            cancellation = new CancellationTokenSource(); folder = CreateRunFolder(); finalPdf = null;
+            runStarted = DateTime.UtcNow; running = true; Text = "Scribble Test Lab — running";
+            status.Text = "Starting — acquiring run ownership and preflight."; startButton.Enabled = false; stopButton.Enabled = true; reportButton.Enabled = false;
+            Append("Test Lab runner " + FileVersionInfo.GetVersionInfo(typeof(TestLab).Assembly.Location).FileVersion);
+            Append("Results: " + folder);
+            var runner = new TestLabSuiteRunner(folder, Append, cancellation.Token); activeRunner = runner;
+            try { await RunOnSta(runner.Run); }
+            catch (Exception error) { runner.Log("Cannot run suite: " + error); }
+            running = false; finalizing = true; status.Text = "Finalizing — creating and validating the current run PDF.";
+            try
+            {
+                await Task.Run(() => TestLabSuiteReport.Create(runner.State, runner.Results.ToArray()));
+                finalPdf = Path.Combine(folder, "report.pdf");
+                if (!TestLabPdfWriter.IsValid(finalPdf)) throw new InvalidDataException("Reporter did not produce a valid current-run PDF.");
+                File.WriteAllText(Path.Combine(TestLab.Root, "last-suite-report.txt"), finalPdf, new UTF8Encoding(false));
+                UpdateWindowReport();
+                Append("Final PDF: " + finalPdf);
+                status.Text = cancellation.IsCancellationRequested ? "Stopped — partial report preserved." : "Finished — final PDF ready for review.";
+            }
+            catch (Exception error)
+            {
+                Append("PDF FINALIZATION FAILED: " + error);
+                File.AppendAllText(Path.Combine(folder, "summary.txt"), "\nPDF FINALIZATION FAILED: " + error + "\n");
+                status.Text = "Reporting failed — diagnostics remain at " + folder;
+            }
+            finally
+            {
+                finalizing = false; activeRunner = null; startButton.Enabled = TestLab.ActiveRunId() == null;
+                stopButton.Enabled = TestLab.ActiveRunId() != null; reportButton.Enabled = TestLabPdfWriter.IsValid(finalPdf);
+                Text = "Scribble Test Lab — " + (reportButton.Enabled ? "finished" : "reporting failed");
+            }
+        }
+
+        private async void RecoverPrior()
+        {
+            try
+            {
+                folder = CreateRunFolder(); finalPdf = await Task.Run(() => TestLabSuite.RecoverIncomplete(folder));
+                File.WriteAllText(Path.Combine(TestLab.Root, "last-suite-report.txt"), finalPdf, new UTF8Encoding(false));
+                UpdateWindowReport(); status.Text = "Stopped — incomplete capture preserved in the final PDF.";
+                Append("Recovered final PDF: " + finalPdf);
+            }
+            catch (Exception error) { status.Text = "Stop not confirmed — " + error.Message; Append(error.Message); }
+            finally { SetIdle(status.Text); }
+        }
+
+        private void Stop()
+        {
+            if (running)
+            {
+                status.Text = "Stopping — preserving report"; stopButton.Enabled = false;
+                if (cancellation != null) cancellation.Cancel(); Append("Stop requested. No next case will be submitted; mandatory evidence finalization continues.");
+            }
+            else if (finalizing) { status.Text = "Stopping — mandatory report finalization continues"; stopButton.Enabled = false; }
+            else if (TestLab.ActiveRunId() != null) { stopButton.Enabled = false; status.Text = "Stopping — checking prior task and preserving report"; RecoverPrior(); }
+        }
+
+        private void ViewReport()
+        {
+            if (!TestLabPdfWriter.IsValid(finalPdf)) throw new InvalidOperationException("The displayed terminal run does not have a validated PDF. Path: " + (finalPdf ?? "not created"));
+            Process.Start(new ProcessStartInfo(finalPdf) { UseShellExecute = true });
+        }
+
+        private static string ReadLastReport()
+        {
+            try { var path = File.ReadAllText(Path.Combine(TestLab.Root, "last-suite-report.txt")).Trim(); return TestLabPdfWriter.IsValid(path) ? path : null; }
+            catch { return null; }
+        }
+
+        private void RegisterWindow()
+        {
+            using (var process = Process.GetCurrentProcess())
+                File.WriteAllText(WindowDescriptor, TestLab.Serialize(new SuiteWindowState { pid = process.Id,
+                    processStart = process.StartTime.ToUniversalTime().Ticks, nonce = nonce, ready = true,
+                    module = typeof(TestLab).Assembly.ManifestModule.ModuleVersionId.ToString(), report = finalPdf }));
+        }
+
+        private void UpdateWindowReport() { RegisterWindow(); }
+
+        private void RemoveWindow()
+        {
+            try { var state = ReadWindow(); if (state != null && state.nonce == nonce) File.Delete(WindowDescriptor); }
+            catch (IOException) { }
         }
         // Office COM stays on one STA with a message pump; the operator window remains responsive.
         private static Task RunOnSta(Func<Task> action)
@@ -104,34 +308,16 @@ namespace Scribble.Testing
             }) { IsBackground = true, Name = "Scribble test suite" };
             thread.SetApartmentState(ApartmentState.STA); thread.Start(); return completion.Task;
         }
-        private async Task Run()
-        {
-            Append("Test Lab runner " + FileVersionInfo.GetVersionInfo(typeof(TestLab).Assembly.Location).FileVersion);
-            if (TestLab.ActiveRunId() != null) {
-                finished = true; stopButton.Enabled = false; recoverButton.Enabled = true;
-                Text = "Scribble Test Lab — finished — recovery required";
-                Append("Recovery required: the previous capture is unfinished, but no suite is running in this window. Stop suite does not apply here.");
-                Append("Save your work, close Excel, PowerPoint, Word, Outlook and Chrome, then click Recover incomplete run. The old evidence will be preserved before a fresh suite opens.");
-                return;
-            }
-            var runner = new TestLabSuiteRunner(folder, Append, cancellation.Token);
-            try { await RunOnSta(runner.Run); }
-            catch (Exception e) { runner.Log("Cannot run suite: " + e); }
-            try {
-                Append("Creating the HTML report with copyable diagnostics and available output previews...");
-                await Task.Run(() => TestLabSuiteReport.Create(runner.State, runner.Results.ToArray()));
-                Append("Saved " + Path.Combine(folder, "report.html") + ". Open HTML report to copy diagnostic parts or take screenshots.");
-            } catch (Exception e) {
-                runner.Log("HTML export failed: " + e);
-                File.AppendAllText(Path.Combine(folder, "summary.txt"), "\nHTML EXPORT FAILED: " + e.Message + "\nRecorded logs are preserved.\n");
-            }
-            finally {
-                finished = true; stopButton.Enabled = false; reportButton.Enabled = File.Exists(Path.Combine(folder, "report.html"));
-                recoverButton.Enabled = TestLab.ActiveRunId() != null;
-                Text = recoverButton.Enabled ? "Scribble Test Lab — finished — recovery required" : "Scribble Test Lab — finished";
-                if (recoverButton.Enabled) Append("A capture is still active. Stop the request in its visible app, close Office and Chrome, then click Recover incomplete run.");
-            }
-        }
+    }
+
+    public sealed class SuiteWindowState
+    {
+        public int pid { get; set; }
+        public long processStart { get; set; }
+        public string nonce { get; set; }
+        public string module { get; set; }
+        public bool ready { get; set; }
+        public string report { get; set; }
     }
     public static class TestLabSuiteReport
     {
@@ -139,7 +325,7 @@ namespace Scribble.Testing
         public static string BuildHtml(SuiteState s, SuiteCaseResult[] results)
         {
             var summary = new StringBuilder("SCRIBBLE TEST LAB\nRunner build: " + FileVersionInfo.GetVersionInfo(typeof(TestLab).Assembly.Location).FileVersion + "\nSuite: " + s.id + "\nMain: " + s.commit + "\nKit SHA256: " + s.kitHash + "\nResults: " + s.folder + "\n");
-            summary.AppendLine("Needs review: " + results.Count(r => r.status == "needs_review") + " | Blocked/stopped: " + results.Count(r => r.status == "blocked" || r.status == "stopped" || r.status == "incomplete") + " | Not run: " + results.Count(r => r.status == "not_run"));
+            summary.AppendLine("Needs review: " + results.Count(r => r.status == "needs_review") + " | Deterministic failures: " + results.Count(r => r.status == "failed") + " | Blocked/stopped: " + results.Count(r => r.status == "blocked" || r.status == "stopped" || r.status == "incomplete") + " | Not run: " + results.Count(r => r.status == "not_run"));
             summary.AppendLine("Completion is not a correctness pass. See native output and visual review in the evidence.");
             foreach (var r in results) summary.AppendLine(r.id + " " + r.host + " — " + r.status + (string.IsNullOrEmpty(r.error) ? "" : " — " + (r.error.Split('\n')[0].Length > 140 ? r.error.Split('\n')[0].Substring(0, 140) + "…" : r.error.Split('\n')[0])));
             if (results.Length == 0) summary.AppendLine("No cases ran. See the startup/download error below.");
@@ -157,6 +343,8 @@ namespace Scribble.Testing
             html.Append(E(summary.ToString())).Append("</pre><p>Start by pasting the summary. Then use the numbered diagnostic parts below to relay logs and results in chat. Take screenshots of the relevant output previews or visible apps for layout review. No file upload is required.</p></section><h2>Timestamped suite log</h2><pre>").Append(E(log)).Append("</pre>");
             foreach (var r in results) {
                 html.Append("<section class='case'><h1>").Append(E(r.id + " / " + r.host)).Append("</h1><p>").Append(E(r.status + " | " + r.started + " → " + r.finished)).Append("</p><pre>").Append(E(r.error)).Append("</pre>");
+                if (!string.IsNullOrEmpty(r.evaluation) && File.Exists(r.evaluation))
+                    html.Append("<h2>Deterministic evaluation</h2><pre>").Append(E(File.ReadAllText(r.evaluation))).Append("</pre>");
                 var caseHtml = TestLab.SafeChild(s.folder, "cases/" + r.id + "/report.html");
                 if (File.Exists(caseHtml)) {
                     var text = File.ReadAllText(caseHtml); var body = Regex.Match(text, @"<body[^>]*>([\s\S]*)</body>", RegexOptions.IgnoreCase);
@@ -179,7 +367,8 @@ namespace Scribble.Testing
         public static string Create(SuiteState s, SuiteCaseResult[] results)
         {
             var html = Path.Combine(s.folder, "report.html");
-            File.WriteAllText(html, BuildHtml(s, results), new UTF8Encoding(false)); return html;
+            File.WriteAllText(html, BuildHtml(s, results), new UTF8Encoding(false));
+            return TestLabPdfWriter.CreateSuite(s, results);
         }
         public static string ToText(string html)
         {

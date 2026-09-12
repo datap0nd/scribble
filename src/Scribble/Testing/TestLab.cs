@@ -344,6 +344,11 @@ namespace Scribble.Testing
                     .Select(t => Convert.ToString(t.data["utc"]) + ",\"" + Serialize(t.data["detail"]).Replace("\"", "\"\"") + "\"")));
                 Directory.CreateDirectory(Path.Combine(stage, "artifacts"));
                 foreach (var file in Directory.GetFiles(Path.Combine(folder, "artifacts"))) File.Copy(file, Path.Combine(stage, "artifacts", Path.GetFileName(file)));
+                var commands = Path.Combine(folder, "commands");
+                if (Directory.Exists(commands)) {
+                    Directory.CreateDirectory(Path.Combine(stage, "commands"));
+                    foreach (var file in Directory.GetFiles(commands, "*.json")) File.Copy(file, Path.Combine(stage, "commands", Path.GetFileName(file)));
+                }
                 foreach (var file in Directory.GetFiles(folder, "incomplete-*.json")) File.Copy(file, Path.Combine(stage, Path.GetFileName(file)));
                 var extensions = Directory.GetFiles(Path.Combine(stage, "artifacts")).Select(Path.GetExtension).ToArray();
                 run.missing_artifacts = run.required_artifacts.Where(x => !extensions.Contains("." + x)).ToArray();

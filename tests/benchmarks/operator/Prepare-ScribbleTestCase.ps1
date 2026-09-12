@@ -19,8 +19,14 @@ foreach ($relative in $paths) {
 }
 $formats=@{'.xlsx'='Excel';'.csv'='Excel';'.pptx'='PowerPoint';'.docx'='Word'}
 $outputApps=@{xlsx='Excel';pptx='PowerPoint';docx='Word';msg='Outlook'}
-$documents=@($paths | Where-Object { $formats.ContainsKey([IO.Path]::GetExtension($_)) })
-$apps=@($case.host) + @($documents | ForEach-Object { $formats[[IO.Path]::GetExtension($_)] }) + @($case.artifacts | ForEach-Object { $outputApps[$_] })
+# Supporting files are attached through Scribble's ordinary readers. Only the
+# native origin document is opened; output applications are started solely for
+# the production handoff/writer route exercised by the case.
+$documents=@($paths | Where-Object {
+    $extension=[IO.Path]::GetExtension($_)
+    $extension -in @('.xlsx','.pptx','.docx') -and $formats[$extension] -eq $case.host
+})
+$apps=@($case.host) + @($case.artifacts | ForEach-Object { $outputApps[$_] })
 $apps=@($apps | Where-Object { $_ } | Select-Object -Unique)
 if (@($apps | Where-Object { $_ -notin @('Excel','PowerPoint','Word','Outlook','Chrome') }).Count) { throw 'Unsupported app in case.' }
 $plan=[ordered]@{case_id=$CaseId;host=$case.host;apps=$apps;documents=$documents;mail_paths=@($mail | ForEach-Object { $_.path });pages=@($paths | Where-Object { $_.StartsWith('inputs/browser/') });pdfs=@($paths | Where-Object { $_.EndsWith('.pdf') })}
@@ -62,11 +68,19 @@ foreach ($name in $apps | Where-Object { $_ -ne 'Chrome' }) {
         if ($null -eq $app) { throw "No $name application object was returned." }
         if ($name -eq 'PowerPoint') { $app.Visible=-1 }
         elseif ($name -ne 'Outlook') { $app.Visible=$true }
-        Progress "$name connected; checking Scribble add-in..."
-        try {
-            if (-not $app.COMAddIns.Item($progids[$name]).Connect) { $remaining.Add("Enable the Scribble add-in in $name.") }
-            else { $completed.Add("$name`: Scribble add-in connected.") }
-        } catch { $remaining.Add("Scribble add-in not found in $name. Install or repair Scribble.") }
+        if ($name -eq $case.host) {
+            Progress "$name connected; checking Scribble pane controller..."
+            try {
+                $addIn=$app.COMAddIns.Item($progids[$name])
+                if (-not $addIn.Connect) {
+                    Progress "$name Scribble add-in is registered but inactive; attempting one supported connection..."
+                    $addIn.Connect=$true
+                    for ($attempt=0;$attempt -lt 20 -and -not $addIn.Connect;$attempt++) { Start-Sleep -Milliseconds 250 }
+                }
+                if (-not $addIn.Connect) { $remaining.Add("Scribble is registered but remained inactive in $name after one bounded connection attempt. Check Disabled Items, startup errors, or organizational policy.") }
+                else { $completed.Add("$name`: Scribble pane add-in connected.") }
+            } catch { $remaining.Add("Scribble pane add-in unavailable in $name`: $($_.Exception.Message). Install/repair Scribble, or check whether policy disabled it.") }
+        } else { $completed.Add("$name`: native destination application is available; its pane add-in is not required for this route.") }
         # Open CSVs before native workbooks so the case workbook is active last.
         foreach ($relative in @($documents | Where-Object { $formats[[IO.Path]::GetExtension($_)] -eq $name } | Sort-Object { [IO.Path]::GetExtension($_) -ne '.csv' })) {
             Assert-Idle
@@ -83,7 +97,14 @@ foreach ($name in $apps | Where-Object { $_ -ne 'Chrome' }) {
                     for ($j=1;$j -le $app.Workbooks.Count;$j++) {
                         $opened=$app.Workbooks.Item($j)
                         if ([IO.Path]::GetFileName($opened.FullName) -eq [IO.Path]::GetFileName($path) -and $opened.FullName -ne $path) {
-                            throw "Excel already has a different workbook named $([IO.Path]::GetFileName($path)) open at $($opened.FullName). Save its generated output and close that workbook before retrying this case."
+                            $aliasRoot=Join-Path $fixture '.aliases'
+                            [IO.Directory]::CreateDirectory($aliasRoot) | Out-Null
+                            $alias=Join-Path $aliasRoot (([IO.Path]::GetFileNameWithoutExtension($path))+'--'+$session.session_id.Substring(0,8)+'-'+$CaseId+[IO.Path]::GetExtension($path))
+                            [IO.File]::Copy($path,$alias,$true)
+                            if ([Scribble.Testing.TestLab]::FileHash($alias) -ne [Scribble.Testing.TestLab]::FileHash($path)) { throw 'Verified workbook alias hash mismatch.' }
+                            $completed.Add("Mapped $relative to byte-identical alias $([IO.Path]::GetFileName($alias)); unrelated workbook preserved.")
+                            $path=$alias
+                            break
                         }
                     }
                     $document=$app.Workbooks.Open($path,0,$true)
@@ -109,7 +130,7 @@ foreach ($name in $apps | Where-Object { $_ -ne 'Chrome' }) {
     } catch { $remaining.Add("$name`: $($_.Exception.Message) | $($_.InvocationInfo.PositionMessage)") }
     Report 'preparing'
 }
-foreach ($relative in $plan.pdfs) {
+foreach ($relative in @($plan.pdfs | Where-Object { -not $Suite })) {
     try { Assert-Idle; Start-Process -FilePath ([Scribble.Testing.TestLab]::SafeChild($fixture,$relative)); $completed.Add("Opened $relative in the PDF viewer.") }
     catch { $remaining.Add("PDF viewer: $($_.Exception.Message)") }
 }

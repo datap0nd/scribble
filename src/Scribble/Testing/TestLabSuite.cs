@@ -24,7 +24,7 @@ namespace Scribble.Testing
     }
     public sealed class SuiteCaseResult
     {
-        public string id, host, status = "not_run", error, started, finished, evidence;
+        public string id, host, status = "not_run", error, started, finished, evidence, evaluation, evaluationStatus;
     }
     public sealed class SuiteChromeCommand
     {
@@ -58,16 +58,21 @@ namespace Scribble.Testing
                 var runId = TestLab.ActiveRunId();
                 if (runId == null) throw new InvalidOperationException("There is no unfinished capture to recover. Close this window and click Test Lab again.");
                 var current = Process.GetCurrentProcess();
-                var running = new List<string>();
-                foreach (var name in new[] { "EXCEL", "POWERPNT", "WINWORD", "OUTLOOK", "chrome", "ScribbleBrowserHost" })
-                    foreach (var process in Process.GetProcessesByName(name)) using (process)
-                        if (process.Id != current.Id && process.SessionId == current.SessionId) running.Add(name);
-                if (running.Count > 0) throw new InvalidOperationException("Save your work and close these apps, then click Recover incomplete run again: " + string.Join(", ", running.Distinct()) + ". No app was closed automatically.");
+                if (TestLabSuiteWindow.HasLiveWindow(current.Id))
+                    throw new InvalidOperationException("Another Test Lab window still owns this capture. Use Stop in that window; no process or document was closed automatically.");
+                var commands = Path.Combine(TestLab.RunDirectory(runId), "commands");
+                if (Directory.Exists(commands)) foreach (var path in Directory.GetFiles(commands, "*.json"))
+                {
+                    SuiteCommandReceipt receipt = null; try { receipt = Read<SuiteCommandReceipt>(path); } catch (Exception) { }
+                    if (receipt == null || receipt.action != "submit" || receipt.state != "running" || receipt.pid <= 0) continue;
+                    try { using (var process = Process.GetProcessById(receipt.pid)) if (!process.HasExited && process.StartTime.ToUniversalTime().Ticks == receipt.processStart)
+                        throw new InvalidOperationException("Stop is not confirmed for " + receipt.host + " process " + receipt.pid + ". Stop the active request in its visible app, then click Stop again."); }
+                    catch (ArgumentException) { }
+                }
                 TestLab.Finish(false);
                 MarkRecovery(runId);
                 var evidence = TestLab.Export(runId, destination);
-                var report = Path.Combine(destination, "recovered-report.html");
-                File.WriteAllText(report, TestLabReport.BuildHtml(evidence, Path.Combine(destination, "recovered-summary.txt")), new UTF8Encoding(false));
+                var report = TestLabPdfWriter.CreateRecovered(evidence, destination);
                 TestLab.Disable();
                 return report;
             }
@@ -103,8 +108,12 @@ namespace Scribble.Testing
             if (s == null || s.runId != runId || string.IsNullOrEmpty(path)) return false;
             var run = TestLab.GetRun(runId);
             var root = TestLab.SafeChild(s.folder, "cases/" + s.caseId + "/scribble-test-kit-v1");
-            return string.Equals(root, run.fixture_root, StringComparison.OrdinalIgnoreCase) &&
-                (run.input_paths ?? new string[0]).Any(p => string.Equals(TestLab.SafeChild(root, p), path, StringComparison.OrdinalIgnoreCase));
+            if (!string.Equals(root, run.fixture_root, StringComparison.OrdinalIgnoreCase)) return false;
+            var full = Path.GetFullPath(path);
+            if ((run.input_paths ?? new string[0]).Any(p => string.Equals(TestLab.SafeChild(root, p), full, StringComparison.OrdinalIgnoreCase))) return true;
+            var aliases = TestLab.SafeChild(root, ".aliases").TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            return full.StartsWith(aliases, StringComparison.OrdinalIgnoreCase) && File.Exists(full) &&
+                (run.input_hashes ?? new string[0]).Contains(TestLab.FileHash(full));
         }
         public static bool OwnsNativeSource(string runId, string path, string kind)
         {
@@ -206,7 +215,7 @@ namespace Scribble.Testing
         {
             Directory.CreateDirectory(TestLab.Root);
             using (var ownership = new FileStream(Path.Combine(TestLab.Root, "suite.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None)) {
-                if (TestLab.ActiveRunId() != null) throw new InvalidOperationException("An unfinished capture is active. Use Recover incomplete run in this window after saving work and closing Office and Chrome.");
+                if (TestLab.ActiveRunId() != null) throw new InvalidOperationException("An unfinished capture is active. Use Stop in this window to recheck it and preserve the incomplete PDF.");
                 TestLabSuite.Save(State);
                 try {
                     Log("Downloading the latest test kit from main...");
@@ -221,22 +230,24 @@ namespace Scribble.Testing
                         State.caseId = c.id; State.host = c.host; State.runId = null; State.chromeToken = Guid.NewGuid().ToString("N"); State.sourceUrl = null;
                         TestLabSuite.Save(State); Journal();
                         var folder = TestLab.SafeChild(State.folder, "cases/" + c.id);
-                        bool submitted = false, quiescent = true;
+                        bool submitted = false, quiescent = true, captureComplete = false;
                         try {
                             Log(c.id + " / " + c.host + ": preparing visible apps and isolated files.");
                             var kit = await Task.Run(() => TestLabSuite.Extract(zip, folder)); cancel.ThrowIfCancellationRequested();
                             TestLab.Enable(kit);
                             await Prepare(c.id, folder);
                             State.runId = TestLab.Start(c.id, c.host, true).run_id; TestLabSuite.Save(State);
+                            Log(c.id + ": capturing the verified source state before the first write.");
+                            Log(BenchmarkArtifactCollector.Capture(State.runId, "source"));
                             if (c.host == "Chrome") OpenChrome(); else ConnectOffice(c.host);
-                            submitted = true; quiescent = false;
                             await Command("load", 0, 90, true);
+                            submitted = true; quiescent = false;
                             if (c.id == "RC01") await CancellationCase(c);
                             else {
                                 await Command("submit", 0, 600, true);
                                 if (!string.IsNullOrEmpty(c.prerequisite_prompt)) {
                                     Log(c.id + ": prerequisite completed; capturing intermediate output.");
-                                    Log(BenchmarkArtifactCollector.Capture(State.runId));
+                                    Log(BenchmarkArtifactCollector.Capture(State.runId, "intermediate"));
                                     if (c.id == "XA04") SaveSelectedDeck();
                                     await Command("submit", 1, 600, true);
                                 }
@@ -255,7 +266,7 @@ namespace Scribble.Testing
                             try { TestLabPreparation.Stop(preparation); } catch (Exception e) { Log("Preparation helper stop error: " + e.Message); }
                             preparation = null;
                             if (State.runId != null) {
-                                try { Log(BenchmarkArtifactCollector.Capture(State.runId)); } catch (Exception e) { Log("Output capture error: " + e.Message); result.error += "\nOutput capture: " + e; result.status = "blocked"; }
+                                try { Log(BenchmarkArtifactCollector.Capture(State.runId, "final")); captureComplete = true; } catch (Exception e) { Log("Output capture error: " + e.Message); result.error += "\nOutput capture: " + e; result.status = "blocked"; }
                                 try {
                                     if (result.status != "needs_review") TestLab.MarkIncomplete(State.runId, result.error ?? result.status);
                                     if (quiescent) { TestLab.Finish(false); result.evidence = TestLab.Export(State.runId, folder); }
@@ -266,8 +277,13 @@ namespace Scribble.Testing
                                             result.status = "incomplete"; result.error = "Missing outputs: " + string.Join(", ", exported.missing_artifacts) + "; trace complete: " + exported.trace_complete;
                                         }
                                     }
+                                    var evaluated = TestLabEvaluator.Evaluate(result.evidence, folder);
+                                    result.evaluation = Path.Combine(folder, "evaluation.json"); result.evaluationStatus = evaluated.status;
+                                    if (evaluated.status == "failed" && result.status == "needs_review") result.status = "failed";
                                     File.WriteAllText(Path.Combine(folder, "report.html"), TestLabReport.BuildHtml(result.evidence, Path.Combine(folder, "summary.txt")), new UTF8Encoding(false));
                                 } catch (Exception e) { result.status = "blocked"; result.error += "\nEvidence export: " + e; Log("Evidence export error: " + e.Message); }
+                                if (quiescent && captureComplete && !string.IsNullOrEmpty(result.evidence))
+                                    try { CleanupCaseResources(); } catch (Exception e) { result.status = "incomplete"; result.error += "\nCleanup: " + e; Log("Owned resource cleanup error: " + e.Message); }
                             }
                             result.finished = DateTime.UtcNow.ToString("O"); Journal();
                             if (application != null && Marshal.IsComObject(application)) Marshal.ReleaseComObject(application);
@@ -317,6 +333,65 @@ namespace Scribble.Testing
             deck.SaveAs(target, 24);
             TestLab.Collect(State.runId, target);
             Log("Saved and selected generated-deck.pptx for the email attachment.");
+        }
+
+        // Operator-only cleanup after immutable evidence exists. Exact run tags
+        // and verified fixture paths prevent this boundary from touching user work.
+        private void CleanupCaseResources()
+        {
+            foreach (var kind in new[] { "Excel", "PowerPoint", "Word" })
+            {
+                object instance = null;
+                try
+                {
+                    instance = Marshal.GetActiveObject(kind + ".Application"); dynamic app = instance;
+                    dynamic documents = kind == "Excel" ? app.Workbooks : kind == "PowerPoint" ? app.Presentations : app.Documents;
+                    for (int i = (int)documents.Count; i >= 1; i--)
+                    {
+                        object value = documents.Item(i); dynamic document = value;
+                        try
+                        {
+                            var output = TestLab.IsRunOutput(value, State.runId);
+                            var source = TestLabSuite.OwnsNativeSource(State.runId, Convert.ToString(document.FullName), kind);
+                            if (!output && !source) continue;
+                            if (source && !Convert.ToBoolean(document.Saved))
+                            {
+                                TestLab.MarkIncomplete(State.runId, "A synthetic source was edited manually; it was preserved instead of closed.");
+                                Log("Preserved manually edited source: " + Convert.ToString(document.FullName));
+                                continue;
+                            }
+                            var name = Convert.ToString(document.Name);
+                            if (kind == "PowerPoint") document.Close(); else document.Close(false);
+                            Log("Closed captured run-owned " + kind + " resource: " + name);
+                        }
+                        finally { if (Marshal.IsComObject(value)) Marshal.ReleaseComObject(value); }
+                    }
+                }
+                catch (COMException) { }
+                finally { if (instance != null && Marshal.IsComObject(instance)) Marshal.ReleaseComObject(instance); }
+            }
+            object outlookInstance = null;
+            try
+            {
+                outlookInstance = Marshal.GetActiveObject("Outlook.Application"); dynamic outlook = outlookInstance;
+                for (int i = (int)outlook.Inspectors.Count; i >= 1; i--)
+                {
+                    object inspectorValue = outlook.Inspectors.Item(i); dynamic inspector = inspectorValue;
+                    object itemValue = inspector.CurrentItem; dynamic item = itemValue;
+                    try
+                    {
+                        dynamic tag = item.UserProperties.Find("ScribbleTestRunId");
+                        if (tag != null && Convert.ToString(tag.Value) == State.runId) { inspector.Close(1); Log("Closed captured run-owned Outlook draft."); }
+                    }
+                    finally
+                    {
+                        if (Marshal.IsComObject(itemValue)) Marshal.ReleaseComObject(itemValue);
+                        if (Marshal.IsComObject(inspectorValue)) Marshal.ReleaseComObject(inspectorValue);
+                    }
+                }
+            }
+            catch (COMException) { }
+            finally { if (outlookInstance != null && Marshal.IsComObject(outlookInstance)) Marshal.ReleaseComObject(outlookInstance); }
         }
         private void OpenChrome()
         {

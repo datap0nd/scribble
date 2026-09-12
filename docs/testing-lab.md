@@ -1,12 +1,14 @@
 # Testing Lab implementation
 
-The regular Scribble assembly includes an operator-only Test Lab. It is disabled until `Enable-ScribbleTestLab.ps1` validates the fixture kit and writes a current-user DPAPI-protected descriptor. The descriptor expires after eight hours. The Office panes and Chrome native host consult the same descriptor. No model tool can enable the lab, start a run, collect a file or export evidence.
+The regular Scribble assembly includes an operator-only Test Lab. The temporary Test entry point opens or focuses one idle standalone window. Opening it reads settings and prior-run metadata only: it does not enable capture, open fixtures, or contact a model. No model tool can enable the lab, start a run, collect a file or export evidence.
 
 Download the kit from `tests/benchmarks/releases/scribble-test-kit-v1.zip` and follow its `START-HERE.md`. The kit contains 16 cases, five realistic synthetic email messages with attachments, clean/dirty/incomplete workbooks, two starter presentations, Word briefs, a PDF, a loopback website and evaluator-only reference outputs.
 
-## Execution and isolation
+## Start, Stop, and isolation
 
-The operator's **Prepare case** action runs the verified kit's preparation script in a separate hidden Windows PowerShell STA process. It opens the case's input files and required output apps, imports/selects exact synthetic Outlook messages, checks Office add-in connections, and opens Chrome fixture pages with a dependency-free loopback server. Reports list completed setup and remaining steps. Stop preparation terminates only that helper. Sources are opened read-only and existing unsaved fixture edits are reported rather than discarded. Preparation never submits a prompt and cannot run during capture.
+The window's only actions are **Start**, **Stop**, and **View final PDF**. Start acquires current-user/session ownership before downloading or preparing a case. Rapid Test clicks converge on the same PID/start-time/nonce-verified window. Stop prevents another submission and preserves a partial terminal report; it does not claim cancellation until the production pane reports quiescence. Closing during a run requests Stop and keeps finalization visible.
+
+Start runs the verified kit's preparation script in a separate hidden Windows PowerShell STA process. It opens only the native origin document plus required output apps, imports/selects exact synthetic Outlook messages, checks the origin pane add-in, and opens Chrome fixture pages with a dependency-free loopback server. Supporting files are attached through normal readers. A registered inactive origin add-in receives one bounded supported connection attempt. Same-name Excel conflicts use a byte-identical verified alias, leaving unrelated workbooks untouched. Preparation never submits a prompt on its own.
 
 Starting from an Office pane clears that pane's conversation, adds the case's files or selected emails through the normal context readers, and fills the first prompt. Chrome fills the prompt once after its Test Lab window closes; operator edits and later prompts are retained. Start is restricted to the case's declared source app. Verify the context tray and submit manually while recording. Other panes used manually should also start with a clean chat.
 
@@ -24,7 +26,7 @@ The operator can capture tagged new Excel/PPT/Word documents and open Outlook dr
 
 Export contains `run.json`, a merged `timeline.jsonl`, marker CSV, artifact receipts, `scorecard.json`, incomplete markers and an export hash manifest. Sorting timestamps assists video review; causal ordering uses task/tool IDs and per-instance sequences. The evaluator checks hashes, structure and factual presence and leaves semantic, source-preservation and native/visual review explicit. A score is never declared passed from chat wording or file presence alone.
 
-The operator export then renders a shareable PDF with a screenshot-friendly overview, error-like events, output previews and the complete timestamped trace. It also writes a plain-text summary for the Copy report summary button. These reports are added to the evidence ZIP and its hash manifest, and saved beside it. Rendering uses installed Chrome or Edge with a separate headless profile and no untrusted HTML execution. Native binary outputs remain available in the ZIP; workbook previews are limited to 200 rows per sheet and do not recalculate formulas. PDF failure preserves the evidence ZIP, HTML and summary with an explicit error. The low-level TestLab.Export API remains an evidence-only snapshot; operator exports call TestLabReport.Create afterward.
+Every terminal suite path renders a shareable PDF locally with PDFsharp. It includes the suite overview, deterministic findings, complete retained text trace, and every usable native PDF/PNG derivative. Rendering does not start Chrome, Office, Python, or a model. Corrupt derivatives become explicit evidence gaps while remaining pages are preserved. The PDF is reopened and validated before **View final PDF** is enabled; HTML, summary, native outputs, and evidence ZIPs remain as diagnostic derivatives.
 
 ## Regression and release workflow
 

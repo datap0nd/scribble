@@ -1,7 +1,13 @@
 ﻿#requires -Version 5.1
 param([string]$AssemblyPath=(Join-Path $PSScriptRoot '../../src/Scribble/bin/Release/Scribble.dll'),[switch]$RenderPdf)
 $ErrorActionPreference='Stop'
-Add-Type -Path (Resolve-Path -LiteralPath $AssemblyPath).Path
+$resolvedAssembly=(Resolve-Path -LiteralPath $AssemblyPath).Path
+Add-Type -TypeDefinition 'using System;using System.IO;using System.Reflection;public static class TestLabAssemblyResolver{public static void Install(string folder){AppDomain.CurrentDomain.AssemblyResolve+=(s,e)=>{var p=Path.Combine(folder,new AssemblyName(e.Name).Name+".dll");return File.Exists(p)?Assembly.LoadFrom(p):null;};}}'
+[TestLabAssemblyResolver]::Install((Split-Path $resolvedAssembly))
+foreach($dependency in @('Microsoft.Extensions.Logging.Abstractions.dll','PdfSharp.Shared.dll','PdfSharp.System.dll','PdfSharp-gdi.dll')) {
+    [void][Reflection.Assembly]::LoadFrom((Join-Path (Split-Path $resolvedAssembly) $dependency))
+}
+Add-Type -Path $resolvedAssembly
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 function Assert($value,$message) { if (-not $value) { throw $message } }
 function Reject([scriptblock]$action,$message) { $rejected=$false; try { & $action } catch { $rejected=$true }; Assert $rejected $message }
@@ -46,10 +52,10 @@ try {
     $busy=[Func[bool]]{return $false};$reset=[Action]{};$load=[Action[Scribble.Testing.LabCase]]{}
     $send=[Func[string,Threading.Tasks.Task]]{param($prompt);$script:sendCount++;return $pending.Task}
     $stop=[Action]{$script:stopCount++}
-    $commandArgs=@($state.id,'load-once','load',0,'Excel',$true,$busy,$reset,$load,$send,$stop)
+    $commandArgs=@($state.id,[guid]::NewGuid().ToString('N'),'load',0,'Excel',$true,$busy,$reset,$load,$send,$stop)
     $loaded=$method.Invoke($driver,$commandArgs) | ConvertFrom-Json
     Assert ($loaded.state -eq 'done') 'Pane did not load.'
-    $commandArgs[1]='submit-once';$commandArgs[2]='submit'
+    $commandArgs[1]=[guid]::NewGuid().ToString('N');$commandArgs[2]='submit'
     $started=$method.Invoke($driver,$commandArgs) | ConvertFrom-Json
     Assert ($started.state -eq 'running' -and $script:sendCount -eq 1) 'Submission was not tracked.'
     [void]$method.Invoke($driver,$commandArgs)
@@ -122,8 +128,21 @@ try {
     Assert ((Get-Content -LiteralPath (Join-Path $folder 'summary.txt') -Raw).Contains('EX01 Excel')) 'Pasteable summary missing case.'
     Assert ((Get-Content -LiteralPath (Join-Path $folder 'summary.txt') -Raw).Contains('END_OF_ERROR')) 'Copy summary lost the first failure diagnostic.'
     $reportPath=[Scribble.Testing.TestLabSuiteReport]::Create($state,@($result))
-    Assert ($reportPath.EndsWith('report.html') -and (Test-Path $reportPath)) 'Suite must produce HTML without a PDF renderer.'
-    Assert (-not (Test-Path (Join-Path $folder 'report.pdf'))) 'Suite unexpectedly created a PDF.'
+    Assert ($reportPath.EndsWith('report.pdf') -and (Test-Path $reportPath) -and (Get-Item $reportPath).Length -gt 1000) 'Suite did not produce a standalone final PDF.'
+    Assert ([Scribble.Testing.TestLabPdfWriter]::IsValid($reportPath)) 'Suite PDF did not reopen successfully.'
+    $baseline=[PdfSharp.Pdf.IO.PdfReader]::Open($reportPath,[PdfSharp.Pdf.IO.PdfDocumentOpenMode]::Import)
+    try{$baselinePages=$baseline.PageCount}finally{$baseline.Dispose()}
+    $visualZip=Join-Path $folder 'visual-evidence.zip'
+    $visualArchive=[IO.Compression.ZipFile]::Open($visualZip,[IO.Compression.ZipArchiveMode]::Create)
+    try {
+        [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($visualArchive,$reportPath,'artifacts/native-output.pdf') | Out-Null
+        $corrupt=$visualArchive.CreateEntry('artifacts/corrupt-output.pdf').Open()
+        try{$corrupt.Write([byte[]](1,2,3,4),0,4)}finally{$corrupt.Dispose()}
+    } finally {$visualArchive.Dispose()}
+    $result.evidence=$visualZip
+    $reportPath=[Scribble.Testing.TestLabSuiteReport]::Create($state,@($result))
+    $combined=[PdfSharp.Pdf.IO.PdfReader]::Open($reportPath,[PdfSharp.Pdf.IO.PdfDocumentOpenMode]::Import)
+    try{Assert ($combined.PageCount -gt $baselinePages) 'Native PDF pages were not incorporated into the suite PDF.'}finally{$combined.Dispose()}
     $diagnostics=Get-Content -LiteralPath (Join-Path $folder 'diagnostics.txt') -Raw
     Assert ($diagnostics.Contains('<script>alert(1)</script>') -and $diagnostics.Contains('END_OF_ERROR')) 'Diagnostic text lost escaped error content.'
     Assert ([Scribble.Testing.TestLabSuiteReport]::ToText("<pre>a`r`nb`rc</pre>") -eq "`na`nb`nc`n") 'HTML clipboard line endings differ from diagnostic text.'
@@ -132,8 +151,8 @@ try {
     $reassembled=($parts | ForEach-Object { $_.Substring($_.IndexOf("`n")+1) }) -join ''
     Assert ($parts.Length -gt 1 -and $reassembled -ceq $payload) 'Relay chunks lost or duplicated diagnostic text.'
     Assert ($html.Contains('data-copy=') -and $html.Contains('script-src')) 'HTML relay controls missing.'
-    Write-Output "Suite HTML sample: $reportPath"
-    Write-Output 'PASS: 16 cases, exact phases, source ownership, lease expiry, Chrome controller exclusivity, startup stderr, ZIP traversal, suite report.'
+    Write-Output "Suite PDF sample: $reportPath"
+    Write-Output 'PASS: 16 cases, exact phases, source ownership, lease expiry, Chrome controller exclusivity, startup stderr, ZIP traversal, suite PDF report.'
 } finally {
     [Scribble.Testing.TestLabPreparation]::Stop($preparation)
     [Scribble.Testing.TestLab]::Disable()

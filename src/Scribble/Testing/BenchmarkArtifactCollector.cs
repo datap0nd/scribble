@@ -12,8 +12,9 @@ namespace Scribble.Testing
     // Invoked only by the operator window. Only documents tagged at creation by this run qualify.
     public static class BenchmarkArtifactCollector
     {
-        public static string Capture(string runId)
+        public static string Capture(string runId, string phase = "final")
         {
+            if (!new[] { "source", "intermediate", "final" }.Contains(phase)) throw new ArgumentException("Invalid capture phase.");
             var run = TestLab.GetRun(runId);
             var directory = Path.Combine(TestLab.RunDirectory(runId), "capture", Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(directory);
@@ -30,16 +31,18 @@ namespace Scribble.Testing
                         object value = documents.Item(i); dynamic document = value;
                         try
                         {
-                            if (!TestLab.IsRunOutput(value, run.run_id) && !TestLabSuite.OwnsNativeSource(run.run_id, Convert.ToString(document.FullName), kind)) continue;
-                            var stem = Path.Combine(directory, kind + "-" + i);
+                            var runOutput = TestLab.IsRunOutput(value, run.run_id);
+                            if (!runOutput && !TestLabSuite.OwnsNativeSource(run.run_id, Convert.ToString(document.FullName), kind)) continue;
+                            var stem = Path.Combine(directory, kind + "-" + phase + "-" + (runOutput ? "output" : "source") + "-" + i);
                             try {
                                 var readback = ReadNative(value, kind);
                                 File.WriteAllText(stem + "-readback.json", TestLab.Serialize(new { schema = 1, run_id = runId,
                                     host = kind, captured_utc = DateTime.UtcNow.ToString("O"), native_readback = true,
-                                    run_created_output = TestLab.IsRunOutput(value, runId), text = readback }), Encoding.UTF8);
+                                    phase = phase, run_created_output = runOutput, text = readback }), Encoding.UTF8);
                                 TestLab.Collect(runId, stem + "-readback.json");
                                 report.Add("Captured " + kind + " cell/text/structure readback.");
                             } catch (Exception ex) { report.Add(kind + " readback failed: " + ex.Message); }
+                            if (!runOutput) continue;
                             var extension = kind == "Excel" ? ".xlsx" : kind == "PowerPoint" ? ".pptx" : ".docx";
                             if (kind == "Excel") document.SaveCopyAs(stem + extension);
                             else if (kind == "PowerPoint") document.SaveCopyAs(stem + extension, 24);

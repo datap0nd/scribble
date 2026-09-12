@@ -22,6 +22,9 @@ foreach ($pattern in $forbidden) {
             -not ($_.Path -like '*\Testing\TestLabSuite.cs' -and
                 ($_.Line.Trim() -eq 'if (File.Exists(Descriptor)) File.Replace(temporary, Descriptor, null); else File.Move(temporary, Descriptor);' -or
                  $_.Line.Trim() -eq 'if (File.Exists(file)) File.Replace(temp, file, null); else File.Move(temp, file);')) -and
+            # Reporter-only cleanup of its fresh, validated staging directory.
+            -not ($_.Path -like '*\Testing\TestLabPdfWriter.cs' -and
+                $_.Line.Trim() -eq 'try { Directory.Delete(staging, true); } catch (IOException) { } catch (UnauthorizedAccessException) { }') -and
             -not ($pattern -eq "\.Delete\s*\(" -and
                 ($_.Path -like '*\Office\PresentationRevision.cs' -or $_.Path -like '*\Office\PresentationDraftWriter.Samsung.cs')) -and
             -not ($_.Path -like '*\Chat\TaskCoordinator.cs' -and

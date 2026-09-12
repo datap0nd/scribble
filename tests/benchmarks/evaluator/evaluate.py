@@ -62,28 +62,35 @@ def evaluate(run_zip,kit,review=None):
             reasoning=reasoning or bool(msg.get('reasoning_content') or msg.get('reasoning'))
             response_text.append(str(msg.get('content') or ''))
         except (ValueError,IndexError,TypeError):pass
-    artifacts={};available=set()
+    artifacts={};available=set();final_available=set()
     for name,data in files.items():
         if not name.startswith('artifacts/') or name.endswith('.receipt.json'):continue
         ext=Path(name).suffix.lstrip('.');available.add(ext)
+        if '-final-output-' in name:final_available.add(ext)
         if ext in ['xlsx','pptx','docx']:
             try:artifacts[name]=inspect_office(data,ext)
             except (ValueError,ET.ParseError,zipfile.BadZipFile) as e:check('readable_'+name,False,str(e))
-    for ext in case['artifacts']:check('required_'+ext,ext in available)
+    for ext in case['artifacts']:check('required_final_'+ext,ext in final_available,
+        'Only a final run-owned output satisfies the case; sources and intermediate captures cannot.')
     for name,item in artifacts.items():
         if name.endswith('.xlsx'):
             check('no_formula_errors_'+name,not item['formula_errors'])
             if case['id'] in ['EX01','EX04','XA01','RC01']:check('native_formulas_'+name,item['formula_count']>0)
             if case['id'] in ['EX01','EX04','XA01','XA03','RC01']:check('native_chart_'+name,item['chart_count']>0)
         if name.endswith('.pptx'):
-            expected=4 if case['id']=='PP02' else 6
+            expected=4 if case['id']=='PP02' and '-final-output-' in name else 6
             check('slide_count_'+name,item['slide_count'] in [expected,expected+1], 'Allows one preserved source slide; reviewer must verify draft count.')
             if case['id']!='PP03':check('source_notes_'+name,item['substantive_notes_count']>=expected)
-    joined='\n'.join(a['text'] for a in artifacts.values())+'\n'+'\n'.join(response_text)
-    numbers=[v for a in artifacts.values() for v in a['numbers']]
-    numbers += [float(x.replace(',','')) for x in re.findall(r'\b\d[\d,]*(?:\.\d+)?', '\n'.join(response_text))]
+    final_artifacts={name:item for name,item in artifacts.items() if '-final-output-' in name}
+    joined='\n'.join(a['text'] for a in final_artifacts.values())
+    numbers=[v for a in final_artifacts.values() for v in a['numbers']]
+    # Answer-only cases are evaluated from the response. Artifact cases must be
+    # correct in the final native output; a correct chat claim cannot mask it.
+    if not case['artifacts']:
+        joined+='\n'+'\n'.join(response_text)
+        numbers += [float(x.replace(',','')) for x in re.findall(r'\b\d[\d,]*(?:\.\d+)?', '\n'.join(response_text))]
     fact_keys={'EX01':[120000,130000,46000],'EX02':[120000],'EX03':[95000],'EX04':[50000,18000], 'PP01':[120000,130000,94], 'PP02':[120000,94],'OL01':[120000,94], 'XA01':[120000,130000,94], 'XA02':[120000,94], 'CH01':[94,97], 'XA03':[94], 'WD01':[120000,94], 'XA04':[120000], 'RB01':[120000],'RC01':[120000,94]}
-    for value in fact_keys.get(case['id'],[]):check('required_fact_'+str(value),any(abs(v-value)<.011 for v in numbers),'Presence check; verify metric association and absence of contradictory claims in native review.')
+    for value in fact_keys.get(case['id'],[]):check('required_final_fact_'+str(value),any(abs(v-value)<.011 for v in numbers),'Checked in final run-owned artifacts for artifact cases; verify metric association and contradictory claims in native review.')
     failures=[c for c in checks if c['hard'] and not c['passed']]
     required_review=['source_preserved','native_recalculated','claims_grounded','metric_associations_correct','layout_legible','task_complete','unsent_only','attachments_correct','no_false_completion']
     review_valid=review is not None and review.get('run_sha256')==digest(Path(run_zip).read_bytes()) and all(review.get(k) is True for k in required_review)

@@ -1,5 +1,22 @@
 # Release notes
 
+## Reliable three-action Test Lab
+
+The temporary Test entry point now opens or focuses one idle window and makes
+no model request until **Start**. The window exposes exactly **Start**, **Stop**,
+and **View final PDF**; Stop prevents later submissions and preserves partial
+evidence while mandatory finalization completes.
+
+Suite reports are generated locally with PDFsharp, reopened before the View
+action is enabled, and include deterministic findings, the retained diagnostic
+trace, and usable native PDF/PNG output pages. Preparation now distinguishes
+origin-pane requirements from supporting readers and native destinations,
+attempts one bounded reconnect for an inactive origin add-in, uses verified
+aliases for same-name Excel conflicts, and closes only captured run-owned
+resources after evidence is sealed. Source, prerequisite, and final captures
+are labeled separately, and final-output checks can no longer be satisfied by
+chat claims or intermediate artifacts.
+
 ## User-supplied domain navigation (extension 1.5.2)
 
 When the user types a bare domain such as `samsungtradein.ae`, Scribble now

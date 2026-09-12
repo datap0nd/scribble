@@ -83,6 +83,19 @@ Source: "..\marketing\assets\word.png"; Flags: dontcopy noencryption
 Source: "..\marketing\assets\chrome.png"; Flags: dontcopy noencryption
 Source: "..\src\Scribble\bin\Release\Scribble.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\src\Scribble\bin\Release\ExcelDataReader.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\src\Scribble\bin\Release\PdfSharp-gdi.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\src\Scribble\bin\Release\PdfSharp.System.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "..\src\Scribble\bin\Release\PdfSharp.Cryptography.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "..\src\Scribble\bin\Release\PdfSharp.Shared.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "..\src\Scribble\bin\Release\Microsoft.Extensions.Logging.Abstractions.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\src\Scribble\bin\Release\System.Security.Cryptography.Pkcs.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\src\Scribble\bin\Release\Microsoft.Extensions.DependencyInjection.Abstractions.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\src\Scribble\bin\Release\Microsoft.Bcl.AsyncInterfaces.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\src\Scribble\bin\Release\System.Buffers.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\src\Scribble\bin\Release\System.Memory.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\src\Scribble\bin\Release\System.Numerics.Vectors.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\src\Scribble\bin\Release\System.Runtime.CompilerServices.Unsafe.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\src\Scribble\bin\Release\System.Threading.Tasks.Extensions.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\THIRD_PARTY_NOTICES.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\src\Scribble\bin\Release\Microsoft.Web.WebView2.Core.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\src\Scribble\bin\Release\Microsoft.Web.WebView2.WinForms.dll"; DestDir: "{app}"; Flags: ignoreversion

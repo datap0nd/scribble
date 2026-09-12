@@ -23,7 +23,7 @@ foreach ($case in $cases) {
     $plans[$case.id]=$plan
 }
 Assert ($plans.XA01.apps -contains 'Excel' -and $plans.XA01.apps -contains 'PowerPoint' -and $plans.XA01.mail_paths.Count -eq 3) 'Email-to-deck setup incomplete.'
-Assert ($plans.PP02.documents -contains 'inputs/powerpoint/Atlas-start.pptx' -and $plans.PP02.documents -contains 'inputs/data/sales.csv') 'Prerequisite files missing.'
+Assert ($plans.PP02.documents -contains 'inputs/powerpoint/Atlas-start.pptx' -and -not ($plans.PP02.apps -contains 'Excel')) 'Supporting CSV incorrectly created an Excel pane prerequisite.'
 Assert ($plans.XA03.apps -contains 'Chrome' -and $plans.XA03.apps -contains 'Excel' -and $plans.XA03.apps -contains 'Outlook') 'Browser handoff apps missing.'
 $worker=$null;$duplicate=$null
 try {
