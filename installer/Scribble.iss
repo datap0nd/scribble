@@ -459,6 +459,7 @@ Root: HKCU64; Subkey: "Software\Microsoft\Office\Word\Addins\{#WordProgId}"; Val
 Root: HKCU64; Subkey: "Software\Microsoft\Office\Word\Addins\{#WordProgId}"; ValueType: dword; ValueName: "CommandLineSafe"; ValueData: "0"; Check: IsWin64; Components: word
 
 [Icons]
+Name: "{group}\Scribble Test Lab"; Filename: "{app}\ScribbleBrowserHost.exe"; Parameters: "--test-lab-suite"; WorkingDir: "{app}"
 Name: "{group}\Set up Scribble in Google Chrome"; Filename: "{app}\ScribbleBrowserHost.exe"; Parameters: "--setup chrome"; Components: browser
 
 [Run]

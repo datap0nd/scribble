@@ -37,7 +37,9 @@ try {
  $run=[Scribble.Testing.TestLab]::Start('EX01','Excel',$true)
  [Scribble.Testing.TestLab]::Record($run.run_id,'synthetic','task_started',@{note='Launch/recovery regression only; no Office or model request'})
  $before=@(Get-Process ScribbleBrowserHost -ErrorAction SilentlyContinue | ForEach-Object Id)
- [Scribble.Testing.TestLabSuiteWindow]::Open()
+ # Exercise the installed Start-menu command, which intentionally generates
+ # its own launch nonce instead of requiring an Office add-in to provide one.
+ $started=[Diagnostics.Process]::Start((Join-Path $bin 'ScribbleBrowserHost.exe'),'--test-lab-suite')
  for($i=0;$i -lt 60;$i++) {
   $child=Get-Process ScribbleBrowserHost -ErrorAction SilentlyContinue | Where-Object { $_.Id -notin $before } | Select-Object -First 1
   if($child) { $child.Refresh(); if($child.MainWindowTitle -like '*idle*' -and $child.MainWindowHandle -ne [IntPtr]::Zero){break} }
@@ -60,7 +62,7 @@ try {
  Assert ($report.EndsWith('.pdf') -and [Scribble.Testing.TestLabPdfWriter]::IsValid($report)) 'Recovery did not create a valid PDF.'
  Assert ((Get-Content (Join-Path $folder 'report.html') -Raw).Contains('Recovered after the operator closed')) 'Recovery did not preserve the incomplete status.'
  Assert ($null -eq [Scribble.Testing.TestLab]::Status()) 'Recovery did not release the old capture.'
- Write-Output 'PASS: one idle three-action window, rapid-click focus, no launch inference, live-host recovery refusal, incomplete PDF, capture release.'
+ Write-Output 'PASS: standalone Start-menu launch, one idle three-action window, rapid-click focus, no launch inference, live-host recovery refusal, incomplete PDF, capture release.'
 } finally {
  if($child -and -not $child.HasExited){[void]$child.CloseMainWindow();if(-not $child.WaitForExit(3000)){$child.Kill()}}
  [Scribble.Testing.TestLab]::Disable()
