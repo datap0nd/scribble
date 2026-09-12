@@ -36,7 +36,21 @@ namespace Scribble.Testing
             bool ready, Func<bool> busy, Action reset, Action<LabCase> load, Func<string, Task> send, Action stop)
         {
             var suite = TestLabSuite.Require(suiteId, host);
-            if (action == "stop") { stop(); WriteReceipt(suite.runId, id, "stop", phase, host, "running", error); return TestLab.Serialize(new SuiteReply { state = busy() || state == "running" ? "running" : "done", error = error }); }
+            if (action == "stop")
+            {
+                stop();
+                var stopped = !busy();
+                // The original submit receipt is the crash-recovery authority.
+                // Leaving it at "running" after the pane is idle permanently
+                // latches Test Lab even though there is no live request.
+                if (stopped && runId == suite.runId && commandAction == "submit" && !string.IsNullOrEmpty(commandId))
+                {
+                    state = "stopped";
+                    WriteReceipt(runId, commandId, commandAction, commandPhase, commandHost, state, error);
+                }
+                WriteReceipt(suite.runId, id, "stop", phase, host, stopped ? "done" : "running", error);
+                return TestLab.Serialize(new SuiteReply { state = stopped ? "done" : "running", error = error });
+            }
             if (!ready) return TestLab.Serialize(new SuiteReply { state = "initializing" });
             // The Office process owns the live request. Its memory is the
             // authority for retries and status polling; disk receipts exist

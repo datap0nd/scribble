@@ -33,6 +33,7 @@ namespace Scribble.Testing
         private readonly Button startButton;
         private readonly Button stopButton;
         private readonly Button reportButton;
+        private readonly TextBox caseFilter = new TextBox { Width = 90 };
         private bool running;
         private bool finalizing;
 
@@ -122,11 +123,14 @@ namespace Scribble.Testing
             startButton = Add(actions, "Start", async () => await StartRun());
             stopButton = Add(actions, "Stop", Stop);
             reportButton = Add(actions, "View final PDF", ViewReport);
-            var details = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 98, Padding = new Padding(10), FlowDirection = FlowDirection.TopDown, WrapContents = false };
+            var details = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 150, Padding = new Padding(10), FlowDirection = FlowDirection.TopDown, WrapContents = false };
             var configured = "not configured";
             try { configured = new SettingsStore().Load().Model; if (string.IsNullOrWhiteSpace(configured)) configured = "not configured"; } catch { }
             details.Controls.Add(new Label { AutoSize = true, Font = new Font(Font, FontStyle.Bold), Text = "Configured model: " + configured });
             details.Controls.Add(status); details.Controls.Add(progress); details.Controls.Add(currentCase); details.Controls.Add(elapsed);
+            var scope = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
+            scope.Controls.Add(new Label { AutoSize = true, Margin = new Padding(0, 5, 6, 0), Text = "Case ID (blank = all):" });
+            scope.Controls.Add(caseFilter); details.Controls.Add(scope);
             Controls.Add(log); Controls.Add(details); Controls.Add(actions);
             finalPdf = ReadLastReport();
             var unfinished = TestLab.ActiveRunId();
@@ -209,7 +213,8 @@ namespace Scribble.Testing
             status.Text = "Starting — acquiring run ownership and preflight."; startButton.Enabled = false; stopButton.Enabled = true; reportButton.Enabled = false;
             Append("Test Lab runner " + FileVersionInfo.GetVersionInfo(typeof(TestLab).Assembly.Location).FileVersion);
             Append("Results: " + folder);
-            var runner = new TestLabSuiteRunner(folder, Append, cancellation.Token); activeRunner = runner;
+            caseFilter.Enabled = false;
+            var runner = new TestLabSuiteRunner(folder, Append, cancellation.Token, caseFilter.Text); activeRunner = runner;
             try { await RunOnSta(runner.Run); }
             catch (Exception error) { runner.Log("Cannot run suite: " + error); }
             running = false; finalizing = true; status.Text = "Finalizing — creating and validating the current run PDF.";
@@ -232,6 +237,7 @@ namespace Scribble.Testing
             finally
             {
                 finalizing = false; activeRunner = null; startButton.Enabled = TestLab.ActiveRunId() == null;
+                caseFilter.Enabled = true;
                 stopButton.Enabled = TestLab.ActiveRunId() != null; reportButton.Enabled = TestLabPdfWriter.IsValid(finalPdf);
                 Text = "Scribble Test Lab — " + (reportButton.Enabled ? "finished" : "reporting failed");
             }
@@ -327,7 +333,9 @@ namespace Scribble.Testing
             var summary = new StringBuilder("SCRIBBLE TEST LAB\nRunner build: " + FileVersionInfo.GetVersionInfo(typeof(TestLab).Assembly.Location).FileVersion + "\nSuite: " + s.id + "\nMain: " + s.commit + "\nKit SHA256: " + s.kitHash + "\nResults: " + s.folder + "\n");
             summary.AppendLine("Needs review: " + results.Count(r => r.status == "needs_review") + " | Deterministic failures: " + results.Count(r => r.status == "failed") + " | Blocked/stopped: " + results.Count(r => r.status == "blocked" || r.status == "stopped" || r.status == "incomplete") + " | Not run: " + results.Count(r => r.status == "not_run"));
             summary.AppendLine("Completion is not a correctness pass. See native output and visual review in the evidence.");
-            foreach (var r in results) summary.AppendLine(r.id + " " + r.host + " — " + r.status + (string.IsNullOrEmpty(r.error) ? "" : " — " + (r.error.Split('\n')[0].Length > 140 ? r.error.Split('\n')[0].Substring(0, 140) + "…" : r.error.Split('\n')[0])));
+            foreach (var r in results) summary.AppendLine(r.id + " " + r.host + " — " + r.status +
+                (string.IsNullOrEmpty(r.failureKind) ? "" : " [" + r.failureKind + "]") +
+                (string.IsNullOrEmpty(r.error) ? "" : " — " + (r.error.Split('\n')[0].Length > 140 ? r.error.Split('\n')[0].Substring(0, 140) + "…" : r.error.Split('\n')[0])));
             if (results.Length == 0) summary.AppendLine("No cases ran. See the startup/download error below.");
             var logPath = Path.Combine(s.folder, "suite.log"); var log = File.Exists(logPath) ? File.ReadAllText(logPath) : "No suite log was produced.";
             if (results.Length == 0) summary.AppendLine(log.Length > 1600 ? log.Substring(0, 1600) + "\n[Full error in the HTML log]" : log);

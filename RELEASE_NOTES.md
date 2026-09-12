@@ -1,5 +1,11 @@
 # Release notes
 
+Test Lab now supports a single-case scope for host-by-host diagnosis, labels
+environment, model, evidence, correctness, and harness failures separately, and
+terminalizes the original submit receipt when the visible pane confirms it is
+idle after Stop. This prevents an already-stopped request from permanently
+locking later recovery attempts.
+
 Test Lab's final review PDF is now a concise summary with a hard maximum of ten
 pages. Full logs, model responses, and native evidence remain beside it in
 `diagnostics.txt`, `report.html`, and the case evidence ZIPs instead of being

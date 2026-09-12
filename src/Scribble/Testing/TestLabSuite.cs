@@ -24,7 +24,7 @@ namespace Scribble.Testing
     }
     public sealed class SuiteCaseResult
     {
-        public string id, host, status = "not_run", error, started, finished, evidence, evaluation, evaluationStatus;
+        public string id, host, status = "not_run", failureKind, error, started, finished, evidence, evaluation, evaluationStatus;
     }
     public sealed class SuiteChromeCommand
     {
@@ -101,6 +101,29 @@ namespace Scribble.Testing
                 new[] { "audience", "period", "currency", "format" }.Contains(p.Key) &&
                 Regex.IsMatch(question ?? "", @"\b" + p.Key + @"\b", RegexOptions.IgnoreCase)).Select(p => p.Value).ToArray();
             return known.Length == 0 ? null : string.Join("; ", known);
+        }
+        public static LabCase[] SelectCases(LabCase[] cases, string caseId)
+        {
+            cases = cases ?? new LabCase[0];
+            caseId = (caseId ?? "").Trim();
+            if (caseId.Length == 0) return cases;
+            if (!Regex.IsMatch(caseId, "^[A-Za-z]{2}[0-9]{2}$"))
+                throw new InvalidDataException("Case ID must look like EX01, PP01, or CH01.");
+            var selected = cases.Where(c => string.Equals(c.id, caseId, StringComparison.OrdinalIgnoreCase)).ToArray();
+            if (selected.Length != 1)
+                throw new InvalidDataException("Case " + caseId.ToUpperInvariant() + " is not present in the downloaded kit.");
+            return selected;
+        }
+        public static string ClassifyFailure(Exception error, bool submitted)
+        {
+            if (error is OperationCanceledException) return "stopped";
+            var text = Convert.ToString(error).ToLowerInvariant();
+            if (text.Contains("model requested") || text.Contains("task_needs_recovery") ||
+                text.Contains("tool_arguments_invalid") || text.Contains("repeated actions")) return "model";
+            if (!submitted || error is COMException || error is TimeoutException ||
+                text.Contains("rpc server") || text.Contains("remote procedure call") ||
+                text.Contains("automation object") || text.Contains("preparation failed")) return "environment";
+            return "harness";
         }
         public static bool OwnsSource(string runId, string path)
         {
@@ -200,9 +223,12 @@ namespace Scribble.Testing
         private dynamic controller;
         private string preparation;
         private bool keepCaptureActive;
+        private readonly string caseFilter;
         internal TestLabSuiteRunner(string folder, Action<string> changed, CancellationToken cancel)
+            : this(folder, changed, cancel, null) { }
+        internal TestLabSuiteRunner(string folder, Action<string> changed, CancellationToken cancel, string caseFilter)
         {
-            this.changed = changed; this.cancel = cancel;
+            this.changed = changed; this.cancel = cancel; this.caseFilter = caseFilter;
             using (var p = Process.GetCurrentProcess()) State = new SuiteState { id = Guid.NewGuid().ToString("N"), folder = folder, pid = p.Id, processStart = p.StartTime.ToUniversalTime().Ticks, expires = DateTime.UtcNow.AddHours(8) };
         }
         internal void Log(string message)
@@ -222,9 +248,11 @@ namespace Scribble.Testing
                     Log("Downloading the latest test kit from main...");
                     var zip = await Task.Run(() => TestLabSuite.DownloadKit(State, cancel));
                     var catalog = await Task.Run(() => TestLabSuite.Extract(zip, Path.Combine(State.folder, "catalog")));
-                    var cases = TestLabSuite.Read<LabCase[]>(Path.Combine(catalog, "operator", "cases.json"));
+                    var catalogCases = TestLabSuite.Read<LabCase[]>(Path.Combine(catalog, "operator", "cases.json"));
+                    var cases = TestLabSuite.SelectCases(catalogCases, caseFilter);
                     Results.AddRange(cases.Select(c => new SuiteCaseResult { id = c.id, host = c.host }));
-                    Log("Verified kit " + State.kitHash + " at main " + State.commit + "; " + cases.Length + " cases.");
+                    Log("Verified kit " + State.kitHash + " at main " + State.commit + "; " + catalogCases.Length +
+                        " cases. Execution scope: " + (cases.Length == catalogCases.Length ? "all cases" : cases[0].id + " only") + ".");
                     foreach (var c in cases) {
                         cancel.ThrowIfCancellationRequested();
                         var result = Results.Single(r => r.id == c.id); result.started = DateTime.UtcNow.ToString("O"); result.status = "running";
@@ -255,10 +283,12 @@ namespace Scribble.Testing
                                 }
                             }
                             quiescent = true;
-                            result.status = "needs_review";
+                            result.status = "needs_review"; result.failureKind = "review";
                             Log(c.id + ": model finished; saving native results and evidence (correctness needs review).");
                         } catch (Exception e) {
-                            result.status = cancel.IsCancellationRequested ? "stopped" : "blocked"; result.error = e.ToString(); Log(c.id + " " + result.status.ToUpperInvariant() + ": " + e.Message);
+                            result.status = cancel.IsCancellationRequested ? "stopped" : "blocked";
+                            result.failureKind = TestLabSuite.ClassifyFailure(e, submitted);
+                            result.error = e.ToString(); Log(c.id + " " + result.status.ToUpperInvariant() + " [" + result.failureKind + "]: " + e.Message);
                             if (submitted) {
                                 try { await Command("stop", 0, 60, false); quiescent = true; }
                                 catch (Exception stopError) { quiescent = false; Log("Could not confirm that the model stopped: " + stopError.Message); }
@@ -268,7 +298,7 @@ namespace Scribble.Testing
                             try { TestLabPreparation.Stop(preparation); } catch (Exception e) { Log("Preparation helper stop error: " + e.Message); }
                             preparation = null;
                             if (State.runId != null) {
-                                try { Log(BenchmarkArtifactCollector.Capture(State.runId, "final")); captureComplete = true; } catch (Exception e) { Log("Output capture error: " + e.Message); result.error += "\nOutput capture: " + e; result.status = "blocked"; }
+                                try { Log(BenchmarkArtifactCollector.Capture(State.runId, "final")); captureComplete = true; } catch (Exception e) { Log("Output capture error: " + e.Message); result.error += "\nOutput capture: " + e; result.status = "blocked"; result.failureKind = "evidence"; }
                                 try {
                                     if (result.status != "needs_review") TestLab.MarkIncomplete(State.runId, result.error ?? result.status);
                                     if (quiescent) { TestLab.Finish(false); result.evidence = TestLab.Export(State.runId, folder); }
@@ -276,16 +306,16 @@ namespace Scribble.Testing
                                     using (var evidence = ZipFile.OpenRead(result.evidence)) using (var reader = new StreamReader(evidence.GetEntry("run.json").Open())) {
                                         var exported = new JavaScriptSerializer().Deserialize<LabRun>(reader.ReadToEnd());
                                         if (result.status == "needs_review" && (exported.missing_artifacts.Length > 0 || !exported.trace_complete)) {
-                                            result.status = "incomplete"; result.error = "Missing outputs: " + string.Join(", ", exported.missing_artifacts) + "; trace complete: " + exported.trace_complete;
+                                            result.status = "incomplete"; result.failureKind = "evidence"; result.error = "Missing outputs: " + string.Join(", ", exported.missing_artifacts) + "; trace complete: " + exported.trace_complete;
                                         }
                                     }
                                     var evaluated = TestLabEvaluator.Evaluate(result.evidence, folder);
                                     result.evaluation = Path.Combine(folder, "evaluation.json"); result.evaluationStatus = evaluated.status;
-                                    if (evaluated.status == "failed" && result.status == "needs_review") result.status = "failed";
+                                    if (evaluated.status == "failed" && result.status == "needs_review") { result.status = "failed"; result.failureKind = "correctness"; }
                                     File.WriteAllText(Path.Combine(folder, "report.html"), TestLabReport.BuildHtml(result.evidence, Path.Combine(folder, "summary.txt")), new UTF8Encoding(false));
-                                } catch (Exception e) { result.status = "blocked"; result.error += "\nEvidence export: " + e; Log("Evidence export error: " + e.Message); }
+                                } catch (Exception e) { result.status = "blocked"; result.failureKind = "evidence"; result.error += "\nEvidence export: " + e; Log("Evidence export error: " + e.Message); }
                                 if (quiescent && captureComplete && !string.IsNullOrEmpty(result.evidence))
-                                    try { CleanupCaseResources(); } catch (Exception e) { result.status = "incomplete"; result.error += "\nCleanup: " + e; Log("Owned resource cleanup error: " + e.Message); }
+                                    try { CleanupCaseResources(); } catch (Exception e) { result.status = "incomplete"; result.failureKind = "harness"; result.error += "\nCleanup: " + e; Log("Owned resource cleanup error: " + e.Message); }
                             }
                             result.finished = DateTime.UtcNow.ToString("O"); Journal();
                             if (application != null && Marshal.IsComObject(application)) Marshal.ReleaseComObject(application);

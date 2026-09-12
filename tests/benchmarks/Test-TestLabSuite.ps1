@@ -45,6 +45,12 @@ try {
     }
     Assert ([Scribble.Testing.TestLabSuite]::PresetAnswer($cases[0],'Which currency?') -eq 'EUR excluding tax') 'Kit preset answer not used.'
     Assert ($null -eq [Scribble.Testing.TestLabSuite]::PresetAnswer($cases[0],'Should I contact someone?')) 'Invented a response outside the kit presets.'
+    $single=@([Scribble.Testing.TestLabSuite]::SelectCases($cases,'ex03'))
+    Assert ($single.Count -eq 1 -and $single[0].id -eq 'EX03') 'Single-case execution scope was not selected.'
+    Reject { [Scribble.Testing.TestLabSuite]::SelectCases($cases,'missing') } 'Malformed single-case scope was accepted.'
+    Reject { [Scribble.Testing.TestLabSuite]::SelectCases($cases,'EX99') } 'Unknown single-case scope was accepted.'
+    Assert ([Scribble.Testing.TestLabSuite]::ClassifyFailure([Runtime.InteropServices.COMException]::new('RPC failed'),$true) -eq 'environment') 'COM failure was not separated from model correctness.'
+    Assert ([Scribble.Testing.TestLabSuite]::ClassifyFailure([InvalidOperationException]::new('[TASK_NEEDS_RECOVERY] Repeated actions'),$true) -eq 'model') 'Model recovery failure was misclassified.'
     $run=[Scribble.Testing.TestLab]::Start('EX01','Excel',$true)
     $state.caseId='EX01';$state.host='Excel';$state.runId=$run.run_id
     [Scribble.Testing.TestLabSuite]::Save($state)
@@ -79,13 +85,14 @@ try {
     $driver=[Activator]::CreateInstance($driverType,$true)
     $script:sendCount=0;$script:stopCount=0
     $pending=New-Object 'Threading.Tasks.TaskCompletionSource[bool]'
-    $busy=[Func[bool]]{return $false};$reset=[Action]{};$load=[Action[Scribble.Testing.LabCase]]{}
-    $send=[Func[string,Threading.Tasks.Task]]{param($prompt);$script:sendCount++;return $pending.Task}
+    $script:requestBusy=$false;$busy=[Func[bool]]{return $script:requestBusy};$reset=[Action]{};$load=[Action[Scribble.Testing.LabCase]]{}
+    $send=[Func[string,Threading.Tasks.Task]]{param($prompt);$script:sendCount++;$script:requestBusy=$true;return $pending.Task}
     $stop=[Action]{$script:stopCount++}
     $commandArgs=@($state.id,[guid]::NewGuid().ToString('N'),'load',0,'Excel',$true,$busy,$reset,$load,$send,$stop)
     $loaded=$method.Invoke($driver,$commandArgs) | ConvertFrom-Json
     Assert ($loaded.state -eq 'done') 'Pane did not load.'
     $commandArgs[1]=[guid]::NewGuid().ToString('N');$commandArgs[2]='submit'
+    $submitId=$commandArgs[1]
     $started=$method.Invoke($driver,$commandArgs) | ConvertFrom-Json
     Assert ($started.state -eq 'running' -and $script:sendCount -eq 1) 'Submission was not tracked.'
     [void]$method.Invoke($driver,$commandArgs)
@@ -95,15 +102,20 @@ try {
     $commandArgs[2]='status'
     $drmStatus=$method.Invoke($driver,$commandArgs) | ConvertFrom-Json
     Assert ($drmStatus.state -eq 'running' -and $script:sendCount -eq 1) 'A DRM-corrupted diagnostic receipt escaped the in-memory live status path.'
-    $commandArgs[2]='stop'
+    $commandArgs[1]=[guid]::NewGuid().ToString('N');$commandArgs[2]='stop'
     $stopping=$method.Invoke($driver,$commandArgs) | ConvertFrom-Json
     Assert ($stopping.state -eq 'running' -and $script:stopCount -eq 1) 'Stop falsely claimed the async operation finished.'
+    $script:requestBusy=$false
+    $stopped=$method.Invoke($driver,$commandArgs) | ConvertFrom-Json
+    Assert ($stopped.state -eq 'done' -and $script:stopCount -eq 2) 'An idle pane did not confirm cancellation.'
     Assert ((Get-Content -LiteralPath $receiptPath -Raw).StartsWith('{')) 'The runner transport did not replace a DRM-corrupted receipt with plaintext JSON.'
+    $terminalReceipt=Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
+    Assert ($terminalReceipt.action -eq 'submit' -and $terminalReceipt.state -eq 'stopped') 'Stop left the original submit receipt latched as running.'
     $eventPayloads=Get-ChildItem -LiteralPath (Join-Path ([Scribble.Testing.TestLab]::RunDirectory($run.run_id)) 'events') -Filter '*.bin' | ForEach-Object {
         [Text.Encoding]::UTF8.GetString([Security.Cryptography.ProtectedData]::Unprotect([IO.File]::ReadAllBytes($_.FullName),$null,[Security.Cryptography.DataProtectionScope]::CurrentUser))
     }
     Assert (($eventPayloads -join "`n").Contains('host_connected')) 'The runner transport did not persist the Office trace event.'
-    $pending.SetResult($true);$commandArgs[2]='status'
+    $pending.SetResult($true);$commandArgs[1]=$submitId;$commandArgs[2]='status'
     for($i=0;$i -lt 100;$i++) { $done=$method.Invoke($driver,$commandArgs) | ConvertFrom-Json;if($done.state -eq 'done'){break};Start-Sleep -Milliseconds 10 }
     Assert ($done.state -eq 'done') 'Completed task remained running.'
     [Scribble.Testing.TestLab]::Finish($false)

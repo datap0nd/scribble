@@ -137,6 +137,7 @@ namespace Scribble.Testing
                 var error = FirstLine(result.error);
                 if (error.Length > 240) error = error.Substring(0, 240) + "...";
                 text.AppendLine(result.id + " | " + result.host + " | " + result.status +
+                    (string.IsNullOrEmpty(result.failureKind) ? "" : " | " + result.failureKind) +
                     (string.IsNullOrEmpty(error) ? "" : " | " + error));
             }
             if (results.Length == 0) text.AppendLine("No cases ran. See suite.log for the startup or download failure.");
