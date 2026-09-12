@@ -76,6 +76,10 @@ namespace Scribble.Testing
         }
         public static void Enable(string fixtureRoot)
         {
+            Enable(fixtureRoot, null, 0, 0);
+        }
+        internal static void Enable(string fixtureRoot, string transportPipe, int transportPid, long transportProcessStart)
+        {
             fixtureRoot = Path.GetFullPath(fixtureRoot);
             var manifest = VerifyKit(fixtureRoot);
             using (SessionLock())
@@ -83,7 +87,8 @@ namespace Scribble.Testing
                 var current = Status();
                 if (current != null && !string.IsNullOrEmpty(current.run_id)) throw new InvalidOperationException("Finish the active case before enabling another kit.");
                 SaveSession(new LabSession { schema = 1, session_id = Guid.NewGuid().ToString("N"), fixture_root = fixtureRoot,
-                    manifest_sha256 = FileHash(Path.Combine(fixtureRoot, "manifest.json")), expires_utc = DateTime.UtcNow.AddHours(8), suite_id = manifest.suite_id });
+                    manifest_sha256 = FileHash(Path.Combine(fixtureRoot, "manifest.json")), expires_utc = DateTime.UtcNow.AddHours(8), suite_id = manifest.suite_id,
+                    transport_pipe = transportPipe, transport_pid = transportPid, transport_process_start = transportProcessStart });
             }
         }
         public static void Disable()
@@ -240,35 +245,55 @@ namespace Scribble.Testing
             if (s == null || s.run_id != runId) return;
             try
             {
-                var folder = RunDirectory(runId);
-                if (Directory.GetFiles(folder, "incomplete-*.json").Length != 0) return;
-                var events = Path.Combine(folder, "events");
-                if (Directory.GetFiles(events).Sum(p => new FileInfo(p).Length) > 250L * 1024 * 1024)
-                { MarkIncomplete(runId, "Trace quota exceeded. Recording stopped."); return; }
                 string payload;
                 lock (Gate) payload = Redact(Json.Serialize(new { schema = 1, run_id = runId, task_id = taskId, stage,
                     instance_id = Instance, process_id = Process.GetCurrentProcess().Id, sequence = ++sequence,
                     utc = DateTime.UtcNow.ToString("O"), monotonic_ticks = Stopwatch.GetTimestamp(),
                     monotonic_frequency = Stopwatch.Frequency, detail }));
-                var encrypted = ProtectedData.Protect(Encoding.UTF8.GetBytes(payload), null, DataProtectionScope.CurrentUser);
-                var path = Path.Combine(events, Instance + "-" + Guid.NewGuid().ToString("N") + ".bin");
-                var temporary = path + ".writing";
-                // Exporters enumerate only committed .bin files. Publishing
-                // after a durable, exclusive write prevents a snapshot from
-                // attempting to decrypt a partially written DPAPI payload. A
-                // failed .writing file remains as narrow forensic evidence.
-                using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
-                { stream.Write(encrypted, 0, encrypted.Length); stream.Flush(true); }
-                File.Move(temporary, path);
-                var activePath = Path.Combine(folder, "task-" + Hash(Encoding.UTF8.GetBytes(taskId ?? "")) + ".active");
-                if (stage == "task_started" || stage == "task_resumed") File.WriteAllText(activePath, taskId);
-                if ((stage == "task_completed" || stage == "task_paused") && File.Exists(activePath)) File.Delete(activePath);
+                using (var process = Process.GetCurrentProcess())
+                {
+                    if (!string.IsNullOrEmpty(s.transport_pipe) &&
+                        (s.transport_pid != process.Id || s.transport_process_start != process.StartTime.ToUniversalTime().Ticks))
+                        TestLabTransport.Send(s.transport_pipe, "event", runId, "", payload);
+                    else PersistTransportedEvent(runId, payload);
+                }
             }
             catch (Exception e)
             {
                 try { MarkIncomplete(runId, "Trace write failed: " + e.GetType().Name); } catch { }
                 throw new IOException("Benchmark capture failed; stop this case and export the incomplete evidence.", e);
             }
+        }
+        internal static void PersistTransportedEvent(string runId, string payload)
+        {
+            Id(runId);
+            Dictionary<string, object> record;
+            lock (Gate) record = Json.Deserialize<Dictionary<string, object>>(payload);
+            object value;
+            if (record == null || !record.TryGetValue("run_id", out value) || Convert.ToString(value) != runId)
+                throw new InvalidDataException("Transported event run ID mismatch.");
+            var s = Status();
+            if (s == null || s.run_id != runId) throw new InvalidOperationException("Transported event is not for the active run.");
+            var folder = RunDirectory(runId);
+            if (Directory.GetFiles(folder, "incomplete-*.json").Length != 0) return;
+            var events = Path.Combine(folder, "events");
+            if (Directory.GetFiles(events).Sum(p => new FileInfo(p).Length) > 250L * 1024 * 1024)
+            { MarkIncomplete(runId, "Trace quota exceeded. Recording stopped."); return; }
+            var instance = record.TryGetValue("instance_id", out value) ? Convert.ToString(value) : "";
+            if (!Regex.IsMatch(instance ?? "", "^[a-f0-9]{32}$")) throw new InvalidDataException("Invalid transported event instance.");
+            var taskId = record.TryGetValue("task_id", out value) ? Convert.ToString(value) : "";
+            var stage = record.TryGetValue("stage", out value) ? Convert.ToString(value) : "";
+            var encrypted = ProtectedData.Protect(Encoding.UTF8.GetBytes(payload), null, DataProtectionScope.CurrentUser);
+            var path = Path.Combine(events, instance + "-" + Guid.NewGuid().ToString("N") + ".bin");
+            var temporary = path + ".writing";
+            // The unhooked suite runner is the only writer when a transport is
+            // configured, so Office DRM never sees the trace file creation.
+            using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            { stream.Write(encrypted, 0, encrypted.Length); stream.Flush(true); }
+            File.Move(temporary, path);
+            var activePath = Path.Combine(folder, "task-" + Hash(Encoding.UTF8.GetBytes(taskId ?? "")) + ".active");
+            if (stage == "task_started" || stage == "task_resumed") File.WriteAllText(activePath, taskId);
+            if ((stage == "task_completed" || stage == "task_paused") && File.Exists(activePath)) File.Delete(activePath);
         }
         public static void Marker(string text)
         { var id = ActiveRunId(); if (id == null) throw new InvalidOperationException("No active run."); Record(id, "operator", "video_marker", new { text }); }
@@ -373,7 +398,7 @@ namespace Scribble.Testing
         }
     }
     public sealed class LabSession
-    { public int schema { get; set; } public string session_id { get; set; } public string suite_id { get; set; } public string fixture_root { get; set; } public string manifest_sha256 { get; set; } public DateTime expires_utc { get; set; } public string run_id { get; set; } }
+    { public int schema { get; set; } public string session_id { get; set; } public string suite_id { get; set; } public string fixture_root { get; set; } public string manifest_sha256 { get; set; } public DateTime expires_utc { get; set; } public string run_id { get; set; } public string transport_pipe { get; set; } public int transport_pid { get; set; } public long transport_process_start { get; set; } }
     public sealed class KitManifest
     { public int schema { get; set; } public string suite_id { get; set; } public KitFile[] files { get; set; } }
     public sealed class KitFile

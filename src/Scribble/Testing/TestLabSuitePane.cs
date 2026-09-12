@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Threading.Tasks;
+using System.Web.Script.Serialization;
 
 namespace Scribble.Testing
 {
@@ -13,6 +14,9 @@ namespace Scribble.Testing
         private string state = "ready";
         private string error;
         private string runId;
+        private string commandAction;
+        private int commandPhase;
+        private string commandHost;
         public void Observe(IDictionary<string, object> payload, Action<string> answer)
         {
             if (runId == null || runId != TestLab.ActiveRunId()) return;
@@ -32,9 +36,22 @@ namespace Scribble.Testing
             bool ready, Func<bool> busy, Action reset, Action<LabCase> load, Func<string, Task> send, Action stop)
         {
             var suite = TestLabSuite.Require(suiteId, host);
-            var receipt = ReadReceipt(suite.runId, id);
             if (action == "stop") { stop(); WriteReceipt(suite.runId, id, "stop", phase, host, "running", error); return TestLab.Serialize(new SuiteReply { state = busy() || state == "running" ? "running" : "done", error = error }); }
             if (!ready) return TestLab.Serialize(new SuiteReply { state = "initializing" });
+            // The Office process owns the live request. Its memory is the
+            // authority for retries and status polling; disk receipts exist
+            // only for crash recovery and diagnostics. Reading the receipt
+            // first allowed corporate DRM to replace JSON with ciphertext and
+            // throw across the COM boundary on every status poll.
+            if (runId == suite.runId && id == commandId) {
+                if (action == "status" && commandAction == "load" && state == "running" && !busy()) {
+                    state = "done";
+                    WriteReceipt(runId, id, commandAction, commandPhase, commandHost, state, error);
+                }
+                return TestLab.Serialize(new SuiteReply { state = busy() || state == "running" ? "running" : state, error = error,
+                    hostModule = typeof(TestLab).Assembly.ManifestModule.ModuleVersionId.ToString(), captureRoot = TestLab.Root });
+            }
+            var receipt = ReadReceipt(suite.runId, id);
             if (action == "status") {
                 if (receipt != null) {
                     // Loading attachments is asynchronous in the visible pane.
@@ -52,12 +69,11 @@ namespace Scribble.Testing
                 return TestLab.Serialize(new SuiteReply { state = busy() || state == "running" ? "running" : state, error = error });
             }
             if (receipt != null && receipt.action == "submit") return TestLab.Serialize(new SuiteReply { state = receipt.state, error = receipt.error });
-            if (id == commandId) return TestLab.Serialize(new SuiteReply { state = state, error = error, hostModule = typeof(TestLab).Assembly.ManifestModule.ModuleVersionId.ToString(), captureRoot = TestLab.Root });
             if (busy() || state == "running") throw new InvalidOperationException("The pane already has a request in progress.");
             var c = TestLabSuite.CurrentCase(suite);
             if (action != "load" && action != "submit") throw new InvalidOperationException("Unknown suite action.");
             var prompt = TestLabSuite.Prompt(c, phase);
-            commandId = id; runId = suite.runId; error = null;
+            commandId = id; commandAction = action; commandPhase = phase; commandHost = host; runId = suite.runId; error = null;
             if (action == "load") {
                 WriteReceipt(runId, id, action, phase, host, "running", null);
                 TestLab.Record(runId, "suite", "host_connected", new { host,
@@ -88,17 +104,38 @@ namespace Scribble.Testing
         private static SuiteCommandReceipt ReadReceipt(string runId, string id)
         {
             try { var path = ReceiptPath(runId, id); return File.Exists(path) ? TestLabSuite.Read<SuiteCommandReceipt>(path) : null; }
-            catch (IOException) { return null; }
+            catch (Exception) { return null; }
         }
 
         private static void WriteReceipt(string runId, string id, string action, int phase, string host, string commandState, string commandError)
         {
-            var path = ReceiptPath(runId, id); var temporary = path + "." + Guid.NewGuid().ToString("N");
-            using (var process = System.Diagnostics.Process.GetCurrentProcess())
-                File.WriteAllText(temporary, TestLab.Serialize(new SuiteCommandReceipt { schema = 1, run_id = runId,
+            try
+            {
+                string payload;
+                using (var process = System.Diagnostics.Process.GetCurrentProcess())
+                {
+                    payload = TestLab.Serialize(new SuiteCommandReceipt { schema = 1, run_id = runId,
                     command_id = id, action = action, phase = phase, host = host, state = commandState,
                     pid = process.Id, processStart = process.StartTime.ToUniversalTime().Ticks,
-                    error = commandError, updated_utc = DateTime.UtcNow.ToString("O") }), new UTF8Encoding(false));
+                    error = commandError, updated_utc = DateTime.UtcNow.ToString("O") });
+                    var session = TestLab.Status();
+                    if (session != null && !string.IsNullOrEmpty(session.transport_pipe) &&
+                        (session.transport_pid != process.Id || session.transport_process_start != process.StartTime.ToUniversalTime().Ticks))
+                        TestLabTransport.Send(session.transport_pipe, "receipt", runId, id, payload);
+                    else PersistTransportedReceipt(runId, id, payload);
+                }
+            }
+            catch (Exception) { /* A diagnostic receipt must never terminate its Office host. */ }
+        }
+
+        internal static void PersistTransportedReceipt(string runId, string id, string payload)
+        {
+            var path = ReceiptPath(runId, id);
+            var receipt = new JavaScriptSerializer().Deserialize<SuiteCommandReceipt>(payload);
+            if (receipt == null || receipt.run_id != runId || receipt.command_id != id)
+                throw new InvalidDataException("Transported command receipt identity mismatch.");
+            var temporary = path + "." + Guid.NewGuid().ToString("N");
+            File.WriteAllText(temporary, payload, new UTF8Encoding(false));
             if (File.Exists(path)) File.Replace(temporary, path, null); else new FileInfo(temporary).MoveTo(path);
         }
     }

@@ -214,6 +214,7 @@ namespace Scribble.Testing
         internal async Task Run()
         {
             Directory.CreateDirectory(TestLab.Root);
+            using (var transport = new TestLabTransport())
             using (var ownership = new FileStream(Path.Combine(TestLab.Root, "suite.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None)) {
                 if (TestLab.ActiveRunId() != null) throw new InvalidOperationException("An unfinished capture is active. Use Stop in this window to recheck it and preserve the incomplete PDF.");
                 TestLabSuite.Save(State);
@@ -234,7 +235,7 @@ namespace Scribble.Testing
                         try {
                             Log(c.id + " / " + c.host + ": preparing visible apps and isolated files.");
                             var kit = await Task.Run(() => TestLabSuite.Extract(zip, folder)); cancel.ThrowIfCancellationRequested();
-                            TestLab.Enable(kit);
+                            TestLab.Enable(kit, transport.PipeName, State.pid, State.processStart);
                             if (c.host != "Chrome") PrimeOffice(c.host);
                             await Prepare(c.id, folder);
                             State.runId = TestLab.Start(c.id, c.host, true).run_id; TestLabSuite.Save(State);

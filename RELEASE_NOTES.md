@@ -27,6 +27,15 @@ The long-lived runner now owns the originating Office automation instance for
 the full case lifetime, and encrypted trace events are atomically published so
 an incomplete-run snapshot cannot read partially written DPAPI payloads.
 
+On managed workstations where Office security software transparently replaces
+files written by Office with DRM ciphertext, Test Lab now keeps live command
+state in the pane and sends receipts and trace events to the standalone runner
+over a private named pipe. The runner alone persists that evidence, preventing
+encrypted diagnostic files from escaping through COM and leaving Excel or
+PowerPoint unavailable. Every Office suite entry point also converts unexpected
+exceptions to bounded error replies instead of allowing them across the COM
+boundary.
+
 ## User-supplied domain navigation (extension 1.5.2)
 
 When the user types a bare domain such as `samsungtradein.ae`, Scribble now

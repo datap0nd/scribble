@@ -22,9 +22,19 @@ $state=New-Object Scribble.Testing.SuiteState
 $state.id=[guid]::NewGuid().ToString('N');$state.folder=$folder;$state.pid=$PID
 $state.processStart=(Get-Process -Id $PID).StartTime.ToUniversalTime().Ticks
 $state.expires=[DateTime]::UtcNow.AddMinutes(10);$state.commit='synthetic validation';$state.kitHash=[Scribble.Testing.TestLab]::FileHash($zip)
+$transport=$null
 try {
     $kit=[Scribble.Testing.TestLabSuite]::Extract($zip,(Join-Path $folder 'cases/EX01'))
-    [Scribble.Testing.TestLab]::Enable($kit)
+    # Force the production named-pipe path while keeping this test independent
+    # of Office. A mismatched owner PID makes this process behave like the
+    # DRM-hooked Office client and leaves persistence to the transport server.
+    $transportType=[Scribble.Testing.TestLab].Assembly.GetType('Scribble.Testing.TestLabTransport',$true)
+    $transport=[Activator]::CreateInstance($transportType,$true)
+    $flags=[Reflection.BindingFlags]::Instance -bor [Reflection.BindingFlags]::NonPublic
+    $pipe=$transportType.GetProperty('PipeName',$flags).GetValue($transport,$null)
+    $enableFlags=[Reflection.BindingFlags]::Static -bor [Reflection.BindingFlags]::NonPublic
+    $enable=$([Scribble.Testing.TestLab]).GetMethod('Enable',$enableFlags,$null,[Type[]]@([string],[string],[int],[long]),$null)
+    [void]$enable.Invoke($null,@($kit,$pipe,[int]0,[long]0))
     $cases=@([Scribble.Testing.TestLab]::Cases()); Assert ($cases.Count -eq 16) 'Suite catalog omitted cases.'
     foreach ($case in $cases) {
         $first=[Scribble.Testing.TestLabSuite]::Prompt($case,0)
@@ -80,14 +90,25 @@ try {
     Assert ($started.state -eq 'running' -and $script:sendCount -eq 1) 'Submission was not tracked.'
     [void]$method.Invoke($driver,$commandArgs)
     Assert ($script:sendCount -eq 1) 'Duplicate command submitted twice.'
+    $receiptPath=Join-Path ([Scribble.Testing.TestLab]::RunDirectory($run.run_id)) ('commands/'+$commandArgs[1]+'.json')
+    [IO.File]::WriteAllBytes($receiptPath,[Text.Encoding]::UTF8.GetBytes("## NASCA DRM FILE - VER1.00 ##`n"+[char]0x00ae+' encrypted receipt'))
+    $commandArgs[2]='status'
+    $drmStatus=$method.Invoke($driver,$commandArgs) | ConvertFrom-Json
+    Assert ($drmStatus.state -eq 'running' -and $script:sendCount -eq 1) 'A DRM-corrupted diagnostic receipt escaped the in-memory live status path.'
     $commandArgs[2]='stop'
     $stopping=$method.Invoke($driver,$commandArgs) | ConvertFrom-Json
     Assert ($stopping.state -eq 'running' -and $script:stopCount -eq 1) 'Stop falsely claimed the async operation finished.'
+    Assert ((Get-Content -LiteralPath $receiptPath -Raw).StartsWith('{')) 'The runner transport did not replace a DRM-corrupted receipt with plaintext JSON.'
+    $eventPayloads=Get-ChildItem -LiteralPath (Join-Path ([Scribble.Testing.TestLab]::RunDirectory($run.run_id)) 'events') -Filter '*.bin' | ForEach-Object {
+        [Text.Encoding]::UTF8.GetString([Security.Cryptography.ProtectedData]::Unprotect([IO.File]::ReadAllBytes($_.FullName),$null,[Security.Cryptography.DataProtectionScope]::CurrentUser))
+    }
+    Assert (($eventPayloads -join "`n").Contains('host_connected')) 'The runner transport did not persist the Office trace event.'
     $pending.SetResult($true);$commandArgs[2]='status'
     for($i=0;$i -lt 100;$i++) { $done=$method.Invoke($driver,$commandArgs) | ConvertFrom-Json;if($done.state -eq 'done'){break};Start-Sleep -Milliseconds 10 }
     Assert ($done.state -eq 'done') 'Completed task remained running.'
     [Scribble.Testing.TestLab]::Finish($false)
     [Scribble.Testing.TestLab]::Disable()
+    ([IDisposable]$transport).Dispose();$transport=$null
     $pptKit=[Scribble.Testing.TestLabSuite]::Extract($zip,(Join-Path $folder 'cases/PP01'))
     [Scribble.Testing.TestLab]::Enable($pptKit)
     $pptRun=[Scribble.Testing.TestLab]::Start('PP01','PowerPoint',$true)
@@ -174,6 +195,7 @@ try {
     Write-Output "Suite PDF sample: $reportPath"
     Write-Output 'PASS: 16 cases, exact phases, source ownership, lease expiry, Chrome controller exclusivity, startup stderr, ZIP traversal, suite PDF report.'
 } finally {
+    if($transport) { ([IDisposable]$transport).Dispose() }
     [Scribble.Testing.TestLabPreparation]::Stop($preparation)
     [Scribble.Testing.TestLab]::Disable()
     $state.expires=[DateTime]::UtcNow.AddSeconds(-1);[Scribble.Testing.TestLabSuite]::Save($state)

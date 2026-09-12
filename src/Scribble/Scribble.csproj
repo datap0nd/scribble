@@ -125,6 +125,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Testing\TestLab.cs" />
+    <Compile Include="Testing\TestLabTransport.cs" />
     <Compile Include="Testing\TestLabSuite.cs" />
     <Compile Include="Testing\TestLabSuitePane.cs" />
     <Compile Include="Testing\TestLabSuiteWindow.cs" />

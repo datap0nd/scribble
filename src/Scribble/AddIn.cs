@@ -25,14 +25,17 @@ namespace Scribble
         private string _suiteRun;
         public string RunTestLabCommand(string suiteId, string commandId, string action, int phase)
         {
-            var suite = Testing.TestLabSuite.Require(suiteId, "Outlook");
-            if (_suitePane == null || _suitePane.IsDisposed || _suiteRun != suite.runId) {
-                if (_ctpFactory == null) return Testing.TestLab.Serialize(new Testing.SuiteReply { state = "initializing" });
-                OpenChat(null, false); _suitePane = _chatPane;
-                _suiteRun = suite.runId;
+            try {
+                var suite = Testing.TestLabSuite.Require(suiteId, "Outlook");
+                if (_suitePane == null || _suitePane.IsDisposed || _suiteRun != suite.runId) {
+                    if (_ctpFactory == null) return Testing.TestLab.Serialize(new Testing.SuiteReply { state = "initializing" });
+                    OpenChat(null, false); _suitePane = _chatPane;
+                    _suiteRun = suite.runId;
+                }
+                if (_suitePane == null) throw new InvalidOperationException("The Scribble pane could not be opened.");
+                return _suitePane.RunTestLabCommand(suiteId, commandId, action, phase);
             }
-            if (_suitePane == null) throw new InvalidOperationException("The Scribble pane could not be opened.");
-            return _suitePane.RunTestLabCommand(suiteId, commandId, action, phase);
+            catch (Exception error) { return Testing.TestLab.Serialize(new Testing.SuiteReply { state = "done", error = error.ToString() }); }
         }
 
         public void OnConnection(
