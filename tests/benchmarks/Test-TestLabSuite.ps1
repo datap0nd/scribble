@@ -46,7 +46,23 @@ try {
     Assert (-not [Scribble.Testing.TestLabSuite]::OwnsSource($run.run_id,(Join-Path $folder 'unrelated.xlsx'))) 'Unrelated source accepted.'
     # Exercise the production pane driver without Office/model dependencies.
     $driverType=[Scribble.Testing.TestLab].Assembly.GetType('Scribble.Testing.TestLabSuitePane')
-    $driver=[Activator]::CreateInstance($driverType,$true);$method=$driverType.GetMethod('Command')
+    $method=$driverType.GetMethod('Command')
+    $driver=[Activator]::CreateInstance($driverType,$true)
+    $script:contextLoading=$false
+    $loadingBusy=[Func[bool]]{return $script:contextLoading};$loadingReset=[Action]{}
+    $loadingLoad=[Action[Scribble.Testing.LabCase]]{$script:contextLoading=$true}
+    $unusedSend=[Func[string,Threading.Tasks.Task]]{return [Threading.Tasks.Task]::FromResult($true)};$unusedStop=[Action]{}
+    $loadingId=[guid]::NewGuid().ToString('N')
+    $loadingArgs=@($state.id,$loadingId,'load',0,'Excel',$true,$loadingBusy,$loadingReset,$loadingLoad,$unusedSend,$unusedStop)
+    $loading=$method.Invoke($driver,$loadingArgs) | ConvertFrom-Json
+    Assert ($loading.state -eq 'running') 'Pane acknowledged context before its asynchronous reader finished.'
+    $loadingArgs[2]='status'
+    $stillLoading=$method.Invoke($driver,$loadingArgs) | ConvertFrom-Json
+    Assert ($stillLoading.state -eq 'running') 'Pane lost the asynchronous context-loading state.'
+    $script:contextLoading=$false
+    $loadedAfterRead=$method.Invoke($driver,$loadingArgs) | ConvertFrom-Json
+    Assert ($loadedAfterRead.state -eq 'done') 'Pane did not acknowledge completed asynchronous context loading.'
+    $driver=[Activator]::CreateInstance($driverType,$true)
     $script:sendCount=0;$script:stopCount=0
     $pending=New-Object 'Threading.Tasks.TaskCompletionSource[bool]'
     $busy=[Func[bool]]{return $false};$reset=[Action]{};$load=[Action[Scribble.Testing.LabCase]]{}

@@ -36,8 +36,19 @@ namespace Scribble.Testing
             if (action == "stop") { stop(); WriteReceipt(suite.runId, id, "stop", phase, host, "running", error); return TestLab.Serialize(new SuiteReply { state = busy() || state == "running" ? "running" : "done", error = error }); }
             if (!ready) return TestLab.Serialize(new SuiteReply { state = "initializing" });
             if (action == "status") {
-                if (receipt != null) return TestLab.Serialize(new SuiteReply { state = receipt.state, error = receipt.error,
-                    hostModule = typeof(TestLab).Assembly.ManifestModule.ModuleVersionId.ToString(), captureRoot = TestLab.Root });
+                if (receipt != null) {
+                    // Loading attachments is asynchronous in the visible pane.
+                    // Do not acknowledge the load until that ordinary reader is
+                    // idle, or the immediately following submit is rejected as
+                    // an overlapping request.
+                    if (receipt.action == "load" && receipt.state == "running" && !busy()) {
+                        state = "done";
+                        WriteReceipt(suite.runId, id, receipt.action, receipt.phase, receipt.host, state, error);
+                        receipt.state = state; receipt.error = error;
+                    }
+                    return TestLab.Serialize(new SuiteReply { state = receipt.state, error = receipt.error,
+                        hostModule = typeof(TestLab).Assembly.ManifestModule.ModuleVersionId.ToString(), captureRoot = TestLab.Root });
+                }
                 return TestLab.Serialize(new SuiteReply { state = busy() || state == "running" ? "running" : state, error = error });
             }
             if (receipt != null && receipt.action == "submit") return TestLab.Serialize(new SuiteReply { state = receipt.state, error = receipt.error });
@@ -52,7 +63,7 @@ namespace Scribble.Testing
                 TestLab.Record(runId, "suite", "host_connected", new { host,
                     loaded_module = typeof(TestLab).Assembly.ManifestModule.ModuleVersionId.ToString(),
                     assembly = typeof(TestLab).Assembly.Location, capture_root = TestLab.Root });
-                reset(); load(c); state = "done";
+                reset(); load(c); state = busy() ? "running" : "done";
                 WriteReceipt(runId, id, action, phase, host, state, null);
                 return TestLab.Serialize(new SuiteReply { state = state, hostModule = typeof(TestLab).Assembly.ManifestModule.ModuleVersionId.ToString(), captureRoot = TestLab.Root });
             }

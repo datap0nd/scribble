@@ -58,11 +58,11 @@ function Get-App($name) {
         if (-not $executable) { throw "No interactive launcher is registered for $name." }
         $started=Start-Process -FilePath $executable -PassThru
         for ($attempt=0;$attempt -lt 80;$attempt++) {
-            if ($started.HasExited) { throw "$name exited during interactive startup (exit $($started.ExitCode))." }
             try { return ,([Runtime.InteropServices.Marshal]::GetActiveObject($name+'.Application')) }
             catch { Start-Sleep -Milliseconds 250 }
         }
-        throw "$name did not publish its automation object within 20 seconds. Check for a sign-in, first-run, recovery, or policy dialog."
+        $launchResult=if ($started.HasExited) { " The launcher exited $($started.ExitCode), which can be a normal Office/DDE handoff." } else { '' }
+        throw "$name did not publish its automation object within 20 seconds.$launchResult Check for a sign-in, first-run, recovery, or policy dialog."
     }
 }
 $progids=@{Excel='Scribble.ExcelAddIn';PowerPoint='Scribble.PowerPointAddIn';Word='Scribble.WordAddIn';Outlook='Scribble.AddIn'}

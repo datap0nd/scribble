@@ -20,6 +20,9 @@ chat claims or intermediate artifacts.
 Office applications needed by a suite are launched as interactive processes,
 so they remain alive after the short-lived preparation helper returns instead
 of dropping the first submission with an unavailable COM/RPC server.
+Office launcher handoff exit codes are no longer mistaken for application
+failure, and suite submission now waits for asynchronous context reading to
+finish before it uses the pane.
 
 ## User-supplied domain navigation (extension 1.5.2)
 

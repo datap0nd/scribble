@@ -16,6 +16,7 @@ foreach ($script in Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'operato
 $preparationSource=Get-Content -LiteralPath (Join-Path $PSScriptRoot 'operator/Prepare-ScribbleTestCase.ps1') -Raw
 Assert ($preparationSource -match "Start-Process\s+-FilePath\s+\`$executable\s+-PassThru") 'Office preparation must launch a missing app as an interactive process.'
 Assert ($preparationSource -notmatch "New-Object\s+-ComObject\s+\(\`$name\+'\.Application'\)") 'Office preparation must not bind a new app lifetime only to the helper COM client.'
+Assert ($preparationSource -notmatch "if\s*\(\`$started\.HasExited\)\s*\{\s*throw") 'An Office/DDE launcher handoff must not be mistaken for application failure.'
 $cases=Get-Content -LiteralPath (Join-Path $kit 'operator/cases.json') -Raw | ConvertFrom-Json
 $plans=@{}
 foreach ($case in $cases) {
