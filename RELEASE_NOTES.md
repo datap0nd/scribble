@@ -1,5 +1,10 @@
 # Release notes
 
+Test Lab's final review PDF is now a concise summary with a hard maximum of ten
+pages. Full logs, model responses, and native evidence remain beside it in
+`diagnostics.txt`, `report.html`, and the case evidence ZIPs instead of being
+expanded into hundreds or thousands of PDF pages.
+
 ## Reliable three-action Test Lab
 
 The temporary Test entry point now opens or focuses one idle window and makes

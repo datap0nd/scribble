@@ -16,6 +16,9 @@ namespace Scribble.Testing
     // It consumes only the sealed suite HTML, log, and exported evidence archives.
     public static class TestLabPdfWriter
     {
+        private const int MaximumPages = 10;
+        private const int MaximumFailureCharacters = 4000;
+
         public static void CreateText(string html, string pdf)
         {
             var temporary = pdf + "." + Guid.NewGuid().ToString("N") + ".tmp";
@@ -79,10 +82,10 @@ namespace Scribble.Testing
                         "\nKit SHA256: " + (state.kitHash ?? "not recorded") +
                         "\nGenerated UTC: " + DateTime.UtcNow.ToString("O") +
                         "\nResults folder: " + state.folder);
-                    writer.Text("This report contains the actual retained model responses, native readback, complete captured diagnostics, and every usable native visual derivative. File presence is not a correctness pass.");
+                    writer.Text("This PDF is a concise review summary capped at 10 pages. Complete model responses, native readback, diagnostics, and editable artifacts remain in report.html, diagnostics.txt, and the case evidence ZIPs. File presence is not a correctness pass.");
                     writer.PageBreak();
-                    writer.Heading("Complete suite report and diagnostic trace", 16);
-                    writer.Text(TestLabSuiteReport.ToText(File.ReadAllText(html)));
+                    writer.Heading("Suite findings", 16);
+                    writer.Text(CompactSummary(state, results));
 
                     foreach (var result in results)
                     {
@@ -114,7 +117,50 @@ namespace Scribble.Testing
             if (string.IsNullOrEmpty(path) || !File.Exists(path) || new FileInfo(path).Length < 1000)
                 throw new InvalidDataException("The final PDF is missing or empty.");
             using (var input = PdfReader.Open(path, PdfDocumentOpenMode.Import))
+            {
                 if (input.PageCount == 0) throw new InvalidDataException("The final PDF has no readable pages.");
+                if (input.PageCount > MaximumPages) throw new InvalidDataException("The final PDF exceeds the 10-page review limit.");
+            }
+        }
+
+        private static string CompactSummary(SuiteState state, SuiteCaseResult[] results)
+        {
+            var text = new StringBuilder();
+            text.AppendLine("Needs review: " + results.Count(r => r.status == "needs_review") +
+                " | Deterministic failures: " + results.Count(r => r.status == "failed") +
+                " | Blocked/stopped: " + results.Count(r => r.status == "blocked" || r.status == "stopped" || r.status == "incomplete") +
+                " | Not run: " + results.Count(r => r.status == "not_run"));
+            text.AppendLine("Completion is not a correctness pass. Review the native outputs and evidence files.");
+            text.AppendLine();
+            foreach (var result in results)
+            {
+                var error = FirstLine(result.error);
+                if (error.Length > 240) error = error.Substring(0, 240) + "...";
+                text.AppendLine(result.id + " | " + result.host + " | " + result.status +
+                    (string.IsNullOrEmpty(error) ? "" : " | " + error));
+            }
+            if (results.Length == 0) text.AppendLine("No cases ran. See suite.log for the startup or download failure.");
+            var first = results.FirstOrDefault(r => !string.IsNullOrEmpty(r.error));
+            if (first != null)
+            {
+                var detail = first.error;
+                if (detail.Length > MaximumFailureCharacters)
+                    detail = detail.Substring(0, MaximumFailureCharacters) + "\n[Truncated in PDF; complete text is in diagnostics.txt and report.html.]";
+                text.AppendLine();
+                text.AppendLine("First failure details - " + first.id);
+                text.AppendLine(detail);
+            }
+            text.AppendLine();
+            text.AppendLine("Complete diagnostics: " + Path.Combine(state.folder, "diagnostics.txt"));
+            text.AppendLine("Interactive report: " + Path.Combine(state.folder, "report.html"));
+            text.AppendLine("Native evidence: " + Path.Combine(state.folder, "cases"));
+            return text.ToString();
+        }
+
+        private static string FirstLine(string value)
+        {
+            if (string.IsNullOrEmpty(value)) return "";
+            return value.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n')[0];
         }
 
         private static string TerminalLabel(SuiteCaseResult[] results)
@@ -129,39 +175,43 @@ namespace Scribble.Testing
         private static void AppendVisualEvidence(PdfDocument document, PageWriter writer,
             SuiteCaseResult result, string staging)
         {
-            writer.PageBreak();
-            writer.Heading(result.id + " / " + result.host + " — native visual evidence", 16);
+            if (document.PageCount >= MaximumPages) return;
             using (var archive = ZipFile.OpenRead(result.evidence))
             {
                 var visuals = archive.Entries.Where(e => e.FullName.StartsWith("artifacts/", StringComparison.Ordinal) &&
                     (e.FullName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) ||
                      e.FullName.EndsWith(".png", StringComparison.OrdinalIgnoreCase))).ToArray();
                 if (visuals.Length == 0)
-                {
-                    writer.Text("No native PDF or PNG derivative was retained for this case. See the preceding artifact inventory and capture error for the precise evidence gap.");
                     return;
-                }
                 foreach (var entry in visuals)
                 {
+                    if (document.PageCount >= MaximumPages) return;
                     var target = Path.Combine(staging, Guid.NewGuid().ToString("N") + Path.GetExtension(entry.Name));
                     using (var source = entry.Open()) using (var file = new FileStream(target, FileMode.CreateNew)) source.CopyTo(file);
-                    writer.Text("Artifact: " + entry.FullName + " (" + entry.Length + " bytes)");
                     try
                     {
                         if (entry.FullName.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+                        {
+                            writer.PageBreak();
+                            writer.Heading(result.id + " / " + result.host + " - native visual evidence", 16);
+                            writer.Text("Artifact: " + entry.FullName + " (" + entry.Length + " bytes)");
                             writer.Image(target);
+                        }
                         else
                         {
-                            writer.ClosePage();
                             using (var imported = PdfReader.Open(target, PdfDocumentOpenMode.Import))
-                                for (int i = 0; i < imported.PageCount; i++) document.AddPage(imported.Pages[i]);
+                            {
+                                if (imported.PageCount == 0) continue;
+                                writer.ClosePage();
+                                // Two representative pages per native PDF keep
+                                // several cases reviewable inside the global cap.
+                                for (int i = 0; i < imported.PageCount && i < 2 && document.PageCount < MaximumPages; i++)
+                                    document.AddPage(imported.Pages[i]);
+                            }
                             writer.ResetPage();
                         }
                     }
-                    catch (Exception error)
-                    {
-                        writer.Text("VISUAL EVIDENCE GAP: " + error.GetType().Name + ": " + error.Message);
-                    }
+                    catch (Exception) { /* Full artifact diagnostics remain in report.html and diagnostics.txt. */ }
                 }
             }
         }
@@ -184,7 +234,7 @@ namespace Scribble.Testing
 
             internal void Heading(string value, double size)
             {
-                EnsurePage(36);
+                if (!EnsurePage(36)) return;
                 var font = Math.Abs(size - 16) < .1 ? heading : new XFont("Segoe UI", size,
                     XFontStyleEx.Bold, new XPdfFontOptions(PdfFontEncoding.Unicode));
                 graphics.DrawString(Clean(value), font, XBrushes.DarkSlateGray,
@@ -194,7 +244,7 @@ namespace Scribble.Testing
 
             internal void Badge(string value)
             {
-                EnsurePage(34);
+                if (!EnsurePage(34)) return;
                 graphics.DrawRectangle(new XSolidBrush(XColor.FromArgb(229, 241, 242)),
                     Margin, y, page.Width.Point - Margin * 2, 28);
                 graphics.DrawString(Clean(value), badge, XBrushes.DarkSlateGray,
@@ -204,11 +254,12 @@ namespace Scribble.Testing
 
             internal void Text(string value)
             {
+                if (!EnsurePage(13)) return;
                 foreach (var logical in Clean(value).Replace("\r\n", "\n").Replace('\r', '\n').Split('\n'))
                 {
                     foreach (var line in Wrap(logical))
                     {
-                        EnsurePage(13);
+                        if (!EnsurePage(13)) return;
                         graphics.DrawString(line, body, XBrushes.Black,
                             new XRect(Margin, y, page.Width.Point - Margin * 2, 12), XStringFormats.TopLeft);
                         y += 11.5;
@@ -226,7 +277,7 @@ namespace Scribble.Testing
                     var width = page == null ? 515 : page.Width.Point - Margin * 2;
                     var height = width * source.Height / source.Width;
                     if (height > 690) { height = 690; width = height * source.Width / source.Height; }
-                    EnsurePage(height + 12);
+                    if (!EnsurePage(height + 12)) return;
                     graphics.DrawImage(image, Margin, y, width, height);
                     y += height + 12;
                 }
@@ -241,16 +292,18 @@ namespace Scribble.Testing
                 page = null; y = 0;
             }
 
-            private void EnsurePage(double needed)
+            private bool EnsurePage(double needed)
             {
                 if (page == null || y + needed > page.Height.Point - Margin)
                 {
                     ClosePage();
+                    if (document.PageCount >= MaximumPages) return false;
                     page = document.AddPage();
                     page.Size = PdfSharp.PageSize.A4;
                     graphics = XGraphics.FromPdfPage(page);
                     y = Margin;
                 }
+                return true;
             }
 
             private IEnumerable<string> Wrap(string value)
@@ -261,7 +314,7 @@ namespace Scribble.Testing
                 foreach (var word in value.Split(new[] { ' ', '\t' }, StringSplitOptions.None))
                 {
                     var candidate = current.Length == 0 ? word : current + " " + word;
-                    if (graphics == null) EnsurePage(13);
+                    if (graphics == null && !EnsurePage(13)) return lines;
                     if (graphics.MeasureString(candidate, body).Width <= width) { current.Clear(); current.Append(candidate); continue; }
                     if (current.Length > 0) { lines.Add(current.ToString()); current.Clear(); }
                     var fragment = new StringBuilder();

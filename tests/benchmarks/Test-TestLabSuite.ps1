@@ -163,6 +163,7 @@ try {
     $result.id='EX01';$result.host='Excel';$result.status='blocked';$result.started='2026-09-09T12:00:00Z';$result.finished='2026-09-09T12:00:01Z'
     $result.error='<script>alert(1)</script> synthetic preparation error '+('diagnostic line ' * 200)+' END_OF_ERROR'
     '2026-09-09T12:00:00Z Synthetic validation only. No Office or Qwen request was made.' | Set-Content -LiteralPath (Join-Path $folder 'suite.log')
+    ('Verbose diagnostic log entry. ' * 100000) | Add-Content -LiteralPath (Join-Path $folder 'suite.log')
     $html=[Scribble.Testing.TestLabSuiteReport]::BuildHtml($state,@($result))
     Assert ($html.Contains('END_OF_ERROR') -and $html.Contains('2026-09-09T12:00:01Z')) 'Report omitted diagnostic tail or timestamps.'
     Assert ($html.Contains('&lt;script&gt;') -and -not $html.Contains('<script>alert')) 'Report executes source text.'
@@ -172,7 +173,7 @@ try {
     Assert ($reportPath.EndsWith('report.pdf') -and (Test-Path $reportPath) -and (Get-Item $reportPath).Length -gt 1000) 'Suite did not produce a standalone final PDF.'
     Assert ([Scribble.Testing.TestLabPdfWriter]::IsValid($reportPath)) 'Suite PDF did not reopen successfully.'
     $baseline=[PdfSharp.Pdf.IO.PdfReader]::Open($reportPath,[PdfSharp.Pdf.IO.PdfDocumentOpenMode]::Import)
-    try{$baselinePages=$baseline.PageCount}finally{$baseline.Dispose()}
+    try{$baselinePages=$baseline.PageCount;Assert ($baselinePages -le 10) 'Suite summary PDF exceeded ten pages.'}finally{$baseline.Dispose()}
     $visualZip=Join-Path $folder 'visual-evidence.zip'
     $visualArchive=[IO.Compression.ZipFile]::Open($visualZip,[IO.Compression.ZipArchiveMode]::Create)
     try {
@@ -183,7 +184,7 @@ try {
     $result.evidence=$visualZip
     $reportPath=[Scribble.Testing.TestLabSuiteReport]::Create($state,@($result))
     $combined=[PdfSharp.Pdf.IO.PdfReader]::Open($reportPath,[PdfSharp.Pdf.IO.PdfDocumentOpenMode]::Import)
-    try{Assert ($combined.PageCount -gt $baselinePages) 'Native PDF pages were not incorporated into the suite PDF.'}finally{$combined.Dispose()}
+    try{Assert ($combined.PageCount -gt $baselinePages) 'Native PDF pages were not incorporated into the suite PDF.';Assert ($combined.PageCount -le 10) 'Native evidence pushed the suite PDF beyond ten pages.'}finally{$combined.Dispose()}
     $diagnostics=Get-Content -LiteralPath (Join-Path $folder 'diagnostics.txt') -Raw
     Assert ($diagnostics.Contains('<script>alert(1)</script>') -and $diagnostics.Contains('END_OF_ERROR')) 'Diagnostic text lost escaped error content.'
     Assert ([Scribble.Testing.TestLabSuiteReport]::ToText("<pre>a`r`nb`rc</pre>") -eq "`na`nb`nc`n") 'HTML clipboard line endings differ from diagnostic text.'
