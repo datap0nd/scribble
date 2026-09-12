@@ -13,6 +13,9 @@ foreach ($script in Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'operato
     [void][Management.Automation.Language.Parser]::ParseFile($script.FullName,[ref]$tokens,[ref]$errors)
     Assert ($errors.Count -eq 0) ("PowerShell syntax: " + $script.Name + " " + $errors)
 }
+$preparationSource=Get-Content -LiteralPath (Join-Path $PSScriptRoot 'operator/Prepare-ScribbleTestCase.ps1') -Raw
+Assert ($preparationSource -match "Start-Process\s+-FilePath\s+\`$executable\s+-PassThru") 'Office preparation must launch a missing app as an interactive process.'
+Assert ($preparationSource -notmatch "New-Object\s+-ComObject\s+\(\`$name\+'\.Application'\)") 'Office preparation must not bind a new app lifetime only to the helper COM client.'
 $cases=Get-Content -LiteralPath (Join-Path $kit 'operator/cases.json') -Raw | ConvertFrom-Json
 $plans=@{}
 foreach ($case in $cases) {
@@ -62,7 +65,7 @@ try {
     Assert (-not $worker.HasExited) 'Original server exited unexpectedly.'
     [Scribble.Testing.TestLab]::Disable()
     Assert ($worker.WaitForExit(5000)) 'Server did not stop after disable.'
-    Write-Output 'PASS: 16 case plans, prerequisite apps/files, bounded context, exact fixture HTTP bytes, oracle exclusion, HEAD, duplicate server and shutdown.'
+    Write-Output 'PASS: 16 case plans, durable interactive Office launch, prerequisite apps/files, bounded context, exact fixture HTTP bytes, oracle exclusion, HEAD, duplicate server and shutdown.'
 } finally {
     [Scribble.Testing.TestLab]::Disable()
     foreach ($process in @($worker,$duplicate)) { if ($process) { if (-not $process.HasExited) { $process.Kill() }; $process.Dispose() } }

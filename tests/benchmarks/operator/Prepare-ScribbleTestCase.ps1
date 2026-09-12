@@ -48,7 +48,22 @@ function Assert-Idle {
 function Progress($text) { Write-Output ([DateTime]::UtcNow.ToString('O')+' '+$text) }
 function Get-App($name) {
     try { return ,([Runtime.InteropServices.Marshal]::GetActiveObject($name+'.Application')) }
-    catch { return ,(New-Object -ComObject ($name+'.Application')) }
+    catch {
+        # Start Office as an interactive application. An Office local server
+        # created only through this short-lived PowerShell COM client can exit
+        # when preparation returns, severing the suite controller with
+        # RPC_S_SERVER_UNAVAILABLE just as the first prompt is submitted.
+        $executables=@{Excel='excel.exe';PowerPoint='powerpnt.exe';Word='winword.exe';Outlook='outlook.exe'}
+        $executable=$executables[$name]
+        if (-not $executable) { throw "No interactive launcher is registered for $name." }
+        $started=Start-Process -FilePath $executable -PassThru
+        for ($attempt=0;$attempt -lt 80;$attempt++) {
+            if ($started.HasExited) { throw "$name exited during interactive startup (exit $($started.ExitCode))." }
+            try { return ,([Runtime.InteropServices.Marshal]::GetActiveObject($name+'.Application')) }
+            catch { Start-Sleep -Milliseconds 250 }
+        }
+        throw "$name did not publish its automation object within 20 seconds. Check for a sign-in, first-run, recovery, or policy dialog."
+    }
 }
 $progids=@{Excel='Scribble.ExcelAddIn';PowerPoint='Scribble.PowerPointAddIn';Word='Scribble.WordAddIn';Outlook='Scribble.AddIn'}
 Report 'preparing'

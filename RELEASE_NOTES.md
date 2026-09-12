@@ -17,6 +17,10 @@ resources after evidence is sealed. Source, prerequisite, and final captures
 are labeled separately, and final-output checks can no longer be satisfied by
 chat claims or intermediate artifacts.
 
+Office applications needed by a suite are launched as interactive processes,
+so they remain alive after the short-lived preparation helper returns instead
+of dropping the first submission with an unavailable COM/RPC server.
+
 ## User-supplied domain navigation (extension 1.5.2)
 
 When the user types a bare domain such as `samsungtradein.ae`, Scribble now
