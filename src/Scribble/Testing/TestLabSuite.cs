@@ -235,6 +235,7 @@ namespace Scribble.Testing
                             Log(c.id + " / " + c.host + ": preparing visible apps and isolated files.");
                             var kit = await Task.Run(() => TestLabSuite.Extract(zip, folder)); cancel.ThrowIfCancellationRequested();
                             TestLab.Enable(kit);
+                            if (c.host != "Chrome") PrimeOffice(c.host);
                             await Prepare(c.id, folder);
                             State.runId = TestLab.Start(c.id, c.host, true).run_id; TestLabSuite.Save(State);
                             Log(c.id + ": capturing the verified source state before the first write.");
@@ -318,10 +319,28 @@ namespace Scribble.Testing
         }
         private void ConnectOffice(string host)
         {
-            application = Marshal.GetActiveObject(host + ".Application"); dynamic app = application;
+            if (application == null) application = Marshal.GetActiveObject(host + ".Application");
+            dynamic app = application;
             var progId = host == "Outlook" ? "Scribble.AddIn" : "Scribble." + host + "AddIn";
             controller = app.COMAddIns.Item(progId).Object;
             if (controller == null) throw new InvalidOperationException("The " + host + " add-in does not expose the suite runner. Install the latest Scribble and restart Office.");
+        }
+        private void PrimeOffice(string host)
+        {
+            if (application != null) return;
+            try {
+                application = Marshal.GetActiveObject(host + ".Application");
+                Log(host + ": acquired the existing interactive application for the case lifetime.");
+            }
+            catch (COMException) {
+                var type = Type.GetTypeFromProgID(host + ".Application");
+                if (type == null) throw new InvalidOperationException(host + " is not installed or its automation registration is unavailable.");
+                application = Activator.CreateInstance(type);
+                Log(host + ": launched and retained the application for the case lifetime.");
+            }
+            dynamic app = application;
+            if (host == "PowerPoint") app.Visible = -1;
+            else if (host != "Outlook") app.Visible = true;
         }
         private void SaveSelectedDeck()
         {

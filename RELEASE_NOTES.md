@@ -23,6 +23,9 @@ of dropping the first submission with an unavailable COM/RPC server.
 Office launcher handoff exit codes are no longer mistaken for application
 failure, and suite submission now waits for asynchronous context reading to
 finish before it uses the pane.
+The long-lived runner now owns the originating Office automation instance for
+the full case lifetime, and encrypted trace events are atomically published so
+an incomplete-run snapshot cannot read partially written DPAPI payloads.
 
 ## User-supplied domain navigation (extension 1.5.2)
 

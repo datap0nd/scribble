@@ -17,7 +17,9 @@ foreach ($pattern in $forbidden) {
         Where-Object {
             $_.Line -notmatch 'File\.Delete' -and
             -not ($_.Path -like '*\Testing\TestLab.cs' -and
-                $_.Line.Trim() -eq 'if (File.Exists(Descriptor)) File.Replace(temporary, Descriptor, null); else File.Move(temporary, Descriptor);') -and
+                ($_.Line.Trim() -eq 'if (File.Exists(Descriptor)) File.Replace(temporary, Descriptor, null); else File.Move(temporary, Descriptor);' -or
+                 # Atomic publication of a new encrypted trace event, not an Outlook item move.
+                 $_.Line.Trim() -eq 'File.Move(temporary, path);')) -and
             # Atomic operator lease/command files, not Outlook item operations.
             -not ($_.Path -like '*\Testing\TestLabSuite.cs' -and
                 ($_.Line.Trim() -eq 'if (File.Exists(Descriptor)) File.Replace(temporary, Descriptor, null); else File.Move(temporary, Descriptor);' -or

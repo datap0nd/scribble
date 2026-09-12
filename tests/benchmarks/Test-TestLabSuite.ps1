@@ -62,6 +62,10 @@ try {
     $script:contextLoading=$false
     $loadedAfterRead=$method.Invoke($driver,$loadingArgs) | ConvertFrom-Json
     Assert ($loadedAfterRead.state -eq 'done') 'Pane did not acknowledge completed asynchronous context loading.'
+    $suiteSource=Get-Content -LiteralPath (Join-Path $PSScriptRoot '../../src/Scribble/Testing/TestLabSuite.cs') -Raw
+    Assert ($suiteSource -match 'PrimeOffice\(c\.host\)' -and $suiteSource -match 'application\s*=\s*Activator\.CreateInstance') 'Suite runner does not retain the originating Office application lifetime.'
+    $captureSource=Get-Content -LiteralPath (Join-Path $PSScriptRoot '../../src/Scribble/Testing/TestLab.cs') -Raw
+    Assert ($captureSource -match 'File\.Move\(temporary, path\)' -and $captureSource -match 'FileShare\.None') 'Trace events are visible before their encrypted payload is committed.'
     $driver=[Activator]::CreateInstance($driverType,$true)
     $script:sendCount=0;$script:stopCount=0
     $pending=New-Object 'Threading.Tasks.TaskCompletionSource[bool]'

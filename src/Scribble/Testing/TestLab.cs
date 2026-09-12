@@ -252,8 +252,14 @@ namespace Scribble.Testing
                     monotonic_frequency = Stopwatch.Frequency, detail }));
                 var encrypted = ProtectedData.Protect(Encoding.UTF8.GetBytes(payload), null, DataProtectionScope.CurrentUser);
                 var path = Path.Combine(events, Instance + "-" + Guid.NewGuid().ToString("N") + ".bin");
-                using (var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read))
+                var temporary = path + ".writing";
+                // Exporters enumerate only committed .bin files. Publishing
+                // after a durable, exclusive write prevents a snapshot from
+                // attempting to decrypt a partially written DPAPI payload. A
+                // failed .writing file remains as narrow forensic evidence.
+                using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
                 { stream.Write(encrypted, 0, encrypted.Length); stream.Flush(true); }
+                File.Move(temporary, path);
                 var activePath = Path.Combine(folder, "task-" + Hash(Encoding.UTF8.GetBytes(taskId ?? "")) + ".active");
                 if (stage == "task_started" || stage == "task_resumed") File.WriteAllText(activePath, taskId);
                 if ((stage == "task_completed" || stage == "task_paused") && File.Exists(activePath)) File.Delete(activePath);
