@@ -21,7 +21,13 @@ namespace GuardrailTests
 
         public static void NativeReportReadback()
         {
-            var read = typeof(Scribble.Testing.BenchmarkArtifactCollector).GetMethod("ReadNative", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            var read = typeof(Scribble.Testing.BenchmarkArtifactCollector).GetMethod(
+                "ReadNative",
+                System.Reflection.BindingFlags.NonPublic |
+                System.Reflection.BindingFlags.Static,
+                null,
+                new[] { typeof(object), typeof(string) },
+                null);
             var text = (string)read.Invoke(null, new object[] { new ReportWorkbook(), "Excel" });
             Check(text.Contains("Scribble Draft") && text.Contains("R4C2: 120000 | formula: =SUM(Sales!E2:E9)") && text.Contains("Native charts: 0"),
                 "Native readback lost worksheet identity, offsets, value or formula.");
