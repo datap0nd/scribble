@@ -116,9 +116,12 @@ namespace Scribble.Chat
                 }
                 return null;
             }
-            Diagnostics.Record("argument_validation_failed", new { call.id, tool = call.function.name, errors });
+            var repair = call.function.name == PresentationToolCatalog.AddDraftSlides || call.function.name == CrossAppToolCatalog.SendToPowerPoint
+                ? "No slides were written by this call. Supply a nonempty slides array of content objects in this call, alongside plan and briefs on the first batch. Each slide needs its planned id, title, layout and source-backed content; use the exposed schema. Do not repeat a plan-only or briefs-only payload. Keep the original requested slide count and do not invent content."
+                : "Correct the listed fields using this tool's exposed parameter schema, then retry. No write permission was consumed.";
+            Diagnostics.Record("argument_validation_failed", new { call.id, tool = call.function.name, arguments = call.function.arguments, errors });
             return new MailboxToolResult(call.id, _json.Serialize(new { error_code = "TOOL_ARGUMENTS_INVALID", stage = "ARGUMENTS",
-                permission_consumed = false, field_errors = errors, diagnostic_id = _state.Id }), "Repair the indicated tool arguments");
+                permission_consumed = false, field_errors = errors, repair, diagnostic_id = _state.Id }), "Repair the indicated tool arguments");
         }
 
         public void SaveRequest(ChatCompletionRequest request)

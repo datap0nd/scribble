@@ -17,6 +17,34 @@ namespace Scribble.Testing
         private string commandAction;
         private int commandPhase;
         private string commandHost;
+        private bool stopAcknowledged;
+
+        // The runner writes this signal itself. Poll on the pane's existing
+        // UI timer so cancellation still works when COM status calls fail.
+        public void PollStop(Func<bool> busy, Action stop)
+        {
+            if (stopAcknowledged || runId == null || runId != TestLab.ActiveRunId()) return;
+            try
+            {
+                var signal = Path.Combine(TestLab.RunDirectory(runId), "stop-requested");
+                if (!File.Exists(signal) || File.ReadAllText(signal) != commandId) return;
+                if (busy()) stop();
+                if (!busy() && commandAction == "submit")
+                {
+                    state = "stopped";
+                    stopAcknowledged = WriteReceipt(runId, commandId, commandAction, commandPhase, commandHost, state, error);
+                }
+            }
+            catch (Exception) { /* No acknowledgement means the runner must keep waiting. */ }
+        }
+
+        private static string IdentityReply(string state, string error = null)
+        {
+            using (var process = System.Diagnostics.Process.GetCurrentProcess())
+                return TestLab.Serialize(new SuiteReply { state = state, error = error,
+                    hostModule = typeof(TestLab).Assembly.ManifestModule.ModuleVersionId.ToString(), captureRoot = TestLab.Root,
+                    pid = process.Id, processStart = process.StartTime.ToUniversalTime().Ticks });
+        }
         public string RecoverStop(string expectedRun, Func<bool> busy, Action stop)
         {
             if (expectedRun != TestLab.ActiveRunId() || expectedRun != runId)
@@ -33,7 +61,7 @@ namespace Scribble.Testing
                 var suite = TestLabSuite.Active();
                 var question = payload.TryGetValue("question", out value) ? Convert.ToString(value) : "";
                 var preset = suite?.runId == runId ? TestLabSuite.PresetAnswer(TestLabSuite.CurrentCase(suite), question) : null;
-                if (preset == null) error = "The model requested an answer outside the kit presets. See the captured question.";
+                if (preset == null) error = "The model requested an answer outside the kit presets: " + question;
                 else { TestLab.Record(runId, "suite", "preset_answer", new { question, answer = preset }); answer(preset); }
             }
             if (Convert.ToString(type) == "status" && payload.TryGetValue("error", out value) && Equals(value, true))
@@ -45,6 +73,8 @@ namespace Scribble.Testing
             var suite = TestLabSuite.Require(suiteId, host);
             if (action == "stop")
             {
+                if (runId != suite.runId)
+                    return TestLab.Serialize(new SuiteReply { state = "unknown", error = "This pane does not own the test request." });
                 stop();
                 var stopped = !busy();
                 // The original submit receipt is the crash-recovery authority.
@@ -69,8 +99,7 @@ namespace Scribble.Testing
                     state = "done";
                     WriteReceipt(runId, id, commandAction, commandPhase, commandHost, state, error);
                 }
-                return TestLab.Serialize(new SuiteReply { state = busy() || state == "running" ? "running" : state, error = error,
-                    hostModule = typeof(TestLab).Assembly.ManifestModule.ModuleVersionId.ToString(), captureRoot = TestLab.Root });
+                return IdentityReply(busy() || state == "running" ? "running" : state, error);
             }
             var receipt = ReadReceipt(suite.runId, id);
             if (action == "status") {
@@ -84,8 +113,7 @@ namespace Scribble.Testing
                         WriteReceipt(suite.runId, id, receipt.action, receipt.phase, receipt.host, state, error);
                         receipt.state = state; receipt.error = error;
                     }
-                    return TestLab.Serialize(new SuiteReply { state = receipt.state, error = receipt.error,
-                        hostModule = typeof(TestLab).Assembly.ManifestModule.ModuleVersionId.ToString(), captureRoot = TestLab.Root });
+                    return IdentityReply(receipt.state, receipt.error);
                 }
                 return TestLab.Serialize(new SuiteReply { state = busy() || state == "running" ? "running" : state, error = error });
             }
@@ -94,7 +122,7 @@ namespace Scribble.Testing
             var c = TestLabSuite.CurrentCase(suite);
             if (action != "load" && action != "submit") throw new InvalidOperationException("Unknown suite action.");
             var prompt = TestLabSuite.Prompt(c, phase);
-            commandId = id; commandAction = action; commandPhase = phase; commandHost = host; runId = suite.runId; error = null;
+            commandId = id; commandAction = action; commandPhase = phase; commandHost = host; runId = suite.runId; error = null; stopAcknowledged = false;
             if (action == "load") {
                 WriteReceipt(runId, id, action, phase, host, "running", null);
                 TestLab.Record(runId, "suite", "host_connected", new { host,
@@ -102,7 +130,7 @@ namespace Scribble.Testing
                     assembly = typeof(TestLab).Assembly.Location, capture_root = TestLab.Root });
                 reset(); load(c); state = busy() ? "running" : "done";
                 WriteReceipt(runId, id, action, phase, host, state, null);
-                return TestLab.Serialize(new SuiteReply { state = state, hostModule = typeof(TestLab).Assembly.ManifestModule.ModuleVersionId.ToString(), captureRoot = TestLab.Root });
+                return IdentityReply(state);
             }
             else {
                 if (!WriteReceipt(runId, id, action, phase, host, "running", null))
@@ -126,7 +154,7 @@ namespace Scribble.Testing
             return Path.Combine(directory, id + ".json");
         }
 
-        private static SuiteCommandReceipt ReadReceipt(string runId, string id)
+        internal static SuiteCommandReceipt ReadReceipt(string runId, string id)
         {
             try { var path = ReceiptPath(runId, id); return File.Exists(path) ? TestLabSuite.Read<SuiteCommandReceipt>(path) : null; }
             catch (Exception) { return null; }
@@ -179,5 +207,5 @@ namespace Scribble.Testing
         public string error { get; set; }
         public string updated_utc { get; set; }
     }
-    public sealed class SuiteReply { public string hostModule { get; set; } public string captureRoot { get; set; } public string state { get; set; } public string error { get; set; } }
+    public sealed class SuiteReply { public string hostModule { get; set; } public string captureRoot { get; set; } public string state { get; set; } public string error { get; set; } public int pid { get; set; } public long processStart { get; set; } }
 }

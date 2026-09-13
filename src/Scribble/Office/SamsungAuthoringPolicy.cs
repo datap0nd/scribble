@@ -19,6 +19,8 @@ namespace Scribble.Office
             "Ask once for material missing details, never repeat supplied answers. When asked to proceed, state assumptions. " +
             "Read sources fully using paginated reads. Read retained passages with read_task_sources and cite host-issued source_spans. " +
             "Provide plan (ordered unique IDs for the entire deck) and briefs (one per ID: purpose, message, layout, source_spans, required_content). " +
+            "In the first draft tool call, supply plan, briefs AND a nonempty slides array together. An outline-only call cannot create slides. " +
+            "Each slides item contains its planned id, title, layout and actual source-backed content. Later calls supply the next slides batch using the same IDs. " +
             "Finish every planned ID across batches. Exact slide counts include covers and appendices. " +
             "title names the subject; subtitle is the evidence-backed action title on analytical slides; takeaway is optional and adds an implication rather than repeating subtitle. " +
             "Use purpose explanatory for definitions and setup; covers, dividers, agendas and explanatory slides do not need forced conclusions. " +

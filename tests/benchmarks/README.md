@@ -59,6 +59,20 @@ compare preserved source content. Chat-only checks inspect the final assistant
 answer, not numbers already present in input events. Formula semantics, charts,
 grounding and slide layout still require review. Tests never send email.
 
+If Office loses its connection during a case, the runner preserves that failure
+and checks the exact submission receipt and Office process identity. A completed
+request or confirmed process exit releases the following case; a live request
+without confirmation stays blocked. A separate stop signal lets the pane cancel
+even when COM status calls fail; it targets that exact submission so RC01 can
+resume. Reopened apps receive fresh connections. Outlook can also attach through
+its registered automation class when its running instance is absent from ROT;
+capture and cleanup reuse the retained application instead of rediscovering it.
+
+Completed answers pass through the recorder in both pane types. Blocked questions
+and rejected PowerPoint arguments appear in the report. Source capture records
+the original worksheet names and slide IDs, so draft labels already present in
+the starter cannot turn an untouched fixture into a generated result.
+
 ## Verification boundary
 
 `Test-TestLabReliability.ps1` reproduces dead-recorder recovery and restart,
@@ -68,6 +82,14 @@ and generates a complete 16-case PDF without Office or a model. The optional
 known outputs to check the native capture boundary. These smoke outputs are
 explicitly not Qwen outputs. A successful real Qwen run on the work machine is
 required before claiming model quality or full work-environment acceptance.
+
+For a local recovery check, add `-InjectOfficeExit`: after capturing PP01 and
+closing its synthetic documents, the smoke terminates only the empty PowerPoint
+process it created, then runs PP03 with the same environment. `-ReuseOutlook`
+allows an existing Outlook session for local MSG inputs and an unsent draft;
+the smoke never quits Outlook. `Test-TestLabSuite.ps1` also checks cancellation
+without COM, live-versus-exited executor ownership, and both real pane transcript
+entry points without contacting a model.
 
 ## Manual operator scripts
 

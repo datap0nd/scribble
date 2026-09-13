@@ -52,10 +52,22 @@ try {
  Assert ($evaluation.status -eq 'failed') 'A correct number in input evidence certified a wrong final answer.'
  $output=[Scribble.Testing.TestLabEvaluator]::OutputText('xlsx',"Worksheet: Sales`nR1C1: 120000`nWorksheet: Scribble Draft`nR1C1: 42")
  Assert ($output.Contains('42') -and -not $output.Contains('120000')) 'Source worksheet values leaked into output grading.'
+ $blocked=[Scribble.Testing.TestLab]::Start('PP01','PowerPoint',$true)
+ [Scribble.Testing.TestLab]::Record($blocked.run_id,'pane','pane_event',@{type='askUser';question='REPORT_QUESTION: Which product should be included?'})
+ [Scribble.Testing.TestLab]::Record($blocked.run_id,'sample','argument_validation_failed',@{tool='add_draft_slides';arguments='{"plan":["overview","analysis"]}';errors=@('$.slides: required field missing.')})
+ [Scribble.Testing.TestLab]::Finish($false)
+ $blockedEvidence=[Scribble.Testing.TestLab]::Export($blocked.run_id,(Join-Path $folder 'blocked-call'))
+ $archive=[IO.Compression.ZipFile]::OpenRead($blockedEvidence)
+ try {
+  $reader=New-Object IO.StreamReader($archive.GetEntry('timeline.jsonl').Open())
+  try {$blocking=[Scribble.Testing.TestLabEvaluator]::BlockingDetails($reader.ReadToEnd())} finally {$reader.Dispose()}
+  Assert ($blocking.Contains('REPORT_QUESTION') -and $blocking.Contains('add_draft_slides') -and $blocking.Contains('overview')) 'Blocked-case review lost the question or submitted arguments.'
+ } finally {$archive.Dispose()}
  $results=@()
  foreach($case in [Scribble.Testing.TestLabSuite]::SelectCases([Scribble.Testing.TestLab]::Cases(),'')) {
   $result=New-Object Scribble.Testing.SuiteCaseResult
   $result.id=$case.id;$result.host=$case.host;$result.status='blocked';$result.error='Synthetic reliability failure, not a live model run.'
+  if($case.id -eq 'PP01'){$result.evidence=$blockedEvidence}
   $results+=$result
  }
  $state.folder=Join-Path $folder 'all-case-report';[IO.Directory]::CreateDirectory($state.folder) | Out-Null

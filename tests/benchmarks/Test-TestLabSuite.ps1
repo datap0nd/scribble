@@ -4,6 +4,7 @@ $ErrorActionPreference='Stop'
 $resolvedAssembly=(Resolve-Path -LiteralPath $AssemblyPath).Path
 Add-Type -TypeDefinition 'using System;using System.IO;using System.Reflection;public static class TestLabAssemblyResolver{public static void Install(string folder){AppDomain.CurrentDomain.AssemblyResolve+=(s,e)=>{var p=Path.Combine(folder,new AssemblyName(e.Name).Name+".dll");return File.Exists(p)?Assembly.LoadFrom(p):null;};}}'
 [TestLabAssemblyResolver]::Install((Split-Path $resolvedAssembly))
+Add-Type -TypeDefinition 'public sealed class StoppedSuiteController { public string RunTestLabCommand(string suite,string command,string action,int phase) { return "{\"state\":\"stopped\"}"; } }'
 foreach($dependency in @('Microsoft.Extensions.Logging.Abstractions.dll','PdfSharp.Shared.dll','PdfSharp.System.dll','PdfSharp-gdi.dll')) {
     [void][Reflection.Assembly]::LoadFrom((Join-Path (Split-Path $resolvedAssembly) $dependency))
 }
@@ -94,6 +95,7 @@ try {
     $commandArgs=@($state.id,[guid]::NewGuid().ToString('N'),'load',0,'Excel',$true,$busy,$reset,$load,$send,$stop)
     $loaded=$method.Invoke($driver,$commandArgs) | ConvertFrom-Json
     Assert ($loaded.state -eq 'done') 'Pane did not load.'
+    Assert ($loaded.pid -eq $PID -and $loaded.processStart -eq $state.processStart) 'Pane did not identify the exact request owner.'
     $commandArgs[1]=[guid]::NewGuid().ToString('N');$commandArgs[2]='submit'
     $submitId=$commandArgs[1]
     $started=$method.Invoke($driver,$commandArgs) | ConvertFrom-Json
@@ -108,19 +110,55 @@ try {
     $commandArgs[1]=[guid]::NewGuid().ToString('N');$commandArgs[2]='stop'
     $stopping=$method.Invoke($driver,$commandArgs) | ConvertFrom-Json
     Assert ($stopping.state -eq 'running' -and $script:stopCount -eq 1) 'Stop falsely claimed the async operation finished.'
+    # The independent signal must reach the pane without another COM command,
+    # and must not acknowledge cancellation while the request remains busy.
+    [Scribble.Testing.TestLabSuite]::RequestStop($run.run_id,$submitId)
+    $poll=$driverType.GetMethod('PollStop')
+    [void]$poll.Invoke($driver,@($busy,$stop))
+    Assert ($script:stopCount -eq 2) 'The independent stop signal did not reach the pane.'
+    Assert ($null -eq [Scribble.Testing.TestLabSuite]::StoppedReason($run.run_id,$submitId,$PID,$state.processStart)) 'A live request with no valid terminal receipt was declared stopped.'
     $script:requestBusy=$false
+    [void]$poll.Invoke($driver,@($busy,$stop))
+    Assert ($null -ne [Scribble.Testing.TestLabSuite]::StoppedReason($run.run_id,$submitId,$PID,$state.processStart)) 'The runner ignored independent cancellation acknowledgement.'
     $stopped=$method.Invoke($driver,$commandArgs) | ConvertFrom-Json
-    Assert ($stopped.state -eq 'done' -and $script:stopCount -eq 2) 'An idle pane did not confirm cancellation.'
+    Assert ($stopped.state -eq 'done' -and $script:stopCount -eq 3) 'An idle pane did not confirm cancellation.'
     Assert ((Get-Content -LiteralPath $receiptPath -Raw).StartsWith('{')) 'The runner transport did not replace a DRM-corrupted receipt with plaintext JSON.'
     $terminalReceipt=Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
     Assert ($terminalReceipt.action -eq 'submit' -and $terminalReceipt.state -eq 'stopped') 'Stop left the original submit receipt latched as running.'
+    # Exercise the actual transcript entry points, not a manufactured Record()
+    # event. The visible panes previously bypassed recording final answers.
+    foreach($paneType in @([Scribble.UI.OfficeChatPane],[Scribble.UI.ChatPane])) {
+        $pane=[Activator]::CreateInstance($paneType)
+        try {
+            $append=$paneType.GetMethod('AppendFormattedAssistantText',[Reflection.BindingFlags]'Instance,NonPublic')
+            [void]$append.Invoke($pane,@('TRANSCRIPT_'+$paneType.Name+': Known subtotal 95000; South B is missing.'))
+        } finally {$pane.Dispose()}
+    }
     $eventPayloads=Get-ChildItem -LiteralPath (Join-Path ([Scribble.Testing.TestLab]::RunDirectory($run.run_id)) 'events') -Filter '*.bin' | ForEach-Object {
         [Text.Encoding]::UTF8.GetString([Security.Cryptography.ProtectedData]::Unprotect([IO.File]::ReadAllBytes($_.FullName),$null,[Security.Cryptography.DataProtectionScope]::CurrentUser))
     }
     Assert (($eventPayloads -join "`n").Contains('host_connected')) 'The runner transport did not persist the Office trace event.'
+    Assert (($eventPayloads -join "`n").Contains('TRANSCRIPT_OfficeChatPane') -and ($eventPayloads -join "`n").Contains('TRANSCRIPT_ChatPane')) 'A visible pane answer bypassed evidence capture.'
+    Assert ([Scribble.Testing.TestLabEvaluator]::FinalAnswer(($eventPayloads -join "`n")).Contains('95000')) 'The evaluator could not read the completed pane answer.'
+    $blockedQuestion='Which product should be included?'
+    $payload=New-Object 'Collections.Generic.Dictionary[string,object]';$payload.Add('type','askUser');$payload.Add('question',$blockedQuestion)
+    [void]$driverType.GetMethod('Observe').Invoke($driver,@($payload.PSObject.BaseObject,[Action[string]]{param($answer);throw 'An unknown answer must not be invented.'}))
+    $commandArgs[1]=$submitId;$commandArgs[2]='status'
+    $blockedReply=$method.Invoke($driver,$commandArgs) | ConvertFrom-Json
+    Assert ($blockedReply.error.Contains($blockedQuestion)) 'The blocked case hid the actual model question from suite diagnostics.'
     $pending.SetResult($true);$commandArgs[1]=$submitId;$commandArgs[2]='status'
     for($i=0;$i -lt 100;$i++) { $done=$method.Invoke($driver,$commandArgs) | ConvertFrom-Json;if($done.state -eq 'done'){break};Start-Sleep -Milliseconds 10 }
     Assert ($done.state -eq 'done') 'Completed task remained running.'
+    # RC01 deliberately resumes within the same run. An earlier stop must
+    # apply only to its submission, not cancel the subsequent phase.
+    $pending=New-Object 'Threading.Tasks.TaskCompletionSource[bool]'
+    $commandArgs[1]=[guid]::NewGuid().ToString('N');$commandArgs[2]='submit'
+    [void]$method.Invoke($driver,$commandArgs)
+    [void]$poll.Invoke($driver,@($busy,$stop))
+    Assert ($script:stopCount -eq 3 -and $script:requestBusy) 'The earlier stop signal cancelled the resumed phase.'
+    $script:requestBusy=$false;$pending.SetResult($true);$commandArgs[2]='status'
+    for($i=0;$i -lt 100;$i++) {$done=$method.Invoke($driver,$commandArgs) | ConvertFrom-Json;if($done.state -eq 'done'){break};Start-Sleep -Milliseconds 10}
+    Assert ($done.state -eq 'done') 'Resumed phase did not finish.'
     [Scribble.Testing.TestLab]::Finish($false)
     [Scribble.Testing.TestLab]::Disable()
     ([IDisposable]$transport).Dispose();$transport=$null
@@ -132,6 +170,36 @@ try {
     $csvInput=Join-Path $pptKit 'inputs/data/sales.csv'
     Assert ([Scribble.Testing.TestLabSuite]::OwnsSource($pptRun.run_id,$csvInput)) 'CSV must be an allowed supporting input for this test.'
     Assert (-not [Scribble.Testing.TestLabSuite]::OwnsNativeSource($pptRun.run_id,$csvInput,'Excel')) 'Supporting CSV would be mislabeled as XLSX.'
+    # A real owned helper process stands in for an Office executor. Never kill
+    # or inspect an unrelated Office session to manufacture recovery success.
+    $probeInfo=New-Object Diagnostics.ProcessStartInfo
+    $probeInfo.FileName='powershell.exe';$probeInfo.Arguments='-NoProfile -NonInteractive -Command "[Console]::ReadLine() | Out-Null"'
+    $probeInfo.UseShellExecute=$false;$probeInfo.CreateNoWindow=$true;$probeInfo.RedirectStandardInput=$true
+    $probe=[Diagnostics.Process]::Start($probeInfo)
+    try {
+        $probeId=$probe.Id;$probeStart=$probe.StartTime.ToUniversalTime().Ticks;$probeCommand=[guid]::NewGuid().ToString('N')
+        $probeReceipt=@{schema=1;run_id=$pptRun.run_id;command_id=$probeCommand;action='submit';host='PowerPoint';state='running';pid=$probeId;processStart=$probeStart} | ConvertTo-Json
+        $persist=$driverType.GetMethod('PersistTransportedReceipt',[Reflection.BindingFlags]'Static,NonPublic')
+        [void]$persist.Invoke($null,@($pptRun.run_id,$probeCommand,[string]$probeReceipt))
+        Assert ($null -eq [Scribble.Testing.TestLabSuite]::StoppedReason($pptRun.run_id,$probeCommand,$probeId,$probeStart)) 'A live Office owner was treated as exited.'
+        $probe.StandardInput.WriteLine('finish');Assert ($probe.WaitForExit(5000)) 'Owned recovery probe did not exit.'
+        Assert ([Scribble.Testing.TestLabSuite]::StoppedReason($pptRun.run_id,$probeCommand,$probeId,$probeStart).Contains('exited')) 'A confirmed executor exit still blocked the following case.'
+        Assert ($null -eq [Scribble.Testing.TestLabSuite]::StoppedReason($pptRun.run_id,[guid]::NewGuid().ToString('N'),0,0)) 'Missing owner evidence falsely confirmed a stop.'
+        # Run the production stop loop with an unavailable controller. It must
+        # return using process-exit evidence instead of aborting the suite.
+        $runnerType=[Scribble.Testing.TestLab].Assembly.GetType('Scribble.Testing.TestLabSuiteRunner')
+        $runner=[Activator]::CreateInstance($runnerType,[Reflection.BindingFlags]'Instance,NonPublic',$null,@($folder,[Action[string]]{param($line)},[Threading.CancellationToken]::None),$null)
+        $runnerState=$runnerType.GetField('State',[Reflection.BindingFlags]'Instance,NonPublic').GetValue($runner)
+        $runnerState.caseId='PP01';$runnerState.host='PowerPoint';$runnerState.runId=$pptRun.run_id
+        foreach($entry in @{activeSubmitId=$probeCommand;hostPid=$probeId;hostProcessStart=$probeStart}.GetEnumerator()) {$runnerType.GetField($entry.Key,[Reflection.BindingFlags]'Instance,NonPublic').SetValue($runner,$entry.Value)}
+        $stopTask=$runnerType.GetMethod('Command',[Reflection.BindingFlags]'Instance,NonPublic').Invoke($runner,@('stop',0,2,$false))
+        [void]$stopTask.GetAwaiter().GetResult()
+        $runnerType.GetField('controller',[Reflection.BindingFlags]'Instance,NonPublic').SetValue($runner,(New-Object StoppedSuiteController))
+        $cancelledTask=$runnerType.GetMethod('Command',[Reflection.BindingFlags]'Instance,NonPublic').Invoke($runner,@('submit',0,2,$false))
+        $cancelled=$false
+        try {[void]$cancelledTask.GetAwaiter().GetResult()} catch {$cancelled=$_.Exception.InnerException -is [OperationCanceledException]}
+        Assert $cancelled 'A terminal stopped receipt waited until timeout instead of releasing RC01 continuation.'
+    } finally {if(-not $probe.HasExited){$probe.StandardInput.WriteLine('finish');[void]$probe.WaitForExit(5000)};$probe.Dispose()}
     [Scribble.Testing.TestLab]::Finish($false);[Scribble.Testing.TestLab]::Disable()
     $chromeKit=[Scribble.Testing.TestLabSuite]::Extract($zip,(Join-Path $folder 'cases/CH01'))
     [Scribble.Testing.TestLab]::Enable($chromeKit)
@@ -209,7 +277,7 @@ try {
     Assert ($parts.Length -gt 1 -and $reassembled -ceq $payload) 'Relay chunks lost or duplicated diagnostic text.'
     Assert ($html.Contains('data-copy=') -and $html.Contains('script-src')) 'HTML relay controls missing.'
     Write-Output "Suite PDF sample: $reportPath"
-    Write-Output 'PASS: 16 cases, exact phases, source ownership, lease expiry, Chrome controller exclusivity, startup stderr, ZIP traversal, suite PDF report.'
+    Write-Output 'PASS: 16-case scope, exact phases, real pane transcripts, independent cancellation, exited-process recovery, blocked-question diagnostics, source ownership, lease expiry, Chrome exclusivity, startup stderr, ZIP traversal and suite PDF.'
 } finally {
     if($transport) { ([IDisposable]$transport).Dispose() }
     [Scribble.Testing.TestLabPreparation]::Stop($preparation)
