@@ -518,6 +518,7 @@ namespace Scribble.UI
         }
 
         private readonly Scribble.Testing.TestLabSuitePane _suiteDriver = new Scribble.Testing.TestLabSuitePane();
+        public string StopTestLabRun(string runId) { return _suiteDriver.RecoverStop(runId, () => _busy, () => HandleStop()); }
         public string RunTestLabCommand(string suiteId, string commandId, string action, int phase)
         {
             return _suiteDriver.Command(suiteId, commandId, action, phase, HostName, _webReady && !_shutdown,

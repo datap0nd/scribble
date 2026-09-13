@@ -27,6 +27,11 @@ namespace Scribble
 
         private OfficeChatPane _suitePane;
         private string _suiteRun;
+        public string StopTestLabRun(string runId)
+        {
+            if (runId != Testing.TestLab.ActiveRunId()) return Testing.TestLab.Serialize(new Testing.SuiteReply { state = "unknown" });
+            return _suitePane == null || _suitePane.IsDisposed ? Testing.TestLab.Serialize(new Testing.SuiteReply { state = "done" }) : _suitePane.StopTestLabRun(runId);
+        }
         public string RunTestLabCommand(string suiteId, string commandId, string action, int phase)
         {
             try {

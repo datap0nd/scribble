@@ -1,27 +1,73 @@
 # Scribble synthetic testing kit
 
-The kit contains fictional Atlas Office Supplies data, 16 exact prompts and evaluator-only answers. Start with **EX01**, **PP01**, and **XA01**. Their expected June revenue is EUR 120000, budget gap EUR 10000 and margin 38.33%.
+Click **Test Lab**, then **Start**. The default scope runs **16 Excel, PowerPoint
+and Outlook tests** against your configured model. Keep `qwen3.8-27b-fast`
+selected to measure Qwen. No other AI judges or changes its answers during a run.
 
-## Run the whole suite with one button
+The fictional Atlas Office Supplies dataset has known results: June revenue
+EUR 120000, budget EUR 130000, gross profit EUR 46000, weighted margin 38.33%,
+and delivery 94% against a 97% target. The runner submits authored prompts and
+only authored clarification answers. Expected answers are used after capture.
 
-Install the latest Scribble installer, restart Office, and make sure the Chrome extension is current. Configure the model you want to measure. Start your screen recording, then click **Test Lab** in any Scribble pane. The button is available without an activation script.
+## One-button workflow
 
-That click opens or focuses one idle window; it performs no model inference and opens no fixtures. Click **Start** to run all 16 cases. Test Lab downloads the latest kit from an exact main commit, verifies its ZIP checksum and all manifest hashes, and opens a fresh case copy in the visible origin/output apps. Supporting CSV, DOCX and PDF files use Scribble's normal context readers instead of becoming unrelated add-in prerequisites. Follow-up cases execute their prerequisites first. XA04 saves the generated deck before requesting its email attachment. RC01 observes a new workbook, stops, then submits the continuation; a missed stop boundary is recorded as blocked.
+1. Install the current Scribble release over the existing installation and
+   restart Office. Configure and test the model connection in Settings.
+2. Open **Scribble Test Lab** from Start or the **Test Lab** button in a pane.
+   Opening it makes no model request. Leave Case ID blank for the 16-case run.
+3. Click **Start**. The runner verifies the kit embedded in that exact build,
+   opens fresh read-only fixtures, runs the normal Scribble panes, captures
+   native results and evaluates them. Word and Chrome are optional historical
+   cases, available only by explicitly entering their case IDs.
+4. Click **View final PDF**. The ten-page PDF reserves two case cards per page,
+   including expected facts, observed answers/formulas, checks and available
+   native slide previews. Screenshot those pages for review; full outputs,
+   all slide images and complete traces remain in the adjacent HTML/evidence ZIPs.
 
-A live window shows UTC progress and captured errors, including PowerShell stdout/stderr when preparation fails before writing its JSON report. The runner answers questions that explicitly name audience, period, currency or format using only the kit’s predefined operator answers. Missing applications, disabled add-ins, other model questions and timeouts are recorded as blockers. The runner stops that request before moving on. If it cannot confirm stopping, it aborts the remaining cases, retains the synthetic source guard and exports an incomplete evidence snapshot. Stop the request in its app before starting another suite.
+The catalog contains 19 cases, of which 16 belong to the default Office scope.
+The extra Office cases test weighted margins (EX05), chart scales and units
+(PP04), and a grounded unsent email (OL02). Follow-ups retain their prerequisites.
+RC01 still observes the workbook boundary before stopping and continuing.
 
-Results go to **Documents/Scribble Testcases/suite-<UTC timestamp>-<id>/**:
+Office preparation is native C# and retains all participating applications for
+the suite lifetime. Outlook inputs are verified local MSG fixtures read by the
+normal message and attachment readers; no PST or mailbox import is required.
+Native Office exports use short paths under **Documents/Scribble Testcases/Native**,
+because Office can be denied saves inside LocalAppData even when the runner can
+write there. If native saves fail, live readback remains distinguishable from a
+saved editable file; the report identifies missing or incomplete evidence.
 
-- `report.pdf`: validated final report with summary, deterministic findings, retained traces, and usable native PDF/PNG output pages.
-- `report.html` and `summary.txt`: retained diagnostic derivatives used to build and troubleshoot the final PDF.
-- `diagnostics.txt`: complete report text, also available as numbered copyable parts in the HTML.
-- `suite.log` and `suite.json`: live log and structured case outcomes.
-- `cases/<case>/`: preparation logs, case report, evidence ZIP with original collected Office/email outputs, and that case's isolated fixtures.
-- `test-kit.zip`: the verified download; no manual ZIP management is needed.
+**Stop** prevents further submissions, requests cancellation and preserves a
+partial report. After an interrupted run, **Start** verifies that the prior
+request stopped, reconnects its recorder and preserves incomplete evidence
+before starting fresh. A stale or dead pipe cannot prevent recovery. If a live
+host cannot acknowledge cancellation, its identity is shown and later cases
+remain unsubmitted. No unrelated application or user document is force-closed.
 
-The window has exactly **Start**, **Stop**, and **View final PDF**. Stop prevents the next submission, requests cancellation, and preserves available evidence while mandatory finalization continues. The PDF renderer is local and does not require Chrome, Office, Python, or a model. A model response or an existing output file is never automatically declared correct. Cases are marked for review, deterministic failure, incomplete, blocked, stopped or not run.
+Results are under **Documents/Scribble Testcases/suite-<timestamp>-<id>/**, with
+a writable LocalAppData fallback if Documents is unavailable:
 
-The suite leaves opened apps visible for recording and inspection. Emails are unsent drafts. Existing unrelated files are not saved or closed. Synthetic source files open read-only; the collector can save generated changes from the suite-owned copies, as well as new run-tagged documents. Answer keys remain evaluator-only and are added to the report after execution. Full native Office/Qwen acceptance still needs a run on a machine with the apps, connected add-ins and configured model; infrastructure checks do not certify model output quality.
+- `report.pdf`: concise review of all 16 cases, up to ten pages.
+- `report.html`, `diagnostics.txt`, `summary.txt`: complete copyable diagnostics.
+- `suite.log`, `suite.json`: progress, failures and structured outcomes.
+- `cases/<id>/`: verified fixtures, native evidence ZIP and deterministic checks.
+- `test-kit.zip`: the kit from the installed build, with its checksum recorded.
+
+A completed run is not automatically a correctness pass. Deterministic checks
+reject missing outputs, native formula errors and missing expected facts, and
+compare preserved source content. Chat-only checks inspect the final assistant
+answer, not numbers already present in input events. Formula semantics, charts,
+grounding and slide layout still require review. Tests never send email.
+
+## Verification boundary
+
+`Test-TestLabReliability.ps1` reproduces dead-recorder recovery and restart,
+checks run-isolated message IDs, rejects correct-input/wrong-answer evidence,
+and generates a complete 16-case PDF without Office or a model. The optional
+`Test-TestLabNative.ps1 -RunOffice` opens installed Office apps and manufactures
+known outputs to check the native capture boundary. These smoke outputs are
+explicitly not Qwen outputs. A successful real Qwen run on the work machine is
+required before claiming model quality or full work-environment acceptance.
 
 ## Manual operator scripts
 
@@ -51,4 +97,8 @@ Expected outputs include formula-based reference analysis, a six-slide editable 
 
 ## Recover an unfinished capture
 
-Test Lab opens or focuses one visible standalone window. If the previous run was interrupted, **Start** stays disabled and **Stop** performs an idempotent recheck. Once no model host can still mutate the run, Stop preserves the old capture in a validated PDF and enables a fresh Start. No unrelated application is closed automatically. The report header records the runner build separately from the downloaded kit commit.
+Use **Start** to preserve a stopped interrupted capture and begin a new run,
+or **Stop** to preserve it without starting tests. Recovery uses a fresh recorder
+and direct native cancellation acknowledgement. If an older loaded add-in lacks
+that acknowledgement, stop its request or close that specific app, then retry.
+The runner never replays a model submission during recovery.

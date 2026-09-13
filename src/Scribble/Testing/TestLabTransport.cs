@@ -29,6 +29,7 @@ namespace Scribble.Testing
         {
             if (string.IsNullOrEmpty(pipeName)) throw new IOException("Test Lab transport is unavailable.");
             using (var client = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.None))
+            using (var deadline = new Timer(_ => client.Dispose(), null, 10000, Timeout.Infinite))
             {
                 client.Connect(5000);
                 using (var writer = new BinaryWriter(client, new UTF8Encoding(false), true))

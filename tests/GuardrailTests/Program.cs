@@ -340,7 +340,7 @@ namespace GuardrailTests
                     "Selected subjects hide reply and forward prefixes",
                     SelectedSubjectIsCleaned);
                 Run(
-                    "Self update is official, silent, and restarts Outlook",
+                    "Self update verifies its release and preserves open work",
                     SelfUpdateIsOfficialAndBounded);
                 Run(
                     "Draft formulas stay inside the workbook",
@@ -5521,55 +5521,17 @@ namespace GuardrailTests
                     StringComparison.Ordinal),
                 "The updater must download only the official release installer over HTTPS.");
 
-            var script = SelfUpdater.BuildUpdateScript();
-            Assert(
-                script.Contains("OUTLOOK.EXE") &&
-                script.Contains("EXCEL.EXE") &&
-                script.Contains("POWERPNT.EXE") &&
-                script.Contains("WINWORD.EXE") &&
-                script.Contains("if %tries% GEQ 150 exit /b 1") &&
-                // The update closes the hosts itself: politely
-                // first, forcibly once a save prompt has stalled it.
-                script.Contains("taskkill /IM OUTLOOK.EXE") &&
-                script.Contains("taskkill /F /IM WINWORD.EXE") &&
-                script.Contains("if %tries% GEQ 15 goto force") &&
-                script.Contains(
-                    "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART") &&
-                script.Contains(
-                    "if not \"%restart%\"==\"\" start \"\" \"%restart%\"") &&
-                script.Contains("%~1") &&
-                script.Contains("%~2"),
-                "The update script must wait for every Office host to close, " +
-                "install silently with a bounded wait, and restart only the " +
-                "requested host.");
-
-            var excelOnly = SelfUpdater.BuildUpdateScript(
-                false,
-                true,
-                false,
-                false);
-            Assert(
-                excelOnly.Contains("EXCEL.EXE") &&
-                !excelOnly.Contains("OUTLOOK.EXE") &&
-                !excelOnly.Contains("POWERPNT.EXE") &&
-                !excelOnly.Contains("WINWORD.EXE"),
-                "A component-scoped update must wait only for its own hosts.");
-            Assert(
-                excelOnly.Contains("taskkill /IM EXCEL.EXE") &&
-                excelOnly.Contains("taskkill /F /IM EXCEL.EXE") &&
-                !excelOnly.Contains("taskkill /IM OUTLOOK.EXE"),
-                "A component-scoped update must close only its own hosts.");
-            var unknown = SelfUpdater.BuildUpdateScript(
-                false,
-                false,
-                false,
-                false);
-            Assert(
-                unknown.Contains("OUTLOOK.EXE") &&
-                unknown.Contains("EXCEL.EXE") &&
-                unknown.Contains("POWERPNT.EXE") &&
-                unknown.Contains("WINWORD.EXE"),
-                "An unknown component state must wait for every host.");
+            Assert(SelfUpdater.InstallerUrl == Scribble.Updater.UpdateEngine.ReleaseRoot + "ScribbleSetup.exe",
+                "The visible updater must use the same official continuous channel.");
+            var arguments = Scribble.Updater.UpdateEngine.InstallerArguments(@"C:\Users\Test User\Scribble", @"C:\Updates\installer.log");
+            Assert(arguments.Contains("/NOCLOSEAPPLICATIONS") && arguments.Contains("/NOFORCECLOSEAPPLICATIONS") &&
+                arguments.Contains("/LOG=") && arguments.Contains("/RESTARTEXITCODE=3010"),
+                "The installer must preserve save prompts and return explicit restart and failure evidence.");
+            var rejected = false;
+            try { Scribble.Updater.UpdateEngine.ParseCandidate("{}"); } catch (System.IO.InvalidDataException) { rejected = true; }
+            Assert(rejected, "An incomplete release manifest must not authorize installation.");
+            Assert(Scribble.Updater.UpdateEngine.HostNames().Contains("ScribbleBrowserHost"),
+                "The updater must wait for the standalone Test Bench DLL holder.");
         }
 
         private static void DraftFormulasStayInsideTheWorkbook()

@@ -129,7 +129,7 @@ namespace Scribble.Testing
             details.Controls.Add(new Label { AutoSize = true, Font = new Font(Font, FontStyle.Bold), Text = "Configured model: " + configured });
             details.Controls.Add(status); details.Controls.Add(progress); details.Controls.Add(currentCase); details.Controls.Add(elapsed);
             var scope = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
-            scope.Controls.Add(new Label { AutoSize = true, Margin = new Padding(0, 5, 6, 0), Text = "Case ID (blank = all):" });
+            scope.Controls.Add(new Label { AutoSize = true, Margin = new Padding(0, 5, 6, 0), Text = "Case ID (blank = 16 Office tests):" });
             scope.Controls.Add(caseFilter); details.Controls.Add(scope);
             Controls.Add(log); Controls.Add(details); Controls.Add(actions);
             finalPdf = ReadLastReport();
@@ -137,8 +137,8 @@ namespace Scribble.Testing
             if (unfinished == null) SetIdle("Idle — Start will create a new isolated run. Opening this window made no model request.");
             else
             {
-                status.Text = "Prior task still unconfirmed — click Stop to recheck and preserve its report.";
-                startButton.Enabled = false; stopButton.Enabled = true; reportButton.Enabled = finalPdf != null;
+                status.Text = "Interrupted capture found — Start will verify it stopped, preserve its report, and begin a fresh suite.";
+                startButton.Enabled = TestLabSuite.Active() == null; stopButton.Enabled = true; reportButton.Enabled = finalPdf != null;
                 currentCase.Text = "Active capture: " + unfinished;
             }
             var timer = new System.Windows.Forms.Timer { Interval = 250 };
@@ -182,7 +182,7 @@ namespace Scribble.Testing
             running = false; finalizing = false; activeRunner = null;
             Text = "Scribble Test Lab — idle"; status.Text = message;
             progress.Text = "Progress: 0 / 0"; currentCase.Text = "Current case/stage: none"; elapsed.Text = "Elapsed: 00:00:00";
-            startButton.Enabled = TestLab.ActiveRunId() == null; stopButton.Enabled = TestLab.ActiveRunId() != null;
+            startButton.Enabled = TestLabSuite.Active() == null; stopButton.Enabled = TestLab.ActiveRunId() != null;
             reportButton.Enabled = TestLabPdfWriter.IsValid(finalPdf);
         }
 
@@ -207,7 +207,7 @@ namespace Scribble.Testing
         private async Task StartRun()
         {
             if (running || finalizing) return;
-            if (TestLab.ActiveRunId() != null) { SetIdle("Prior task still unconfirmed — click Stop to recheck it first."); return; }
+            if (TestLab.ActiveRunId() != null && !await RecoverPrior()) return;
             cancellation = new CancellationTokenSource(); folder = CreateRunFolder(); finalPdf = null;
             runStarted = DateTime.UtcNow; running = true; Text = "Scribble Test Lab — running";
             status.Text = "Starting — acquiring run ownership and preflight."; startButton.Enabled = false; stopButton.Enabled = true; reportButton.Enabled = false;
@@ -226,7 +226,9 @@ namespace Scribble.Testing
                 File.WriteAllText(Path.Combine(TestLab.Root, "last-suite-report.txt"), finalPdf, new UTF8Encoding(false));
                 UpdateWindowReport();
                 Append("Final PDF: " + finalPdf);
-                status.Text = cancellation.IsCancellationRequested ? "Stopped — partial report preserved." : "Finished — final PDF ready for review.";
+                var blockers = runner.Results.Count(r => r.status == "blocked" || r.status == "incomplete" || r.status == "not_run");
+                status.Text = cancellation.IsCancellationRequested ? "Stopped — partial report preserved." :
+                    blockers > 0 ? "Finished with " + blockers + " blocked or incomplete cases — review the final PDF." : "Finished — final PDF ready for review.";
             }
             catch (Exception error)
             {
@@ -236,27 +238,29 @@ namespace Scribble.Testing
             }
             finally
             {
-                finalizing = false; activeRunner = null; startButton.Enabled = TestLab.ActiveRunId() == null;
+                finalizing = false; activeRunner = null; startButton.Enabled = TestLabSuite.Active() == null;
                 caseFilter.Enabled = true;
                 stopButton.Enabled = TestLab.ActiveRunId() != null; reportButton.Enabled = TestLabPdfWriter.IsValid(finalPdf);
                 Text = "Scribble Test Lab — " + (reportButton.Enabled ? "finished" : "reporting failed");
             }
         }
 
-        private async void RecoverPrior()
+        private async Task<bool> RecoverPrior()
         {
+            finalizing = true; runStarted = DateTime.UtcNow; startButton.Enabled = false; stopButton.Enabled = false;
             try
             {
                 folder = CreateRunFolder(); finalPdf = await Task.Run(() => TestLabSuite.RecoverIncomplete(folder));
                 File.WriteAllText(Path.Combine(TestLab.Root, "last-suite-report.txt"), finalPdf, new UTF8Encoding(false));
                 UpdateWindowReport(); status.Text = "Stopped — incomplete capture preserved in the final PDF.";
                 Append("Recovered final PDF: " + finalPdf);
+                return true;
             }
-            catch (Exception error) { status.Text = "Stop not confirmed — " + error.Message; Append(error.Message); }
+            catch (Exception error) { status.Text = "Recovery needs attention — " + error.Message; Append(error.ToString()); return false; }
             finally { SetIdle(status.Text); }
         }
 
-        private void Stop()
+        private async void Stop()
         {
             if (running)
             {
@@ -264,7 +268,7 @@ namespace Scribble.Testing
                 if (cancellation != null) cancellation.Cancel(); Append("Stop requested. No next case will be submitted; mandatory evidence finalization continues.");
             }
             else if (finalizing) { status.Text = "Stopping — mandatory report finalization continues"; stopButton.Enabled = false; }
-            else if (TestLab.ActiveRunId() != null) { stopButton.Enabled = false; status.Text = "Stopping — checking prior task and preserving report"; RecoverPrior(); }
+            else if (TestLab.ActiveRunId() != null) { stopButton.Enabled = false; status.Text = "Stopping — checking prior task and preserving report"; await RecoverPrior(); }
         }
 
         private void ViewReport()

@@ -92,10 +92,12 @@ namespace Scribble.Outlook
                 dynamic application = _outlookApplication;
                 session = application.Session;
                 dynamic outlookSession = session;
-                item = string.IsNullOrWhiteSpace(storeId)
-                    ? outlookSession.GetItemFromID(entryId)
-                    : outlookSession.GetItemFromID(entryId, storeId);
-                return CaptureItem(item, metadataOnly, true);
+                item = Scribble.Testing.TestLabMail.OpenItem((object)outlookSession, entryId, storeId);
+                var captured = CaptureItem(item, metadataOnly, true);
+                if (!(entryId ?? "").StartsWith("scribble-fixture:", StringComparison.Ordinal)) return captured;
+                return new MessageSnapshot(entryId, storeId, captured.Subject, captured.Sender,
+                    captured.Recipients, captured.ReceivedAt, captured.Body, captured.AttachmentNames,
+                    captured.RemoteImageCount, captured.IsUnread);
             }
             finally
             {

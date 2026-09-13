@@ -119,10 +119,37 @@ def generate():
         byid[child]['prerequisite_prompt']=byid[parent]['prompt']
         byid[child]['inputs']=list(dict.fromkeys(byid[parent]['inputs']+byid[child]['inputs']))
     byid['XA04']['setup']='Start capture, run the prerequisite deck prompt, review it, then Save As a NEW file in a dedicated run folder. Use Collect saved outputs on that deck before running Copy prompt for the email. Never overwrite the starter fixture.'
-    write('operator/cases.json',cases)
+    write('operator/cases.json',office_cases(cases))
     write('evaluator-only/answers.json',{'schema':1,'suite_id':'atlas-v1','june_revenue':120000,'may_revenue':100000,'june_cost':74000,'june_profit':46000,'june_margin':46/120,'may_margin':.4,'margin_change_pp':(46/120-.4)*100,'budget':130000,'budget_variance':-10000,'budget_variance_pct':-10000/130000,'revenue_growth':.2,'north_revenue':70000,'south_revenue':50000,'product_a':65000,'product_b':55000,'south_b_margin':.32,'delivery_pct':94,'delivery_target_pct':97,'delivery_gap_pp':-3,'missing_known_subtotal':95000,'actions':[{'owner':'Mira Cole','due':'2026-07-10','action':'Review South B freight costs'},{'owner':'Leon Park','due':'2026-07-12','action':'Confirm supplier recovery plan'}]})
     write('evaluator-only/rubric.json',{'schema':1,'weights':{'accuracy':35,'grounding':20,'completeness':15,'artifact_quality':20,'interaction':10},'minimum_score':90,'minimum_artifact_quality':80,'hard_failures':['source_changed','sent_mail','invented_material_fact','wrong_attachment','claimed_output_missing','oracle_leak','trace_incomplete'],'native_review_required':True,'visual_review_required':True})
-    print('Generated source fixtures and 16 cases at',KIT)
+    print('Generated source fixtures and 19 cases (16 default Office cases) at',KIT)
+
+def office_cases(cases):
+    """Keep historical cases replayable; the default Office scope has 16 cases."""
+    cases=[c for c in cases if c['id'] not in {'EX05','PP04','OL02'}]
+    byid={c['id']:c for c in cases}
+    additions=[
+        ('EX05','EX01',
+         'Create a new Scribble Draft margin audit using Sales. Calculate May and June revenue, cost, gross profit and weighted gross margin with formulas. Show the change in percentage points and June North versus South margins. Explain why averaging row margin percentages gives the wrong overall margin. Leave source sheets unchanged.',
+         'June revenue 120000, cost 74000, profit 46000, weighted margin 38.33%; May margin 40%; change -1.67 percentage points; North 40%, South 36%. Use formulas, not the mean of row percentages.'),
+        ('PP04','PP01',
+         'Create a six-slide financial review: financial headline, actual versus budget chart, month-over-month growth, weighted margin, delivery performance, and actions. Use native editable charts with honest zero-based bar axes and explicit EUR or percent units. Show negative budget and delivery gaps clearly. Cite the supplied sources in notes; do not invent causes.',
+         'Six editable draft slides. Revenue 120000 against 130000 budget; gap -10000 (-7.69%); growth 20%; margin 38.33%; delivery 94% against 97%, gap -3 percentage points. Accurate chart scales, sources and named actions.'),
+        ('OL02','OL01',
+         'Create a new unsent email to review@example.test with subject Atlas June review. Summarize the final June revenue, budget gap, weighted margin and delivery risk from these emails and attachments. Include the two named action owners and due dates, and identify the sources. Leave it open for review.',
+         'A visible unsent draft addressed only to review@example.test. Revenue 120000; budget gap -10000; margin 38.33%; delivery 94% versus 97%. Mira Cole due 10 July 2026; Leon Park due 12 July 2026. No sent message.')]
+    for case_id,parent,prompt,expected in additions:
+        child=dict(byid[parent]); child.update(id=case_id,prompt=prompt,expected=expected,version=2)
+        child.pop('prerequisite_prompt',None)
+        if case_id=='OL02': child['artifacts']=['msg']
+        cases.append(child)
+    assert len([c for c in cases if c['host'] in {'Excel','PowerPoint','Outlook'}])==16
+    financial='June revenue EUR 120000; budget 130000; gap -10000 (-7.69%); cost 74000; profit 46000; margin 38.33%; growth 20%.'
+    for case in cases:
+        if case['id'] in {'EX01','PP01','PP02','OL01','XA01','XA02','XA04','RC01'}:
+            if not case['expected'].startswith('June revenue EUR'):
+                case['expected']=financial+(' Delivery 94% against 97%, gap -3 pp.' if case['id']!='EX01' else '')+' '+case['expected']
+    return cases
 
 def pack():
     # Canonicalize OOXML and archive container metadata for byte-identical rebuilds.

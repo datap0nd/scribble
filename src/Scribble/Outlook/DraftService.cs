@@ -36,11 +36,7 @@ namespace Scribble.Outlook
                 dynamic application = _outlookApplication;
                 session = application.Session;
                 dynamic outlookSession = session;
-                original = source.StoreId.Length > 0
-                    ? outlookSession.GetItemFromID(
-                        source.EntryId,
-                        source.StoreId)
-                    : outlookSession.GetItemFromID(source.EntryId);
+                original = Scribble.Testing.TestLabMail.OpenItem((object)outlookSession, source.EntryId, source.StoreId);
                 dynamic originalMail = original;
                 reply = CreateReply(
                     application,

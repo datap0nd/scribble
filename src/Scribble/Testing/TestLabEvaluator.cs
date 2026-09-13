@@ -39,8 +39,9 @@ namespace Scribble.Testing
                 var memoryOutputs = MemoryOutputs(archive).ToArray();
                 foreach (var memory in memoryOutputs)
                 {
-                    finalText.AppendLine(memory.text);
-                    finalNumbers.AddRange(Numbers(memory.text));
+                    var output = OutputText(memory.extension, memory.text);
+                    finalText.AppendLine(output);
+                    finalNumbers.AddRange(Numbers(output));
                 }
                 foreach (var entry in archive.Entries.Where(e => e.FullName.StartsWith("artifacts/", StringComparison.Ordinal) &&
                     e.FullName.IndexOf("-final-output-", StringComparison.OrdinalIgnoreCase) >= 0 &&
@@ -48,11 +49,12 @@ namespace Scribble.Testing
                 {
                     try
                     {
-                        var inspection = InspectOffice(entry); finalNumbers.AddRange(inspection.numbers); finalText.AppendLine(inspection.text);
+                        var inspection = InspectOffice(entry);
+                        if (!memoryOutputs.Any(m => "." + m.extension == Path.GetExtension(entry.Name))) { finalNumbers.AddRange(inspection.numbers); finalText.AppendLine(inspection.text); }
                         if (entry.FullName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
                         {
                             Add(checks, "no_formula_errors_" + entry.Name, inspection.formulaErrors == 0, "Native formula error cells: " + inspection.formulaErrors);
-                            if (new[] { "EX01", "EX04", "XA01", "RC01" }.Contains(run.case_id))
+                            if (new[] { "EX01", "EX04", "EX05", "XA01", "RC01" }.Contains(run.case_id))
                                 Add(checks, "native_formulas_" + entry.Name, inspection.formulas > 0, "Formula count: " + inspection.formulas);
                             if (new[] { "EX01", "EX04", "XA01", "XA03", "RC01" }.Contains(run.case_id))
                                 Add(checks, "native_chart_" + entry.Name, inspection.charts > 0, "Chart count: " + inspection.charts);
@@ -69,8 +71,11 @@ namespace Scribble.Testing
                 AddMemoryStructureChecks(checks, run.case_id, memoryOutputs);
                 if ((testCase.artifacts ?? new string[0]).Length == 0)
                 {
-                    var timeline = Read(archive, "timeline.jsonl"); finalText.AppendLine(timeline);
-                    finalNumbers.AddRange(Numbers(timeline));
+                    // Input sources and tool observations already contain the
+                    // right numbers. Only the final assistant answer can satisfy
+                    // a chat-only test, never a copied source or user prompt.
+                    var answer = FinalAnswer(Read(archive, "timeline.jsonl"));
+                    finalText.AppendLine(answer); finalNumbers.AddRange(Numbers(answer));
                 }
                 CheckFacts(checks, run.case_id, finalNumbers);
                 CheckSourcePreservation(checks, archive);
@@ -102,6 +107,34 @@ namespace Scribble.Testing
                 c.extension,
                 extension,
                 StringComparison.OrdinalIgnoreCase));
+        }
+        public static string FinalAnswer(string timeline)
+        {
+            var answer = "";
+            var json = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
+            foreach (var line in (timeline ?? "").Split('\n').Where(l => !string.IsNullOrWhiteSpace(l)))
+            {
+                var entry = json.Deserialize<Dictionary<string, object>>(line); object stage, detail, type, text;
+                if (!entry.TryGetValue("stage", out stage) || Convert.ToString(stage) != "pane_event" ||
+                    !entry.TryGetValue("detail", out detail)) continue;
+                var payload = detail as Dictionary<string, object>;
+                if (payload != null && payload.TryGetValue("type", out type) && Convert.ToString(type) == "assistant" &&
+                    payload.TryGetValue("text", out text)) answer = Convert.ToString(text);
+            }
+            return answer;
+        }
+
+        public static string OutputText(string extension, string text)
+        {
+            if (extension == "pptx") {
+                var slides = Regex.Split(text ?? "", @"(?m)(?=^Slide \d+\r?$)");
+                var draftSlides = slides.Where(s => s.Contains("[Scribble draft]")).ToArray();
+                if (draftSlides.Length > 0) return "Draft slide count: " + draftSlides.Length + "\n" + string.Join("\n", draftSlides);
+            }
+            if (extension != "xlsx") return text ?? "";
+            var sections = Regex.Split(text ?? "", @"(?m)(?=^Worksheet: )");
+            var drafts = sections.Where(s => s.StartsWith("Worksheet: Scribble Draft", StringComparison.Ordinal)).ToArray();
+            return drafts.Length > 0 ? string.Join("\n", drafts) : text ?? "";
         }
 
         private static IEnumerable<MemoryOutput> MemoryOutputs(ZipArchive archive)
@@ -149,7 +182,7 @@ namespace Scribble.Testing
                 var charts = Regex.Matches(output.text, @"Native charts: ([1-9][0-9]*)").Count;
                 Add(checks, "no_formula_errors_" + output.name, formulaErrors == 0,
                     "Native formula error cells in memory readback: " + formulaErrors);
-                if (new[] { "EX01", "EX04", "XA01", "RC01" }.Contains(caseId))
+                if (new[] { "EX01", "EX04", "EX05", "XA01", "RC01" }.Contains(caseId))
                     Add(checks, "native_formulas_" + output.name, formulas > 0,
                         "Formula count in memory readback: " + formulas);
                 if (new[] { "EX01", "EX04", "XA01", "XA03", "RC01" }.Contains(caseId))
@@ -190,7 +223,9 @@ namespace Scribble.Testing
                 { "OL01", new[] { 120000d, 94d } }, { "XA01", new[] { 120000d, 130000d, 94d } },
                 { "XA02", new[] { 120000d, 94d } }, { "CH01", new[] { 94d, 97d } },
                 { "XA03", new[] { 94d } }, { "WD01", new[] { 120000d, 94d } },
-                { "XA04", new[] { 120000d } }, { "RB01", new[] { 120000d } }, { "RC01", new[] { 120000d, 94d } } };
+                { "XA04", new[] { 120000d } }, { "RB01", new[] { 120000d } }, { "RC01", new[] { 120000d, 94d } },
+                { "EX05", new[] { 120000d, 74000d, 46000d } }, { "PP04", new[] { 120000d, 130000d, 94d } },
+                { "OL02", new[] { 120000d, 94d } } };
             double[] expected;
             if (!facts.TryGetValue(caseId, out expected)) return;
             foreach (var value in expected) Add(checks, "required_final_fact_" + value.ToString(CultureInfo.InvariantCulture),
@@ -222,7 +257,7 @@ namespace Scribble.Testing
                     }
                     var value = text.ToString();
                     return new OfficeInspection { text = value, numbers = Numbers(value), formulas = formulas,
-                        formulaErrors = formulaErrors, charts = package.Entries.Count(e => Regex.IsMatch(e.FullName, @"(?:xl|ppt)/.+charts/chart\d+\.xml$")),
+                        formulaErrors = formulaErrors, charts = package.Entries.Count(e => Regex.IsMatch(e.FullName, @"^(?:xl|ppt)/charts/chart\d+\.xml$")),
                         slides = package.Entries.Count(e => Regex.IsMatch(e.FullName, @"^ppt/slides/slide\d+\.xml$")) };
                 }
             }

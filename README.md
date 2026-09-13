@@ -106,18 +106,26 @@ because Scribble deliberately detaches after every atomic action. Clicking
    the generated drafting instructions, edit them, and enable the profile.
 
 To update later, open **Settings** in any Scribble pane and click
-**Update Scribble**. You confirm twice - the second dialog warns that the
-Office apps are about to close, so save your work first - and Scribble then
-downloads the latest installer, **closes Outlook, Excel, PowerPoint, and
-Word itself**, and installs silently for your Windows account. Chrome
-stay open. Only the
-apps that actually have Scribble installed are closed; a host still sitting
-on a save prompt after about thirty seconds is closed forcibly, so an
-update can never stall unfinished. Outlook reopens automatically when the
-update was started there. One update refreshes the whole suite. If the browser
-extension changed, open `chrome://extensions`, find
-Scribble, and click **Reload**; unpacked extensions do not reload changed files
-automatically.
+**Update Scribble**. One confirmation opens a separate progress window. It
+downloads the continuous release, verifies its manifest, SHA-256 and version,
+then asks the installed Office hosts and Test Lab to close. Respond to any
+Office save prompts. The updater waits visibly and never force-closes unsaved
+work. It installs for your Windows account, checks the installer exit code and
+installed DLL version, and reopens Outlook if the update started there.
+Your settings and selected integrations are preserved. Failed updates retain
+the installer and logs under `%LOCALAPPDATA%/Scribble/Updates/`.
+
+If an older installation's Update button fails, run the current installer once
+over that installation; uninstalling is unnecessary. Future updates use the
+native helper instead of a hidden command script. If the Chrome extension
+changed, open `chrome://extensions`, find Scribble, and click **Reload**.
+
+For repeatable local-model evaluation, open **Scribble Test Lab** from Start or
+click **Test Lab** in a pane, then **Start**. The default runs 16 synthetic
+Excel, PowerPoint and Outlook cases and creates a ten-page review PDF. The kit
+ships inside the app, so starting tests requires no GitHub download, Python,
+PowerShell preparation script, Chrome extension, Word add-in or PST import.
+See [the test workflow](tests/benchmarks/README.md).
 
 The browser panel compares its running extension version with the version
 bundled by the installed Scribble desktop suite. It shows **latest** when they

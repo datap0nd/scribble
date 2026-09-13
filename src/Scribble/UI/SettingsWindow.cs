@@ -119,7 +119,6 @@ namespace Scribble.UI
         private CancellationTokenSource _checkCancellation;
         private CancellationTokenSource _modelRefreshCancellation;
         private CancellationTokenSource _toneCancellation;
-        private CancellationTokenSource _updateCancellation;
         private CancellationTokenSource _topicCancellation;
         private bool _checking;
         private bool _analyzingTone;
@@ -321,12 +320,10 @@ namespace Scribble.UI
             _checkCancellation?.Cancel();
             _modelRefreshCancellation?.Cancel();
             _toneCancellation?.Cancel();
-            _updateCancellation?.Cancel();
             _topicCancellation?.Cancel();
             _checkCancellation?.Dispose();
             _modelRefreshCancellation?.Dispose();
             _toneCancellation?.Dispose();
-            _updateCancellation?.Dispose();
             _topicCancellation?.Dispose();
             _client.Dispose();
             base.OnFormClosed(eventArgs);
@@ -537,113 +534,34 @@ namespace Scribble.UI
 
             ConfigureSupportingLabel(_updateStatus);
             _updateStatus.Text =
-                "Update downloads the latest Scribble release and installs " +
-                "silently once Outlook, Excel, PowerPoint, and Word are closed. " +
-                "One update refreshes Scribble across all five apps.";
+                "Update opens a progress window, verifies the release, waits for Office and Test Bench to close, " +
+                "and confirms the installed version. Your app selections and settings are preserved.";
             _updateStatus.AccessibleRole = AccessibleRole.StatusBar;
             layout.Controls.Add(_updateStatus, 0, 13);
             page.Controls.Add(layout);
             return page;
         }
 
-        private async void UpdateClick(
-            object sender,
-            EventArgs eventArgs)
+        private void UpdateClick(object sender, EventArgs eventArgs)
         {
-            if (_updating ||
-                _checking ||
-                _refreshingModels ||
-                _analyzingTone)
-            {
-                return;
-            }
-
+            if (_updating || _checking || _refreshingModels || _analyzingTone) return;
             _error.Text = string.Empty;
-            var confirm = MessageBox.Show(
-                this,
-                "Scribble will download the latest version and install it " +
-                "silently. Outlook, Excel, PowerPoint, and Word are " +
-                "closed automatically so the update can finish" +
-                (_outlookApplication != null
-                    ? ", and Outlook reopens with the new version"
-                    : string.Empty) +
-                ". One update refreshes Scribble across all five apps. " +
-                "Continue?",
-                "Update Scribble",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Question);
-            if (confirm != DialogResult.Yes)
-            {
-                return;
-            }
-
-            // Second, deliberate warning: the update closes the
-            // Office apps itself, so unsaved work must be saved
-            // first. Waiting for the user to close them by hand is
-            // what left installs silently unfinished.
-            var closeConfirm = MessageBox.Show(
-                this,
-                "This will close all Office apps (Outlook, Excel, " +
-                "PowerPoint, and Word).\r\n\r\n" +
-                "Please save any unsaved work before continuing.",
-                "Scribble will close your Office apps",
-                MessageBoxButtons.OKCancel,
-                MessageBoxIcon.Warning);
-            if (closeConfirm != DialogResult.OK)
-            {
-                return;
-            }
-
+            if (MessageBox.Show(this,
+                "Download and verify the latest Scribble update? The update window will ask Office and Test Bench to close. Respond to any save prompts; installation continues automatically when they close.",
+                "Update Scribble", MessageBoxButtons.OKCancel, MessageBoxIcon.Information) != DialogResult.OK) return;
             _updating = true;
-            SetCommonControlsEnabled(false);
-            _updateButton.Enabled = false;
-            _updateCancellation = new CancellationTokenSource();
             try
             {
-                _updateStatus.Text =
-                    "Downloading the latest installer (up to five minutes)...";
-                var installerPath =
-                    await SelfUpdater.DownloadInstallerAsync(
-                        _updateCancellation.Token);
-                _updateStatus.ForeColor = SuccessText;
-                _updateStatus.Text = _outlookApplication != null
-                    ? "Update downloaded. The Office apps close now " +
-                      "and Outlook reopens with the new version."
-                    : "Update downloaded. The Office apps close now " +
-                      "and the update installs automatically.";
-                SelfUpdater.LaunchUpdateAndQuitHost(
-                    _outlookApplication,
-                    installerPath,
-                    _outlookApplication != null
-                        ? "outlook.exe"
-                        : string.Empty);
-                _updating = false;
+                SelfUpdater.LaunchUpdate(_outlookApplication != null ? "outlook.exe" : string.Empty);
+                _updateStatus.Text = "The Scribble update window is handling the download and installation.";
                 Close();
             }
-            catch (OperationCanceledException)
+            catch (Exception error)
             {
-                _updating = false;
-                _updateStatus.ForeColor = SecondaryText;
-                _updateStatus.Text =
-                    "The update was cancelled. Scribble is unchanged.";
-                SetCommonControlsEnabled(true);
+                _updateStatus.Text = "The update could not start.";
+                _error.Text = DiagnosticDetails.ForException(error, "UPDATE_FAILED");
             }
-            catch (Exception exception)
-            {
-                _updating = false;
-                _updateStatus.ForeColor = SecondaryText;
-                _updateStatus.Text =
-                    "The update did not start. Scribble is unchanged.";
-                _error.Text = DiagnosticDetails.ForException(
-                    exception,
-                    "UPDATE_FAILED");
-                SetCommonControlsEnabled(true);
-            }
-            finally
-            {
-                _updateCancellation?.Dispose();
-                _updateCancellation = null;
-            }
+            finally { _updating = false; }
         }
 
         private TabPage BuildGeminiPage()
@@ -2843,7 +2761,6 @@ namespace Scribble.UI
             _checkCancellation?.Cancel();
             _modelRefreshCancellation?.Cancel();
             _toneCancellation?.Cancel();
-            _updateCancellation?.Cancel();
             _topicCancellation?.Cancel();
             _error.Text =
                 "Cancelling the active settings operation. Close again when it finishes.";

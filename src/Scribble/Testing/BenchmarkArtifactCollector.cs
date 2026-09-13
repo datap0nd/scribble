@@ -18,6 +18,7 @@ namespace Scribble.Testing
             var run = TestLab.GetRun(runId);
             var directory = Path.Combine(TestLab.RunDirectory(runId), "capture", Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(directory);
+            var nativeDirectory = TestLab.NativeDirectory(runId, "capture-" + Guid.NewGuid().ToString("N").Substring(0, 8));
             var report = new List<string>();
             foreach (var kind in new[] { "Excel", "PowerPoint", "Word" })
             {
@@ -54,7 +55,7 @@ namespace Scribble.Testing
                                 directory,
                                 kind + "-" + phase + "-" + role + "-" + i);
                             try {
-                                var readback = ReadNative(value, kind);
+                                var readback = ReadNative(value, kind, !effectiveOutput);
                                 var readbackExtension = kind == "Excel" ? ".xlsx" : kind == "PowerPoint" ? ".pptx" : ".docx";
                                 File.WriteAllText(stem + "-readback.json", TestLab.Serialize(new { schema = 1, run_id = runId,
                                     host = kind, captured_utc = DateTime.UtcNow.ToString("O"), native_readback = true,
@@ -90,7 +91,9 @@ namespace Scribble.Testing
                                 TestLab.Collect(runId, sourceStem + "-readback.json");
                             }
                             if (!effectiveOutput) continue;
+                            stem = Path.Combine(nativeDirectory, kind + "-" + phase + "-output-" + i);
                             var extension = kind == "Excel" ? ".xlsx" : kind == "PowerPoint" ? ".pptx" : ".docx";
+                            try {
                             if (kind == "Excel") document.SaveCopyAs(stem + extension);
                             else if (kind == "PowerPoint") document.SaveCopyAs(stem + extension, 24);
                             else SaveFlatOpc(Convert.ToString(document.WordOpenXML), stem + extension);
@@ -104,23 +107,31 @@ namespace Scribble.Testing
                                 report.Add(
                                     kind + " disk copy was DRM-wrapped; retained " +
                                     "the in-memory native readback instead.");
-                                continue;
+                                // A protected native package must not suppress
+                                // independently exportable visual evidence.
                             }
-                            var collected = TestLab.Collect(runId, stem + extension);
-                            report.Add("Captured " + Path.GetFileName(collected));
+                            if (File.Exists(stem + extension)) {
+                                var collected = TestLab.Collect(runId, stem + extension);
+                                report.Add("Captured " + Path.GetFileName(collected));
+                            }
+                            } catch (Exception ex) { report.Add(kind + " native file export failed; retained live readback: " + ex.Message); }
                             try
                             {
                                 if (kind == "Excel") document.ExportAsFixedFormat(0, stem + ".pdf");
                                 else if (kind == "PowerPoint") document.SaveCopyAs(stem + ".pdf", 32);
                                 else document.ExportAsFixedFormat(stem + ".pdf", 17);
                                 TestLab.Collect(runId, stem + ".pdf");
-                                if (kind == "PowerPoint") for (int n = 1; n <= (int)document.Slides.Count; n++)
+                            }
+                            catch (Exception ex) { report.Add(kind + " PDF export failed: " + ex.Message); }
+                            if (kind == "PowerPoint") for (int n = 1; n <= (int)document.Slides.Count; n++)
+                            {
+                                try
                                 {
                                     var png = stem + "-slide-" + n + ".png";
                                     document.Slides.Item(n).Export(png, "PNG", 1280, 720); TestLab.Collect(runId, png);
                                 }
+                                catch (Exception ex) { report.Add("Slide " + n + " preview export failed: " + ex.Message); }
                             }
-                            catch (Exception ex) { report.Add(kind + " native file captured; preview export failed: " + ex.GetType().Name); }
                         }
                         catch (Exception ex) { report.Add(kind + " capture: " + ex.Message); }
                         finally { if (Marshal.IsComObject(value)) Marshal.ReleaseComObject(value); }
@@ -141,16 +152,22 @@ namespace Scribble.Testing
                         dynamic tag = mail.UserProperties.Find("ScribbleTestRunId");
                         if (tag == null || Convert.ToString(tag.Value) != runId) continue;
                         if (Convert.ToBoolean(mail.Sent)) throw new InvalidOperationException("A run-owned email has been sent. It cannot be certified as an unsent draft.");
-                        var stem = Path.Combine(directory, "Outlook-" + i);
-                        mail.SaveAs(stem + ".msg", 9);
-                        TestLab.Collect(runId, stem + ".msg");
+                        var stem = Path.Combine(directory, "Outlook-" + phase + "-output-" + i);
+                        var nativeText = "To: " + Convert.ToString(mail.To) + "\nCC: " + Convert.ToString(mail.CC) +
+                            "\nSubject: " + Convert.ToString(mail.Subject) + "\nUnsent: true\n" + Convert.ToString(mail.Body);
+                        File.WriteAllText(stem + "-readback.json", TestLab.Serialize(new { schema = 1, run_id = runId,
+                            native_readback = true, phase, run_created_output = true, artifact_extension = "msg", unsent = true, text = nativeText }), Encoding.UTF8);
+                        TestLab.Collect(runId, stem + "-readback.json");
+                        var nativeMail = Path.Combine(nativeDirectory, Path.GetFileName(stem) + ".msg");
+                        try { mail.SaveAs(nativeMail, 9); TestLab.Collect(runId, nativeMail); }
+                        catch (Exception error) { report.Add("Outlook native save failed; retained live draft readback: " + error.Message); }
                         File.WriteAllText(stem + ".html", Convert.ToString(mail.HTMLBody), Encoding.UTF8);
                         TestLab.Collect(runId, stem + ".html");
                         var attachments = new List<object>();
                         for (int n = 1; n <= (int)mail.Attachments.Count; n++)
                         {
                             dynamic attachment = mail.Attachments.Item(n);
-                            var saved = Path.Combine(directory, "mail-" + i + "-attachment-" + n + ".bin");
+                            var saved = Path.Combine(nativeDirectory, "mail-" + i + "-attachment-" + n + ".bin");
                             attachment.SaveAsFile(saved);
                             attachments.Add(new { name = Convert.ToString(attachment.FileName), sha256 = TestLab.FileHash(saved), size = new FileInfo(saved).Length });
                         }
@@ -174,6 +191,13 @@ namespace Scribble.Testing
         }
         private static bool HasScribbleDraft(object value, string kind)
         {
+            if (kind == "PowerPoint")
+            {
+                dynamic presentation = value;
+                for (int i = 1; i <= (int)presentation.Slides.Count; i++)
+                    if (IsDraftSlide((object)presentation.Slides.Item(i))) return true;
+                return false;
+            }
             if (kind != "Excel") return false;
             dynamic workbook = value;
             for (int n = 1; n <= (int)workbook.Worksheets.Count; n++)
@@ -182,6 +206,15 @@ namespace Scribble.Testing
                 if (name == "Scribble Draft" ||
                     name.StartsWith("Scribble Draft ", StringComparison.Ordinal))
                     return true;
+            }
+            return false;
+        }
+        private static bool IsDraftSlide(object value)
+        {
+            dynamic slide = value;
+            for (int i = 1; i <= (int)slide.Shapes.Count; i++) {
+                dynamic shape = slide.Shapes.Item(i);
+                if ((int)shape.HasTextFrame != 0 && Convert.ToString(shape.TextFrame.TextRange.Text).Contains("[Scribble draft]")) return true;
             }
             return false;
         }
@@ -235,6 +268,7 @@ namespace Scribble.Testing
                     object values = used.Value2, formulas = used.Formula;
                     for (int r = 0; r < rows; r++) for (int c = 0; c < columns; c++) {
                         var cell = At(values, r, c); var formula = Convert.ToString(At(formulas, r, c));
+                        if (cell is ErrorWrapper) cell = Convert.ToString(used.Cells.Item(r + 1, c + 1).Text);
                         if (cell == null && string.IsNullOrEmpty(formula)) continue;
                         text.Append("R").Append((int)used.Row + r).Append("C").Append((int)used.Column + c)
                             .Append(": ").Append(Convert.ToString(cell, System.Globalization.CultureInfo.InvariantCulture));
@@ -252,8 +286,12 @@ namespace Scribble.Testing
                 }
                 text.AppendLine("Values are native cached readback; no recalculation was forced. Screenshot charts and formatting for visual review.");
             } else {
-                text.AppendLine("Slide count: " + (int)document.Slides.Count);
+                var selectedSlides = new List<int>();
+                for (int n = 1; n <= (int)document.Slides.Count; n++)
+                    if (!excludeScribbleDrafts || !IsDraftSlide((object)document.Slides.Item(n))) selectedSlides.Add(n);
+                text.AppendLine("Slide count: " + selectedSlides.Count);
                 for (int n = 1; n <= (int)document.Slides.Count; n++) {
+                    if (!selectedSlides.Contains(n)) continue;
                     dynamic slide = document.Slides.Item(n); text.AppendLine("Slide " + n);
                     for (int j = 1; j <= (int)slide.Shapes.Count; j++) {
                         dynamic shape = slide.Shapes.Item(j);

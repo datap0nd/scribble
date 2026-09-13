@@ -82,6 +82,7 @@ Source: "..\marketing\assets\powerpoint.png"; Flags: dontcopy noencryption
 Source: "..\marketing\assets\word.png"; Flags: dontcopy noencryption
 Source: "..\marketing\assets\chrome.png"; Flags: dontcopy noencryption
 Source: "..\src\Scribble\bin\Release\Scribble.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\src\Scribble.Updater\bin\Release\ScribbleUpdater.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\src\Scribble\bin\Release\ExcelDataReader.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\src\Scribble\bin\Release\PdfSharp-gdi.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\src\Scribble\bin\Release\PdfSharp.System.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist

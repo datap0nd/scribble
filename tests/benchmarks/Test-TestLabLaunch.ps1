@@ -60,7 +60,7 @@ try {
  $report=[Scribble.Testing.TestLabSuite]::RecoverIncomplete($folder)
  Assert (Test-Path $report) 'Recovery report missing.'
  Assert ($report.EndsWith('.pdf') -and [Scribble.Testing.TestLabPdfWriter]::IsValid($report)) 'Recovery did not create a valid PDF.'
- Assert ((Get-Content (Join-Path $folder 'report.html') -Raw).Contains('Recovered after the operator closed')) 'Recovery did not preserve the incomplete status.'
+ Assert ((Get-Content (Join-Path $folder 'report.html') -Raw).Contains('Recovered after verifying')) 'Recovery did not preserve the incomplete status.'
  Assert ($null -eq [Scribble.Testing.TestLab]::Status()) 'Recovery did not release the old capture.'
  Write-Output 'PASS: standalone Start-menu launch, one idle three-action window, rapid-click focus, no launch inference, live-host recovery refusal, incomplete PDF, capture release.'
 } finally {
