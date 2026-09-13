@@ -593,7 +593,7 @@ namespace Scribble.Testing
                 if (reply != null) {
                     if (!string.IsNullOrEmpty(reply.error) && action != "stop") throw new InvalidOperationException(reply.error);
                     if (reply.state == "stopped" && action == "submit") throw new OperationCanceledException("The test request was stopped.");
-                    if (reply.state == "done") {
+                    if (reply.state == "done" && (action != "stop" || string.IsNullOrEmpty(reply.error))) {
                         if (action == "load" && State.host != "Chrome") {
                             Log(State.host + " loaded module: " + (reply.hostModule ?? "not reported") + "; capture root: " + (reply.captureRoot ?? "not reported"));
                             if (reply.hostModule != typeof(TestLab).Assembly.ManifestModule.ModuleVersionId.ToString() ||

@@ -5,6 +5,7 @@ $resolvedAssembly=(Resolve-Path -LiteralPath $AssemblyPath).Path
 Add-Type -TypeDefinition 'using System;using System.IO;using System.Reflection;public static class TestLabAssemblyResolver{public static void Install(string folder){AppDomain.CurrentDomain.AssemblyResolve+=(s,e)=>{var p=Path.Combine(folder,new AssemblyName(e.Name).Name+".dll");return File.Exists(p)?Assembly.LoadFrom(p):null;};}}'
 [TestLabAssemblyResolver]::Install((Split-Path $resolvedAssembly))
 Add-Type -TypeDefinition 'public sealed class StoppedSuiteController { public string RunTestLabCommand(string suite,string command,string action,int phase) { return "{\"state\":\"stopped\"}"; } }'
+Add-Type -TypeDefinition 'public sealed class FailedStopSuiteController { public string RunTestLabCommand(string suite,string command,string action,int phase) { return "{\"state\":\"done\",\"error\":\"Stop command failed before acknowledgement\"}"; } }'
 foreach($dependency in @('Microsoft.Extensions.Logging.Abstractions.dll','PdfSharp.Shared.dll','PdfSharp.System.dll','PdfSharp-gdi.dll')) {
     [void][Reflection.Assembly]::LoadFrom((Join-Path (Split-Path $resolvedAssembly) $dependency))
 }
@@ -146,6 +147,10 @@ try {
     $commandArgs[1]=$submitId;$commandArgs[2]='status'
     $blockedReply=$method.Invoke($driver,$commandArgs) | ConvertFrom-Json
     Assert ($blockedReply.error.Contains($blockedQuestion)) 'The blocked case hid the actual model question from suite diagnostics.'
+    $script:requestBusy=$false;$commandArgs[1]=[guid]::NewGuid().ToString('N');$commandArgs[2]='stop'
+    $confirmedAfterError=$method.Invoke($driver,$commandArgs) | ConvertFrom-Json
+    Assert ($confirmedAfterError.state -eq 'done' -and -not $confirmedAfterError.error) 'A confirmed stop repeated the prior model error as a stop failure.'
+    Assert ((Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json).error.Contains($blockedQuestion)) 'Stop discarded the underlying model error from the submit receipt.'
     $pending.SetResult($true);$commandArgs[1]=$submitId;$commandArgs[2]='status'
     for($i=0;$i -lt 100;$i++) { $done=$method.Invoke($driver,$commandArgs) | ConvertFrom-Json;if($done.state -eq 'done'){break};Start-Sleep -Milliseconds 10 }
     Assert ($done.state -eq 'done') 'Completed task remained running.'
@@ -155,7 +160,7 @@ try {
     $commandArgs[1]=[guid]::NewGuid().ToString('N');$commandArgs[2]='submit'
     [void]$method.Invoke($driver,$commandArgs)
     [void]$poll.Invoke($driver,@($busy,$stop))
-    Assert ($script:stopCount -eq 3 -and $script:requestBusy) 'The earlier stop signal cancelled the resumed phase.'
+    Assert ($script:stopCount -eq 4 -and $script:requestBusy) 'The earlier stop signal cancelled the resumed phase.'
     $script:requestBusy=$false;$pending.SetResult($true);$commandArgs[2]='status'
     for($i=0;$i -lt 100;$i++) {$done=$method.Invoke($driver,$commandArgs) | ConvertFrom-Json;if($done.state -eq 'done'){break};Start-Sleep -Milliseconds 10}
     Assert ($done.state -eq 'done') 'Resumed phase did not finish.'
@@ -199,6 +204,14 @@ try {
         $cancelled=$false
         try {[void]$cancelledTask.GetAwaiter().GetResult()} catch {$cancelled=$_.Exception.InnerException -is [OperationCanceledException]}
         Assert $cancelled 'A terminal stopped receipt waited until timeout instead of releasing RC01 continuation.'
+        $runnerType.GetField('controller',[Reflection.BindingFlags]'Instance,NonPublic').SetValue($runner,(New-Object FailedStopSuiteController))
+        $runnerType.GetField('hostPid',[Reflection.BindingFlags]'Instance,NonPublic').SetValue($runner,[int]$PID)
+        $runnerType.GetField('hostProcessStart',[Reflection.BindingFlags]'Instance,NonPublic').SetValue($runner,[long]$state.processStart)
+        $failedStop=$runnerType.GetMethod('Command',[Reflection.BindingFlags]'Instance,NonPublic').Invoke($runner,@('stop',0,2,$false))
+        while(-not $failedStop.IsCompleted){[Windows.Forms.Application]::DoEvents();Start-Sleep -Milliseconds 20}
+        $unconfirmed=$false
+        try {[void]$failedStop.GetAwaiter().GetResult()} catch {$unconfirmed=$_.Exception.InnerException -is [TimeoutException]}
+        Assert $unconfirmed 'An Office command error was accepted as cancellation acknowledgement for a live process.'
     } finally {if(-not $probe.HasExited){$probe.StandardInput.WriteLine('finish');[void]$probe.WaitForExit(5000)};$probe.Dispose()}
     [Scribble.Testing.TestLab]::Finish($false);[Scribble.Testing.TestLab]::Disable()
     $chromeKit=[Scribble.Testing.TestLabSuite]::Extract($zip,(Join-Path $folder 'cases/CH01'))

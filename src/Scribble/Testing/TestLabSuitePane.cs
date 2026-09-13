@@ -86,7 +86,9 @@ namespace Scribble.Testing
                     WriteReceipt(runId, commandId, commandAction, commandPhase, commandHost, state, error);
                 }
                 WriteReceipt(suite.runId, id, "stop", phase, host, stopped ? "done" : "running", error);
-                return TestLab.Serialize(new SuiteReply { state = stopped ? "done" : "running", error = error });
+                // Preserve the model failure in its receipt. The stop reply's
+                // error field describes failure to stop, not the earlier task.
+                return TestLab.Serialize(new SuiteReply { state = stopped ? "done" : "running", error = stopped ? null : error });
             }
             if (!ready) return TestLab.Serialize(new SuiteReply { state = "initializing" });
             // The Office process owns the live request. Its memory is the
