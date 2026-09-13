@@ -82,7 +82,7 @@ try {
     $loadedAfterRead=$method.Invoke($driver,$loadingArgs) | ConvertFrom-Json
     Assert ($loadedAfterRead.state -eq 'done') 'Pane did not acknowledge completed asynchronous context loading.'
     $suiteSource=Get-Content -LiteralPath (Join-Path $PSScriptRoot '../../src/Scribble/Testing/TestLabSuite.cs') -Raw
-    Assert ($suiteSource.Contains('using (var office = new TestLabOfficeEnvironment(Log))') -and $suiteSource.Contains('await office.Prepare(c, cancel)')) 'Default Office suite does not own native preparation and application lifetime.'
+    Assert ($suiteSource.Contains('using (var office = new TestLabOfficeEnvironment(Log, cancel))') -and $suiteSource.Contains('await office.Prepare(c, cancel)')) 'Default Office suite does not own native preparation and application lifetime.'
     $captureSource=Get-Content -LiteralPath (Join-Path $PSScriptRoot '../../src/Scribble/Testing/TestLab.cs') -Raw
     Assert ($captureSource -match 'File\.Move\(temporary, path\)' -and $captureSource -match 'FileShare\.None') 'Trace events are visible before their encrypted payload is committed.'
     $driver=[Activator]::CreateInstance($driverType,$true)
