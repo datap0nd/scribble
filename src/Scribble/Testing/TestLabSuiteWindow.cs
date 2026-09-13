@@ -250,7 +250,8 @@ namespace Scribble.Testing
             finalizing = true; runStarted = DateTime.UtcNow; startButton.Enabled = false; stopButton.Enabled = false;
             try
             {
-                folder = CreateRunFolder(); finalPdf = await Task.Run(() => TestLabSuite.RecoverIncomplete(folder));
+                folder = CreateRunFolder();
+                await RunOnSta(() => { finalPdf = TestLabSuite.RecoverIncomplete(folder); return Task.FromResult(true); });
                 File.WriteAllText(Path.Combine(TestLab.Root, "last-suite-report.txt"), finalPdf, new UTF8Encoding(false));
                 UpdateWindowReport(); status.Text = "Stopped — incomplete capture preserved in the final PDF.";
                 Append("Recovered final PDF: " + finalPdf);

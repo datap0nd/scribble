@@ -136,6 +136,7 @@
     <Compile Include="Testing\TestLabWindow.cs" />
     <Compile Include="Testing\TestLabPreparation.cs" />
     <Compile Include="Testing\TestLabOfficeEnvironment.cs" />
+    <Compile Include="Testing\TestLabComMessageFilter.cs" />
     <Compile Include="Testing\TestLabReport.cs" />
     <Compile Include="Testing\BenchmarkArtifactCollector.cs" />
     <Compile Include="AddIn.cs" />

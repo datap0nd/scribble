@@ -20,7 +20,10 @@ namespace Scribble.Testing
             Directory.CreateDirectory(directory);
             var nativeDirectory = TestLab.NativeDirectory(runId, "capture-" + Guid.NewGuid().ToString("N").Substring(0, 8));
             var report = new List<string>();
-            foreach (var kind in new[] { "Excel", "PowerPoint", "Word" })
+            var destinations = new Dictionary<string, string> { { "xlsx", "Excel" }, { "pptx", "PowerPoint" }, { "docx", "Word" }, { "msg", "Outlook" } };
+            var hosts = new HashSet<string>(new[] { run.host }.Concat((run.required_artifacts ?? new string[0]).Where(destinations.ContainsKey).Select(a => destinations[a])));
+            // An unrelated busy Outlook window must not stall an Excel capture.
+            foreach (var kind in new[] { "Excel", "PowerPoint", "Word" }.Where(hosts.Contains))
             {
                 object instance = null;
                 try
@@ -141,6 +144,8 @@ namespace Scribble.Testing
                 finally { if (instance != null && Marshal.IsComObject(instance)) Marshal.ReleaseComObject(instance); }
             }
             object outlookInstance = null;
+            if (hosts.Contains("Outlook"))
+            {
             try
             {
                 outlookInstance = Marshal.GetActiveObject("Outlook.Application"); dynamic outlook = outlookInstance;
@@ -181,6 +186,7 @@ namespace Scribble.Testing
             }
             catch (COMException) { report.Add("Outlook: no accessible running app. Save the test draft as MSG and collect manually if needed."); }
             finally { if (outlookInstance != null && Marshal.IsComObject(outlookInstance)) Marshal.ReleaseComObject(outlookInstance); }
+            }
             if (report.Count == 0) report.Add("No new run-owned document found. For drafts inside a source workbook/deck, save a separate copy and use Collect saved outputs. Save Outlook drafts as MSG.");
             return string.Join(Environment.NewLine, report);
         }

@@ -15,7 +15,10 @@ namespace Scribble.Testing
     {
         private readonly Dictionary<string, object> applications = new Dictionary<string, object>();
         private readonly Action<string> log;
-        internal TestLabOfficeEnvironment(Action<string> log) { this.log = log; }
+        private readonly TestLabComMessageFilter messageFilter;
+        internal TestLabOfficeEnvironment(Action<string> log) : this(log, CancellationToken.None) { }
+        internal TestLabOfficeEnvironment(Action<string> log, CancellationToken cancel)
+        { this.log = log; messageFilter = new TestLabComMessageFilter(cancel); }
 
         internal object Connect(string host)
         {
@@ -111,7 +114,7 @@ namespace Scribble.Testing
         }
 
         internal static void Release(object value) { if (value != null && Marshal.IsComObject(value)) Marshal.ReleaseComObject(value); }
-        public void Dispose() { foreach (var value in applications.Values) Release(value); applications.Clear(); }
+        public void Dispose() { try { foreach (var value in applications.Values) Release(value); applications.Clear(); } finally { messageFilter.Dispose(); } }
     }
 
     // Local native MSG inputs exercise MessageReader and attachment parsers

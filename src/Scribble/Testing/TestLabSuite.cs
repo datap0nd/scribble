@@ -52,6 +52,7 @@ namespace Scribble.Testing
         public static string RecoverIncomplete(string destination)
         {
             Directory.CreateDirectory(TestLab.Root);
+            using (var retry = Thread.CurrentThread.GetApartmentState() == ApartmentState.STA ? new TestLabComMessageFilter(CancellationToken.None) : null)
             using (var ownership = new FileStream(Path.Combine(TestLab.Root, "suite.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None))
             using (var transport = new TestLabTransport()) {
                 if (Active() != null) throw new InvalidOperationException("A suite is still running. Stop it before recovery.");
@@ -288,7 +289,7 @@ namespace Scribble.Testing
         {
             Directory.CreateDirectory(TestLab.Root);
             using (var transport = new TestLabTransport())
-            using (var office = new TestLabOfficeEnvironment(Log))
+            using (var office = new TestLabOfficeEnvironment(Log, cancel))
             using (var ownership = new FileStream(Path.Combine(TestLab.Root, "suite.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None)) {
                 if (TestLab.ActiveRunId() != null) throw new InvalidOperationException("An unfinished capture is active. Use Stop in this window to recheck it and preserve the incomplete PDF.");
                 TestLabSuite.Save(State);
@@ -313,7 +314,11 @@ namespace Scribble.Testing
                             var kit = await Task.Run(() => TestLabSuite.Extract(zip, folder)); cancel.ThrowIfCancellationRequested();
                             TestLab.Enable(kit, transport.PipeName, State.pid, State.processStart);
                             if (c.host == "Chrome") await Prepare(c.id, folder);
-                            else { application = office.Connect(c.host); await office.Prepare(c, cancel); }
+                            else {
+                                try { application = office.Connect(c.host); await office.Prepare(c, cancel); }
+                                catch (COMException error) when ((uint)error.HResult == 0x80010001 || (uint)error.HResult == 0x8001010A)
+                                { throw new InvalidOperationException(c.host + " is still busy after bounded startup retries. Complete any visible startup, profile, sign-in or file dialog, then retry this case. No model request was submitted.", error); }
+                            }
                             State.runId = TestLab.Start(c.id, c.host, true).run_id; TestLabSuite.Save(State);
                             Log(c.id + ": capturing the verified source state before the first write.");
                             Log(BenchmarkArtifactCollector.Capture(State.runId, "source"));

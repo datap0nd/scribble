@@ -8,6 +8,14 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 function Assert($value,$message){if(-not $value){throw $message}}
 function Reject([scriptblock]$action,$message){$rejected=$false;try{& $action}catch{$rejected=$true};Assert $rejected $message}
 Assert ($null -eq [Scribble.Testing.TestLab]::Status()) 'Do not run reliability checks during an operator session.'
+$cancel=New-Object Threading.CancellationTokenSource
+$filter=New-Object Scribble.Testing.TestLabComMessageFilter($cancel.Token)
+try {
+ Assert ($filter.RetryRejectedCall([IntPtr]::Zero,100,2) -eq 250) 'A temporarily busy Office call was not retried.'
+ Assert ($filter.RetryRejectedCall([IntPtr]::Zero,30000,2) -eq -1) 'A busy Office call can retry indefinitely.'
+ $cancel.Cancel()
+ Assert ($filter.RetryRejectedCall([IntPtr]::Zero,100,1) -eq -1) 'Stop did not cancel rejected-call retries.'
+} finally {$filter.Dispose();$cancel.Dispose()}
 $folder=Join-Path $PSScriptRoot ('generated/reliability-'+[guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $folder -Force | Out-Null
 $folder=(Resolve-Path $folder).Path
