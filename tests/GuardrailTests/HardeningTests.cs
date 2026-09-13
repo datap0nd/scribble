@@ -38,7 +38,7 @@ namespace GuardrailTests
                 System.Reflection.BindingFlags.Static);
             Check(
                 (bool)hasDraft.Invoke(null, new object[] { new DraftReportWorkbook(), "Excel" }) &&
-                !(bool)hasDraft.Invoke(null, new object[] { new ReportWorkbook(), "Excel" }),
+                !(bool)hasDraft.Invoke(null, new object[] { new SourceReportWorkbook(), "Excel" }),
                 "Source-derived Excel drafts were not distinguished from untouched fixtures.");
 
             var sourceOnly = typeof(Scribble.Testing.BenchmarkArtifactCollector).GetMethod(
@@ -238,6 +238,11 @@ namespace GuardrailTests
     }
 
     public sealed class DraftReportWorkbook { public DraftReportSheets Worksheets { get; } = new DraftReportSheets(); }
+    public sealed class SourceReportWorkbook { public SourceReportSheets Worksheets { get; } = new SourceReportSheets(); }
+    public sealed class SourceReportSheets {
+        public int Count => 1;
+        public DraftReportSheet Item(int index) => new DraftReportSheet("Sales");
+    }
     public sealed class DraftReportSheets {
         public int Count => 2;
         public DraftReportSheet Item(int index) => new DraftReportSheet(index == 1 ? "Sales" : "Scribble Draft");
