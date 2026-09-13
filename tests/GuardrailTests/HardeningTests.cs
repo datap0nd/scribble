@@ -25,6 +25,30 @@ namespace GuardrailTests
             var text = (string)read.Invoke(null, new object[] { new ReportWorkbook(), "Excel" });
             Check(text.Contains("Scribble Draft") && text.Contains("R4C2: 120000 | formula: =SUM(Sales!E2:E9)") && text.Contains("Native charts: 0"),
                 "Native readback lost worksheet identity, offsets, value or formula.");
+
+            var hasDraft = typeof(Scribble.Testing.BenchmarkArtifactCollector).GetMethod(
+                "HasScribbleDraft",
+                System.Reflection.BindingFlags.NonPublic |
+                System.Reflection.BindingFlags.Static);
+            Check(
+                (bool)hasDraft.Invoke(null, new object[] { new DraftReportWorkbook(), "Excel" }) &&
+                !(bool)hasDraft.Invoke(null, new object[] { new ReportWorkbook(), "Excel" }),
+                "Source-derived Excel drafts were not distinguished from untouched fixtures.");
+
+            var sourceOnly = typeof(Scribble.Testing.BenchmarkArtifactCollector).GetMethod(
+                "ReadNative",
+                System.Reflection.BindingFlags.NonPublic |
+                System.Reflection.BindingFlags.Static,
+                null,
+                new[] { typeof(object), typeof(string), typeof(bool) },
+                null);
+            var sourceText = (string)sourceOnly.Invoke(
+                null,
+                new object[] { new DraftReportWorkbook(), "Excel", true });
+            Check(
+                sourceText.Contains("Worksheet: Sales") &&
+                !sourceText.Contains("Worksheet: Scribble Draft"),
+                "Final source-preservation readback included run-created draft sheets.");
         }
 
         public static void DuplicateDraftIsRecoverable()
@@ -205,6 +229,18 @@ namespace GuardrailTests
         public string Address => "$B$4"; public int Row => 4; public int Column => 2;
         public ReportCount Rows { get; } = new ReportCount(); public ReportCount Columns { get; } = new ReportCount();
         public object Value2 => 120000.0; public object Formula => "=SUM(Sales!E2:E9)";
+    }
+
+    public sealed class DraftReportWorkbook { public DraftReportSheets Worksheets { get; } = new DraftReportSheets(); }
+    public sealed class DraftReportSheets {
+        public int Count => 2;
+        public DraftReportSheet Item(int index) => new DraftReportSheet(index == 1 ? "Sales" : "Scribble Draft");
+    }
+    public sealed class DraftReportSheet {
+        public DraftReportSheet(string name) { Name = name; }
+        public string Name { get; }
+        public ReportRange UsedRange { get; } = new ReportRange();
+        public ReportCharts ChartObjects() => new ReportCharts();
     }
 
 }

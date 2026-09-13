@@ -62,11 +62,29 @@ def evaluate(run_zip,kit,review=None):
             reasoning=reasoning or bool(msg.get('reasoning_content') or msg.get('reasoning'))
             response_text.append(str(msg.get('content') or ''))
         except (ValueError,IndexError,TypeError):pass
-    artifacts={};available=set();final_available=set()
+    artifacts={};available=set();final_available=set();memory_outputs={}
     for name,data in files.items():
         if not name.startswith('artifacts/') or name.endswith('.receipt.json'):continue
         ext=Path(name).suffix.lstrip('.');available.add(ext)
         if '-final-output-' in name:final_available.add(ext)
+        if '-final-output-' in name and name.endswith('-readback.json'):
+            try:
+                capture=json.loads(data)
+                memory_ext=capture.get('artifact_extension')
+                if capture.get('native_readback') is True and capture.get('run_created_output') is True and memory_ext in ['xlsx','pptx','docx']:
+                    text=str(capture.get('text') or '')
+                    numbers=[]
+                    for token in re.findall(r'(?<![A-Za-z])[-+−]?\d[\d,]*(?:\.\d+)?',text):
+                        try:numbers.append(float(token.replace(',','').replace('−','-')))
+                        except ValueError:pass
+                    memory_outputs[name]={'extension':memory_ext,'text':text,'numbers':numbers,
+                        'formula_count':len(re.findall(r'\| formula: =',text)),
+                        'formula_errors':re.findall(r'#(?:REF!|NAME\?|VALUE!|DIV/0!|NUM!|N/A)',text,re.I),
+                        'chart_count':len(re.findall(r'Native charts: [1-9]\d*',text)),
+                        'slide_count':int(re.search(r'Slide count: (\d+)',text).group(1)) if re.search(r'Slide count: (\d+)',text) else 0,
+                        'substantive_notes_count':sum(len(v.strip())>=30 for v in re.findall(r'^Notes: (.*)$',text,re.M))}
+                    final_available.add(memory_ext)
+            except (ValueError,TypeError):pass
         if ext in ['xlsx','pptx','docx']:
             try:artifacts[name]=inspect_office(data,ext)
             except (ValueError,ET.ParseError,zipfile.BadZipFile) as e:check('readable_'+name,False,str(e))
@@ -81,9 +99,18 @@ def evaluate(run_zip,kit,review=None):
             expected=4 if case['id']=='PP02' and '-final-output-' in name else 6
             check('slide_count_'+name,item['slide_count'] in [expected,expected+1], 'Allows one preserved source slide; reviewer must verify draft count.')
             if case['id']!='PP03':check('source_notes_'+name,item['substantive_notes_count']>=expected)
+    for name,item in memory_outputs.items():
+        if item['extension']=='xlsx':
+            check('no_formula_errors_'+name,not item['formula_errors'])
+            if case['id'] in ['EX01','EX04','XA01','RC01']:check('native_formulas_'+name,item['formula_count']>0)
+            if case['id'] in ['EX01','EX04','XA01','XA03','RC01']:check('native_chart_'+name,item['chart_count']>0)
+        if item['extension']=='pptx':
+            expected=4 if case['id']=='PP02' else 6
+            check('slide_count_'+name,item['slide_count'] in [expected,expected+1], 'Allows one preserved source slide; reviewer must verify draft count.')
+            if case['id']!='PP03':check('source_notes_'+name,item['substantive_notes_count']>=expected)
     final_artifacts={name:item for name,item in artifacts.items() if '-final-output-' in name}
-    joined='\n'.join(a['text'] for a in final_artifacts.values())
-    numbers=[v for a in final_artifacts.values() for v in a['numbers']]
+    joined='\n'.join(a['text'] for a in list(final_artifacts.values())+list(memory_outputs.values()))
+    numbers=[v for a in list(final_artifacts.values())+list(memory_outputs.values()) for v in a['numbers']]
     # Answer-only cases are evaluated from the response. Artifact cases must be
     # correct in the final native output; a correct chat claim cannot mask it.
     if not case['artifacts']:

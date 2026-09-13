@@ -28,9 +28,19 @@ namespace Scribble.Testing
                 foreach (var extension in testCase.artifacts ?? new string[0])
                 {
                     var suffix = "." + extension;
-                    Add(checks, "required_final_" + extension, archive.Entries.Any(e => e.FullName.StartsWith("artifacts/", StringComparison.Ordinal) &&
-                        e.FullName.IndexOf("-final-output-", StringComparison.OrdinalIgnoreCase) >= 0 && e.FullName.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)),
-                        "Only a final run-owned output satisfies this requirement.");
+                    Add(checks, "required_final_" + extension,
+                        archive.Entries.Any(e =>
+                            e.FullName.StartsWith("artifacts/", StringComparison.Ordinal) &&
+                            e.FullName.IndexOf("-final-output-", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                            e.FullName.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)) ||
+                        HasMemoryOutput(archive, extension),
+                        "Only a final run-owned native output or in-memory native readback satisfies this requirement.");
+                }
+                var memoryOutputs = MemoryOutputs(archive).ToArray();
+                foreach (var memory in memoryOutputs)
+                {
+                    finalText.AppendLine(memory.text);
+                    finalNumbers.AddRange(Numbers(memory.text));
                 }
                 foreach (var entry in archive.Entries.Where(e => e.FullName.StartsWith("artifacts/", StringComparison.Ordinal) &&
                     e.FullName.IndexOf("-final-output-", StringComparison.OrdinalIgnoreCase) >= 0 &&
@@ -56,6 +66,7 @@ namespace Scribble.Testing
                     }
                     catch (Exception error) { Add(checks, "readable_" + entry.Name, false, error.GetType().Name + ": " + error.Message); }
                 }
+                AddMemoryStructureChecks(checks, run.case_id, memoryOutputs);
                 if ((testCase.artifacts ?? new string[0]).Length == 0)
                 {
                     var timeline = Read(archive, "timeline.jsonl"); finalText.AppendLine(timeline);
@@ -82,6 +93,77 @@ namespace Scribble.Testing
                 string value;
                 Add(checks, "source_preserved_" + pair.Key, after.TryGetValue(pair.Key, out value) && value == pair.Value,
                     after.ContainsKey(pair.Key) ? "Native source readback changed between pre-write and final capture." : "Final source readback is missing.");
+            }
+        }
+
+        private static bool HasMemoryOutput(ZipArchive archive, string extension)
+        {
+            return MemoryOutputs(archive).Any(c => string.Equals(
+                c.extension,
+                extension,
+                StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static IEnumerable<MemoryOutput> MemoryOutputs(ZipArchive archive)
+        {
+            var json = new JavaScriptSerializer();
+            foreach (var entry in archive.Entries.Where(e =>
+                e.FullName.StartsWith("artifacts/", StringComparison.Ordinal) &&
+                e.FullName.IndexOf("-final-output-", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                e.FullName.EndsWith("-readback.json", StringComparison.OrdinalIgnoreCase)))
+            {
+                Dictionary<string, object> data;
+                try { data = json.Deserialize<Dictionary<string, object>>(Read(archive, entry.FullName)); }
+                catch { continue; }
+                object native;
+                object created;
+                object extension;
+                object text;
+                if (!data.TryGetValue("native_readback", out native) ||
+                    !Convert.ToBoolean(native) ||
+                    !data.TryGetValue("run_created_output", out created) ||
+                    !Convert.ToBoolean(created) ||
+                    !data.TryGetValue("artifact_extension", out extension) ||
+                    !data.TryGetValue("text", out text))
+                    continue;
+                yield return new MemoryOutput {
+                    extension = Convert.ToString(extension),
+                    text = Convert.ToString(text) ?? "",
+                    name = entry.Name
+                };
+            }
+        }
+
+        private static void AddMemoryStructureChecks(
+            List<TestLabCheck> checks,
+            string caseId,
+            MemoryOutput[] outputs)
+        {
+            foreach (var output in outputs.Where(o => o.extension == "xlsx"))
+            {
+                var formulas = Regex.Matches(output.text, @"\| formula: =").Count;
+                var formulaErrors = Regex.Matches(
+                    output.text,
+                    @"#(?:REF!|NAME\?|VALUE!|DIV/0!|NUM!|N/A)",
+                    RegexOptions.IgnoreCase).Count;
+                var charts = Regex.Matches(output.text, @"Native charts: ([1-9][0-9]*)").Count;
+                Add(checks, "no_formula_errors_" + output.name, formulaErrors == 0,
+                    "Native formula error cells in memory readback: " + formulaErrors);
+                if (new[] { "EX01", "EX04", "XA01", "RC01" }.Contains(caseId))
+                    Add(checks, "native_formulas_" + output.name, formulas > 0,
+                        "Formula count in memory readback: " + formulas);
+                if (new[] { "EX01", "EX04", "XA01", "XA03", "RC01" }.Contains(caseId))
+                    Add(checks, "native_chart_" + output.name, charts > 0,
+                        "Chart-bearing sheets in memory readback: " + charts);
+            }
+            foreach (var output in outputs.Where(o => o.extension == "pptx"))
+            {
+                var match = Regex.Match(output.text, @"Slide count: (\d+)");
+                var observed = match.Success ? Convert.ToInt32(match.Groups[1].Value) : 0;
+                var expected = caseId == "PP02" ? 4 : 6;
+                Add(checks, "final_slide_count_" + output.name,
+                    observed == expected || observed == expected + 1,
+                    "Expected " + expected + " draft slides (plus at most one preserved source); observed " + observed + ".");
             }
         }
 
@@ -162,6 +244,8 @@ namespace Scribble.Testing
 
         private sealed class OfficeInspection
         { public string text; public List<double> numbers; public int formulas, formulaErrors, charts, slides; }
+        private sealed class MemoryOutput
+        { public string extension; public string text; public string name; }
     }
 
     public sealed class TestLabEvaluation

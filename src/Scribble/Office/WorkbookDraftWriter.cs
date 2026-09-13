@@ -1,6 +1,9 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using System.Text.RegularExpressions;
 using Scribble.Security;
 
 namespace Scribble.Office
@@ -248,11 +251,10 @@ namespace Scribble.Office
                 }
             }
 
-            // A formula that parses but evaluates to #NAME? or
-            // #REF! (unknown function, bad sheet reference) is
-            // definitely wrong: degrade it to visible text so the
-            // draft never shows silently broken live formulas.
-            // Data-dependent errors like #DIV/0! are left alone.
+            // A formula that parses but evaluates to an Excel error is
+            // definitely wrong: repair a one-row header offset when safe,
+            // otherwise degrade it to visible text so the draft never
+            // shows a silently broken live formula.
             var brokenFormulas = 0;
             if (liveFormulas.Count > 0)
             {
@@ -274,10 +276,14 @@ namespace Scribble.Office
                         object value = cell.Value2;
                         // Excel error cells marshal as Int32 error
                         // codes; real numbers arrive as Double.
-                        if (value is int &&
-                            ((int)value == 2023 ||
-                             (int)value == 2029))
+                        if (IsExcelError(value))
                         {
+                            if (TryRepairAdjacentRowFormula(
+                                sheet,
+                                cell,
+                                formula.Value,
+                                startRow + formula.Key[0]))
+                                continue;
                             cell.Value2 = "'" + formula.Value;
                             formulaCount--;
                             brokenFormulas++;
@@ -302,6 +308,8 @@ namespace Scribble.Office
                     chart,
                     startRow,
                     rowCount,
+                    columnCount,
+                    rows,
                     target);
             try
             {
@@ -332,7 +340,7 @@ namespace Scribble.Office
                       (brokenFormulas == 1
                           ? " formula evaluated"
                           : " formulas evaluated") +
-                      " to #NAME? or #REF! and " +
+                      " to an Excel error and " +
                       (brokenFormulas == 1 ? "was" : "were") +
                       " kept as visible text - check the " +
                       "function names and sheet references."
@@ -495,10 +503,14 @@ namespace Scribble.Office
                             formula.Key[0],
                             formula.Key[1]];
                         object value = cell.Value2;
-                        if (value is int &&
-                            ((int)value == 2023 ||
-                             (int)value == 2029))
+                        if (IsExcelError(value))
                         {
+                            if (TryRepairAdjacentRowFormula(
+                                sheet,
+                                cell,
+                                formula.Value,
+                                formula.Key[0]))
+                                continue;
                             cell.Value2 = "'" + formula.Value;
                             formulaCount--;
                             brokenFormulas++;
@@ -519,12 +531,57 @@ namespace Scribble.Office
                 "." +
                 (brokenFormulas > 0
                     ? " " + brokenFormulas +
-                      " formula(s) evaluated to #NAME? or #REF! " +
+                      " formula(s) evaluated to an Excel error " +
                       "and were kept as visible text."
                     : string.Empty) +
                 " Nothing was saved, but Excel cannot undo " +
                 "add-in changes - close without saving to " +
                 "discard.";
+        }
+
+        private static bool IsExcelError(object value)
+        {
+            if (!(value is int)) return false;
+            return new[] { 2000, 2007, 2015, 2023, 2029, 2036, 2042 }
+                .Contains((int)value);
+        }
+
+        private static bool TryRepairAdjacentRowFormula(
+            dynamic sheet,
+            dynamic cell,
+            string formula,
+            int targetRow)
+        {
+            try
+            {
+                var references = Regex.Matches(
+                    formula ?? "",
+                    @"(?<![A-Za-z0-9_])(\$?[A-Za-z]{1,3})(\$?)([1-9][0-9]{0,6})");
+                if (references.Count == 0) return false;
+                var rows = references.Cast<Match>()
+                    .Select(match => Convert.ToInt32(match.Groups[3].Value))
+                    .Distinct()
+                    .ToArray();
+                if (rows.Length != 1 ||
+                    Math.Abs(rows[0] - targetRow) != 1)
+                    return false;
+                var repaired = Regex.Replace(
+                    formula,
+                    @"(?<![A-Za-z0-9_])(\$?[A-Za-z]{1,3})(\$?)([1-9][0-9]{0,6})",
+                    match => match.Groups[1].Value +
+                        match.Groups[2].Value +
+                        targetRow.ToString(CultureInfo.InvariantCulture));
+                cell.Formula = repaired;
+                sheet.Calculate();
+                if (!IsExcelError((object)cell.Value2)) return true;
+                cell.Formula = formula;
+                sheet.Calculate();
+            }
+            catch
+            {
+                try { cell.Formula = formula; } catch { }
+            }
+            return false;
         }
 
         private static bool IsCellName(string value)
@@ -553,20 +610,26 @@ namespace Scribble.Office
                    digits <= 7;
         }
 
-        // The chart definition for the draft sheet: it always uses
-        // the just-written table as its source (header row = series
-        // names, first column = categories).
+        // The chart definition can name one rectangular section of a
+        // multi-section draft. If omitted, the writer finds the last
+        // chartable contiguous table instead of charting the whole report.
         internal sealed class DraftSheetChart
         {
-            internal DraftSheetChart(int typeCode, string title)
+            internal DraftSheetChart(
+                int typeCode,
+                string title,
+                string sourceRange)
             {
                 TypeCode = typeCode;
                 Title = title ?? string.Empty;
+                SourceRange = sourceRange ?? string.Empty;
             }
 
             internal int TypeCode { get; }
 
             internal string Title { get; }
+
+            internal string SourceRange { get; }
         }
 
         // Reads the optional chart argument of write_draft_sheet;
@@ -581,8 +644,10 @@ namespace Scribble.Office
 
             object typeValue;
             object titleValue;
+            object rangeValue;
             map.TryGetValue("type", out typeValue);
             map.TryGetValue("title", out titleValue);
+            map.TryGetValue("range", out rangeValue);
             return new DraftSheetChart(
                 DraftChartTypes.Resolve(
                     Convert.ToString(typeValue)),
@@ -590,7 +655,10 @@ namespace Scribble.Office
                     SafeModelText.Format(
                         Convert.ToString(titleValue),
                         180).PlainText,
-                    180));
+                    180),
+                TextBoundary.SingleLine(
+                    Convert.ToString(rangeValue),
+                    32));
         }
 
         // Draws a native chart below the table on the draft sheet,
@@ -601,6 +669,8 @@ namespace Scribble.Office
             DraftSheetChart chart,
             int startRow,
             int rowCount,
+            int columnCount,
+            IReadOnlyList<IReadOnlyList<string>> rows,
             dynamic target)
         {
             try
@@ -613,7 +683,15 @@ namespace Scribble.Office
                     (double)anchor.Top,
                     440.0,
                     270.0);
-                chartObject.Chart.SetSourceData(target);
+                chartObject.Chart.SetSourceData(
+                    SelectChartRange(
+                        sheet,
+                        chart,
+                        startRow,
+                        rowCount,
+                        columnCount,
+                        rows,
+                        target));
                 chartObject.Chart.ChartType = chart.TypeCode;
                 if (chart.Title.Length > 0)
                 {
@@ -634,6 +712,106 @@ namespace Scribble.Office
             {
                 return false;
             }
+        }
+
+        private static dynamic SelectChartRange(
+            dynamic sheet,
+            DraftSheetChart chart,
+            int startRow,
+            int rowCount,
+            int columnCount,
+            IReadOnlyList<IReadOnlyList<string>> rows,
+            dynamic fallback)
+        {
+            if (Regex.IsMatch(
+                chart.SourceRange,
+                @"^[A-Za-z]{1,3}[1-9][0-9]{0,6}:[A-Za-z]{1,3}[1-9][0-9]{0,6}$"))
+            {
+                try
+                {
+                    dynamic selected = sheet.Range(chart.SourceRange);
+                    var lastRow = (int)selected.Row +
+                        (int)selected.Rows.Count - 1;
+                    var lastColumn = (int)selected.Column +
+                        (int)selected.Columns.Count - 1;
+                    if ((int)selected.Row >= startRow &&
+                        (int)selected.Column >= 1 &&
+                        lastRow < startRow + rowCount &&
+                        lastColumn <= columnCount)
+                        return selected;
+                }
+                catch
+                {
+                }
+            }
+
+            var blocks = new List<int[]>();
+            var blockStart = -1;
+            for (var row = 0; row <= rowCount; row++)
+            {
+                var blank = row == rowCount || IsBlankRow(rows[row]);
+                if (!blank && blockStart < 0) blockStart = row;
+                if (blank && blockStart >= 0)
+                {
+                    if (row - blockStart >= 2 &&
+                        IsChartableBlock(rows, blockStart, row))
+                        blocks.Add(new[] { blockStart, row });
+                    blockStart = -1;
+                }
+            }
+            if (blocks.Count == 0) return fallback;
+            var block = blocks[blocks.Count - 1];
+            var lastColumnIndex = 1;
+            for (var row = block[0]; row < block[1]; row++)
+                if (rows[row] != null)
+                    for (var column = 1;
+                         column < Math.Min(rows[row].Count, columnCount);
+                         column++)
+                        if (!string.IsNullOrWhiteSpace(rows[row][column]))
+                            lastColumnIndex = Math.Max(lastColumnIndex, column);
+            return sheet.Range(
+                sheet.Cells[startRow + block[0], 1],
+                sheet.Cells[startRow + block[1] - 1, lastColumnIndex + 1]);
+        }
+
+        private static bool IsBlankRow(IReadOnlyList<string> row)
+        {
+            return row == null || row.All(string.IsNullOrWhiteSpace);
+        }
+
+        private static bool IsChartableBlock(
+            IReadOnlyList<IReadOnlyList<string>> rows,
+            int start,
+            int end)
+        {
+            if (rows[start] == null ||
+                rows[start].Count < 2 ||
+                string.IsNullOrWhiteSpace(rows[start][0]))
+                return false;
+            var numericRows = 0;
+            for (var row = start + 1; row < end; row++)
+            {
+                var values = rows[row];
+                if (values == null || values.Count < 2) continue;
+                if (values.Skip(1).Any(IsChartValue)) numericRows++;
+            }
+            return numericRows > 0;
+        }
+
+        private static bool IsChartValue(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return false;
+            if (value.TrimStart().StartsWith("=", StringComparison.Ordinal))
+                return true;
+            double number;
+            return double.TryParse(
+                value.Replace(",", "")
+                    .Replace("%", "")
+                    .Replace("€", "")
+                    .Trim(),
+                NumberStyles.Float,
+                CultureInfo.InvariantCulture,
+                out number);
         }
 
         // Cosmetic polish for the draft sheet: bold title, bold

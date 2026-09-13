@@ -192,10 +192,12 @@ namespace Scribble.Chat
                                     {
                                         "description",
                                         "Optional native Excel chart drawn " +
-                                        "below the table, sourced live from " +
-                                        "the whole table (header row = " +
-                                        "series names, first column = " +
-                                        "categories). Include it whenever " +
+                                        "below the table. For a multi-section " +
+                                        "draft, set range to the exact compact " +
+                                        "chart-data table (header row = series " +
+                                        "names, first column = categories). If " +
+                                        "range is omitted, the last chartable " +
+                                        "contiguous table is used. Include it whenever " +
                                         "the user asks for a chart, graph, " +
                                         "or visualization."
                                     },
@@ -214,6 +216,11 @@ namespace Scribble.Chat
                                                 "title",
                                                 ToolSchema.String(
                                                     "Chart title.")
+                                            },
+                                            {
+                                                "range",
+                                                ToolSchema.String(
+                                                    "Optional A1 range on the new draft sheet, such as A21:C25. It must stay inside the table written by this call. Strongly recommended for multi-section reports.")
                                             }
                                         }
                                     },

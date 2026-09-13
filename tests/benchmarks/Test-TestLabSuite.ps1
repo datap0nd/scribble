@@ -44,6 +44,7 @@ try {
         Reject { [Scribble.Testing.TestLabSuite]::Prompt($case,2) } 'Arbitrary phase accepted.'
     }
     Assert ([Scribble.Testing.TestLabSuite]::PresetAnswer($cases[0],'Which currency?') -eq 'EUR excluding tax') 'Kit preset answer not used.'
+    Assert ([Scribble.Testing.TestLabSuite]::PresetAnswer($cases[0],'Any preferences before I proceed?').Contains('Atlas executive team')) 'Generic clarification did not receive case-authored defaults.'
     Assert ($null -eq [Scribble.Testing.TestLabSuite]::PresetAnswer($cases[0],'Should I contact someone?')) 'Invented a response outside the kit presets.'
     $single=@([Scribble.Testing.TestLabSuite]::SelectCases($cases,'ex03'))
     Assert ($single.Count -eq 1 -and $single[0].id -eq 'EX03') 'Single-case execution scope was not selected.'

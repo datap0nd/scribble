@@ -381,8 +381,45 @@ namespace Scribble.Testing
                     foreach (var file in Directory.GetFiles(commands, "*.json")) File.Copy(file, Path.Combine(stage, "commands", Path.GetFileName(file)));
                 }
                 foreach (var file in Directory.GetFiles(folder, "incomplete-*.json")) File.Copy(file, Path.Combine(stage, Path.GetFileName(file)));
-                var extensions = Directory.GetFiles(Path.Combine(stage, "artifacts")).Select(Path.GetExtension).ToArray();
-                run.missing_artifacts = run.required_artifacts.Where(x => !extensions.Contains("." + x)).ToArray();
+                var artifactFiles = Directory.GetFiles(Path.Combine(stage, "artifacts"));
+                var extensions = new HashSet<string>(
+                    artifactFiles.Select(Path.GetExtension),
+                    StringComparer.OrdinalIgnoreCase);
+                // In a DRM-hooked Office process, SaveCopyAs can be ciphertext
+                // even though the live workbook/deck is complete.  A final
+                // runner-owned COM readback explicitly declares which native
+                // artifact it represents, so evidence completeness follows the
+                // in-memory state instead of trusting encrypted disk bytes.
+                foreach (var file in artifactFiles.Where(p =>
+                    p.EndsWith(".json", StringComparison.OrdinalIgnoreCase) &&
+                    Path.GetFileName(p).IndexOf(
+                        "-final-output-",
+                        StringComparison.OrdinalIgnoreCase) >= 0))
+                {
+                    try
+                    {
+                        var capture = Read<Dictionary<string, object>>(file);
+                        object native;
+                        object created;
+                        object artifact;
+                        if (capture.TryGetValue("native_readback", out native) &&
+                            Convert.ToBoolean(native) &&
+                            capture.TryGetValue("run_created_output", out created) &&
+                            Convert.ToBoolean(created) &&
+                            capture.TryGetValue("artifact_extension", out artifact))
+                        {
+                            var value = Convert.ToString(artifact);
+                            if (Regex.IsMatch(value ?? "", "^(xlsx|pptx|docx)$"))
+                                extensions.Add("." + value);
+                        }
+                    }
+                    catch
+                    {
+                    }
+                }
+                run.missing_artifacts = run.required_artifacts
+                    .Where(x => !extensions.Contains("." + x))
+                    .ToArray();
                 run.trace_complete = run.trace_complete && run.status == "finished" && timeline.Count > 0 && Directory.GetFiles(folder, "incomplete-*.json").Length == 0 && Directory.GetFiles(folder, "*.active").Length == 0;
                 Write(Path.Combine(stage, "run.json"), run);
                 Write(Path.Combine(stage, "scorecard.json"), new { schema = 1, run_id = runId, status = "pending_evaluation", passed = false,

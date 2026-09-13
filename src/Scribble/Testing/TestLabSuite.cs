@@ -97,10 +97,46 @@ namespace Scribble.Testing
         }
         public static string PresetAnswer(LabCase c, string question)
         {
-            var known = (c.clarification_answers ?? new Dictionary<string, string>()).Where(p =>
-                new[] { "audience", "period", "currency", "format" }.Contains(p.Key) &&
-                Regex.IsMatch(question ?? "", @"\b" + p.Key + @"\b", RegexOptions.IgnoreCase)).Select(p => p.Value).ToArray();
-            return known.Length == 0 ? null : string.Join("; ", known);
+            var answers = c.clarification_answers ??
+                new Dictionary<string, string>();
+            var text = question ?? "";
+            var vocabulary = new Dictionary<string, string>(
+                StringComparer.OrdinalIgnoreCase)
+            {
+                { "audience", @"\b(audience|reader|viewer|attendee|board|executive)\b" },
+                { "period", @"\b(period|timeframe|date range|month|year|reporting date)\b" },
+                { "currency", @"\b(currency|eur|tax)\b" },
+                { "format", @"\b(format|output|deliverable|editable|layout|slide count)\b" }
+            };
+            var known = answers.Where(p =>
+                vocabulary.ContainsKey(p.Key) &&
+                Regex.IsMatch(
+                    text,
+                    vocabulary[p.Key],
+                    RegexOptions.IgnoreCase)).Select(p => p.Value).ToArray();
+            if (known.Length > 0) return string.Join("; ", known);
+
+            // A model may ask a generic clarification without naming the
+            // preset field (for example, "Any preferences before I proceed?").
+            // Return only the case-authored defaults.  Requests that would
+            // authorize an external side effect remain blocked.
+            if (answers.Count > 0 &&
+                Regex.IsMatch(
+                    text,
+                    @"\b(clarif|preference|default|proceed|requirement|direction|specific|anything else)\w*\b",
+                    RegexOptions.IgnoreCase) &&
+                !Regex.IsMatch(
+                    text,
+                    @"\b(contact|send|email|save|publish|delete|overwrite|upload|share)\b",
+                    RegexOptions.IgnoreCase))
+            {
+                return string.Join(
+                    "; ",
+                    new[] { "audience", "period", "currency", "format" }
+                        .Where(answers.ContainsKey)
+                        .Select(key => answers[key]));
+            }
+            return null;
         }
         public static LabCase[] SelectCases(LabCase[] cases, string caseId)
         {

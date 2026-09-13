@@ -32,21 +32,80 @@ namespace Scribble.Testing
                         try
                         {
                             var runOutput = TestLab.IsRunOutput(value, run.run_id);
-                            if (!runOutput && !TestLabSuite.OwnsNativeSource(run.run_id, Convert.ToString(document.FullName), kind)) continue;
-                            var stem = Path.Combine(directory, kind + "-" + phase + "-" + (runOutput ? "output" : "source") + "-" + i);
+                            var source = !runOutput && TestLabSuite.OwnsNativeSource(
+                                run.run_id,
+                                Convert.ToString(document.FullName),
+                                kind);
+                            if (!runOutput && !source) continue;
+
+                            // Excel drafts normally live in a new worksheet of the
+                            // read-only fixture workbook.  The workbook itself is
+                            // intentionally not tagged as a run-created document,
+                            // so retain a separate final copy once a Scribble Draft
+                            // sheet exists.  Earlier code captured only its readback
+                            // and then reported the requested XLSX as missing.
+                            var sourceDerivedOutput =
+                                source &&
+                                phase != "source" &&
+                                HasScribbleDraft(value, kind);
+                            var effectiveOutput = runOutput || sourceDerivedOutput;
+                            var role = effectiveOutput ? "output" : "source";
+                            var stem = Path.Combine(
+                                directory,
+                                kind + "-" + phase + "-" + role + "-" + i);
                             try {
                                 var readback = ReadNative(value, kind);
+                                var extension = kind == "Excel" ? ".xlsx" : kind == "PowerPoint" ? ".pptx" : ".docx";
                                 File.WriteAllText(stem + "-readback.json", TestLab.Serialize(new { schema = 1, run_id = runId,
                                     host = kind, captured_utc = DateTime.UtcNow.ToString("O"), native_readback = true,
-                                    phase = phase, run_created_output = runOutput, text = readback }), Encoding.UTF8);
+                                    phase = phase, run_created_output = effectiveOutput,
+                                    artifact_extension = effectiveOutput ? extension.TrimStart('.') : null,
+                                    text = readback }), Encoding.UTF8);
                                 TestLab.Collect(runId, stem + "-readback.json");
                                 report.Add("Captured " + kind + " cell/text/structure readback.");
                             } catch (Exception ex) { report.Add(kind + " readback failed: " + ex.Message); }
-                            if (!runOutput) continue;
+                            if (sourceDerivedOutput)
+                            {
+                                // Preserve a source-only readback as well.  Source
+                                // preservation compares the original worksheets,
+                                // while the output readback and XLSX include the new
+                                // draft sheet.
+                                var sourceStem = Path.Combine(
+                                    directory,
+                                    kind + "-" + phase + "-source-" + i);
+                                var sourceReadback = ReadNative(value, kind, true);
+                                File.WriteAllText(
+                                    sourceStem + "-readback.json",
+                                    TestLab.Serialize(new {
+                                        schema = 1,
+                                        run_id = runId,
+                                        host = kind,
+                                        captured_utc = DateTime.UtcNow.ToString("O"),
+                                        native_readback = true,
+                                        phase = phase,
+                                        run_created_output = false,
+                                        text = sourceReadback
+                                    }),
+                                    Encoding.UTF8);
+                                TestLab.Collect(runId, sourceStem + "-readback.json");
+                            }
+                            if (!effectiveOutput) continue;
                             var extension = kind == "Excel" ? ".xlsx" : kind == "PowerPoint" ? ".pptx" : ".docx";
                             if (kind == "Excel") document.SaveCopyAs(stem + extension);
                             else if (kind == "PowerPoint") document.SaveCopyAs(stem + extension, 24);
                             else SaveFlatOpc(Convert.ToString(document.WordOpenXML), stem + extension);
+                            if (!IsValidOfficePackage(stem + extension, kind))
+                            {
+                                // NASCA/MarkAny may transparently replace an
+                                // Office SaveCopyAs payload with DRM ciphertext.
+                                // The live COM readback above remains authoritative;
+                                // never collect encrypted bytes as if they were OOXML.
+                                File.Delete(stem + extension);
+                                report.Add(
+                                    kind + " disk copy was DRM-wrapped; retained " +
+                                    "the in-memory native readback instead.");
+                                continue;
+                            }
                             var collected = TestLab.Collect(runId, stem + extension);
                             report.Add("Captured " + Path.GetFileName(collected));
                             try
@@ -113,7 +172,51 @@ namespace Scribble.Testing
             var array = value as Array;
             return array == null ? value : array.GetValue(row + array.GetLowerBound(0), column + array.GetLowerBound(1));
         }
+        private static bool HasScribbleDraft(object value, string kind)
+        {
+            if (kind != "Excel") return false;
+            dynamic workbook = value;
+            for (int n = 1; n <= (int)workbook.Worksheets.Count; n++)
+            {
+                var name = Convert.ToString(workbook.Worksheets.Item(n).Name) ?? "";
+                if (name == "Scribble Draft" ||
+                    name.StartsWith("Scribble Draft ", StringComparison.Ordinal))
+                    return true;
+            }
+            return false;
+        }
+
+        private static bool IsValidOfficePackage(string path, string kind)
+        {
+            try
+            {
+                if (!File.Exists(path)) return false;
+                using (var archive = ZipFile.OpenRead(path))
+                {
+                    var required =
+                        kind == "Excel" ? "xl/workbook.xml" :
+                        kind == "PowerPoint" ? "ppt/presentation.xml" :
+                        "word/document.xml";
+                    return archive.GetEntry("[Content_Types].xml") != null &&
+                           archive.GetEntry(required) != null;
+                }
+            }
+            catch (InvalidDataException)
+            {
+                return false;
+            }
+            catch (IOException)
+            {
+                return false;
+            }
+        }
+
         private static string ReadNative(object value, string kind)
+        {
+            return ReadNative(value, kind, false);
+        }
+
+        private static string ReadNative(object value, string kind, bool excludeScribbleDrafts)
         {
             dynamic document = value;
             var text = new StringBuilder();
@@ -121,8 +224,13 @@ namespace Scribble.Testing
             if (kind == "Excel") {
                 for (int n = 1; n <= (int)document.Worksheets.Count; n++) {
                     dynamic sheet = document.Worksheets.Item(n); dynamic used = sheet.UsedRange;
+                    var sheetName = Convert.ToString(sheet.Name) ?? "";
+                    if (excludeScribbleDrafts &&
+                        (sheetName == "Scribble Draft" ||
+                         sheetName.StartsWith("Scribble Draft ", StringComparison.Ordinal)))
+                        continue;
                     int rows = (int)used.Rows.Count, columns = (int)used.Columns.Count;
-                    text.AppendLine("Worksheet: " + Convert.ToString(sheet.Name) + " | used range: " + Convert.ToString(used.Address));
+                    text.AppendLine("Worksheet: " + sheetName + " | used range: " + Convert.ToString(used.Address));
                     if ((long)rows * columns > 100000) { text.AppendLine("READBACK LIMIT: range exceeds 100000 cells. Screenshot the relevant range in Excel."); continue; }
                     object values = used.Value2, formulas = used.Formula;
                     for (int r = 0; r < rows; r++) for (int c = 0; c < columns; c++) {
@@ -158,6 +266,27 @@ namespace Scribble.Testing
                                 text.AppendLine("Table R" + r + "C" + c + ": " + Convert.ToString(table.Cell(r, c).Shape.TextFrame.TextRange.Text));
                         }
                         if ((int)shape.HasChart != 0) text.AppendLine("Native chart type: " + Convert.ToString(shape.Chart.ChartType));
+                    }
+                    try
+                    {
+                        dynamic notes = slide.NotesPage;
+                        var noteText = new StringBuilder();
+                        for (int j = 1; j <= (int)notes.Shapes.Count; j++)
+                        {
+                            dynamic noteShape = notes.Shapes.Item(j);
+                            if ((int)noteShape.HasTextFrame != 0)
+                            {
+                                var value = Convert.ToString(
+                                    noteShape.TextFrame.TextRange.Text);
+                                if (!string.IsNullOrWhiteSpace(value))
+                                    noteText.Append(value).Append(" ");
+                            }
+                        }
+                        if (noteText.Length > 0)
+                            text.AppendLine("Notes: " + noteText.ToString().Trim());
+                    }
+                    catch
+                    {
                     }
                 }
             }
