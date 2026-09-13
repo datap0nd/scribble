@@ -211,6 +211,9 @@ namespace Scribble.Office
                 sheet.Cells[
                     startRow + rowCount - 1,
                     columnCount]);
+            // Headers such as 2026-05 are labels. Excel otherwise coerces
+            // them into date serials (46143), losing the supplied meaning.
+            target.Rows[1].NumberFormat = "@";
             target.Value2 = grid;
             var formulaCount = 0;
             var liveFormulas =

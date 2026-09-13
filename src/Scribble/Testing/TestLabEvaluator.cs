@@ -124,6 +124,23 @@ namespace Scribble.Testing
             return answer;
         }
 
+        public static string BlockingDetails(string timeline)
+        {
+            string question = null, rejected = null;
+            var json = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
+            foreach (var line in (timeline ?? "").Split('\n').Where(l => !string.IsNullOrWhiteSpace(l)))
+            {
+                var entry = json.Deserialize<Dictionary<string, object>>(line); object stage, raw, value;
+                if (!entry.TryGetValue("stage", out stage) || !entry.TryGetValue("detail", out raw)) continue;
+                var detail = raw as Dictionary<string, object>; if (detail == null) continue;
+                if (Convert.ToString(stage) == "pane_event" && detail.TryGetValue("type", out value) && Convert.ToString(value) == "askUser" && detail.TryGetValue("question", out value))
+                    question = "Question: " + Convert.ToString(value);
+                if (Convert.ToString(stage) == "argument_validation_failed")
+                    rejected = "Last rejected tool call: " + json.Serialize(detail);
+            }
+            return string.Join("\n", new[] { question, rejected }.Where(v => v != null));
+        }
+
         public static string OutputText(string extension, string text)
         {
             if (extension == "pptx") {

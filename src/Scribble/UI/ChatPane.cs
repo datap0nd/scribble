@@ -600,7 +600,7 @@ namespace Scribble.UI
                 _transcriptEvents.RemoveAt(0);
             }
 
-            PostRawToWeb(json);
+            PostToWeb(payload);
         }
 
         // ------------------------------------------------------------------
@@ -697,6 +697,7 @@ namespace Scribble.UI
         // always visibly progressing instead of looking frozen.
         private void ElapsedTick(object sender, EventArgs eventArgs)
         {
+            _suiteDriver.PollStop(() => _busy, () => HandleStop());
             if (!_busy)
             {
                 return;

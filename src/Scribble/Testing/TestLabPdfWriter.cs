@@ -202,7 +202,13 @@ namespace Scribble.Testing
                             native.AppendLine(TestLabEvaluator.OutputText(Convert.ToString(extension), Convert.ToString(value)));
                         }
                     }
-                    var observed = native.Length > 0 ? native.ToString() : TestLabEvaluator.FinalAnswer(EntryText(archive.GetEntry("timeline.jsonl")));
+                    var timeline = EntryText(archive.GetEntry("timeline.jsonl"));
+                    var observed = native.Length > 0 ? native.ToString() : TestLabEvaluator.FinalAnswer(timeline);
+                    if (string.IsNullOrWhiteSpace(observed))
+                    {
+                        observed = TestLabEvaluator.BlockingDetails(timeline);
+                        if (string.IsNullOrWhiteSpace(observed)) observed = "No completed assistant answer or native output was captured.";
+                    }
                     text.AppendLine("Observed: " + Short(observed, 1400));
                     var images = archive.Entries.Where(e => e.Name.Contains("-final-output-") && e.Name.EndsWith(".png", StringComparison.OrdinalIgnoreCase)).ToArray();
                     var slideNumber = System.Text.RegularExpressions.Regex.Match(observed, @"(?m)^Slide (\d+)\r?$");

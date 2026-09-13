@@ -77,6 +77,24 @@ namespace GuardrailTests
             } finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
         }
 
+        public static void PowerPointArgumentsGiveRepair()
+        {
+            var root = Path.Combine(Path.GetTempPath(), "scribble-slide-contract-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var request = Request(); request.tools = new List<ChatToolDefinition> { PresentationToolCatalog.DraftDefinition() };
+                var task = new TaskContextManager(request, "powerpoint", "Create a two-slide draft", new TaskCheckpointStore(root));
+                var missing = task.ValidateArguments(Call(PresentationToolCatalog.AddDraftSlides, "{\"plan\":[\"cover\",\"analysis\"]}"));
+                Check(missing != null && missing.Content.Contains("nonempty slides array") && missing.Content.Contains("$.slides") &&
+                    missing.Outcome.PermissionConsumed == false && task.State.Writes.Count == 0, "A plan-only call did not explain how to repair the missing slide batch without consuming permission.");
+                var empty = task.ValidateArguments(Call(PresentationToolCatalog.AddDraftSlides, "{\"plan\":[\"cover\",\"analysis\"],\"slides\":[]}"));
+                Check(empty != null && empty.Content.Contains("too few items"), "An empty slide batch passed the argument boundary.");
+                var repaired = task.ValidateArguments(Call(PresentationToolCatalog.AddDraftSlides, "{\"plan\":[\"cover\",\"analysis\"],\"slides\":[{\"id\":\"cover\",\"title\":\"Review\",\"layout\":\"cover\"}]}"));
+                Check(repaired == null && task.State.Writes.Count == 0, "The corrected batch was rejected or validation itself wrote content.");
+            }
+            finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+        }
+
         public static void SparseMailboxThroughCoordinator()
         {
             foreach (var rejectFilter in new[] { false, true })

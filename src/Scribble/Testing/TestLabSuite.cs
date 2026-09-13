@@ -78,23 +78,65 @@ namespace Scribble.Testing
                 return report;
             }
         }
+        public static void RequestStop(string runId, string submitId)
+        {
+            if (runId == null || runId != TestLab.ActiveRunId()) throw new InvalidOperationException("No matching active test request.");
+            if (!Regex.IsMatch(submitId ?? "", "^[a-f0-9]{32}$")) throw new InvalidOperationException("No matching submitted command.");
+            File.WriteAllText(Path.Combine(TestLab.RunDirectory(runId), "stop-requested"), submitId);
+        }
+
+        // A failed RPC is not proof that the model stopped. Only a durable
+        // terminal receipt for this exact submission, or the end of its exact
+        // owning process (PID plus start time), releases the next case.
+        public static string StoppedReason(string runId, string submitId, int pid, long processStart)
+        {
+            var receipt = TestLabSuitePane.ReadReceipt(runId, submitId);
+            if (receipt != null && receipt.schema == 1 && receipt.run_id == runId && receipt.command_id == submitId &&
+                receipt.action == "submit" && receipt.pid > 0 && receipt.processStart > 0 &&
+                (pid <= 0 || (receipt.pid == pid && receipt.processStart == processStart)))
+            {
+                if (receipt.state == "done" || receipt.state == "stopped") return "The pane recorded that this request ended.";
+                if (pid <= 0) { pid = receipt.pid; processStart = receipt.processStart; }
+            }
+            if (ExecutorExited(pid, processStart)) return "The Office process that owned this request exited. The failed case is preserved; continuing with the next case.";
+            return null;
+        }
+
+        private static bool ExecutorExited(int pid, long processStart)
+        {
+            if (pid <= 0 || processStart <= 0) return false;
+            try
+            {
+                using (var process = Process.GetProcessById(pid))
+                    return process.HasExited || process.StartTime.ToUniversalTime().Ticks != processStart;
+            }
+            catch (ArgumentException) { return true; }
+            catch (InvalidOperationException) { return true; }
+            catch (System.ComponentModel.Win32Exception) { return false; }
+        }
+
         private static void ConfirmStopped(string runId, SuiteCommandReceipt receipt)
         {
+            RequestStop(runId, receipt.command_id);
             if (!new[] { "Excel", "PowerPoint", "Outlook", "Word" }.Contains(receipt.host))
                 throw new InvalidOperationException("Stop the interrupted request in " + receipt.host + " before retrying.");
             object application = null;
             try {
-                application = Marshal.GetActiveObject(receipt.host + ".Application");
-                dynamic app = application;
                 var progId = receipt.host == "Outlook" ? "Scribble.AddIn" : "Scribble." + receipt.host + "AddIn";
-                dynamic controller = app.COMAddIns.Item(progId).Object;
+                dynamic controller = null;
+                string connectionError = null;
                 for (int attempt = 0; attempt < 80; attempt++) {
-                    var reply = new JavaScriptSerializer().Deserialize<SuiteReply>(Convert.ToString(controller.StopTestLabRun(runId)));
-                    if (reply.state == "done" && string.IsNullOrEmpty(reply.error)) return;
-                    if (reply.state == "unknown") throw new InvalidOperationException(reply.error);
+                    if (StoppedReason(runId, receipt.command_id, receipt.pid, receipt.processStart) != null) return;
+                    try {
+                        if (application == null) application = Marshal.GetActiveObject(receipt.host + ".Application");
+                        if (controller == null) controller = ((dynamic)application).COMAddIns.Item(progId).Object;
+                        var reply = new JavaScriptSerializer().Deserialize<SuiteReply>(Convert.ToString(controller.StopTestLabRun(runId)));
+                        if (reply.state == "done" && string.IsNullOrEmpty(reply.error)) return;
+                        connectionError = reply.error;
+                    } catch (Exception error) { connectionError = error.Message; }
                     Thread.Sleep(250);
                 }
-                throw new TimeoutException("The interrupted request did not stop within 20 seconds.");
+                throw new TimeoutException("The interrupted request did not stop within 20 seconds. " + connectionError);
             } catch (Exception error) {
                 throw new InvalidOperationException("Stop is not confirmed for " + receipt.host + " process " + receipt.pid + ". Stop its visible request or close that app, then retry Start. " + error.Message, error);
             } finally { TestLabOfficeEnvironment.Release(application); }
@@ -290,6 +332,9 @@ namespace Scribble.Testing
         private dynamic controller;
         private string preparation;
         private bool keepCaptureActive;
+        private string activeSubmitId;
+        private int hostPid;
+        private long hostProcessStart;
         private readonly string caseFilter;
         internal TestLabSuiteRunner(string folder, Action<string> changed, CancellationToken cancel)
             : this(folder, changed, cancel, null) { }
@@ -325,6 +370,7 @@ namespace Scribble.Testing
                         cancel.ThrowIfCancellationRequested();
                         var result = Results.Single(r => r.id == c.id); result.started = DateTime.UtcNow.ToString("O"); result.status = "running";
                         State.caseId = c.id; State.host = c.host; State.runId = null; State.chromeToken = Guid.NewGuid().ToString("N"); State.sourceUrl = null;
+                        activeSubmitId = null; hostPid = 0; hostProcessStart = 0;
                         TestLabSuite.Save(State); Journal();
                         var folder = TestLab.SafeChild(State.folder, "cases/" + c.id);
                         bool submitted = false, quiescent = true, captureComplete = false;
@@ -448,9 +494,10 @@ namespace Scribble.Testing
             foreach (var kind in new[] { "Excel", "PowerPoint", "Word" })
             {
                 object instance = null;
+                bool releaseInstance = true;
                 try
                 {
-                    instance = Marshal.GetActiveObject(kind + ".Application"); dynamic app = instance;
+                    instance = TestLabOfficeEnvironment.Borrow(kind, out releaseInstance); dynamic app = instance;
                     dynamic documents = kind == "Excel" ? app.Workbooks : kind == "PowerPoint" ? app.Presentations : app.Documents;
                     for (int i = (int)documents.Count; i >= 1; i--)
                     {
@@ -473,12 +520,13 @@ namespace Scribble.Testing
                     }
                 }
                 catch (COMException) { }
-                finally { if (instance != null && Marshal.IsComObject(instance)) Marshal.ReleaseComObject(instance); }
+                finally { if (releaseInstance && instance != null && Marshal.IsComObject(instance)) Marshal.ReleaseComObject(instance); }
             }
             object outlookInstance = null;
+            bool releaseOutlook = true;
             try
             {
-                outlookInstance = Marshal.GetActiveObject("Outlook.Application"); dynamic outlook = outlookInstance;
+                outlookInstance = TestLabOfficeEnvironment.Borrow("Outlook", out releaseOutlook); dynamic outlook = outlookInstance;
                 for (int i = (int)outlook.Inspectors.Count; i >= 1; i--)
                 {
                     object inspectorValue = outlook.Inspectors.Item(i); dynamic inspector = inspectorValue;
@@ -496,7 +544,7 @@ namespace Scribble.Testing
                 }
             }
             catch (COMException) { }
-            finally { if (outlookInstance != null && Marshal.IsComObject(outlookInstance)) Marshal.ReleaseComObject(outlookInstance); }
+            finally { if (releaseOutlook && outlookInstance != null && Marshal.IsComObject(outlookInstance)) Marshal.ReleaseComObject(outlookInstance); }
         }
         private void OpenChrome()
         {
@@ -509,6 +557,10 @@ namespace Scribble.Testing
         private async Task Command(string action, int phase, int timeout, bool cancellable)
         {
             var id = Guid.NewGuid().ToString("N"); var started = DateTime.UtcNow; var progress = started; bool accepted = false;
+            string connectionError = null;
+            if (action == "submit") activeSubmitId = id;
+            if (action == "stop" && State.host != "Chrome")
+                try { TestLabSuite.RequestStop(State.runId, activeSubmitId); } catch (Exception e) { Log("Independent stop signal: " + e.Message); }
             var folder = TestLab.SafeChild(State.folder, "cases/" + State.caseId);
             if (State.host == "Chrome") {
                 var command = new SuiteChromeCommand { id = id, action = action, prompt = action == "submit" ? TestLabSuite.Prompt(TestLabSuite.CurrentCase(State), phase) : null, sourceUrl = State.sourceUrl, runId = State.runId, answers = TestLabSuite.CurrentCase(State).clarification_answers };
@@ -519,6 +571,11 @@ namespace Scribble.Testing
             Log(State.caseId + ": " + action + (action == "submit" ? " phase " + phase : ""));
             while (DateTime.UtcNow - started < TimeSpan.FromSeconds(timeout)) {
                 if (cancellable) cancel.ThrowIfCancellationRequested();
+                if (action == "stop" && State.host != "Chrome")
+                {
+                    var reason = TestLabSuite.StoppedReason(State.runId, activeSubmitId, hostPid, hostProcessStart);
+                    if (reason != null) { Log(State.caseId + ": " + reason); return; }
+                }
                 SuiteReply reply = null;
                 if (State.host == "Chrome") {
                     var file = Path.Combine(folder, id + ".reply.json");
@@ -528,16 +585,22 @@ namespace Scribble.Testing
                         var json = Convert.ToString(controller.RunTestLabCommand(State.id, id, accepted && action != "stop" ? "status" : action, phase));
                         reply = new JavaScriptSerializer().Deserialize<SuiteReply>(json);
                         if (reply.state != "initializing") accepted = true;
+                    } catch (Exception e) when (action == "stop") {
+                        if (connectionError == null) Log("Office stop connection failed; waiting for the pane acknowledgement or confirmed process exit: " + e.Message);
+                        connectionError = e.Message;
                     } catch (COMException e) when ((uint)e.HResult == 0x80010001 || (uint)e.HResult == 0x8001010A) { /* Office is temporarily busy. */ }
                 }
                 if (reply != null) {
                     if (!string.IsNullOrEmpty(reply.error) && action != "stop") throw new InvalidOperationException(reply.error);
+                    if (reply.state == "stopped" && action == "submit") throw new OperationCanceledException("The test request was stopped.");
                     if (reply.state == "done") {
                         if (action == "load" && State.host != "Chrome") {
                             Log(State.host + " loaded module: " + (reply.hostModule ?? "not reported") + "; capture root: " + (reply.captureRoot ?? "not reported"));
                             if (reply.hostModule != typeof(TestLab).Assembly.ManifestModule.ModuleVersionId.ToString() ||
                                 !string.Equals(reply.captureRoot, TestLab.Root, StringComparison.OrdinalIgnoreCase))
                                 throw new InvalidOperationException("The running " + State.host + " add-in differs from this Test Lab runner. Close and restart Office after updating Scribble, then rerun Test Lab.");
+                            if (reply.pid <= 0 || reply.processStart <= 0) throw new InvalidOperationException("The Office pane did not identify the process responsible for this test request.");
+                            hostPid = reply.pid; hostProcessStart = reply.processStart;
                         }
                         return;
                     }
@@ -545,7 +608,8 @@ namespace Scribble.Testing
                 if (DateTime.UtcNow - progress > TimeSpan.FromSeconds(15)) { Log(State.caseId + ": waiting for " + action + " (" + (int)(DateTime.UtcNow - started).TotalSeconds + " seconds)"); progress = DateTime.UtcNow; }
                 await Task.Delay(750);
             }
-            throw new TimeoutException(State.host + " did not complete " + action + " in " + timeout + " seconds. Check its visible Scribble pane and model connection.");
+            throw new TimeoutException(State.host + " did not complete " + action + " in " + timeout + " seconds. Check its visible Scribble pane and model connection." +
+                (connectionError == null ? "" : " Last connection error: " + connectionError));
         }
         private async Task CancellationCase(LabCase c)
         {
@@ -555,17 +619,19 @@ namespace Scribble.Testing
             while (!pending.IsCompleted) {
                 cancel.ThrowIfCancellationRequested();
                 object excel = null;
+                bool releaseExcel = true;
                 try {
-                    excel = Marshal.GetActiveObject("Excel.Application"); dynamic app = excel;
+                    excel = TestLabOfficeEnvironment.Borrow("Excel", out releaseExcel); dynamic app = excel;
                     for (int i = 1; i <= (int)app.Workbooks.Count; i++) if (TestLab.IsRunOutput((object)app.Workbooks.Item(i), State.runId)) reached = true;
                 } catch (COMException) { }
-                finally { if (excel != null && Marshal.IsComObject(excel)) Marshal.ReleaseComObject(excel); }
+                finally { if (releaseExcel && excel != null && Marshal.IsComObject(excel)) Marshal.ReleaseComObject(excel); }
                 if (reached) {
                     object ppt = null;
-                    try { ppt = Marshal.GetActiveObject("PowerPoint.Application"); dynamic app = ppt;
+                    bool releasePpt = true;
+                    try { ppt = TestLabOfficeEnvironment.Borrow("PowerPoint", out releasePpt); dynamic app = ppt;
                         for (int i = 1; i <= (int)app.Presentations.Count; i++) if (TestLab.IsRunOutput((object)app.Presentations.Item(i), State.runId) && (int)app.Presentations.Item(i).Slides.Count >= 6)
                             throw new InvalidOperationException("RC01 stop boundary was missed: the deck already has six slides.");
-                    } catch (COMException) { } finally { if (ppt != null && Marshal.IsComObject(ppt)) Marshal.ReleaseComObject(ppt); }
+                    } catch (COMException) { } finally { if (releasePpt && ppt != null && Marshal.IsComObject(ppt)) Marshal.ReleaseComObject(ppt); }
                     TestLab.Marker("Automatic RC01 stop: run-owned workbook observed"); await Command("stop", 0, 60, false); break; }
                 await Task.Delay(250);
             }

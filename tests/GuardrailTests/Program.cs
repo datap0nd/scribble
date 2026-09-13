@@ -74,6 +74,7 @@ namespace GuardrailTests
                 if (args.Length == 2 && args[0] == "--filter") _filter = args[1];
                 Run("Native report readback retains scalar cell formulas", HardeningTests.NativeReportReadback);
                 Run("Duplicate document writes return a recoverable result", HardeningTests.DuplicateDraftIsRecoverable);
+                Run("PowerPoint outline-only calls get a concrete repair before any write", HardeningTests.PowerPointArgumentsGiveRepair);
                 Run("QA metadata followup forbids reads and old task continuation", QaMetadataScope);
                 Run("QA repeated attachments reuse extraction and invalidate changed bytes", QaAttachmentCache);
                 Run("QA structured XLS preserves positions multilingual values and sheets", QaStructuredXls);

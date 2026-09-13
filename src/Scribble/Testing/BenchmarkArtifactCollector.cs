@@ -26,9 +26,10 @@ namespace Scribble.Testing
             foreach (var kind in new[] { "Excel", "PowerPoint", "Word" }.Where(hosts.Contains))
             {
                 object instance = null;
+                bool releaseInstance = true;
                 try
                 {
-                    instance = Marshal.GetActiveObject(kind + ".Application"); dynamic app = instance;
+                    instance = TestLabOfficeEnvironment.Borrow(kind, out releaseInstance); dynamic app = instance;
                     dynamic documents = kind == "Excel" ? app.Workbooks : kind == "PowerPoint" ? app.Presentations : app.Documents;
                     for (int i = 1; i <= (int)documents.Count; i++)
                     {
@@ -46,6 +47,19 @@ namespace Scribble.Testing
                                 originalPath,
                                 kind);
                             if (!runOutput && !source) continue;
+                            SourceBoundary boundary = null;
+                            if (source)
+                            {
+                                var boundaryPath = Path.Combine(TestLab.RunDirectory(runId), "source-boundary-" +
+                                    Scribble.Chat.TaskCheckpointStore.Fingerprint(originalPath.ToUpperInvariant()) + ".json");
+                                if (phase == "source")
+                                {
+                                    boundary = SourceBoundary.Read(value, kind);
+                                    File.WriteAllText(boundaryPath, TestLab.Serialize(boundary), new UTF8Encoding(false));
+                                }
+                                else if (File.Exists(boundaryPath)) boundary = TestLabSuite.Read<SourceBoundary>(boundaryPath);
+                                else throw new InvalidDataException("The source boundary was not captured before this case. Its existing draft labels cannot establish a new output.");
+                            }
 
                             // Excel drafts normally live in a new worksheet of the
                             // read-only fixture workbook.  The workbook itself is
@@ -56,14 +70,14 @@ namespace Scribble.Testing
                             var sourceDerivedOutput =
                                 source &&
                                 phase != "source" &&
-                                HasScribbleDraft(value, kind);
+                                HasNewDraft(value, kind, boundary);
                             var effectiveOutput = runOutput || sourceDerivedOutput;
                             var role = effectiveOutput ? "output" : "source";
                             var stem = Path.Combine(
                                 directory,
                                 kind + "-" + phase + "-" + role + "-" + i);
                             try {
-                                var readback = ReadNative(value, kind, !effectiveOutput);
+                                var readback = ReadNativeWithinBoundary(value, kind, !effectiveOutput, boundary);
                                 var readbackExtension = kind == "Excel" ? ".xlsx" : kind == "PowerPoint" ? ".pptx" : ".docx";
                                 File.WriteAllText(stem + "-readback.json", TestLab.Serialize(new { schema = 1, run_id = runId,
                                     host = kind, captured_utc = DateTime.UtcNow.ToString("O"), native_readback = true,
@@ -82,7 +96,7 @@ namespace Scribble.Testing
                                 var sourceStem = Path.Combine(
                                     directory,
                                     kind + "-" + phase + "-source-" + i);
-                                var sourceReadback = ReadNative(value, kind, true);
+                                var sourceReadback = ReadNativeWithinBoundary(value, kind, true, boundary);
                                 File.WriteAllText(
                                     sourceStem + "-readback.json",
                                     TestLab.Serialize(new {
@@ -146,14 +160,15 @@ namespace Scribble.Testing
                     }
                 }
                 catch (COMException) { report.Add(kind + ": no accessible running app. Save and collect manually if needed."); }
-                finally { if (instance != null && Marshal.IsComObject(instance)) Marshal.ReleaseComObject(instance); }
+                finally { if (releaseInstance && instance != null && Marshal.IsComObject(instance)) Marshal.ReleaseComObject(instance); }
             }
             object outlookInstance = null;
+            bool releaseOutlook = true;
             if (hosts.Contains("Outlook"))
             {
             try
             {
-                outlookInstance = Marshal.GetActiveObject("Outlook.Application"); dynamic outlook = outlookInstance;
+                outlookInstance = TestLabOfficeEnvironment.Borrow("Outlook", out releaseOutlook); dynamic outlook = outlookInstance;
                 for (int i = 1; i <= (int)outlook.Inspectors.Count; i++)
                 {
                     object value = outlook.Inspectors.Item(i).CurrentItem; dynamic mail = value;
@@ -190,7 +205,7 @@ namespace Scribble.Testing
                 }
             }
             catch (COMException) { report.Add("Outlook: no accessible running app. Save the test draft as MSG and collect manually if needed."); }
-            finally { if (outlookInstance != null && Marshal.IsComObject(outlookInstance)) Marshal.ReleaseComObject(outlookInstance); }
+            finally { if (releaseOutlook && outlookInstance != null && Marshal.IsComObject(outlookInstance)) Marshal.ReleaseComObject(outlookInstance); }
             }
             if (report.Count == 0) report.Add("No new run-owned document found. For drafts inside a source workbook/deck, save a separate copy and use Collect saved outputs. Save Outlook drafts as MSG.");
             return string.Join(Environment.NewLine, report);
@@ -217,6 +232,44 @@ namespace Scribble.Testing
                 if (name == "Scribble Draft" ||
                     name.StartsWith("Scribble Draft ", StringComparison.Ordinal))
                     return true;
+            }
+            return false;
+        }
+
+        private sealed class SourceBoundary
+        {
+            public SourceBoundary() { }
+            public string[] sheets { get; set; } = new string[0];
+            public int[] slides { get; set; } = new int[0];
+            internal static SourceBoundary Read(object value, string kind)
+            {
+                dynamic document = value;
+                var boundary = new SourceBoundary();
+                if (kind == "Excel") boundary.sheets = Enumerable.Range(1, (int)document.Worksheets.Count)
+                    .Select(i => Convert.ToString(document.Worksheets.Item(i).Name)).Cast<string>().ToArray();
+                if (kind == "PowerPoint") boundary.slides = Enumerable.Range(1, (int)document.Slides.Count)
+                    .Select(i => Convert.ToInt32(document.Slides.Item(i).SlideID)).Cast<int>().ToArray();
+                return boundary;
+            }
+        }
+
+        private static bool HasNewDraft(object value, string kind, SourceBoundary boundary)
+        {
+            if (boundary == null) return false;
+            dynamic document = value;
+            if (kind == "PowerPoint")
+            {
+                for (int i = 1; i <= (int)document.Slides.Count; i++)
+                    if (!boundary.slides.Contains((int)Convert.ToInt32(document.Slides.Item(i).SlideID)) &&
+                        IsDraftSlide((object)document.Slides.Item(i))) return true;
+            }
+            if (kind == "Excel")
+            {
+                for (int i = 1; i <= (int)document.Worksheets.Count; i++)
+                {
+                    string name = Convert.ToString(document.Worksheets.Item(i).Name);
+                    if (!boundary.sheets.Contains(name) && (name == "Scribble Draft" || name.StartsWith("Scribble Draft ", StringComparison.Ordinal))) return true;
+                }
             }
             return false;
         }
@@ -261,6 +314,9 @@ namespace Scribble.Testing
         }
 
         private static string ReadNative(object value, string kind, bool excludeScribbleDrafts)
+        { return ReadNativeWithinBoundary(value, kind, excludeScribbleDrafts, null); }
+
+        private static string ReadNativeWithinBoundary(object value, string kind, bool excludeScribbleDrafts, SourceBoundary boundary)
         {
             dynamic document = value;
             var text = new StringBuilder();
@@ -268,10 +324,9 @@ namespace Scribble.Testing
             if (kind == "Excel") {
                 for (int n = 1; n <= (int)document.Worksheets.Count; n++) {
                     dynamic sheet = document.Worksheets.Item(n); dynamic used = sheet.UsedRange;
-                    var sheetName = Convert.ToString(sheet.Name) ?? "";
-                    if (excludeScribbleDrafts &&
-                        (sheetName == "Scribble Draft" ||
-                         sheetName.StartsWith("Scribble Draft ", StringComparison.Ordinal)))
+                    string sheetName = Convert.ToString(sheet.Name) ?? "";
+                    if (excludeScribbleDrafts && (boundary != null ? !boundary.sheets.Contains(sheetName) :
+                        (sheetName == "Scribble Draft" || sheetName.StartsWith("Scribble Draft ", StringComparison.Ordinal))))
                         continue;
                     int rows = (int)used.Rows.Count, columns = (int)used.Columns.Count;
                     text.AppendLine("Worksheet: " + sheetName + " | used range: " + Convert.ToString(used.Address));
@@ -299,11 +354,12 @@ namespace Scribble.Testing
             } else {
                 var selectedSlides = new List<int>();
                 for (int n = 1; n <= (int)document.Slides.Count; n++)
-                    if (!excludeScribbleDrafts || !IsDraftSlide((object)document.Slides.Item(n))) selectedSlides.Add(n);
+                    if (!excludeScribbleDrafts || (boundary != null ? boundary.slides.Contains((int)Convert.ToInt32(document.Slides.Item(n).SlideID)) :
+                        !IsDraftSlide((object)document.Slides.Item(n)))) selectedSlides.Add(n);
                 text.AppendLine("Slide count: " + selectedSlides.Count);
                 for (int n = 1; n <= (int)document.Slides.Count; n++) {
                     if (!selectedSlides.Contains(n)) continue;
-                    dynamic slide = document.Slides.Item(n); text.AppendLine("Slide " + n);
+                    dynamic slide = document.Slides.Item(n); text.AppendLine("Slide " + (excludeScribbleDrafts && boundary != null ? selectedSlides.IndexOf(n) + 1 : n));
                     for (int j = 1; j <= (int)slide.Shapes.Count; j++) {
                         dynamic shape = slide.Shapes.Item(j);
                         text.AppendLine("Shape " + j + " | type " + Convert.ToString(shape.Type) + " | x,y,w,h: " +

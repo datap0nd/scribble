@@ -13,17 +13,40 @@ namespace Scribble.Testing
     // application alive until the suite ends, including cross-app destinations.
     internal sealed class TestLabOfficeEnvironment : IDisposable
     {
+        [ThreadStatic] private static TestLabOfficeEnvironment current;
+        private readonly TestLabOfficeEnvironment previous;
         private readonly Dictionary<string, object> applications = new Dictionary<string, object>();
         private readonly Action<string> log;
         private readonly TestLabComMessageFilter messageFilter;
         internal TestLabOfficeEnvironment(Action<string> log) : this(log, CancellationToken.None) { }
         internal TestLabOfficeEnvironment(Action<string> log, CancellationToken cancel)
-        { this.log = log; messageFilter = new TestLabComMessageFilter(cancel); }
+        { this.log = log; messageFilter = new TestLabComMessageFilter(cancel); previous = current; current = this; }
+
+        // Capture/cleanup share the same retained applications as preparation.
+        // Outlook can be fully usable without publishing a ROT entry. A
+        // borrowed RCW must not be released by the caller that did not acquire it.
+        internal static object Borrow(string host, out bool release)
+        {
+            object value;
+            if (current != null && current.applications.TryGetValue(host, out value)) { release = false; return value; }
+            release = true;
+            return Marshal.GetActiveObject(host + ".Application");
+        }
 
         internal object Connect(string host)
         {
             object value;
-            if (applications.TryGetValue(host, out value)) return value;
+            if (applications.TryGetValue(host, out value))
+            {
+                try { var version = Convert.ToString(((dynamic)value).Version); return value; }
+                catch (COMException error) when (Disconnected(error))
+                {
+                    // Closing the last presentation or an Office crash can
+                    // invalidate the retained automation object between cases.
+                    applications.Remove(host); Release(value);
+                    log(host + ": previous connection ended; reconnecting for this case.");
+                }
+            }
             try { value = Marshal.GetActiveObject(host + ".Application"); }
             catch (COMException)
             {
@@ -37,15 +60,15 @@ namespace Scribble.Testing
                 }
                 else
                 {
-                // Outlook needs an interactive profile. Headless COM activation
-                // can wait indefinitely behind an invisible profile prompt.
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("outlook.exe") { UseShellExecute = true });
-                value = null;
-                for (int attempt = 0; attempt < 120 && value == null; attempt++) {
-                    try { value = Marshal.GetActiveObject(host + ".Application"); }
-                    catch (COMException) { Thread.Sleep(250); }
-                }
-                if (value == null) throw new TimeoutException(host + " did not become ready in 30 seconds. Complete its visible startup/profile dialog, then retry Start.");
+                    // Launch interactively so any required profile/startup
+                    // dialog is visible before attaching automation.
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("outlook.exe") { UseShellExecute = true });
+                    // GetActiveObject may remain unavailable even after Outlook has
+                    // opened an explorer. Its registered singleton automation class
+                    // attaches to that interactive instance without depending on ROT.
+                    var type = Type.GetTypeFromProgID("Outlook.Application");
+                    if (type == null) throw new InvalidOperationException("Classic Outlook automation is not installed.");
+                    value = Activator.CreateInstance(type);
                 }
             }
             applications.Add(host, value);
@@ -114,7 +137,12 @@ namespace Scribble.Testing
         }
 
         internal static void Release(object value) { if (value != null && Marshal.IsComObject(value)) Marshal.ReleaseComObject(value); }
-        public void Dispose() { try { foreach (var value in applications.Values) Release(value); applications.Clear(); } finally { messageFilter.Dispose(); } }
+        private static bool Disconnected(COMException error)
+        {
+            var code = (uint)error.HResult;
+            return code == 0x800706BE || code == 0x800706BA || code == 0x80010108 || code == 0x800401FD;
+        }
+        public void Dispose() { try { foreach (var value in applications.Values) Release(value); applications.Clear(); } finally { if (current == this) current = previous; messageFilter.Dispose(); } }
     }
 
     // Local native MSG inputs exercise MessageReader and attachment parsers

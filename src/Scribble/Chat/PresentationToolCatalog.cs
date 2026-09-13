@@ -126,8 +126,9 @@ namespace Scribble.Chat
                                     { "type", "array" },
                                     {
                                         "description",
-                                        "Slides to add, in order."
+                                        "REQUIRED in every call, including the first plan/briefs call: a nonempty batch of slide content objects to add, in order. Plan IDs and briefs alone do not create slides."
                                     },
+                                    { "minItems", 1 },
                                     { "items", SlideSchema() }
                                 }
                             },
