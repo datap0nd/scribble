@@ -45,6 +45,7 @@ jobs:
         run: |
           $file = "src/Scribble/Properties/AssemblyInfo.cs"
           (Get-Content $file) -replace 'AssemblyFileVersion\("[^"]+"\)', 'AssemblyFileVersion("2.0.${{ github.run_number }}.0")' | Set-Content $file
+          (Get-Content $file) -replace 'AssemblyInformationalVersion\("[^"]+"\)', 'AssemblyInformationalVersion("${{ github.sha }}")' | Set-Content $file
 
       - name: Restore NuGet packages
         run: msbuild Scribble.sln /t:Restore /p:Configuration=Release
@@ -235,6 +236,7 @@ jobs:
         run: |
           ./scripts/Sign-File.ps1 -Path "src\Scribble\bin\Release\Scribble.dll"
           ./scripts/Sign-File.ps1 -Path "src\Scribble.BrowserHost\bin\Release\ScribbleBrowserHost.exe"
+          ./scripts/Sign-File.ps1 -Path "src\Scribble.Updater\bin\Release\ScribbleUpdater.exe"
 
       - name: Verify synthetic benchmark kit and capture infrastructure
         shell: powershell
@@ -252,6 +254,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Suite runner validation failed.' }
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/benchmarks/Test-TestLabLaunch.ps1
           if ($LASTEXITCODE -ne 0) { throw "Test Lab launch/recovery checks failed." }
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/benchmarks/Test-TestLabReliability.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Test Lab reliability regressions failed.' }
 
       - name: Upload synthetic PDF report validation
         if: always()
@@ -808,6 +812,10 @@ jobs:
           # reflect the default everything-selected state.
           Start-Process $installer -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/COMPONENTS=outlook,excel,powerpoint,word,browser" -Wait
 
+      - name: Verify installed update helper and installer validation
+        shell: powershell
+        run: ./tests/Updater/Test-Updater.ps1 -InstallerPath artifacts/ScribbleSetup.exe -InstalledDirectory "$env:LOCALAPPDATA/Programs/Scribble"
+
       - name: Smoke-test browser uninstall cleanup
         shell: powershell
         run: |
@@ -859,6 +867,8 @@ jobs:
             powerpoint_workflow = 2
             status = 'automated_checks_passed'
           } | ConvertTo-Json | Set-Content artifacts/candidate.json -Encoding utf8
+          & powershell.exe -NoProfile -File tests/Updater/Test-Updater.ps1 -InstallerPath artifacts/ScribbleSetup.exe -CandidatePath artifacts/candidate.json
+          if ($LASTEXITCODE -ne 0) { throw 'The updater rejected the published candidate.' }
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4

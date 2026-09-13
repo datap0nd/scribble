@@ -132,11 +132,7 @@ namespace Scribble.Outlook
                 dynamic application = _outlookApplication;
                 session = application.Session;
                 dynamic outlookSession = session;
-                sourceItem = source.StoreId.Length > 0
-                    ? outlookSession.GetItemFromID(
-                        source.EntryId,
-                        source.StoreId)
-                    : outlookSession.GetItemFromID(source.EntryId);
+                sourceItem = Scribble.Testing.TestLabMail.OpenItem((object)outlookSession, source.EntryId, source.StoreId);
                 dynamic mail = sourceItem;
                 conversation = mail.GetConversation();
                 if (conversation == null)

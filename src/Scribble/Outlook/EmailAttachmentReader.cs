@@ -238,11 +238,7 @@ namespace Scribble.Outlook
                 dynamic outlookSession = session;
                 try
                 {
-                    item = message.StoreId.Length > 0
-                        ? outlookSession.GetItemFromID(
-                            message.EntryId,
-                            message.StoreId)
-                        : outlookSession.GetItemFromID(message.EntryId);
+                    item = Scribble.Testing.TestLabMail.OpenItem((object)outlookSession, message.EntryId, message.StoreId);
                 }
                 catch
                 {

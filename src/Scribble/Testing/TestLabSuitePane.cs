@@ -17,6 +17,13 @@ namespace Scribble.Testing
         private string commandAction;
         private int commandPhase;
         private string commandHost;
+        public string RecoverStop(string expectedRun, Func<bool> busy, Action stop)
+        {
+            if (expectedRun != TestLab.ActiveRunId() || expectedRun != runId)
+                return TestLab.Serialize(new SuiteReply { state = "unknown", error = "The pane does not own the interrupted test request." });
+            if (busy()) stop();
+            return TestLab.Serialize(new SuiteReply { state = busy() ? "running" : "done" });
+        }
         public void Observe(IDictionary<string, object> payload, Action<string> answer)
         {
             if (runId == null || runId != TestLab.ActiveRunId()) return;
@@ -97,7 +104,11 @@ namespace Scribble.Testing
                 WriteReceipt(runId, id, action, phase, host, state, null);
                 return TestLab.Serialize(new SuiteReply { state = state, hostModule = typeof(TestLab).Assembly.ManifestModule.ModuleVersionId.ToString(), captureRoot = TestLab.Root });
             }
-            else { state = "running"; WriteReceipt(runId, id, action, phase, host, state, null); Execute(send, prompt, id, phase, host); }
+            else {
+                if (!WriteReceipt(runId, id, action, phase, host, "running", null))
+                    throw new IOException("The test recorder did not acknowledge submission. No model request was started.");
+                state = "running"; Execute(send, prompt, id, phase, host);
+            }
             return TestLab.Serialize(new SuiteReply { state = busy() || state == "running" ? "running" : state, error = error });
         }
 
@@ -121,7 +132,7 @@ namespace Scribble.Testing
             catch (Exception) { return null; }
         }
 
-        private static void WriteReceipt(string runId, string id, string action, int phase, string host, string commandState, string commandError)
+        private static bool WriteReceipt(string runId, string id, string action, int phase, string host, string commandState, string commandError)
         {
             try
             {
@@ -138,8 +149,9 @@ namespace Scribble.Testing
                         TestLabTransport.Transmit(session.transport_pipe, "receipt", runId, id, payload);
                     else PersistTransportedReceipt(runId, id, payload);
                 }
+                return true;
             }
-            catch (Exception) { /* A diagnostic receipt must never terminate its Office host. */ }
+            catch (Exception) { return false; }
         }
 
         internal static void PersistTransportedReceipt(string runId, string id, string payload)

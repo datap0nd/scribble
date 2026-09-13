@@ -30,7 +30,7 @@ namespace Scribble.Outlook
                 dynamic app = application;
                 session = app.Session;
                 dynamic ns = session;
-                item = ns.GetItemFromID(source.EntryId, source.StoreId);
+                item = Scribble.Testing.TestLabMail.OpenItem((object)ns, source.EntryId, source.StoreId);
                 dynamic mail = item;
                 attachments = mail.Attachments;
                 dynamic collection = attachments;
@@ -51,7 +51,7 @@ namespace Scribble.Outlook
                 dynamic app = application;
                 session = app.Session;
                 dynamic ns = session;
-                item = ns.GetItemFromID(source.EntryId, source.StoreId);
+                item = Scribble.Testing.TestLabMail.OpenItem((object)ns, source.EntryId, source.StoreId);
                 dynamic mail = item;
                 attachments = mail.Attachments;
                 dynamic collection = attachments;

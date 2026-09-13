@@ -46,6 +46,8 @@ $notesPath = Join-Path $promotionRoot 'release-notes.md'
 $notes | Set-Content -LiteralPath $notesPath -Encoding utf8
 & gh release upload continuous (Join-Path $promotionRoot 'ScribbleSetup.exe') --repo $repo --clobber
 if ($LASTEXITCODE -ne 0) { throw 'Installer promotion failed; the downloaded candidate and rollback remain available.' }
+& gh release upload continuous (Join-Path $promotionRoot 'candidate.json') --repo $repo --clobber
+if ($LASTEXITCODE -ne 0) { throw 'Installer uploaded but its verification manifest failed to publish. Reconcile before declaring delivery.' }
 & gh api --method PATCH "repos/$repo/git/refs/tags/continuous" -f "sha=$($candidate.commit)" -F force=true --silent
 if ($LASTEXITCODE -ne 0) { throw 'Installer uploaded, but the public release tag could not be aligned with its source commit.' }
 & gh release edit continuous --repo $repo --notes-file $notesPath --latest
@@ -54,5 +56,9 @@ $verified = Join-Path $promotionRoot 'updater-download.exe'
 Invoke-WebRequest -Uri "https://github.com/$repo/releases/latest/download/ScribbleSetup.exe" -OutFile $verified
 if ((Get-FileHash -LiteralPath $verified -Algorithm SHA256).Hash.ToLowerInvariant() -ne $hash) {
     throw 'The updater URL is not serving the published installer. Reconcile the public release before declaring delivery.'
+}
+$deliveredManifest = Invoke-RestMethod -Uri "https://github.com/$repo/releases/download/continuous/candidate.json"
+if ($deliveredManifest.installer_sha256 -ne $hash -or $deliveredManifest.version -ne $candidate.version) {
+    throw 'The updater manifest does not match the published installer.'
 }
 Write-Output "Promoted $($candidate.version). Exact candidate and previous installer retained at $promotionRoot."

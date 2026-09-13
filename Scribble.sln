@@ -8,6 +8,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GuardrailTests", "tests\Gua
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Scribble.BrowserHost", "src\Scribble.BrowserHost\Scribble.BrowserHost.csproj", "{A310F3E5-41DD-4B5F-9BAC-6C067D80B92E}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Scribble.Updater", "src\Scribble.Updater\Scribble.Updater.csproj", "{E6531AAB-047D-457A-A8AF-D8D990ED7512}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -26,5 +28,9 @@ Global
 		{A310F3E5-41DD-4B5F-9BAC-6C067D80B92E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A310F3E5-41DD-4B5F-9BAC-6C067D80B92E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{A310F3E5-41DD-4B5F-9BAC-6C067D80B92E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E6531AAB-047D-457A-A8AF-D8D990ED7512}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E6531AAB-047D-457A-A8AF-D8D990ED7512}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E6531AAB-047D-457A-A8AF-D8D990ED7512}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E6531AAB-047D-457A-A8AF-D8D990ED7512}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

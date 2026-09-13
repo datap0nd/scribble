@@ -67,6 +67,9 @@
       <Project>{760F136D-D942-4644-9208-78EBE0E8D3AB}</Project>
       <Name>Scribble</Name>
     </ProjectReference>
+    <ProjectReference Include="..\..\src\Scribble.Updater\Scribble.Updater.csproj">
+      <Project>{E6531AAB-047D-457A-A8AF-D8D990ED7512}</Project><Name>Scribble.Updater</Name>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

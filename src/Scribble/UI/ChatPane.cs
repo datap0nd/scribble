@@ -516,13 +516,16 @@ namespace Scribble.UI
         }
 
         private readonly Scribble.Testing.TestLabSuitePane _suiteDriver = new Scribble.Testing.TestLabSuitePane();
+        public string StopTestLabRun(string runId) { return _suiteDriver.RecoverStop(runId, () => _busy, () => HandleStop()); }
         public string RunTestLabCommand(string suiteId, string commandId, string action, int phase)
         {
             return _suiteDriver.Command(suiteId, commandId, action, phase, "Outlook", _webReady && !_shutdown,
                 () => _busy, () => HandleNewChat(), c => {
                     var expected = (c.inputs ?? new string[0]).Count(p => p.EndsWith(".eml", StringComparison.OrdinalIgnoreCase));
                         if (expected > 0) {
-                            var messages = new MessageReader(_outlookApplication).CaptureActiveSelectionMany();
+                            var messages = Scribble.Testing.TestLabSuite.Active() != null
+                                ? Scribble.Testing.TestLabMail.Load(_outlookApplication, c)
+                                : new MessageReader(_outlookApplication).CaptureActiveSelectionMany();
                             if (messages.Count != expected) throw new InvalidOperationException("The expected synthetic messages are not selected.");
                             ApplySelectedMessages(messages);
                         }

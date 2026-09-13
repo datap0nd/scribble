@@ -22,7 +22,10 @@ class KitTests(unittest.TestCase):
         self.assertAlmostEqual((rev(june)-cost(june))/rev(june),.38333333333333336)
         self.assertEqual(len({r['RowID'] for r in rows}),8)
     def test_case_inputs_exist(self):
-        cases=json.loads(self.data('operator/cases.json'));self.assertEqual(len(cases),16)
+        cases=json.loads(self.data('operator/cases.json'));self.assertEqual(len(cases),19)
+        office=[c for c in cases if c['host'] in {'Excel','PowerPoint','Outlook'}]
+        self.assertEqual(len(office),16)
+        self.assertTrue({'EX05','PP04','OL02'} <= {c['id'] for c in office})
         self.assertEqual({c['host'] for c in cases},{'Excel','PowerPoint','Word','Outlook','Chrome'})
         for c in cases:
             for p in c['inputs']:self.assertIn(self.prefix+p,self.files);self.assertTrue(p.startswith('inputs/'))

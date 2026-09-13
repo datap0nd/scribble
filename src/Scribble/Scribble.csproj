@@ -122,6 +122,8 @@
   <ItemGroup>
     <EmbeddedResource Include="UI\ChatPaneWeb.html" />
     <EmbeddedResource Include="Skills\PublicSkills.json" />
+    <EmbeddedResource Include="..\..\tests\benchmarks\releases\scribble-test-kit-v1.zip"><LogicalName>Scribble.Testing.test-kit.zip</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="..\..\tests\benchmarks\releases\scribble-test-kit-v1.zip.sha256"><LogicalName>Scribble.Testing.test-kit.sha256</LogicalName></EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Testing\TestLab.cs" />
@@ -133,6 +135,8 @@
     <Compile Include="Testing\TestLabEvaluator.cs" />
     <Compile Include="Testing\TestLabWindow.cs" />
     <Compile Include="Testing\TestLabPreparation.cs" />
+    <Compile Include="Testing\TestLabOfficeEnvironment.cs" />
+    <Compile Include="Testing\TestLabComMessageFilter.cs" />
     <Compile Include="Testing\TestLabReport.cs" />
     <Compile Include="Testing\BenchmarkArtifactCollector.cs" />
     <Compile Include="AddIn.cs" />

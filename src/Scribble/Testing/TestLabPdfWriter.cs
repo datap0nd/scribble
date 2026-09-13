@@ -17,7 +17,7 @@ namespace Scribble.Testing
     public static class TestLabPdfWriter
     {
         private const int MaximumPages = 10;
-        private const int MaximumFailureCharacters = 4000;
+        private const int MaximumFailureCharacters = 1000;
 
         public static void CreateText(string html, string pdf)
         {
@@ -87,10 +87,17 @@ namespace Scribble.Testing
                     writer.Heading("Suite findings", 16);
                     writer.Text(CompactSummary(state, results));
 
-                    foreach (var result in results)
-                    {
-                        if (string.IsNullOrEmpty(result.evidence) || !File.Exists(result.evidence)) continue;
-                        AppendVisualEvidence(document, writer, result, staging);
+                    // Equal space per case: the first deck must not consume the
+                    // page budget and hide later formula/mail failures.
+                    if (results.Length > 1) {
+                        for (int i = 0; i < results.Length; i++) {
+                            if (i % 2 == 0) writer.PageBreak();
+                            string preview;
+                            var review = CaseReview(results[i], staging, out preview);
+                            writer.ReviewCard(results[i].id + " / " + results[i].host + " / " + results[i].status, review, preview);
+                        }
+                    } else foreach (var result in results) {
+                        if (!string.IsNullOrEmpty(result.evidence) && File.Exists(result.evidence)) AppendVisualEvidence(document, writer, result, staging);
                     }
                     writer.ClosePage();
                     document.Save(temporary);
@@ -135,7 +142,7 @@ namespace Scribble.Testing
             foreach (var result in results)
             {
                 var error = FirstLine(result.error);
-                if (error.Length > 240) error = error.Substring(0, 240) + "...";
+                if (error.Length > 100) error = error.Substring(0, 100) + "...";
                 text.AppendLine(result.id + " | " + result.host + " | " + result.status +
                     (string.IsNullOrEmpty(result.failureKind) ? "" : " | " + result.failureKind) +
                     (string.IsNullOrEmpty(error) ? "" : " | " + error));
@@ -163,6 +170,54 @@ namespace Scribble.Testing
             if (string.IsNullOrEmpty(value)) return "";
             return value.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n')[0];
         }
+
+        private static string Short(string value, int limit)
+        { return (value ?? "").Length > limit ? value.Substring(0, limit) + "... [full evidence in HTML]" : value ?? ""; }
+
+        private static string CaseReview(SuiteCaseResult result, string staging, out string preview)
+        {
+            preview = null;
+            var text = new StringBuilder();
+            if (!string.IsNullOrEmpty(result.error)) text.AppendLine("Failure: " + Short(result.error, 400));
+            if (string.IsNullOrEmpty(result.evidence) || !File.Exists(result.evidence)) {
+                text.AppendLine("No sealed output evidence. " + (result.status == "not_run" ? "This case was not submitted." : "Inspect the failure above and suite.log."));
+                return text.ToString();
+            }
+            try {
+                using (var archive = ZipFile.OpenRead(result.evidence)) {
+                    var json = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
+                    var run = json.Deserialize<LabRun>(EntryText(archive.GetEntry("run.json")));
+                    text.AppendLine("Model: " + run.selected_model);
+                    var c = TestLabSuite.Read<LabCase[]>(TestLab.SafeChild(run.fixture_root, "operator/cases.json")).FirstOrDefault(v => v.id == result.id);
+                    if (c != null) text.AppendLine("Expected: " + Short(c.expected, 340));
+                    if (File.Exists(result.evaluation)) {
+                        var evaluation = TestLabSuite.Read<TestLabEvaluation>(result.evaluation);
+                        text.AppendLine("Checks: " + (evaluation.findings.Length == 0 ? "deterministic gates passed; visual review required" : Short(string.Join("; ", evaluation.findings), 260)));
+                    }
+                    var native = new StringBuilder();
+                    foreach (var entry in archive.Entries.Where(e => e.Name.Contains("-final-output-") && e.Name.EndsWith("-readback.json", StringComparison.OrdinalIgnoreCase))) {
+                        var data = json.Deserialize<Dictionary<string, object>>(EntryText(entry)); object value, extension;
+                        if (data.TryGetValue("text", out value)) {
+                            data.TryGetValue("artifact_extension", out extension);
+                            native.AppendLine(TestLabEvaluator.OutputText(Convert.ToString(extension), Convert.ToString(value)));
+                        }
+                    }
+                    var observed = native.Length > 0 ? native.ToString() : TestLabEvaluator.FinalAnswer(EntryText(archive.GetEntry("timeline.jsonl")));
+                    text.AppendLine("Observed: " + Short(observed, 1400));
+                    var images = archive.Entries.Where(e => e.Name.Contains("-final-output-") && e.Name.EndsWith(".png", StringComparison.OrdinalIgnoreCase)).ToArray();
+                    var slideNumber = System.Text.RegularExpressions.Regex.Match(observed, @"(?m)^Slide (\d+)\r?$");
+                    var png = images.FirstOrDefault(e => slideNumber.Success && e.Name.EndsWith("-slide-" + slideNumber.Groups[1].Value + ".png", StringComparison.OrdinalIgnoreCase)) ?? images.FirstOrDefault();
+                    if (png != null) {
+                        var path = Path.Combine(staging, Guid.NewGuid().ToString("N") + ".png");
+                        using (var source = png.Open()) using (var file = File.Create(path)) source.CopyTo(file);
+                        try { using (var check = System.Drawing.Image.FromFile(path)) { } preview = path; } catch { }
+                    }
+                }
+            } catch (Exception error) { text.AppendLine("Review evidence unavailable: " + error.Message); }
+            return text.ToString();
+        }
+        private static string EntryText(ZipArchiveEntry entry)
+        { if (entry == null) return ""; using (var reader = new StreamReader(entry.Open())) return reader.ReadToEnd(); }
 
         private static string TerminalLabel(SuiteCaseResult[] results)
         {
@@ -282,6 +337,29 @@ namespace Scribble.Testing
                     graphics.DrawImage(image, Margin, y, width, height);
                     y += height + 12;
                 }
+            }
+
+            internal void ReviewCard(string title, string text, string preview)
+            {
+                if (!EnsurePage(345)) return;
+                var top = y;
+                graphics.DrawString(Clean(title), badge, XBrushes.DarkSlateGray,
+                    new XRect(Margin, y, page.Width.Point - Margin * 2, 20), XStringFormats.TopLeft);
+                y += 24;
+                var lines = Clean(text).Replace("\r", "").Split('\n').SelectMany(Wrap).ToArray();
+                var limit = preview == null ? 24 : 5;
+                foreach (var line in lines.Take(limit)) {
+                    graphics.DrawString(line, body, XBrushes.Black, new XRect(Margin, y, page.Width.Point - Margin * 2, 12), XStringFormats.TopLeft);
+                    y += 11.5;
+                }
+                if (preview != null) using (var image = XImage.FromFile(preview)) {
+                    var width = Math.Min(480d, 210d * image.PixelWidth / image.PixelHeight);
+                    var height = width * image.PixelHeight / image.PixelWidth;
+                    graphics.DrawImage(image, Margin, top + 100, width, height);
+                }
+                graphics.DrawString("Full answer, formulas and all slides: case report.html / evidence ZIP", body, XBrushes.DimGray,
+                    new XRect(Margin, top + 325, page.Width.Point - Margin * 2, 12), XStringFormats.TopLeft);
+                y = top + 345;
             }
 
             internal void PageBreak() { ClosePage(); }

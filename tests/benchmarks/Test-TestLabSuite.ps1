@@ -35,7 +35,9 @@ try {
     $enableFlags=[Reflection.BindingFlags]::Static -bor [Reflection.BindingFlags]::NonPublic
     $enable=$([Scribble.Testing.TestLab]).GetMethod('Enable',$enableFlags,$null,[Type[]]@([string],[string],[int],[long]),$null)
     [void]$enable.Invoke($null,@($kit,$pipe,[int]0,[long]0))
-    $cases=@([Scribble.Testing.TestLab]::Cases()); Assert ($cases.Count -eq 16) 'Suite catalog omitted cases.'
+    $cases=@([Scribble.Testing.TestLab]::Cases()); Assert ($cases.Count -eq 19) 'Suite catalog omitted cases.'
+    $default=@([Scribble.Testing.TestLabSuite]::SelectCases($cases,''))
+    Assert ($default.Count -eq 16 -and @($default | Where-Object { $_.host -notin @('Excel','PowerPoint','Outlook') }).Count -eq 0) 'Default suite must require exactly the three Office apps.'
     foreach ($case in $cases) {
         $first=[Scribble.Testing.TestLabSuite]::Prompt($case,0)
         Assert ($first -eq $(if($case.prerequisite_prompt){$case.prerequisite_prompt}else{$case.prompt})) ('Wrong first prompt: '+$case.id)
@@ -80,7 +82,7 @@ try {
     $loadedAfterRead=$method.Invoke($driver,$loadingArgs) | ConvertFrom-Json
     Assert ($loadedAfterRead.state -eq 'done') 'Pane did not acknowledge completed asynchronous context loading.'
     $suiteSource=Get-Content -LiteralPath (Join-Path $PSScriptRoot '../../src/Scribble/Testing/TestLabSuite.cs') -Raw
-    Assert ($suiteSource -match 'PrimeOffice\(c\.host\)' -and $suiteSource -match 'application\s*=\s*Activator\.CreateInstance') 'Suite runner does not retain the originating Office application lifetime.'
+    Assert ($suiteSource.Contains('using (var office = new TestLabOfficeEnvironment(Log, cancel))') -and $suiteSource.Contains('await office.Prepare(c, cancel)')) 'Default Office suite does not own native preparation and application lifetime.'
     $captureSource=Get-Content -LiteralPath (Join-Path $PSScriptRoot '../../src/Scribble/Testing/TestLab.cs') -Raw
     Assert ($captureSource -match 'File\.Move\(temporary, path\)' -and $captureSource -match 'FileShare\.None') 'Trace events are visible before their encrypted payload is committed.'
     $driver=[Activator]::CreateInstance($driverType,$true)

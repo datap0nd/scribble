@@ -27,6 +27,14 @@ namespace Scribble.Testing
         private static void Write(string path, object value) { File.WriteAllText(path, Serialize(value), new UTF8Encoding(false)); }
         private static void Id(string id) { if (!Regex.IsMatch(id ?? "", "^[a-f0-9]{32}$")) throw new InvalidDataException("Invalid run ID."); }
         public static string RunDirectory(string id) { Id(id); return Path.Combine(Root, "runs", id); }
+        internal static string NativeDirectory(string id, string child)
+        {
+            Id(id);
+            // Office can read a fixture yet be denied saves under LocalAppData.
+            // Keep its native exports in the user document surface, at short paths.
+            var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Scribble Testcases", "Native", id);
+            var directory = SafeChild(root, child); Directory.CreateDirectory(directory); return directory;
+        }
         public static string SafeChild(string root, string relative)
         {
             if (string.IsNullOrWhiteSpace(relative) || Path.IsPathRooted(relative)) throw new InvalidDataException("Relative path required.");
@@ -321,11 +329,46 @@ namespace Scribble.Testing
                 var run = GetRun(s.run_id);
                 if (Directory.GetFiles(RunDirectory(run.run_id), "*.active").Length > 0)
                     MarkIncomplete(run.run_id, "Case finished while a task had no completed or paused event.");
-                Record(run.run_id, "operator", "case_finished", new { assisted });
+                // Finishing is a control operation, not a capture operation. A
+                // dead recorder must not prevent an idle request being released.
+                try { Record(run.run_id, "operator", "case_finished", new { assisted }); }
+                catch (Exception error) { MarkIncomplete(run.run_id, "Final event unavailable: " + error); }
                 run.status = "finished"; run.finished_utc = DateTime.UtcNow.ToString("O"); run.assisted = assisted;
                 run.trace_complete = Directory.GetFiles(RunDirectory(run.run_id), "incomplete-*.json").Length == 0;
                 Write(Path.Combine(RunDirectory(run.run_id), "run.json"), run);
                 s.run_id = null; SaveSession(s);
+            }
+        }
+        internal static void RecoverStopped(string runId)
+        {
+            using (SessionLock())
+            {
+                var session = Status();
+                if (session == null || session.run_id != runId)
+                    throw new InvalidOperationException("The capture changed during recovery.");
+                var run = GetRun(runId);
+                MarkIncomplete(runId, "Recovered after verifying that the recorded model request is no longer running. No request was resumed.");
+                run.status = "finished";
+                run.finished_utc = DateTime.UtcNow.ToString("O");
+                run.trace_complete = false;
+                Write(Path.Combine(RunDirectory(runId), "run.json"), run);
+                // Never contact the old named pipe here. It belonged to the
+                // runner that exited, even if Windows has since reused its PID.
+                session.run_id = null;
+                session.transport_pipe = null;
+                session.transport_pid = 0;
+                session.transport_process_start = 0;
+                SaveSession(session);
+            }
+        }
+        internal static void ReconnectRecorder(string runId, TestLabTransport transport)
+        {
+            using (SessionLock()) using (var process = Process.GetCurrentProcess()) {
+                var session = Status();
+                if (session == null || session.run_id != runId) throw new InvalidOperationException("Capture changed during recorder recovery.");
+                session.transport_pipe = transport.PipeName; session.transport_pid = process.Id;
+                session.transport_process_start = process.StartTime.ToUniversalTime().Ticks;
+                SaveSession(session);
             }
         }
         public static string Collect(string runId, string sourcePath)
@@ -409,7 +452,7 @@ namespace Scribble.Testing
                             capture.TryGetValue("artifact_extension", out artifact))
                         {
                             var value = Convert.ToString(artifact);
-                            if (Regex.IsMatch(value ?? "", "^(xlsx|pptx|docx)$"))
+                            if (Regex.IsMatch(value ?? "", "^(xlsx|pptx|docx|msg)$"))
                                 extensions.Add("." + value);
                         }
                     }
@@ -429,7 +472,12 @@ namespace Scribble.Testing
                     path = p.Substring(stage.Length + 1).Replace('\\', '/'), sha256 = FileHash(p), size = new FileInfo(p).Length }).ToArray() });
                 Directory.CreateDirectory(destinationDirectory);
                 var output = Path.Combine(destinationDirectory, "run-" + runId + "-" + DateTime.UtcNow.ToString("yyyyMMddHHmmssfff") + ".zip");
-                ZipFile.CreateFromDirectory(stage, output, CompressionLevel.Optimal, false);
+                // .NET Framework hosted by Office/PowerShell can emit backslash
+                // entry names. The evaluator and report use standard ZIP paths;
+                // explicit names make native captures readable in every host.
+                using (var archive = ZipFile.Open(output, ZipArchiveMode.Create))
+                    foreach (var file in Directory.GetFiles(stage, "*", SearchOption.AllDirectories))
+                        archive.CreateEntryFromFile(file, file.Substring(stage.Length + 1).Replace('\\', '/'), CompressionLevel.Optimal);
                 return output;
             }
         }
@@ -441,7 +489,7 @@ namespace Scribble.Testing
     public sealed class KitFile
     { public string path { get; set; } public string sha256 { get; set; } public long size { get; set; } public string role { get; set; } }
     public sealed class LabCase
-    { public Dictionary<string, string> clarification_answers { get; set; } public string id { get; set; } public string host { get; set; } public string prompt { get; set; } public string prerequisite_prompt { get; set; } public string setup { get; set; } public string[] inputs { get; set; } public string[] artifacts { get; set; } public override string ToString() { return id + " / " + host; } }
+    { public Dictionary<string, string> clarification_answers { get; set; } public string id { get; set; } public string host { get; set; } public string prompt { get; set; } public string prerequisite_prompt { get; set; } public string expected { get; set; } public string setup { get; set; } public string[] inputs { get; set; } public string[] artifacts { get; set; } public override string ToString() { return id + " / " + host; } }
     public sealed class LabRun
     {
         public int schema { get; set; } public string run_id { get; set; } public string session_id { get; set; } public string suite_id { get; set; }
@@ -454,5 +502,5 @@ namespace Scribble.Testing
         public string[] input_hashes { get; set; } public string selected_model { get; set; } public bool writing_profile_enabled { get; set; }
         public string writing_profile_hash { get; set; } public string process_name { get; set; }
     }
-    public sealed class MailFixture { public string path { get; set; } public string[] attachments { get; set; } public string subject { get; set; } public string sender { get; set; } public string body { get; set; } }
+    public sealed class MailFixture { public string path { get; set; } public string[] attachments { get; set; } public string subject { get; set; } public string sender { get; set; } public string body { get; set; } public string date { get; set; } }
 }

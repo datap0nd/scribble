@@ -14,7 +14,7 @@ try {
     Reject { [Scribble.Testing.TestLab]::SafeChild($testOutput,'..\escape') } 'Traversal accepted'
     Reject { [Scribble.Testing.TestLab]::Start('EX01','Excel',$false) } 'Unconfirmed start accepted'
     [Scribble.Testing.TestLab]::Enable((Resolve-Path $KitRoot).Path)
-    Assert ([Scribble.Testing.TestLab]::Cases().Count -eq 16) 'Cases missing'
+    Assert ([Scribble.Testing.TestLab]::Cases().Count -eq 19) 'Cases missing'
     $run=[Scribble.Testing.TestLab]::Start('EX01','Excel',$true)
     Reject { [Scribble.Testing.TestLab]::Start('PP01','PowerPoint',$true) } 'Concurrent active case accepted'
     Reject { [Scribble.Testing.TestLab]::Collect($run.run_id,(Join-Path $KitRoot 'evaluator-only\reference-deck.pptx')) } 'Reference accepted as generated output'
