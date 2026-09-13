@@ -36,9 +36,14 @@ namespace Scribble.Testing
                         try
                         {
                             var runOutput = TestLab.IsRunOutput(value, run.run_id);
-                            var source = !runOutput && TestLabSuite.OwnsNativeSource(
+                            var originalPath = Convert.ToString(document.FullName);
+                            if (runOutput) {
+                                try { originalPath = Convert.ToString(document.CustomDocumentProperties["ScribbleTestSourcePath"].Value); }
+                                catch { originalPath = null; }
+                            }
+                            var source = TestLabSuite.OwnsNativeSource(
                                 run.run_id,
-                                Convert.ToString(document.FullName),
+                                originalPath,
                                 kind);
                             if (!runOutput && !source) continue;
 

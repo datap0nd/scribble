@@ -57,6 +57,7 @@ foreach($pair in @(@('EX01','Excel'),@('PP01','PowerPoint'),@('OL02','Outlook'))
     $shape=$slide.Shapes.AddTextbox(1,40,60,600,180)
     $shape.TextFrame.TextRange.Text="[Scribble draft] Native smoke slide $i`rRevenue 120000 / Budget 130000 / Delivery 94%"
    }
+   [void][Scribble.Testing.TestLabSuite]::SaveSelectedDeckForMail($application,$run.run_id)
   } else {
    $messages=[Scribble.Testing.TestLabMail]::Load($application,$case)
    Assert ($messages.Count -eq 3) 'Native MSG fixtures were not loaded as the exact working set.'
@@ -70,7 +71,7 @@ foreach($pair in @(@('EX01','Excel'),@('PP01','PowerPoint'),@('OL02','Outlook'))
   $result.evidence=[Scribble.Testing.TestLab]::Export($run.run_id,$caseFolder)
   $evaluation=[Scribble.Testing.TestLabEvaluator]::Evaluate($result.evidence,$caseFolder)
   $result.evaluation=Join-Path $caseFolder 'evaluation.json';$result.status='needs_review'
-  Assert (-not @($evaluation.checks | Where-Object { $_.name -like 'required_final_*' -and -not $_.passed }).Count) 'Native capture omitted a required output.'
+  Assert (-not @($evaluation.checks | Where-Object { $_.hard -and -not $_.passed }).Count) ('Native evidence failed: '+($evaluation.findings -join '; '))
   Write-Output ('PASS native '+$appName+' fixture creation, readback, capture and evidence export.')
  } catch {$result.error=$_.Exception.ToString();Write-Output ('FAIL native '+$appName+': '+$result.error)}
  finally {

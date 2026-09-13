@@ -259,6 +259,25 @@ namespace Scribble.Testing
                 return zip;
             }
         }
+        public static string SaveSelectedDeckForMail(object application, string runId)
+        {
+            if (runId != TestLab.ActiveRunId()) throw new InvalidOperationException("No matching active test run.");
+            dynamic app = application; object value = app.ActivePresentation; dynamic deck = value;
+            try {
+                if (!TestLab.IsRunOutput(value, runId) && !OwnsSource(runId, Convert.ToString(deck.FullName)))
+                    throw new InvalidOperationException("The active deck is not owned by this case.");
+                var target = Path.Combine(TestLab.NativeDirectory(runId, "selected"), "generated-deck.pptx");
+                if (!TestLab.IsRunOutput(value, runId)) {
+                    // Save As changes FullName. Retain the verified original
+                    // identity so final capture still checks its source slides.
+                    deck.CustomDocumentProperties.Add("ScribbleTestSourcePath", false, 4, Convert.ToString(deck.FullName));
+                    TestLab.RegisterOutput(value, "PowerPoint");
+                }
+                deck.SaveAs(target, 24);
+                TestLab.Collect(runId, target);
+                return target;
+            } finally { TestLabOfficeEnvironment.Release(value); }
+        }
     }
 
     internal sealed class TestLabSuiteRunner
@@ -417,13 +436,7 @@ namespace Scribble.Testing
         }
         private void SaveSelectedDeck()
         {
-            dynamic app = application; object value = app.ActivePresentation; dynamic deck = value;
-            if (!TestLab.IsRunOutput(value, State.runId) && !TestLabSuite.OwnsSource(State.runId, Convert.ToString(deck.FullName)))
-                throw new InvalidOperationException("The active deck is not owned by this case.");
-            var target = Path.Combine(TestLab.NativeDirectory(State.runId, "selected"), "generated-deck.pptx");
-            if (!TestLab.IsRunOutput(value, State.runId)) TestLab.RegisterOutput(value, "PowerPoint");
-            deck.SaveAs(target, 24);
-            TestLab.Collect(State.runId, target);
+            TestLabSuite.SaveSelectedDeckForMail(application, State.runId);
             Log("Saved and selected generated-deck.pptx for the email attachment.");
         }
 
