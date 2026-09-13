@@ -55,11 +55,11 @@ namespace Scribble.Testing
                                 kind + "-" + phase + "-" + role + "-" + i);
                             try {
                                 var readback = ReadNative(value, kind);
-                                var extension = kind == "Excel" ? ".xlsx" : kind == "PowerPoint" ? ".pptx" : ".docx";
+                                var readbackExtension = kind == "Excel" ? ".xlsx" : kind == "PowerPoint" ? ".pptx" : ".docx";
                                 File.WriteAllText(stem + "-readback.json", TestLab.Serialize(new { schema = 1, run_id = runId,
                                     host = kind, captured_utc = DateTime.UtcNow.ToString("O"), native_readback = true,
                                     phase = phase, run_created_output = effectiveOutput,
-                                    artifact_extension = effectiveOutput ? extension.TrimStart('.') : null,
+                                    artifact_extension = effectiveOutput ? readbackExtension.TrimStart('.') : null,
                                     text = readback }), Encoding.UTF8);
                                 TestLab.Collect(runId, stem + "-readback.json");
                                 report.Add("Captured " + kind + " cell/text/structure readback.");
@@ -276,10 +276,10 @@ namespace Scribble.Testing
                             dynamic noteShape = notes.Shapes.Item(j);
                             if ((int)noteShape.HasTextFrame != 0)
                             {
-                                var value = Convert.ToString(
+                                var noteValue = Convert.ToString(
                                     noteShape.TextFrame.TextRange.Text);
-                                if (!string.IsNullOrWhiteSpace(value))
-                                    noteText.Append(value).Append(" ");
+                                if (!string.IsNullOrWhiteSpace(noteValue))
+                                    noteText.Append(noteValue).Append(" ");
                             }
                         }
                         if (noteText.Length > 0)
