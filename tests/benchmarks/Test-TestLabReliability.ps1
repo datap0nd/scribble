@@ -27,7 +27,16 @@ $kit=[Scribble.Testing.TestLabSuite]::Extract($zip,(Join-Path $folder 'kit'))
 $flags=[Reflection.BindingFlags]'Static,NonPublic'
 try {
  [Scribble.Testing.TestLab]::Enable($kit)
+ [Scribble.Testing.TestLabPreparation]::VerifyReadableInputs($kit,[Threading.CancellationToken]::None)
+ # Reproduce a legacy pane/antivirus reader briefly denying File.Replace.
+ # The descriptor must remain a complete readable snapshot while Start retries.
+ Add-Type -TypeDefinition 'using System;using System.IO;using System.Threading;using System.Threading.Tasks;public static class SessionSharingRegression{public static Task Hold(string path,ManualResetEvent ready){return Task.Run(()=>{using(var file=new FileStream(path,FileMode.Open,FileAccess.Read,FileShare.Read)){ready.Set();Thread.Sleep(300);}});}}'
+ $readerReady=New-Object Threading.ManualResetEvent($false)
+ $heldReader=[SessionSharingRegression]::Hold((Join-Path ([Scribble.Testing.TestLab]::Root) 'session.bin'),$readerReady)
+ Assert ($readerReady.WaitOne(5000)) 'The sharing regression reader did not start.'
  $run=[Scribble.Testing.TestLab]::Start('EX03','Excel',$true)
+ $heldReader.GetAwaiter().GetResult();$readerReady.Dispose()
+ Assert ([Scribble.Testing.TestLab]::Status().run_id -eq $run.run_id) 'A sharing retry lost the new capture session.'
  # Reproduce the screenshot: the session outlives the recorder process/pipe.
  $session=[Scribble.Testing.TestLab]::Status()
  $session.transport_pipe='scribble-dead-recorder-'+[guid]::NewGuid().ToString('N')

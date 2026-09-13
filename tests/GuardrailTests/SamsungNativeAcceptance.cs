@@ -13,7 +13,7 @@ namespace GuardrailTests
     {
         private static readonly Type Transaction = typeof(SamsungAuthoringPolicy).Assembly.GetType("Scribble.Office.PresentationRevision", true);
         private static object Invoke(object instance, string name, params object[] args)
-        { try { return Transaction.GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic).Invoke(instance, args); } catch (TargetInvocationException ex) { throw ex.InnerException; } }
+        { try { return Transaction.GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic).Invoke(instance, args); } catch (TargetInvocationException ex) { System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(ex.InnerException).Throw(); throw; } }
         private static void Check(bool condition, string message) { if (!condition) throw new Exception(message); }
         private static object NewTransaction(object deck)
         { return Activator.CreateInstance(Transaction, BindingFlags.Instance | BindingFlags.NonPublic, null, new[] { deck }, null); }
@@ -31,7 +31,8 @@ namespace GuardrailTests
             try
             {
                 app = Activator.CreateInstance(Type.GetTypeFromProgID("PowerPoint.Application", true));
-                deck = app.Presentations.Add(0);
+                app.Visible = -1;
+                deck = app.Presentations.Add(-1);
                 deck.PageSetup.SlideWidth = 960; deck.PageSetup.SlideHeight = 540;
                 dynamic slide = deck.Slides.Add(1, 12);
                 dynamic title = slide.Shapes.AddTextbox(1, 60, 35, 700, 80);

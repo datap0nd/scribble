@@ -55,6 +55,7 @@
     <Compile Include="CrossAppFixture.cs" />
     <Compile Include="ScaleTaskTests.cs" />
     <Compile Include="HardeningTests.cs" />
+    <Compile Include="TestBenchRegressionTests.cs" />
     <Compile Include="DurableTransformTests.cs" />
     <Compile Include="TaskContinuationTests.cs" />
     <Compile Include="SamsungSlideTests.cs" />

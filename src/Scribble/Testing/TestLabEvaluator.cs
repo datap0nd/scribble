@@ -18,7 +18,7 @@ namespace Scribble.Testing
         public static TestLabEvaluation Evaluate(string evidence, string destination)
         {
             var checks = new List<TestLabCheck>(); var json = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
-            LabRun run; LabCase testCase; var finalNumbers = new List<double>(); var finalText = new StringBuilder();
+            LabRun run; LabCase testCase; var finalText = new StringBuilder();
             using (var archive = ZipFile.OpenRead(evidence))
             {
                 run = json.Deserialize<LabRun>(Read(archive, "run.json"));
@@ -41,7 +41,6 @@ namespace Scribble.Testing
                 {
                     var output = OutputText(memory.extension, memory.text);
                     finalText.AppendLine(output);
-                    finalNumbers.AddRange(Numbers(output));
                 }
                 foreach (var entry in archive.Entries.Where(e => e.FullName.StartsWith("artifacts/", StringComparison.Ordinal) &&
                     e.FullName.IndexOf("-final-output-", StringComparison.OrdinalIgnoreCase) >= 0 &&
@@ -50,7 +49,7 @@ namespace Scribble.Testing
                     try
                     {
                         var inspection = InspectOffice(entry);
-                        if (!memoryOutputs.Any(m => "." + m.extension == Path.GetExtension(entry.Name))) { finalNumbers.AddRange(inspection.numbers); finalText.AppendLine(inspection.text); }
+                        if (!memoryOutputs.Any(m => "." + m.extension == Path.GetExtension(entry.Name))) finalText.AppendLine(inspection.text);
                         if (entry.FullName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
                         {
                             Add(checks, "no_formula_errors_" + entry.Name, inspection.formulaErrors == 0, "Native formula error cells: " + inspection.formulaErrors);
@@ -75,9 +74,9 @@ namespace Scribble.Testing
                     // right numbers. Only the final assistant answer can satisfy
                     // a chat-only test, never a copied source or user prompt.
                     var answer = FinalAnswer(Read(archive, "timeline.jsonl"));
-                    finalText.AppendLine(answer); finalNumbers.AddRange(Numbers(answer));
+                    finalText.AppendLine(answer);
                 }
-                CheckFacts(checks, run.case_id, finalNumbers);
+                checks.AddRange(CheckOutputFacts(run.case_id, finalText.ToString()));
                 CheckSourcePreservation(checks, archive);
             }
             var failed = checks.Where(c => c.hard && !c.passed).ToArray();
@@ -193,8 +192,8 @@ namespace Scribble.Testing
             {
                 var formulas = Regex.Matches(output.text, @"\| formula: =").Count;
                 var formulaErrors = Regex.Matches(
-                    output.text,
-                    @"#(?:REF!|NAME\?|VALUE!|DIV/0!|NUM!|N/A)",
+                    NormalizeExcelErrors(output.text),
+                    @"#(?:REF!|NAME\?|VALUE!|DIV/0!|NULL!|NUM!|N/A|SPILL!|CALC!|GETTING_DATA|EXCEL_ERROR\()",
                     RegexOptions.IgnoreCase).Count;
                 var charts = Regex.Matches(output.text, @"Native charts: ([1-9][0-9]*)").Count;
                 Add(checks, "no_formula_errors_" + output.name, formulaErrors == 0,
@@ -231,8 +230,23 @@ namespace Scribble.Testing
             return result;
         }
 
-        private static void CheckFacts(List<TestLabCheck> checks, string caseId, List<double> numbers)
+        public static string NormalizeExcelErrors(string text)
         {
+            // Older work-PC evidence serialized VT_ERROR as signed integers.
+            // Only translate a cell value carrying a native formula receipt.
+            return Regex.Replace(text ?? "", @"(?m)^(R\d+C\d+: )(-\d+)(?=\s*\| formula:)", m => {
+                int code; return int.TryParse(m.Groups[2].Value, out code)
+                    ? m.Groups[1].Value + (Scribble.Office.ExcelErrorValue.Text(code) ?? m.Groups[2].Value) : m.Value;
+            });
+        }
+
+        public static TestLabCheck[] CheckOutputFacts(string caseId, string output)
+        {
+            var checks = new List<TestLabCheck>();
+            // Cell coordinates and formula operands are not calculated answers.
+            var values = Regex.Replace(output ?? "", @"(?m)^R\d+C\d+: ([^\r\n]*)", m =>
+                m.Groups[1].Value.Split('|')[0]);
+            var numbers = Numbers(values);
             var facts = new Dictionary<string, double[]> {
                 { "EX01", new[] { 120000d, 130000d, 46000d } }, { "EX02", new[] { 120000d } },
                 { "EX03", new[] { 95000d } }, { "EX04", new[] { 50000d, 18000d } },
@@ -243,10 +257,88 @@ namespace Scribble.Testing
                 { "XA04", new[] { 120000d } }, { "RB01", new[] { 120000d } }, { "RC01", new[] { 120000d, 94d } },
                 { "EX05", new[] { 120000d, 74000d, 46000d } }, { "PP04", new[] { 120000d, 130000d, 94d } },
                 { "OL02", new[] { 120000d, 94d } } };
+            var finance = new[] { "EX01", "PP01", "PP02", "PP04", "OL01", "XA01", "XA02", "XA04", "RC01" };
+            if (finance.Contains(caseId))
+                facts[caseId] = facts[caseId].Concat(new[] { 130000d, 74000d, 46000d, -10000d }).Distinct().ToArray();
+            if (caseId == "OL02") facts[caseId] = facts[caseId].Concat(new[] { -10000d }).ToArray();
             double[] expected;
-            if (!facts.TryGetValue(caseId, out expected)) return;
+            if (!facts.TryGetValue(caseId, out expected)) return checks.ToArray();
             foreach (var value in expected) Add(checks, "required_final_fact_" + value.ToString(CultureInfo.InvariantCulture),
                 numbers.Any(n => Math.Abs(n - value) < .011), "Expected value was not found in the final run-owned evidence boundary.");
+            if (finance.Contains(caseId) || caseId == "EX05" || caseId == "OL02")
+            {
+                RequirePercent(checks, numbers, "june_margin", 38.33);
+                if (finance.Contains(caseId)) { RequirePercent(checks, numbers, "growth", 20); RequirePercent(checks, numbers, "budget_gap", -7.69, true); }
+            }
+            if (new[] { "PP01", "PP02", "PP04", "OL01", "XA01", "XA02", "XA04", "RC01", "OL02" }.Contains(caseId))
+            {
+                RequirePercent(checks, numbers, "delivery", 94);
+                RequirePercent(checks, numbers, "delivery_target", 97);
+            }
+            if (caseId == "OL01" || caseId == "OL02") CheckFinanceStatements(checks, output ?? "");
+            if (caseId == "OL02")
+            {
+                Add(checks, "draft_recipient", Regex.IsMatch(output ?? "", @"(?im)^To:\s*review@example\.test\s*$"), "The draft must be addressed only to review@example.test.");
+                Add(checks, "draft_unsent", Regex.IsMatch(output ?? "", @"(?im)^Unsent:\s*true\s*$"), "The recorded native draft must remain unsent.");
+                foreach (var owner in new[] { "Mira Cole", "Leon Park" })
+                    Add(checks, "action_owner_" + owner.Replace(" ", "_"), (output ?? "").IndexOf(owner, StringComparison.OrdinalIgnoreCase) >= 0, "Required planned action owner is missing: " + owner);
+                CheckActionDate(checks, output ?? "", "Mira Cole", "Leon Park", 10);
+                CheckActionDate(checks, output ?? "", "Leon Park", "Mira Cole", 12);
+            }
+            return checks.ToArray();
+        }
+
+        private static void CheckActionDate(List<TestLabCheck> checks, string output, string owner, string other, int day)
+        {
+            var date = @"(?:\b" + day + @"(?:th)?\s+July\s+2026\b|\bJuly\s+" + day + @"(?:th)?,?\s+2026\b|\b2026-07-" + day + @"\b)";
+            Add(checks, "action_date_" + owner.Replace(" ", "_"), Regex.IsMatch(output,
+                Regex.Escape(owner) + @"(?:(?!" + Regex.Escape(other) + @").){0,240}?" + date,
+                RegexOptions.IgnoreCase | RegexOptions.Singleline), owner + " must retain the due date " + day + " July 2026.");
+        }
+
+        private static void RequirePercent(List<TestLabCheck> checks, List<double> numbers, string name, double expected, bool magnitude = false)
+        {
+            Add(checks, "required_percentage_" + name, numbers.Any(n =>
+                Math.Abs((magnitude ? Math.Abs(n) : n) - (magnitude ? Math.Abs(expected) : expected)) < .011 ||
+                (Math.Abs(n) < 1 && Math.Abs((magnitude ? Math.Abs(n * 100) : n * 100) - (magnitude ? Math.Abs(expected) : expected)) < .011)),
+                "Expected " + name + ": " + expected.ToString(CultureInfo.InvariantCulture) + "%; a worksheet fraction is also accepted.");
+        }
+
+        private static void CheckFinanceStatements(List<TestLabCheck> checks, string output)
+        {
+            // Check the association, even when a correct number appears elsewhere
+            // in the same draft. Only explicit metric statements are recognized;
+            // full visual/semantic review is still required for other layouts.
+            var metrics = new[] {
+                new[] { "profit", @"(?:gross\s+profit|\bGP\b)", "46000" },
+                new[] { "margin", @"\b(?:weighted\s+)?(?:gross\s+)?margin\b", "38.33" },
+                new[] { "revenue", @"(?:June\s+)?revenue", "120000" },
+                new[] { "cost", @"(?:June\s+)?(?:total\s+)?costs?", "74000" },
+                new[] { "margin_change", @"\bmargin\s+(?:change|delta)\b", "-1.67" }
+            };
+            foreach (var metric in metrics)
+            {
+                var observed = new List<double>();
+                foreach (var line in Regex.Split(output, @"[\r\n;]+|\.\s+(?=[A-Z])"))
+                {
+                    foreach (Match match in Regex.Matches(line,
+                        metric[1] + @"[\s:*]*(?:(?:EUR|€|is|was|of|at|equals|=)\s*)*(?<value>[-+\u2212]?\d[\d,]*(?:\.\d+)?)", RegexOptions.IgnoreCase))
+                    {
+                        var prefix = line.Substring(0, match.Groups["value"].Index);
+                        var periods = Regex.Matches(prefix, @"\b(?:May|June)\b", RegexOptions.IgnoreCase);
+                        if (periods.Count > 0 && periods[periods.Count - 1].Value.Equals("May", StringComparison.OrdinalIgnoreCase)) continue;
+                        if (Regex.IsMatch(line.Substring(0, match.Index), @"\b(?:North|South|Product\s+[AB])\s*$", RegexOptions.IgnoreCase)) continue;
+                        observed.AddRange(Numbers(match.Groups["value"].Value));
+                    }
+                }
+                var expected = double.Parse(metric[2], CultureInfo.InvariantCulture);
+                Add(checks, "consistent_june_" + metric[0], observed.All(n => Math.Abs(n - expected) < .011),
+                    "June " + metric[0] + " must be " + metric[2] + ". Recognized values: " + string.Join(", ", observed.Select(n => n.ToString(CultureInfo.InvariantCulture))) + ".");
+            }
+            var gaps = Regex.Matches(output, @"\bbudget\s+(?:gap|variance|shortfall)\b[^\r\n;%]{0,65}?(?<value>[-+\u2212]?\d+(?:\.\d+)?)\s*%", RegexOptions.IgnoreCase)
+                .Cast<Match>().SelectMany(m => Numbers(m.Groups["value"].Value)).ToArray();
+            Add(checks, "consistent_budget_gap_percentage", gaps.All(n => Math.Abs(Math.Abs(n) - 7.69) < .011),
+                "An explicitly stated June budget gap percentage must be 7.69% below budget.");
         }
 
         private static OfficeInspection InspectOffice(ZipArchiveEntry entry)

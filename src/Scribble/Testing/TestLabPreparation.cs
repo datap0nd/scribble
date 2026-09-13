@@ -76,6 +76,20 @@ namespace Scribble.Testing
                 !(c.host == "Word" && p.EndsWith(".docx", StringComparison.OrdinalIgnoreCase)))
                 .Select(p => TestLab.SafeChild(session.fixture_root, p)).ToArray();
         }
+
+        public static void VerifyReadableInputs(string fixtureRoot, System.Threading.CancellationToken cancel)
+        {
+            var manifest = TestLab.VerifyKit(fixtureRoot);
+            foreach (var file in manifest.files.Where(f => f.path.StartsWith("inputs/", StringComparison.Ordinal) &&
+                f.path.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)))
+            {
+                cancel.ThrowIfCancellationRequested();
+                var text = Scribble.Outlook.PdfTextExtractor.Extract(TestLab.SafeChild(fixtureRoot, file.path), 200000, cancel);
+                if (string.IsNullOrWhiteSpace(text) || text.Count(char.IsLetterOrDigit) < 40)
+                    throw new InvalidDataException("Required fixture PDF could not be read by Scribble: " + file.path +
+                        ". No model cases were submitted. Repair the input reader before running the suite.");
+            }
+        }
     }
     public sealed class PreparationReport
     {

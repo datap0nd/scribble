@@ -46,6 +46,13 @@ namespace Scribble.Office
             "Review the entire Samsung deck against the original brief and mandatory content. Check coverage, exact slide count, narrative order, repeated messages, " +
             "terminology, periods, units, slide numbering, visual consistency and whether the business question is answered. Dense evidence is intentional. " +
             "Do not require an appendix or recommend discarding mandatory rows. Do not invent a conclusion for explanatory slides.";
+        public const string OutlineReview =
+            "Review a proposed Samsung deck outline before any slides in this batch are written. " +
+            "Check planned count, order and coverage against the user's request and the supplied evidence. " +
+            "Briefs describe the whole plan; proposed_slides contains actual content for the current batch only. " +
+            "When briefs are absent, assess the ordered IDs and current batch; complete-deck coverage is checked at finalization. " +
+            "Do not reject merely because later batches have not been written, rendered images are absent, or an outline is not a finished deck. " +
+            "Reject factual contradictions and concrete omissions in the proposed briefs. Give specific corrections for this proposal. ";
 
         public static string CacheKey(string model, string endpoint, string content, string evidence)
         { return TaskCheckpointStore.Fingerprint(Version + "\n" + SamsungSlideDesign.Version + "\n" + model + "\n" + endpoint + "\n" + content + "\n" + evidence); }

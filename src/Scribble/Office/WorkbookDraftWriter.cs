@@ -151,8 +151,8 @@ namespace Scribble.Office
             }
 
             // Formula cells stay out of the bulk write: they are
-            // set one by one below so a rejected or broken formula
-            // degrades to text without failing the whole draft.
+            // set one by one below. A syntax rejection stays visible as
+            // text; calculated errors retain their native formula receipts.
             var formulas =
                 new List<KeyValuePair<int[], string>>();
             var grid = new object[rowCount, columnCount];
@@ -202,6 +202,9 @@ namespace Scribble.Office
                         cell = "'" + cell;
                     }
 
+                    // The model supplies text month keys, not Excel date serials.
+                    // Preserve the same key type as source strings such as 2026-06.
+                    if (Regex.IsMatch(cell, @"^\d{4}-(?:0[1-9]|1[0-2])$")) cell = "'" + cell;
                     grid[row, column] = cell;
                 }
             }
@@ -256,8 +259,8 @@ namespace Scribble.Office
 
             // A formula that parses but evaluates to an Excel error is
             // definitely wrong: repair a one-row header offset when safe,
-            // otherwise degrade it to visible text so the draft never
-            // shows a silently broken live formula.
+            // otherwise retain the visible error and formula for correction.
+            // Turning it into text hides failures from native readback.
             var brokenFormulas = 0;
             if (liveFormulas.Count > 0)
             {
@@ -287,8 +290,6 @@ namespace Scribble.Office
                                 formula.Value,
                                 startRow + formula.Key[0]))
                                 continue;
-                            cell.Value2 = "'" + formula.Value;
-                            formulaCount--;
                             brokenFormulas++;
                         }
                     }
@@ -343,10 +344,8 @@ namespace Scribble.Office
                       (brokenFormulas == 1
                           ? " formula evaluated"
                           : " formulas evaluated") +
-                      " to an Excel error and " +
-                      (brokenFormulas == 1 ? "was" : "were") +
-                      " kept as visible text - check the " +
-                      "function names and sheet references."
+                      " to an Excel error. The formulas remain visible for correction; " +
+                      "do not claim the analysis is complete. Check source types and sheet references."
                     : string.Empty) +
                 " Nothing was saved.";
         }
@@ -514,8 +513,6 @@ namespace Scribble.Office
                                 formula.Value,
                                 formula.Key[0]))
                                 continue;
-                            cell.Value2 = "'" + formula.Value;
-                            formulaCount--;
                             brokenFormulas++;
                         }
                     }
@@ -535,7 +532,7 @@ namespace Scribble.Office
                 (brokenFormulas > 0
                     ? " " + brokenFormulas +
                       " formula(s) evaluated to an Excel error " +
-                      "and were kept as visible text."
+                      "and remain visible for correction. Do not claim the analysis is complete."
                     : string.Empty) +
                 " Nothing was saved, but Excel cannot undo " +
                 "add-in changes - close without saving to " +
@@ -544,9 +541,7 @@ namespace Scribble.Office
 
         private static bool IsExcelError(object value)
         {
-            if (!(value is int)) return false;
-            return new[] { 2000, 2007, 2015, 2023, 2029, 2036, 2042 }
-                .Contains((int)value);
+            return ExcelErrorValue.Text(value) != null;
         }
 
         private static bool TryRepairAdjacentRowFormula(

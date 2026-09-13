@@ -1174,14 +1174,78 @@ namespace Scribble.Outlook
                 return sourceData;
             }
 
-            if (entry.DictionaryText.IndexOf(
-                    "/FlateDecode",
-                    StringComparison.Ordinal) < 0)
+            // Filters form an ordered pipeline. ReportLab wraps compressed
+            // text in ASCII85; inflating that outer encoding loses all text.
+            var filter = Regex.Match(entry.DictionaryText,
+                @"/Filter\s*(\[[^\]]*\]|/[A-Za-z0-9]+)",
+                RegexOptions.None, TimeSpan.FromSeconds(2));
+            if (!filter.Success) return null;
+            var names = Regex.Matches(filter.Groups[1].Value, @"/([A-Za-z0-9]+)");
+            if (names.Count == 0 || names.Count > 8) return null;
+            foreach (Match name in names)
             {
-                return null;
+                readBudget.ThrowIfCancellationRequested();
+                switch (name.Groups[1].Value)
+                {
+                    case "ASCII85Decode": case "A85":
+                        sourceData = DecodeAscii85(sourceData, readBudget); break;
+                    case "FlateDecode": case "Fl":
+                        sourceData = TryInflate(sourceData, readBudget); break;
+                    default: return null;
+                }
+                if (sourceData == null) return null;
             }
+            return sourceData;
+        }
 
-            return TryInflate(sourceData, readBudget);
+        private static byte[] DecodeAscii85(byte[] data, PdfReadBudget budget)
+        {
+            using (var output = new MemoryStream())
+            {
+                ulong tuple = 0; var count = 0; var ended = false;
+                var start = data.Length >= 2 && data[0] == '<' && data[1] == '~' ? 2 : 0;
+                for (var i = start; i < data.Length; i++)
+                {
+                    if ((i & 4095) == 0) budget.ThrowIfCancellationRequested();
+                    var b = data[i];
+                    if (b == 0 || b == 9 || b == 10 || b == 12 || b == 13 || b == 32) continue;
+                    if (b == '~')
+                    {
+                        if (++i >= data.Length || data[i] != '>' || count == 1) return null;
+                        if (count > 1)
+                        {
+                            var bytes = count - 1;
+                            while (count++ < 5) tuple = tuple * 85 + 84;
+                            if (tuple > uint.MaxValue) return null;
+                            for (var n = 0; n < bytes; n++) output.WriteByte((byte)(tuple >> (24 - n * 8)));
+                        }
+                        ended = true; break;
+                    }
+                    if (b == 'z')
+                    {
+                        if (count != 0) return null;
+                        for (var n = 0; n < 4; n++) output.WriteByte(0);
+                    }
+                    else
+                    {
+                        if (b < '!' || b > 'u') return null;
+                        tuple = tuple * 85 + (uint)(b - '!');
+                        if (++count == 5)
+                        {
+                            if (tuple > uint.MaxValue) return null;
+                            for (var n = 0; n < 4; n++) output.WriteByte((byte)(tuple >> (24 - n * 8)));
+                            tuple = 0; count = 0;
+                        }
+                    }
+                    if (output.Length > MaxInflatedBytesPerStream)
+                        throw new AttachmentResourceLimitException("The PDF exceeded the decoded-stream cap.");
+                }
+                if (!ended) return null;
+                if (output.Length > MaxInflatedBytesPerStream)
+                    throw new AttachmentResourceLimitException("The PDF exceeded the decoded-stream cap.");
+                budget.AddInflated(output.Length);
+                return output.ToArray();
+            }
         }
 
         private static byte[] TryInflate(
@@ -1219,7 +1283,7 @@ namespace Scribble.Outlook
                         readBudget.AddInflated(read);
                         if (total > MaxInflatedBytesPerStream)
                         {
-                            break;
+                            throw new AttachmentResourceLimitException("PDF stream exceeds the extraction limit.");
                         }
 
                         output.Write(buffer, 0, read);
@@ -1229,7 +1293,9 @@ namespace Scribble.Outlook
                     return inflated.Length > 0 ? inflated : null;
                 }
             }
-            catch
+            catch (OperationCanceledException) { throw; }
+            catch (AttachmentResourceLimitException) { throw; }
+            catch (InvalidDataException)
             {
                 return null;
             }

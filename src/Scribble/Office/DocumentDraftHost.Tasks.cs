@@ -15,7 +15,7 @@ namespace Scribble.Office
         private DurableExcelTransform _durableExcel;
         private ExcelTransformTarget _excelTarget;
 
-        internal async Task BindTaskAsync(TaskContextManager task, CancellationToken token)
+        public async Task BindTaskAsync(TaskContextManager task, CancellationToken token)
         {
             if (_taskContext != null && _taskContext.State.Id != task.State.Id)
             {

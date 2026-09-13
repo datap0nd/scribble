@@ -64,9 +64,35 @@ namespace Scribble.Testing
         private static void SaveSession(LabSession value)
         {
             var bytes = ProtectedData.Protect(Encoding.UTF8.GetBytes(Serialize(value)), null, DataProtectionScope.CurrentUser);
-            var temporary = Descriptor + ".tmp";
-            File.WriteAllBytes(temporary, bytes);
-            if (File.Exists(Descriptor)) File.Replace(temporary, Descriptor, null); else File.Move(temporary, Descriptor);
+            var temporary = Descriptor + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            try
+            {
+                File.WriteAllBytes(temporary, bytes);
+                for (var attempt = 0; ; attempt++)
+                {
+                    try
+                    {
+                        if (File.Exists(Descriptor)) File.Replace(temporary, Descriptor, null); else File.Move(temporary, Descriptor);
+                        break;
+                    }
+                    catch (IOException error) when (attempt < 39 &&
+                        ((error.HResult & 0xffff) == 32 || (error.HResult & 0xffff) == 33))
+                    { System.Threading.Thread.Sleep(25); }
+                }
+            }
+            finally { if (File.Exists(temporary)) File.Delete(temporary); }
+        }
+        private static byte[] ReadSessionBytes()
+        {
+            // Atomic replacement must coexist with pane timers in other Office
+            // processes. An open reader retains its old complete file snapshot.
+            using (var stream = new FileStream(Descriptor, FileMode.Open, FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete))
+            using (var buffer = new MemoryStream())
+            {
+                if (stream.Length > 256 * 1024) throw new InvalidDataException("Session descriptor is too large.");
+                stream.CopyTo(buffer); return buffer.ToArray();
+            }
         }
         public static LabSession Status()
         {
@@ -74,7 +100,7 @@ namespace Scribble.Testing
             {
                 if (!File.Exists(Descriptor)) return null;
                 LabSession s;
-                lock (Gate) s = Json.Deserialize<LabSession>(Encoding.UTF8.GetString(ProtectedData.Unprotect(File.ReadAllBytes(Descriptor), null, DataProtectionScope.CurrentUser)));
+                lock (Gate) s = Json.Deserialize<LabSession>(Encoding.UTF8.GetString(ProtectedData.Unprotect(ReadSessionBytes(), null, DataProtectionScope.CurrentUser)));
                 if (s.schema != 1 || s.expires_utc <= DateTime.UtcNow || !Directory.Exists(s.fixture_root)) return null;
                 Id(s.session_id);
                 if (!string.IsNullOrEmpty(s.run_id)) Id(s.run_id);

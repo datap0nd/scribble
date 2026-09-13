@@ -334,11 +334,12 @@ namespace Scribble.Testing
                     object values = used.Value2, formulas = used.Formula;
                     for (int r = 0; r < rows; r++) for (int c = 0; c < columns; c++) {
                         var cell = At(values, r, c); var formula = Convert.ToString(At(formulas, r, c));
-                        if (cell is ErrorWrapper) cell = Convert.ToString(used.Cells.Item(r + 1, c + 1).Text);
+                        cell = (object)Scribble.Office.ExcelErrorValue.Text(cell) ?? cell;
                         if (cell == null && string.IsNullOrEmpty(formula)) continue;
                         text.Append("R").Append((int)used.Row + r).Append("C").Append((int)used.Column + c)
                             .Append(": ").Append(Convert.ToString(cell, System.Globalization.CultureInfo.InvariantCulture));
-                        if (formula.StartsWith("=", StringComparison.Ordinal)) text.Append(" | formula: ").Append(formula);
+                        if (formula.StartsWith("=", StringComparison.Ordinal) && !Equals(At(values, r, c), At(formulas, r, c)))
+                            text.Append(" | formula: ").Append(formula);
                         text.AppendLine();
                     }
                     dynamic charts = sheet.ChartObjects();

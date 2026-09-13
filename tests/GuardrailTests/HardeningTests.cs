@@ -31,6 +31,15 @@ namespace GuardrailTests
             var text = (string)read.Invoke(null, new object[] { new ReportWorkbook(), "Excel" });
             Check(text.Contains("Scribble Draft") && text.Contains("R4C2: 120000 | formula: =SUM(Sales!E2:E9)") && text.Contains("Native charts: 0"),
                 "Native readback lost worksheet identity, offsets, value or formula.");
+            var broken = new ReportWorkbook();
+            broken.Worksheets.Sheet.UsedRange.Value2 = -2146826273;
+            broken.Worksheets.Sheet.UsedRange.Formula = "=Sales!E2+E3";
+            var errorText = (string)read.Invoke(null, new object[] { broken, "Excel" });
+            Check(errorText.Contains("R4C2: #VALUE! | formula: =Sales!E2+E3"), "Native memory capture concealed the work-PC Excel error.");
+            broken.Worksheets.Sheet.UsedRange.Value2 = "=1/0";
+            broken.Worksheets.Sheet.UsedRange.Formula = "=1/0";
+            var literalText = (string)read.Invoke(null, new object[] { broken, "Excel" });
+            Check(!literalText.Contains("| formula:"), "Literal formula text was certified as a native formula.");
 
             var hasDraft = typeof(Scribble.Testing.BenchmarkArtifactCollector).GetMethod(
                 "HasScribbleDraft",
@@ -241,7 +250,7 @@ namespace GuardrailTests
         }
     }
     public sealed class ReportWorkbook { public ReportSheets Worksheets { get; } = new ReportSheets(); }
-    public sealed class ReportSheets { public int Count => 1; public ReportSheet Item(int index) => new ReportSheet(); }
+    public sealed class ReportSheets { public int Count => 1; public ReportSheet Sheet { get; } = new ReportSheet(); public ReportSheet Item(int index) => Sheet; }
     public sealed class ReportSheet {
         public string Name => "Scribble Draft";
         public ReportRange UsedRange { get; } = new ReportRange();
@@ -252,7 +261,7 @@ namespace GuardrailTests
     public sealed class ReportRange {
         public string Address => "$B$4"; public int Row => 4; public int Column => 2;
         public ReportCount Rows { get; } = new ReportCount(); public ReportCount Columns { get; } = new ReportCount();
-        public object Value2 => 120000.0; public object Formula => "=SUM(Sales!E2:E9)";
+        public object Value2 { get; set; } = 120000.0; public object Formula { get; set; } = "=SUM(Sales!E2:E9)";
     }
 
     public sealed class DraftReportWorkbook { public DraftReportSheets Worksheets { get; } = new DraftReportSheets(); }

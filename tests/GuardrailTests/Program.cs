@@ -75,6 +75,10 @@ namespace GuardrailTests
                 Run("Native report readback retains scalar cell formulas", HardeningTests.NativeReportReadback);
                 Run("Duplicate document writes return a recoverable result", HardeningTests.DuplicateDraftIsRecoverable);
                 Run("PowerPoint outline-only calls get a concrete repair before any write", HardeningTests.PowerPointArgumentsGiveRepair);
+                Run("Test Bench extracts the actual operations PDF filters", TestBenchRegressionTests.OperationsPdf);
+                Run("Test Bench detects work-PC Excel error representations", TestBenchRegressionTests.ExcelErrors);
+                Run("Test Bench rejects incorrect final financial statements", TestBenchRegressionTests.ReportFacts);
+                Run("PowerPoint rejected outline can be corrected before writing", RejectedSlideOutlineCanChange);
                 Run("QA metadata followup forbids reads and old task continuation", QaMetadataScope);
                 Run("QA repeated attachments reuse extraction and invalidate changed bytes", QaAttachmentCache);
                 Run("QA structured XLS preserves positions multilingual values and sheets", QaStructuredXls);
@@ -7927,6 +7931,43 @@ namespace GuardrailTests
                         "Malformed slide arguments must fail before review or mutation.");
                 }
             }
+        }
+
+        private static void RejectedSlideOutlineCanChange()
+        {
+            var root = Path.Combine(Path.GetTempPath(), "scribble-outline-" + Guid.NewGuid().ToString("N"));
+            var json = new JavaScriptSerializer();
+            var review = json.Serialize(new { choices = new[] { new { message = new {
+                role = "assistant", content = "{\"approved\":false,\"issues\":\"REVIEW_REACHED\"}" } } } });
+            try
+            {
+                using (var endpoint = new FakeEndpoint(review, review))
+                using (var client = new OpenAiCompatibleClient())
+                using (var host = new DocumentDraftHost("powerpoint", new object()))
+                {
+                    var request = MakeRequest(new List<ChatTurn>());
+                    request.tools = new List<ChatToolDefinition> { PresentationToolCatalog.DraftDefinition() };
+                    var task = new TaskContextManager(request, "powerpoint", "Create a launch presentation", new TaskCheckpointStore(root));
+                    host.BindTaskAsync(task, CancellationToken.None).GetAwaiter().GetResult();
+                    var settings = EndpointSettings(endpoint.BaseUrl); settings.Model = "qwen3-vl";
+                    var authorization = new OneShotDraftAuthorization(true);
+                    foreach (var id in new[] { "original", "corrected" })
+                    {
+                        var arguments = json.Serialize(new { plan = new[] { id }, briefs = new[] { new {
+                            id, purpose = "explanatory", message = "Launch", layout = "cover", required_content = new[] { "Launch" } } },
+                            slides = new[] { new { id, title = "Launch", layout = "cover" } } });
+                        var result = host.ExecuteAsync(MailboxCall(id, PresentationToolCatalog.AddDraftSlides, arguments), authorization,
+                            true, "Create a launch presentation", client, settings, CancellationToken.None, null).GetAwaiter().GetResult();
+                        Assert(result.Content.Contains("REVIEW_REACHED") && result.Content.Contains("OUTLINE_REVIEW"), "A rejected proposal became locked: " + result.Content);
+                        Assert(!task.State.HostData.ContainsKey("samsung_plan") && !task.State.HostData.ContainsKey("samsung_briefs") &&
+                            !task.State.ExpectedSourceIds.Any(x => x.StartsWith("ppt:")) && authorization.RemainingCalls == 1,
+                            "Rejected outline changed write permission or committed the deck plan.");
+                    }
+                    endpoint.Wait();
+                    Assert(endpoint.Bodies.All(body => body.Contains("proposed_slides") && body.Contains("current batch only")), "Outline review did not receive stage-specific evidence.");
+                }
+            }
+            finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
         }
 
         private static void EmptyEndpointResponsesRecover()

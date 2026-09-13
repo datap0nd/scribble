@@ -70,17 +70,13 @@ namespace Scribble.Office
                 SamsungPresentationReview.ValidatePlan(plan, slides.Select(s => s.Id).ToArray(), completed);
                 if (_taskContext?.State.RequiredPresentationSlides > 0 && plan.Length != _taskContext.State.RequiredPresentationSlides)
                     throw new InvalidOperationException("SLIDE_COUNT_MISMATCH: The original request requires exactly " + _taskContext.State.RequiredPresentationSlides + " planned slides.");
-                if (_taskContext != null)
-                {
-                    _taskContext.State.HostData["samsung_plan"] = _serializer.Serialize(plan);
-                    foreach (var id in plan) if (!_taskContext.State.ExpectedSourceIds.Contains("ppt:" + id)) _taskContext.State.ExpectedSourceIds.Add("ppt:" + id);
-                    _taskContext.Checkpoint();
-                }
+                object[] briefs = null;
+                string acceptedOutlineKey = null;
                 if (modern)
                 {
                     _taskContext.State.PresentationReviewRequired = true;
                     _taskContext.State.PresentationReviewReceipt = null;
-                    var briefs = ParsedArray(args, "briefs", false);
+                    briefs = ParsedArray(args, "briefs", false);
                     string existingBriefs;
                     if (_taskContext.State.HostData.TryGetValue("samsung_briefs", out existingBriefs))
                     {
@@ -95,19 +91,20 @@ namespace Scribble.Office
                             if (SamsungAuthoringPolicy.Array(brief, "source_spans").Length > 0)
                                 _taskContext.Sources.Resolve(SamsungAuthoringPolicy.Array(brief, "source_spans").Select(Convert.ToString));
                     }
-                    // Legacy ID-only tool payloads remain valid. Their outline is
-                    // reviewed as supplied and complete coverage is checked at finalization.
-                    var outline = _serializer.Serialize(new { plan, briefs, instruction = prompt });
+                    // This is a proposal, not a finished deck. Include the actual
+                    // batch and allow a rejected proposal to change before writing.
+                    var outline = _serializer.Serialize(new { plan, briefs, proposed_slides = args["slides"], instruction = prompt });
                     var outlineKey = "samsung_outline:" + SamsungAuthoringPolicy.CacheKey(settings.Model, settings.BaseUrl, outline, source);
-                    if (!_taskContext.State.HostData.ContainsKey(outlineKey))
+                    acceptedOutlineKey = "samsung_accepted_outline:" + SamsungAuthoringPolicy.CacheKey(settings.Model, settings.BaseUrl,
+                        _serializer.Serialize(new { plan, briefs, instruction = prompt }), source);
+                    if (!_taskContext.State.HostData.ContainsKey(acceptedOutlineKey) && !_taskContext.State.HostData.ContainsKey(outlineKey))
                     {
                         stage = "OUTLINE_REVIEW";
-                        var verdict = await ReviewSamsungAsync(client, settings, SamsungAuthoringPolicy.DeckReview + SamsungAuthoringPolicy.ReviewContract,
+                        var verdict = await ReviewSamsungAsync(client, settings, SamsungAuthoringPolicy.OutlineReview + SamsungAuthoringPolicy.ReviewContract,
                             outline + "\nSources:\n" + source, null, token);
                         if (!ReviewApproved(verdict)) throw new InvalidOperationException("SLIDE_OUTLINE_REVIEW: " + verdict);
                         _taskContext.State.HostData[outlineKey] = "approved";
                     }
-                    if (briefs != null) _taskContext.State.HostData["samsung_briefs"] = _serializer.Serialize(briefs);
                     _taskContext.Checkpoint();
                 }
                 stage = "SOURCE_IMAGES";
@@ -123,9 +120,9 @@ namespace Scribble.Office
                         if (matches.Length != 1 || !matches[0].DataUrl.StartsWith("data:image/")) throw new InvalidOperationException("SLIDE_IMAGE_UNRESOLVED: Source image must be uniquely attached to this task: " + name);
                         slide.ImageData.Add(matches[0].DataUrl);
                     }
-                if (modern && args.ContainsKey("briefs"))
+                if (modern && briefs != null)
                 {
-                    var briefMaps = SamsungAuthoringPolicy.Array(args, "briefs").Select(SamsungAuthoringPolicy.ReadMap).ToArray();
+                    var briefMaps = briefs.Select(SamsungAuthoringPolicy.ReadMap).ToArray();
                     foreach (var slide in slides)
                     {
                         var brief = briefMaps.Single(b => SamsungAuthoringPolicy.Text(b, "id") == slide.Id);
@@ -144,8 +141,7 @@ namespace Scribble.Office
                     slideId = fields != null && fields.ContainsKey("id") ? Convert.ToString(fields["id"]) : null;
                     if (text.Length > 36000) throw new InvalidOperationException("SLIDE_REVIEW_BATCH_TOO_LARGE: Split this slide's data into smaller slides before independent source review.");
                     SamsungPresentationReview.ValidateEvidence(text, source);
-                    string reviewedBriefs;
-                    var briefContext = _taskContext != null && _taskContext.State.HostData.TryGetValue("samsung_briefs", out reviewedBriefs) ? reviewedBriefs : "";
+                    var briefContext = briefs == null ? "" : _serializer.Serialize(briefs);
                     var reviewKey = "slide_source_review:" + SamsungAuthoringPolicy.CacheKey(settings.Model, settings.BaseUrl, text + briefContext, source);
                     if (_taskContext != null && _taskContext.State.HostData.ContainsKey(reviewKey)) continue;
                     var review = await ReviewSamsungAsync(client, settings,
@@ -174,6 +170,8 @@ namespace Scribble.Office
                 {
                     _taskContext.State.HostData["samsung_authorized"] = "true";
                     _taskContext.State.HostData["samsung_plan"] = _serializer.Serialize(plan);
+                    if (briefs != null) _taskContext.State.HostData["samsung_briefs"] = _serializer.Serialize(briefs);
+                    if (acceptedOutlineKey != null) _taskContext.State.HostData[acceptedOutlineKey] = "approved";
                     foreach (var id in plan) if (!_taskContext.State.ExpectedSourceIds.Contains("ppt:" + id)) _taskContext.State.ExpectedSourceIds.Add("ppt:" + id);
                     _taskContext.Checkpoint();
                 }
@@ -272,7 +270,10 @@ namespace Scribble.Office
                     stage, message = exception.Message, permission_consumed = written,
                     diagnostic_id = _taskContext?.State.Id,
                     field_errors = new[] { new { slide_id = slideId, field_path = stage == "SOURCE_REVIEW" ? "source_spans/content" : stage,
-                        message = exception.Message, recovery = written ? "Resume with the original generation payload unchanged. The host reconciles native IDs and fingerprints; uncertain or user-edited slides are preserved." : "Repair this field while preserving the original plan and already approved slides." } } }),
+                        message = exception.Message, recovery = written ? "Resume with the original generation payload unchanged. The host reconciles native IDs and fingerprints; uncertain or user-edited slides are preserved." :
+                            (_taskContext != null && _taskContext.State.HostData.ContainsKey("samsung_plan")
+                                ? "Repair this field while preserving the written deck's plan and already approved slides. Include a nonempty slides array containing actual content for the next planned IDs."
+                                : "No slides were written. Correct the proposed plan, briefs and slide content together, then resubmit with a nonempty slides array. Rejected proposals are not locked.") } } }),
                     (written ? "Slide review: " : "Slide preflight: ") + TextBoundary.SingleLine(exception.Message, 240));
             }
             finally

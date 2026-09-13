@@ -364,6 +364,8 @@ namespace Scribble.Testing
                     var catalogCases = TestLabSuite.Read<LabCase[]>(Path.Combine(catalog, "operator", "cases.json"));
                     var cases = TestLabSuite.SelectCases(catalogCases, caseFilter);
                     Results.AddRange(cases.Select(c => new SuiteCaseResult { id = c.id, host = c.host }));
+                    await Task.Run(() => TestLabPreparation.VerifyReadableInputs(catalog, cancel));
+                    Log("Required synthetic PDFs passed Scribble text extraction preflight.");
                     Log("Verified kit " + State.kitHash + " at main " + State.commit + "; " + catalogCases.Length +
                         " cases. Execution scope: " + (string.IsNullOrWhiteSpace(caseFilter) ? "16 Excel, PowerPoint and Outlook cases" : cases[0].id + " only") + ".");
                     foreach (var c in cases) {

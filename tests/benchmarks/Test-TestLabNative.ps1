@@ -43,6 +43,23 @@ foreach($pair in @(@('EX01','Excel'),@('PP01','PowerPoint'),@('PP03','PowerPoint
    $prepare=[Scribble.Testing.TestLabMail].GetMethod('Prepare',[Reflection.BindingFlags]'Static,NonPublic')
    $prepare.Invoke($null,@($application,$case.PSObject.BaseObject,[Threading.CancellationToken]::None,[Action[string]]{param($text) Write-Host $text})) | Out-Null
   }
+  if($appName -eq 'Excel') {
+   # Exercise actual VT_ERROR and body month cells before starting evidence.
+   # This workbook is created and discarded solely by this integration test.
+   $probe=$application.Workbooks.Add()
+   try {
+    $probeRows=New-Object 'Collections.Generic.List[Collections.Generic.IReadOnlyList[string]]'
+    foreach($row in @(@('Month','Value'),@('2026-06','=1/0'))) {$probeRows.Add([string[]]$row)}
+    $writer=[Scribble.Testing.TestLab].Assembly.GetType('Scribble.Office.WorkbookDraftWriter')
+    $write=$writer.GetMethods([Reflection.BindingFlags]'Static,NonPublic') | Where-Object {$_.Name -eq 'WriteDraftSheet' -and $_.GetParameters().Count -eq 3}
+    $probeStatus=$write.Invoke($null,@($application.PSObject.BaseObject,'Native error regression',$probeRows.PSObject.BaseObject))
+    $probeSheet=$application.ActiveSheet
+    Assert ($probeSheet.Cells.Item(4,1).Value2 -ceq '2026-06') 'A body month key became a date serial.'
+    Assert ($probeSheet.Cells.Item(4,2).Formula -ceq '=1/0') 'The writer hid the broken formula as text.'
+    Assert ([Scribble.Office.ExcelErrorValue]::Text($probeSheet.Cells.Item(4,2).Value2) -eq '#DIV/0!') 'The actual Excel error value was not recognized.'
+    Assert ($probeStatus.Contains('remain visible')) 'The writer did not disclose its broken formula.'
+   } finally { $probe.Close($false); [void][Runtime.InteropServices.Marshal]::ReleaseComObject($probe); $document.Activate() }
+  }
   $run=[Scribble.Testing.TestLab]::Start($id,$appName,$true)
   $state.caseId=$id;$state.host=$appName;$state.runId=$run.run_id
   [Scribble.Testing.TestLabSuite]::Save($state)
@@ -51,7 +68,7 @@ foreach($pair in @(@('EX01','Excel'),@('PP01','PowerPoint'),@('PP03','PowerPoint
   if($id -eq 'PP03'){[Scribble.Testing.BenchmarkArtifactCollector]::Capture($run.run_id,'intermediate') | Write-Output}
   if($appName -eq 'Excel') {
    $rows=New-Object 'Collections.Generic.List[Collections.Generic.IReadOnlyList[string]]'
-   foreach($row in @(@('Metric','2026-05','2026-06','June Budget','Gap'),@('Revenue','100000','=SUM(Sales!E6:E9)','=SUM(Budget!C2:C5)','=C4-D4'),@('Cost','60000','=SUM(Sales!F6:F9)','',''),@('Profit','=B4-B5','=C4-C5','',''))) {$rows.Add([string[]]$row)}
+   foreach($row in @(@('Metric','2026-05','2026-06','June Budget','Gap'),@('Revenue','100000','=SUM(Sales!E6:E9)','=SUM(Budget!C2:C5)','=C4-D4'),@('Cost','60000','=SUM(Sales!F6:F9)','',''),@('Profit','=B4-B5','=C4-C5','',''),@('Margin','=B6/B4','=C6/C4','',''),@('Growth','','=(C4-B4)/B4','',''),@('Budget gap percent','','=E4/D4','',''))) {$rows.Add([string[]]$row)}
    $writer=[Scribble.Testing.TestLab].Assembly.GetType('Scribble.Office.WorkbookDraftWriter')
    $write=$writer.GetMethods([Reflection.BindingFlags]'Static,NonPublic') | Where-Object {$_.Name -eq 'WriteDraftSheet' -and $_.GetParameters().Count -eq 3}
    [void]$write.Invoke($null,@($application.PSObject.BaseObject,'Native writer smoke - manufactured output',$rows.PSObject.BaseObject))
@@ -64,7 +81,7 @@ foreach($pair in @(@('EX01','Excel'),@('PP01','PowerPoint'),@('PP03','PowerPoint
    for($i=1;$i -le 6;$i++){
     $slide=$document.Slides.Add($document.Slides.Count+1,12)
     $shape=$slide.Shapes.AddTextbox(1,40,60,600,180)
-    $shape.TextFrame.TextRange.Text="[Scribble draft] Native smoke slide $i`rRevenue 120000 / Budget 130000 / Delivery 94%"
+    $shape.TextFrame.TextRange.Text="[Scribble draft] Native smoke slide $i`rRevenue 120000; budget 130000; gap -10000 (-7.69%); cost 74000; profit 46000; margin 38.33%; growth 20%; delivery 94% against 97%."
    }
    [void][Scribble.Testing.TestLabSuite]::SaveSelectedDeckForMail($application,$run.run_id)
   } else {
@@ -72,7 +89,7 @@ foreach($pair in @(@('EX01','Excel'),@('PP01','PowerPoint'),@('PP03','PowerPoint
    Assert ($messages.Count -eq 3) 'Native MSG fixtures were not loaded as the exact working set.'
    Assert ($messages[1].AttachmentNames.Count -gt 0) 'Native MSG attachments are missing.'
    $mail=$application.CreateItem(0);$mail.To='review@example.test';$mail.Subject='Atlas June review'
-   $mail.Body='Native smoke only. Revenue 120000; delivery 94%. This is a manufactured unsent draft, not model output.'
+   $mail.Body="Native smoke only. Revenue: EUR 120000; budget gap: -10000 (-7.69%); gross profit: EUR 46000; cost: EUR 74000; weighted gross margin: 38.33%; delivery: 94% against target 97%.`r`nPlanned actions: Mira Cole reviews freight costs by 10 July 2026. Leon Park confirms recovery by 12 July 2026. This is a manufactured unsent draft, not model output."
    [Scribble.Testing.TestLab]::RegisterMailOutput($mail);$mail.Display($false)
   }
   [Scribble.Testing.BenchmarkArtifactCollector]::Capture($run.run_id,'final') | Write-Output
