@@ -13,17 +13,18 @@ built or run on Linux — the Windows CI workflow
 - **This is the only actively developed repository** — its predecessor
   `outlook-local-ai-chat` (MetoAI) is frozen; do not port changes there
   unless explicitly asked.
-- This is a personal dev repository. **Always commit directly to `main` and
-  push immediately after each change set.** The user pulls `main` on a work
-  machine to test. Do not create side branches or pull requests unless
-  explicitly asked.
-- Every push to `main` triggers CI: MSBuild, guardrail/browser tests,
-  the static capability scan, and installer smoke tests. Every successful
-  current-main build must publish to the public `continuous` update channel
-  through `scripts/Publish-ScribbleCandidate.ps1` and verify the updater's
-  exact download URL. Pushing source or uploading a CI artifact alone is
-  not delivery. Native/model acceptance remains additional validation;
-  never claim it passed unless real evidence exists.
+- Public Scribble is **frozen at 2.0.91**. Both GitHub Latest and the
+  `continuous` compatibility download must serve the original stable installer.
+  Never publish a development build or change Latest without a new explicit
+  owner request. See [release channels](docs/release-channels.md).
+- Develop on `codex/development`, using `codex/` feature branches and tested
+  PRs targeting `codex/development`. `codex/stable-2.0.91` preserves the exact
+  stable source; do not advance or rewrite it. `main` retains the integration
+  history and release-freeze change; it is not a public update channel.
+- CI on `main`, `codex/development`, and PRs builds and tests installers,
+  then uploads development artifacts only. The workflow has read-only
+  repository permissions and no public-release job. The legacy publication
+  script deliberately refuses every promotion while the freeze is in effect.
 
 ## Code conventions
 

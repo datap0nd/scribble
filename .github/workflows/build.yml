@@ -4,13 +4,12 @@ on:
   push:
     branches:
       - main
-    tags:
-      - "v*"
+      - codex/development
   pull_request:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -291,6 +290,10 @@ jobs:
       - name: Test release evidence gate
         shell: pwsh
         run: ./tests/ReleaseGate/Test-ReleaseEvidence.Tests.ps1
+
+      - name: Verify public release freeze
+        shell: pwsh
+        run: ./tests/ReleaseGate/Test-PublicReleaseFreeze.ps1
 
       - name: Inspect .NET COM registration contract
         shell: powershell
@@ -878,25 +881,6 @@ jobs:
             artifacts/ScribbleSetup.exe
             artifacts/candidate.json
           if-no-files-found: error
-
-  publish-update:
-    name: Publish verified public update
-    needs: build
-    permissions:
-      contents: write
-      actions: read
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-    runs-on: windows-latest
-    concurrency:
-      group: scribble-public-update
-      cancel-in-progress: false
-    steps:
-      - uses: actions/checkout@v4
-      - name: Publish and verify the updater download
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: ./scripts/Publish-ScribbleCandidate.ps1 -BuildRunId ${{ github.run_id }}
 
   browser-extension-e2e:
     name: Browser extension fixtures
