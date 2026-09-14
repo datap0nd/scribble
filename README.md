@@ -1,5 +1,11 @@
 # Scribble
 
+**Public stable release: [2.0.91](https://github.com/datap0nd/scribble/releases/tag/stable-2.0.91).**
+Latest and the in-app update download are frozen at that version. Ongoing work
+lives on `codex/development`; the stable source is on `codex/stable-2.0.91`.
+Development features described below may be newer than the stable installer.
+See [release channels](docs/release-channels.md) for the separation and download checks.
+
 A Windows-only AI assistant suite for classic Microsoft Office
 (Professional Plus 2021) and Google Chrome: one installer adds
 an **Scribble** sidebar to **Outlook, Excel, PowerPoint, Word, and the web**. Every
@@ -66,8 +72,8 @@ Entra ID.
 1. Close Outlook, Excel, PowerPoint, and Word.
 2. Download
    [ScribbleSetup.exe](https://github.com/datap0nd/scribble/releases/latest/download/ScribbleSetup.exe).
-   This link tracks the **Latest** release, which is rebuilt automatically on
-   every push to `main`.
+   This link serves the frozen **2.0.91 stable release**. Development pushes
+   and successful CI builds do not replace it.
 3. Run the installer for your Windows account. It asks which apps get Scribble -
    all five are selected by default; untick any you do not
    want. Re-running the installer later lets you change the selection, and
@@ -106,7 +112,12 @@ because Scribble deliberately detaches after every atomic action. Clicking
    the generated drafting instructions, edit them, and enable the profile.
 
 To update later, open **Settings** in any Scribble pane and click
-**Update Scribble**. One confirmation opens a separate progress window. It
+**Update Scribble**. Both updater generations now download stable 2.0.91.
+Users already on a newer build are not automatically downgraded by the newer
+updater; an intentional rollback uses the stable installer after saving work
+and closing Office. The following progress-window behavior describes the
+development updater, not the original updater bundled in 2.0.91.
+One confirmation opens a separate progress window. It
 downloads the continuous release, verifies its manifest, SHA-256 and version,
 then asks the installed Office hosts and Test Lab to close. Respond to any
 Office save prompts. The updater waits visibly and never force-closes unsaved
@@ -115,9 +126,9 @@ installed DLL version, and reopens Outlook if the update started there.
 Your settings and selected integrations are preserved. Failed updates retain
 the installer and logs under `%LOCALAPPDATA%/Scribble/Updates/`.
 
-If an older installation's Update button fails, run the current installer once
-over that installation; uninstalling is unnecessary. Future updates use the
-native helper instead of a hidden command script. If the Chrome extension
+If an older installation's Update button fails, download the stable installer
+directly. Stable 2.0.91 retains its original updater; downloading stable does
+not add the development updater helper. If the Chrome extension
 changed, open `chrome://extensions`, find Scribble, and click **Reload**.
 
 For repeatable local-model evaluation, open **Scribble Test Lab** from Start or
