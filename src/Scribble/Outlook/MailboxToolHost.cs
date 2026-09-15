@@ -564,7 +564,9 @@ namespace Scribble.Outlook
                 coverage.ReadUntil = Math.Max(coverage.ReadUntil, bodyOffset + bodyLength);
                 coverage.AttachmentCount = MailboxAttachmentPages.Count(_application, message);
                 payload["attachment_count"] = coverage.AttachmentCount;
-                payload["attachment_instruction"] = _skipAttachments
+                payload["attachment_instruction"] = _enumerationOnly
+                    ? "This request asks only for mailbox metadata. Do not read attachments or record content analysis."
+                    : _skipAttachments
                     ? "The user prohibited attachment reads. Use existing evidence only and disclose any missing attachment coverage."
                     : "Use read_attachment for every index from 1 through attachment_count, following next_offset. Then record_mailbox_analysis with a source-grounded summary.";
                 SaveCoverage();

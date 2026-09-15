@@ -47,13 +47,15 @@ namespace Scribble.Outlook
         private bool _reviewAll;
         private bool _requiresEnumeration;
         private bool _metadataOnly;
+        private bool _enumerationOnly;
         private bool _skipAttachments;
         private readonly Dictionary<string, MailboxAttachmentPage> _attachmentPages = new Dictionary<string, MailboxAttachmentPage>();
 
         internal void ConfigureRequestScope(string prompt)
         {
             _metadataOnly = _workingSetOnly && ChatRequestFactory.IsMetadataOnly(prompt);
-            _skipAttachments = _metadataOnly || ChatRequestFactory.ForbidsAttachmentReads(prompt);
+            _enumerationOnly = !_workingSetOnly && ChatRequestFactory.IsMailboxEnumerationOnly(prompt);
+            _skipAttachments = _metadataOnly || _enumerationOnly || ChatRequestFactory.ForbidsAttachmentReads(prompt);
         }
 
         public async Task BindTaskAsync(TaskContextManager task, CancellationToken token)
@@ -126,7 +128,8 @@ namespace Scribble.Outlook
                 saved.Body = "";
                 entry = new MailboxTaskMessage { Handle = handle, Source = saved };
                 _ledger.Messages.Add(entry);
-                if (!_task.State.ExpectedSourceIds.Contains(entry.Id)) _task.State.ExpectedSourceIds.Add(entry.Id);
+                if (!_enumerationOnly && !_task.State.ExpectedSourceIds.Contains(entry.Id))
+                    _task.State.ExpectedSourceIds.Add(entry.Id);
                 _metadataHandles.Add(handle);
             }
             return entry;
@@ -141,6 +144,7 @@ namespace Scribble.Outlook
                     return "Mailbox coverage is incomplete: enumerate the user's requested mailbox/time window with search_mailbox before answering.";
                 var cursor = _ledger.Searches.FirstOrDefault(s => !s.Complete);
                 if (cursor != null) return "Mailbox enumeration is incomplete. Continue search_mailbox with cursor " + cursor.Id + " (empty pages do not mean completion).";
+                if (_enumerationOnly) return null;
                 var pending = _ledger.Messages.Where(m => !m.Analysed && !_task.State.Exclusions.ContainsKey(m.Id)).ToArray();
                 if (pending.Length > 0) return pending.Length + " messages still need analysis receipts. Read every body/attachment page, then call record_mailbox_analysis. Next handles: " + string.Join(", ", pending.Take(10).Select(m => m.Handle));
                 return null;

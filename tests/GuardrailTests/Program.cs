@@ -7842,6 +7842,12 @@ namespace GuardrailTests
                 reuseTask.CompleteTask(request);
             }
             Assert(!ChatRequestFactory.IsMetadataOnly("Compare the contents of only the selected emails"), "Content analysis was mistaken for metadata.");
+            Assert(ChatRequestFactory.IsMailboxEnumerationOnly(
+                "Find every message in July 2026 and report every matching message ID plus Total matches: N."),
+                "Mailbox ID enumeration was mistaken for content analysis.");
+            Assert(!ChatRequestFactory.IsMailboxEnumerationOnly(
+                "Find every message in July 2026 and summarize each body and attachment."),
+                "Mailbox content analysis was mistaken for enumeration-only work.");
         }
 
         private static void QaAttachmentCache()
