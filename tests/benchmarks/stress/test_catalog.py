@@ -18,6 +18,12 @@ class CatalogContractTests(unittest.TestCase):
         records, mail_oracles = generate_mail.build_records()
         cls.mail = {"search_tasks": generate_mail.build_tasks(records, mail_oracles)}
         build_catalog.write(cls.root, "evaluator-only/mail_catalog.json", cls.mail)
+        build_catalog.write(cls.root, "evaluator-only/hero_inputs.json", {
+            "korean": {"path": "inputs/excel/KoreanOperations.xlsx", "sheets": [{"name": "Operations", "cells": [{"row": 1, "column": 1, "text": "Category"}]}]},
+            "word": {"path": "inputs/excel/EightSheetWorkbook.xlsx", "tables": [[['Header'], ['Value']]]},
+        })
+        build_catalog.write(cls.root, "evaluator-only/hero_pdf.json", {"path": "inputs/pdf/ExecutiveRiskReport130.pdf",
+            "required_facts": ["late-page fact"], "terminal_marker": "ORION-PAGE-130"})
         cls.summary = build_catalog.build(cls.root)
         cls.cases = build_catalog.read(cls.root / "operator/cases.json")
         cls.oracles = {c["id"]: build_catalog.read(cls.root / c["oracle_ref"]) for c in cls.cases}
@@ -31,7 +37,9 @@ class CatalogContractTests(unittest.TestCase):
         self.assertEqual(self.summary["model_requests"], 0)
         self.assertEqual(self.summary["execution_status"], "not_run")
         visible = {path for case in self.cases for path in case["inputs"]}
-        self.assertEqual({p for p in visible if p.endswith(".xlsx")}, {f"inputs/excel/WB{i:02}.xlsx" for i in range(1, 21)})
+        self.assertEqual({p for p in visible if p.endswith(".xlsx")},
+                         {f"inputs/excel/WB{i:02}.xlsx" for i in range(1, 21)} |
+                         {"inputs/excel/KoreanOperations.xlsx", "inputs/excel/EightSheetWorkbook.xlsx"})
         self.assertEqual({p for p in visible if p.endswith(".pptx")}, {f"inputs/powerpoint/PPT{i:02}.pptx" for i in range(1, 31)})
         poisoned = copy.deepcopy(self.cases)
         poisoned[0]["inputs"].append(poisoned[0]["oracle_ref"])
@@ -64,10 +72,16 @@ class CatalogContractTests(unittest.TestCase):
                 self.assertEqual(group_cells[f"E{row}"]["expected"], facts["units"])
                 if workbook["ratio_label"] and facts["ratio"] is None:
                     self.assertEqual(group_cells[f"F{row}"], {"kind": "cell_text", "sheet": "Scribble Draft*", "cell": f"F{row}", "expected": "incomplete"})
-            rules = self.oracles[f"EX{index*3+3:02}"]["checks"]
-            scenario = next(r for r in rules if r["kind"] == "numeric_cell" and r["cell"] == "C4")
-            self.assertEqual(scenario["expected"], workbook["formula_probes"][0]["after_current"]["primary"])
-            self.assertTrue(scenario["formula_required"])
+            if index < 19:
+                rules = self.oracles[f"EX{index*3+3:02}"]["checks"]
+                scenario = next(r for r in rules if r["kind"] == "numeric_cell" and r["cell"] == "C4")
+                self.assertEqual(scenario["expected"], workbook["formula_probes"][0]["after_current"]["primary"])
+                self.assertTrue(scenario["formula_required"])
+        cases_by_id = {case["id"]: case for case in self.cases}
+        self.assertTrue(cases_by_id["EX60"]["allow_source_edit"])
+        self.assertEqual(cases_by_id["OL70"]["host"], "Chrome")
+        self.assertEqual(cases_by_id["OL70"]["browser_allowed_hosts"], ["www.samsungtradein.ae", "samsungtradein.ae"])
+        self.assertTrue(any(rule["kind"] == "word_tables" for rule in self.oracles["XA20"]["checks"]))
         # Incomplete June stock is a known subtotal; it is not zero or an
         # annual sum, and the output must disclose that it is incomplete.
         wb08 = self.office["workbooks"][7]
@@ -88,7 +102,7 @@ class CatalogContractTests(unittest.TestCase):
     def test_chart_requirements_target_the_requested_output_host(self):
         charts = [(case_id, rule) for case_id, oracle in self.oracles.items()
                   for rule in oracle["checks"] if rule["kind"] == "native_chart"]
-        self.assertEqual(len(charts), 100)
+        self.assertEqual(len(charts), 101)
         for case_id, rule in charts:
             expected = ("Excel", "xlsx") if case_id.startswith("EX") else ("PowerPoint", "pptx")
             self.assertEqual((rule["host"], rule["artifact_extension"]), expected, case_id)

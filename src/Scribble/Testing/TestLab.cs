@@ -157,11 +157,16 @@ namespace Scribble.Testing
                 foreach (var testCase in cases)
                 {
                     if (!Regex.IsMatch(testCase.id ?? "", "^[A-Z]{2}[0-9]{2}$") ||
-                        !(new[] { "Excel", "PowerPoint", "Outlook" }).Contains(testCase.host) ||
+                        !(new[] { "Excel", "PowerPoint", "Outlook", "Chrome" }).Contains(testCase.host) ||
                         string.IsNullOrWhiteSpace(testCase.prompt) || testCase.prompt.Length > 20000 ||
                         string.IsNullOrEmpty(testCase.oracle_ref) || !testCase.oracle_ref.StartsWith("evaluator-only/cases/", StringComparison.Ordinal) ||
                         (testCase.inputs ?? new string[0]).Any(p => p == null || !p.StartsWith("inputs/", StringComparison.Ordinal) || p.Contains("\\") || p.Split('/').Contains("..")))
                         throw new InvalidDataException("Stress cases must separate model inputs from evaluator-only answers.");
+                    if (testCase.allow_source_edit && (testCase.host != "Excel" || !(testCase.inputs ?? new string[0]).Any(p => p.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))))
+                        throw new InvalidDataException("Source edits require an explicit Excel workbook case.");
+                    if ((testCase.browser_allowed_hosts ?? new string[0]).Any(host =>
+                        testCase.host != "Chrome" || !Regex.IsMatch(host ?? "", @"^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$", RegexOptions.IgnoreCase)))
+                        throw new InvalidDataException("Live browser sources require exact DNS hosts on a Chrome case.");
                     SafeChild(root, testCase.oracle_ref);
                     if (string.IsNullOrEmpty(manifest.parent_manifest_sha256) &&
                         !new[] { testCase.oracle_ref }.Concat(testCase.inputs ?? new string[0]).All(seen.Contains))
@@ -229,9 +234,21 @@ namespace Scribble.Testing
         {
             var id = ActiveRunId(); if (string.IsNullOrEmpty(id)) return;
             Uri uri;
-            if (!Uri.TryCreate(url, UriKind.Absolute, out uri) || uri.Scheme != "http" || !uri.IsLoopback ||
-                !new[] { "/", "/index.html", "/operations.html", "/archive.html" }.Contains(uri.AbsolutePath) || uri.Query.Length > 0)
+            if (!Uri.TryCreate(url, UriKind.Absolute, out uri))
+            { MarkIncomplete(id, "Browser source URL is invalid."); throw new InvalidOperationException("Test Lab requires a verified case source URL."); }
+            var run = GetRun(id);
+            var testCase = TestLabSuite.Read<LabCase[]>(SafeChild(run.fixture_root, "operator/cases.json")).Single(c => c.id == run.case_id);
+            if (!IsBrowserSourceAllowed(testCase, uri))
             { MarkIncomplete(id, "Browser source is outside the synthetic fixture site."); throw new InvalidOperationException("Test Lab requires the loopback synthetic fixture page."); }
+        }
+        internal static bool IsBrowserSourceAllowed(LabCase testCase, Uri uri)
+        {
+            if (uri == null || testCase == null) return false;
+            var synthetic = uri.Scheme == "http" && uri.IsLoopback &&
+                new[] { "/", "/index.html", "/operations.html", "/archive.html" }.Contains(uri.AbsolutePath) && uri.Query.Length == 0;
+            var liveAllowed = uri.Scheme == "https" && uri.IsDefaultPort && string.IsNullOrEmpty(uri.UserInfo) &&
+                (testCase.browser_allowed_hosts ?? new string[0]).Any(host => string.Equals(host, uri.IdnHost, StringComparison.OrdinalIgnoreCase));
+            return synthetic || liveAllowed;
         }
         public static void CheckOfficeSource(object application, string host)
         {
@@ -543,7 +560,7 @@ namespace Scribble.Testing
     public sealed class KitFile
     { public string path { get; set; } public string sha256 { get; set; } public long size { get; set; } public string role { get; set; } }
     public sealed class LabCase
-    { public Dictionary<string, string> clarification_answers { get; set; } public string id { get; set; } public string host { get; set; } public string prompt { get; set; } public string prerequisite_prompt { get; set; } public string expected { get; set; } public string setup { get; set; } public string[] inputs { get; set; } public string[] artifacts { get; set; } public string oracle_ref { get; set; } public int timeout_seconds { get; set; } public override string ToString() { return id + " / " + host; } }
+    { public Dictionary<string, string> clarification_answers { get; set; } public string id { get; set; } public string host { get; set; } public string prompt { get; set; } public string prerequisite_prompt { get; set; } public string expected { get; set; } public string setup { get; set; } public string[] inputs { get; set; } public string[] artifacts { get; set; } public string oracle_ref { get; set; } public int timeout_seconds { get; set; } public bool allow_source_edit { get; set; } public string[] browser_allowed_hosts { get; set; } public override string ToString() { return id + " / " + host; } }
     public sealed class LabRun
     {
         public int schema { get; set; } public string run_id { get; set; } public string session_id { get; set; } public string suite_id { get; set; }

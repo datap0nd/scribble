@@ -124,6 +124,38 @@ namespace Scribble.Testing
                     }
                     result.slides = slides.ToArray();
                 }
+                else if (host == "Word")
+                {
+                    var tables = new List<StressTable>();
+                    if ((int)document.Tables.Count > 32) throw new InvalidOperationException("Output exceeds 32 measured Word tables.");
+                    for (int n = 1; n <= (int)document.Tables.Count; n++)
+                    {
+                        object rawTable = document.Tables.Item(n); dynamic table = rawTable;
+                        try
+                        {
+                            int rows = (int)table.Rows.Count, columns = (int)table.Columns.Count;
+                            if ((long)rows * columns > 1024) throw new InvalidOperationException("Word table exceeds 1024 measured cells.");
+                            var cells = new List<StressWordCell>();
+                            for (int r = 1; r <= rows; r++) for (int c = 1; c <= columns; c++)
+                            {
+                                object rawCell = table.Cell(r, c); dynamic cell = rawCell; object rawRange = null;
+                                try
+                                {
+                                    rawRange = cell.Range; dynamic range = rawRange;
+                                    var valueText = Convert.ToString(range.Text) ?? "";
+                                    cells.Add(new StressWordCell { row = r, column = c,
+                                        text = valueText.TrimEnd('\r', '\a'), bold = Convert.ToInt32(range.Font.Bold) != 0 });
+                                }
+                                finally { Release(rawRange); Release(rawCell); }
+                            }
+                            bool borders = false;
+                            try { borders = Convert.ToInt32(table.Borders.Enable) != 0; } catch { }
+                            tables.Add(new StressTable { number = n, rows = rows, columns = columns, borders = borders, cells = cells.ToArray() });
+                        }
+                        finally { Release(rawTable); }
+                    }
+                    result.tables = tables.ToArray();
+                }
             }
             catch (Exception error) { result.error = error.GetType().Name + ": " + error.Message; }
             result.measurement_warnings = warnings.Concat(result.sheets.SelectMany(s => s.charts).Concat(result.slides.SelectMany(s => s.charts))
@@ -230,7 +262,7 @@ namespace Scribble.Testing
         private static void Release(object value) { if (value != null && Marshal.IsComObject(value)) Marshal.ReleaseComObject(value); }
     }
     public sealed class StressNative
-    { public string host, error; public double width, height; public string[] measurement_warnings = new string[0]; public StressSheet[] sheets = new StressSheet[0]; public StressSlide[] slides = new StressSlide[0]; }
+    { public string host, error; public double width, height; public string[] measurement_warnings = new string[0]; public StressSheet[] sheets = new StressSheet[0]; public StressSlide[] slides = new StressSlide[0]; public StressTable[] tables = new StressTable[0]; }
     public sealed class StressSheet
     { public string name; public bool recalculated; public StressCell[] cells = new StressCell[0]; public StressChart[] charts = new StressChart[0]; }
     public sealed class StressCell { public int row, column; public object value; public string formula; }
@@ -239,4 +271,8 @@ namespace Scribble.Testing
     { public string name, text, font, color, fill_color, measurement_warning; public bool is_table_cell; public double x, y, width, height, bound_width, bound_height, available_width, available_height, font_size; }
     public sealed class StressChart { public int type; public string title, error; public string[] measurement_warnings = new string[0]; public double? minimum; public StressSeries[] series = new StressSeries[0]; }
     public sealed class StressSeries { public string name, fill_color, line_color; public string[] categories, values; }
+    public sealed class StressTable
+    { public int number, rows, columns; public bool borders; public StressWordCell[] cells = new StressWordCell[0]; }
+    public sealed class StressWordCell
+    { public int row, column; public string text; public bool bold; }
 }

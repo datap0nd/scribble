@@ -25,6 +25,13 @@ PEOPLE = ["Mira Vale", "Mira Vail", "Leon Park", "Leona Park", "Tessa Reed", "Te
 CATEGORIES = ["FINANCE", "OPERATIONS", "PROCUREMENT", "LAUNCH", "RISK"]
 STAGES = ["INITIAL", "REVIEW", "REVISION", "APPROVAL", "FINAL"]
 BASE_DATE = datetime(2026, 1, 5, 9, 0, tzinfo=timezone.utc)
+HERO_MESSAGES = {
+    496: ("Portfolio mandate", "The executive review must use eight slides and distinguish observed results from recommendations.", "inputs/excel/EightSheetWorkbook.xlsx"),
+    497: ("Channel performance", "UAE direct revenue is AED 420000 and UAE partner revenue is AED 365000.", "inputs/excel/WB20.xlsx"),
+    498: ("Customer evidence", "Customer satisfaction is 92.4 percent and the verified return rate is 2.1 percent.", "inputs/powerpoint/PPT30.pptx"),
+    499: ("Risk decision", "R-317 is the only critical risk; its accountable owner is Noura Ali.", "inputs/excel/KoreanOperations.xlsx"),
+    500: ("Final recommendation", "Defer Wave 3 until 2026-11-15 and complete the failover drill first.", "inputs/pdf/ExecutiveRiskReport130.pdf"),
+}
 
 
 def write_json(path: Path, value: object) -> None:
@@ -141,6 +148,8 @@ def build_records() -> tuple[list[dict], dict]:
                     attachments.append(f"inputs/powerpoint/PPT{(thread_number-1)%30+1:02d}.pptx")
                     if topic in (0, 2):
                         attachments.append(f"inputs/excel/WB{project+1:02d}.xlsx")
+                if ordinal in HERO_MESSAGES:
+                    attachments = [HERO_MESSAGES[ordinal][2]]
                 data_status = facts["data_status"] if version == 4 else "provisional"
                 current = business_text(project, topic, version, facts)
                 body = (f"Synthetic message ID: {mail_id}\nCorpus: {CORPUS_ID}\n"
@@ -175,6 +184,11 @@ def build_records() -> tuple[list[dict], dict]:
                         f"Audit row {i:03d}: synthetic checkpoint {project_id}-{i:03d}; supporting evidence remains provisional until the latest thread decision."
                         for i in range(1, 181))
                     body += f"\nEnd-of-body marker: {mail_id}-TAIL.\n"
+                if ordinal in HERO_MESSAGES:
+                    heading, evidence, _ = HERO_MESSAGES[ordinal]
+                    body += (f"\nExecutive packet: ORION-FOLD-2026\nSection: {heading}\n"
+                             f"Approved packet evidence: {evidence}\n"
+                             "Use this packet evidence and the attached source in the executive deck; cite the message ID in speaker notes.\n")
                 body += "\nEntirely fictional Scribble test data. All people, companies, messages and business events in this corpus are synthetic.\n"
                 root_message_id = f"<MAIL{(thread_number-1)*5+1:04d}@scribble-stress.example.test>"
                 record = {
@@ -303,7 +317,8 @@ def emit_eml(record: dict, root: Path) -> bytes:
     message.set_content(record["body"])
     for attachment in record["attachments"]:
         path = root / attachment
-        subtype = "vnd.openxmlformats-officedocument.spreadsheetml.sheet" if path.suffix == ".xlsx" else "vnd.openxmlformats-officedocument.presentationml.presentation"
+        subtype = ("vnd.openxmlformats-officedocument.spreadsheetml.sheet" if path.suffix == ".xlsx" else
+                   "vnd.openxmlformats-officedocument.presentationml.presentation" if path.suffix == ".pptx" else "pdf")
         message.add_attachment(path.read_bytes(), maintype="application", subtype=subtype, filename=path.name)
     if record["attachments"]:
         message.set_boundary("scribble-stress-" + record["id"])

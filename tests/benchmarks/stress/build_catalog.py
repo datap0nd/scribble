@@ -62,7 +62,7 @@ def source_checks(paths, artifacts):
 
 
 def add(cases, oracles, case_id, host, prompt, inputs, artifacts, checks, family,
-        *, prerequisite=None, formula_probes=None):
+        *, prerequisite=None, formula_probes=None, allow_source_edit=False, browser_allowed_hosts=None):
     case = {"id": case_id, "version": 1, "host": host, "prompt": prompt,
             "inputs": list(dict.fromkeys(inputs)), "artifacts": artifacts,
             "oracle_ref": f"evaluator-only/cases/{case_id}.json", "timeout_seconds": 900,
@@ -75,9 +75,13 @@ def add(cases, oracles, case_id, host, prompt, inputs, artifacts, checks, family
             "task_family": family}
     if prerequisite:
         case["prerequisite_prompt"] = prerequisite
+    if allow_source_edit:
+        case["allow_source_edit"] = True
+    if browser_allowed_hosts:
+        case["browser_allowed_hosts"] = browser_allowed_hosts
     cases.append(case)
     oracles[case_id] = {"schema": 1, "suite_id": SUITE, "id": case_id,
-        "checks": source_checks(inputs, artifacts) + checks,
+        "checks": source_checks([] if allow_source_edit else inputs, artifacts) + checks,
         "review_required": ["native visual review", "source citation coverage", "no unsupported factual claims"]}
     if formula_probes:
         oracles[case_id]["formula_probes"] = formula_probes
@@ -208,7 +212,7 @@ def outlook_cases(cases, oracles, mail_catalog):
     tasks = mail_catalog["search_tasks"]
     if len(tasks) != 70:
         raise ValueError("The independent mail generator must provide exactly70 search tasks.")
-    for task in tasks:
+    for task in tasks[:67]:
         case_id = task.get("case_id", task.get("id"))
         prompt = task["prompt"] + (" Search only the isolated Scribble synthetic mailbox. Continue native search pages until the scope is complete. "
             "In your final answer list every matching MAILnnnn identifier and write a separate line exactly in the form Total matches: N, including zero matches. "
@@ -273,6 +277,49 @@ def cross_app_cases(cases, oracles, workbooks, presentations):
             "powerpoint_output_to_outlook", prerequisite=initial)
 
 
+def hero_cases(cases, oracles, hero, report, presentations):
+    cases[:] = [case for case in cases if case["id"] not in ("EX60", "XA20")]
+    oracles.pop("EX60", None)
+    oracles.pop("XA20", None)
+
+    korean = hero["korean"]
+    add(cases, oracles, "EX60", "Excel",
+        "Translate every Korean text cell in every worksheet of the active workbook into English. Preserve worksheet names, row and column positions, numbers, dates, formatting, and table structure. Replace only the detected Korean text cells, leave formulas and merged cells unchanged, and complete the full-workbook translation without saving over the source file.",
+        [korean["path"]], ["xlsx"], [{"kind": "workbook_exact_text", "sheets": korean["sheets"]}],
+        "whole_workbook_korean_to_english", allow_source_edit=True)
+
+    theme = {"kind": "presentation", "slide_count": 8, "theme_ref": "evaluator-only/SamsungMD2.theme.json",
+        "reference_pptx": presentations[-1]["reference_path"],
+        "required_facts": [420000, 365000, 92.4, 2.1, "R-317", "Noura Ali", "2026-11-15"],
+        "minimum_shapes_per_slide": 3, "minimum_native_charts": 1, "minimum_table_cells": 8}
+    add(cases, oracles, "OL68", "Outlook",
+        "Find the five synthetic emails containing the exact packet marker ORION-FOLD-2026. Read all five complete message bodies and every attachment. Create exactly eight new editable PowerPoint slides in the supplied dense Samsung executive style: executive headline, portfolio mandate, channel performance, customer evidence, risk, source-backed analysis, recommendation, and appendix. Include a native editable chart comparing the two stated UAE revenue channels, at least one native table, concise source citations in speaker notes using the MAIL identifiers, explicit units, and clear separation of observed facts from recommendations. Do not send email and do not alter any source attachment.",
+        [], ["pptx"], [theme, {"kind": "native_chart", "category_labels": ["UAE direct", "UAE partner"],
+            "series_values": [420000, 365000], "zero_baseline": True, "native_editable": True,
+            "host": "PowerPoint", "artifact_extension": "pptx", "units": "AED"}],
+        "five_email_attachment_to_samsung_deck")
+    cases[-1]["mailbox_mode"] = "native_synthetic_store"
+
+    add(cases, oracles, "OL69", "Outlook",
+        "Read the attached 130-page synthetic PDF in full and write a concise executive summary covering the approved baseline, service-level result versus target, the critical risk and owner, and the final recommendation with its date and prerequisite. State important caveats, distinguish evidence from proposed action, and include the final page marker to demonstrate complete-page coverage. Do not invent missing facts.",
+        [report["path"]], [], [{"kind": "required_text", "values": report["required_facts"] + [report["terminal_marker"]]}],
+        "long_pdf_full_document_summary")
+
+    allowed = ["www.samsungtradein.ae", "samsungtradein.ae"]
+    add(cases, oracles, "OL70", "Chrome",
+        "Open https://www.samsungtradein.ae/ae-en/ and complete the public UAE trade-in estimate flow for a new Galaxy Z Fold8 using an Apple iPhone 16 Pro, 256 GB, in Flawless condition. Do not sign in, submit personal information, or buy anything. On the final result page, record verified browser evidence and summarize the exact trade-in amount, currency, configured products, storage, condition, market, source URL, observation caveat, and observation time. If the public flow blocks access, report the verified blocker rather than guessing.",
+        [], [], [{"kind": "browser_evidence", "purchasedProduct": "Galaxy Z Fold8", "tradeInProduct": "Apple iPhone 16 Pro",
+            "storage": "256 GB", "condition": "Flawless", "market": "United Arab Emirates", "currency": "AED",
+            "allowed_hosts": allowed}], "live_uae_trade_in_verified_evidence", browser_allowed_hosts=allowed)
+
+    word = hero["word"]
+    add(cases, oracles, "XA20", "Excel",
+        "Transfer all eight worksheets from the active workbook into one new Word document. For each worksheet, create a clearly titled native Word table in the original workbook order, preserving every header, row, column, value, symbol, date, percentage, and identifier exactly. Do not omit or reformat source values. After the eight tables, write a concise cross-sheet analysis that identifies the revenue pattern, budget variances, staffing gaps, inventory position, project and risk dependencies, and dated actions. Keep the source workbook unchanged and leave the Word draft open for review.",
+        [word["path"]], ["docx"], [{"kind": "word_tables", "tables": word["tables"]},
+            {"kind": "required_text", "values": ["revenue", "budget", "staffing", "inventory", "risk", "action"]}],
+        "eight_sheet_workbook_to_exact_word_tables")
+
+
 def validate(cases, oracles):
     counts = Counter(case["id"][:2] for case in cases)
     if dict(counts) != FAMILIES or len(cases) != 200:
@@ -331,6 +378,8 @@ def manifest(root):
 def build(root, seal=False):
     office = read(root / "evaluator-only/office_catalog.json")
     mail = read(root / "evaluator-only/mail_catalog.json")
+    hero = read(root / "evaluator-only/hero_inputs.json")
+    report = read(root / "evaluator-only/hero_pdf.json")
     workbooks, presentations = office["workbooks"], office["presentations"]
     if len(workbooks) != 20 or len(presentations) != 30:
         raise ValueError("Office generator must provide20 workbooks and30 presentations.")
@@ -339,6 +388,7 @@ def build(root, seal=False):
     outlook_cases(cases, oracles, mail)
     powerpoint_cases(cases, oracles, presentations, {wb["id"]: wb for wb in workbooks})
     cross_app_cases(cases, oracles, workbooks, presentations)
+    hero_cases(cases, oracles, hero, report, presentations)
     validate(cases, oracles)
     write(root, "operator/cases.json", cases)
     for case in cases:

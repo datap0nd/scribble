@@ -400,6 +400,7 @@ namespace GuardrailTests
                 Run("Stress charts stay in their requested Office host", StressGradingTests.NativeChartsStayInRequestedHost);
                 Run("Stress mailbox grading requires complete search and exact IDs", StressGradingTests.MailRequiresCompleteSearchAndExactIds);
                 Run("Stress incomplete cells and draft metric labels stay grounded", StressGradingTests.IncompleteCellsAndDraftMetricsRemainGrounded);
+                Run("Stress hero cases require exact native and verified browser evidence", StressGradingTests.HeroCasesRequireExactNativeAndBrowserEvidence);
                 Run("Stress PDF and HTML retain 200 explicit results", StressGradingTests.ReportRetainsTwoHundredResults);
                 Run("Office bootstrap documents contain no task data or external content", OfficeBootstrapTests.NeutralEmbeddedDocuments);
                 Run("Office bootstrap respects Stop before launching Office", OfficeBootstrapTests.CancelledStartupDoesNotReachOffice);

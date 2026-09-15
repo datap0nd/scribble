@@ -80,7 +80,7 @@ namespace Scribble.Testing
                 if (run.suite_id != "scribble-stress-v1") checks.AddRange(CheckOutputFacts(run.case_id, finalText.ToString(), false));
                 if (run.suite_id != "scribble-stress-v1" && run.case_id == "OL02" && !memoryOutputs.Any(m => m.extension == "msg"))
                     Add(checks, "native_mail_headers", false, "Native draft recipient and unsent metadata are missing.");
-                CheckSourcePreservation(checks, archive);
+                CheckSourcePreservation(checks, archive, testCase.allow_source_edit);
                 if (run.suite_id == "scribble-stress-v1") checks.AddRange(TestLabStressEvaluator.Evaluate(archive, run, testCase, checks));
             }
             var failed = checks.Where(c => c.hard && !c.passed).ToArray();
@@ -93,8 +93,9 @@ namespace Scribble.Testing
             return evaluation;
         }
 
-        private static void CheckSourcePreservation(List<TestLabCheck> checks, ZipArchive archive)
+        private static void CheckSourcePreservation(List<TestLabCheck> checks, ZipArchive archive, bool allowSourceEdit)
         {
+            if (allowSourceEdit) return;
             var before = Readbacks(archive, "-source-source-"); var after = Readbacks(archive, "-final-source-");
             foreach (var pair in before)
             {

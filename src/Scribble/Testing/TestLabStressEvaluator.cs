@@ -95,6 +95,15 @@ namespace Scribble.Testing
                     reason = Text(rule, "sheet") + "!" + Text(rule, "cell") + " must contain the requested text: " + Text(rule, "expected");
                     return textCells.Length == 1 && string.Equals(Convert.ToString(textCells[0].value, CultureInfo.InvariantCulture).Trim(),
                         Text(rule, "expected").Trim(), StringComparison.OrdinalIgnoreCase);
+                case "workbook_exact_text":
+                    reason = "Every expected workbook text cell must contain its exact English translation, with no Hangul left in any measured cell.";
+                    return WorkbookExactText(native, rule);
+                case "word_tables":
+                    reason = "Every source table must be transferred to a bordered native Word table in order, with exact cell text and a bold header row.";
+                    return WordTables(native, rule);
+                case "browser_evidence":
+                    reason = "A final verified browser evidence receipt and matching answer are required from the allow-listed live trade-in result page.";
+                    return BrowserEvidence(timeline, answer, rule);
                 case "native_chart":
                     var chartHost = Text(rule, "host"); var chartExtension = Text(rule, "artifact_extension");
                     if (!(chartHost == "Excel" && chartExtension == "xlsx") && !(chartHost == "PowerPoint" && chartExtension == "pptx"))
@@ -136,6 +145,70 @@ namespace Scribble.Testing
             return native.Where(n => n.host == "Excel" && string.IsNullOrEmpty(n.error)).SelectMany(n => n.sheets)
                 .Where(s => s.recalculated && Regex.IsMatch(s.name, "^" + Regex.Escape(sheet).Replace("\\*", ".*") + "$"))
                 .SelectMany(s => s.cells).Where(c => c.row == row && c.column == column).ToArray();
+        }
+
+        private static bool WorkbookExactText(StressNative[] native, Dictionary<string, object> rule)
+        {
+            var workbooks = native.Where(n => n.host == "Excel" && string.IsNullOrEmpty(n.error)).ToArray();
+            if (workbooks.Length != 1 || workbooks[0].sheets.Any(s => s.cells.Any(c => Regex.IsMatch(Convert.ToString(c.value) ?? "", "[\\uAC00-\\uD7AF]")))) return false;
+            var expectedSheets = Items(Value(rule, "sheets")).Cast<Dictionary<string, object>>().ToArray();
+            if (expectedSheets.Length == 0 || workbooks[0].sheets.Length != expectedSheets.Length) return false;
+            foreach (var expectedSheet in expectedSheets)
+            {
+                var matches = workbooks[0].sheets.Where(s => string.Equals(s.name, Text(expectedSheet, "name"), StringComparison.Ordinal)).ToArray();
+                if (matches.Length != 1) return false;
+                foreach (var raw in Items(Value(expectedSheet, "cells")).Cast<Dictionary<string, object>>())
+                {
+                    var found = matches[0].cells.Where(c => c.row == (int)Number(raw, "row", -1) && c.column == (int)Number(raw, "column", -1)).ToArray();
+                    if (found.Length != 1 || !string.Equals(Convert.ToString(found[0].value, CultureInfo.InvariantCulture), Text(raw, "text"), StringComparison.Ordinal)) return false;
+                }
+            }
+            return true;
+        }
+
+        private static bool WordTables(StressNative[] native, Dictionary<string, object> rule)
+        {
+            var documents = native.Where(n => n.host == "Word" && string.IsNullOrEmpty(n.error)).ToArray();
+            if (documents.Length != 1) return false;
+            var expected = Items(Value(rule, "tables")).ToArray();
+            if (expected.Length == 0 || documents[0].tables.Length != expected.Length) return false;
+            for (int i = 0; i < expected.Length; i++)
+            {
+                var rows = Items(expected[i]).Select(row => Strings(row)).ToArray();
+                var actual = documents[0].tables[i];
+                if (!actual.borders || rows.Length != actual.rows || rows.Any(r => r.Length != actual.columns)) return false;
+                for (int r = 0; r < rows.Length; r++) for (int c = 0; c < rows[r].Length; c++)
+                {
+                    var cell = actual.cells.SingleOrDefault(x => x.row == r + 1 && x.column == c + 1);
+                    if (cell == null || !string.Equals(cell.text.Trim(), rows[r][c].Trim(), StringComparison.Ordinal) || (r == 0 && !cell.bold)) return false;
+                }
+            }
+            return true;
+        }
+
+        private static bool BrowserEvidence(string timeline, string answer, Dictionary<string, object> rule)
+        {
+            Dictionary<string, object> evidence = null;
+            var json = new JavaScriptSerializer { MaxJsonLength = 2 * 1024 * 1024 };
+            foreach (var line in (timeline ?? "").Split('\n').Where(l => !string.IsNullOrWhiteSpace(l)))
+            {
+                var entry = json.Deserialize<Dictionary<string, object>>(line);
+                if (Text(entry, "stage") != "tool_result") continue;
+                var detail = Value(entry, "detail") as Dictionary<string, object>;
+                if (detail == null || Text(detail, "name") != "browser_record_evidence") continue;
+                var content = Text(detail, "Content"); var marker = content.IndexOf("[VERIFIED_BROWSER_EVIDENCE]", StringComparison.Ordinal);
+                var start = marker < 0 ? -1 : content.IndexOf('{', marker);
+                if (start >= 0) evidence = json.Deserialize<Dictionary<string, object>>(content.Substring(start));
+            }
+            if (evidence == null) return false;
+            foreach (var field in new[] { "purchasedProduct", "tradeInProduct", "storage", "condition", "market", "currency" })
+                if (!string.Equals(Text(evidence, field), Text(rule, field), StringComparison.OrdinalIgnoreCase)) return false;
+            Uri source;
+            if (!Uri.TryCreate(Text(evidence, "sourceUrl"), UriKind.Absolute, out source) || source.Scheme != "https" ||
+                !Strings(Value(rule, "allowed_hosts")).Contains(source.IdnHost, StringComparer.OrdinalIgnoreCase)) return false;
+            var amount = Text(evidence, "amount"); var caveat = Text(evidence, "caveat");
+            return !string.IsNullOrWhiteSpace(amount) && !string.IsNullOrWhiteSpace(caveat) &&
+                Contains(answer, amount) && Contains(answer, Text(evidence, "currency")) && Contains(answer, caveat) && Contains(answer, source.Host);
         }
 
         private static bool ExactMailCount(string answer, int expected)
@@ -190,6 +263,9 @@ namespace Scribble.Testing
         {
             if (native.slides.Length != (int)Number(rule, "slide_count", -1)) return false;
             if (!Strings(Value(rule, "required_facts")).All(v => Contains(text, v))) return false;
+            if (native.slides.Any(s => s.shapes.Length < (int)Number(rule, "minimum_shapes_per_slide", 1))) return false;
+            if (native.slides.SelectMany(s => s.charts).Count() < (int)Number(rule, "minimum_native_charts", 0)) return false;
+            if (native.slides.SelectMany(s => s.shapes).Count(s => s.is_table_cell) < (int)Number(rule, "minimum_table_cells", 0)) return false;
             var themePath = Text(rule, "theme_ref");
             if (string.IsNullOrEmpty(themePath) || !themePath.StartsWith("evaluator-only/", StringComparison.Ordinal)) return false;
             var manifest = TestLabSuite.Read<KitManifest>(Path.Combine(run.fixture_root, "manifest.json"));

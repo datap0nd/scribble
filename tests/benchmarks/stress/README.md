@@ -1,7 +1,7 @@
 # Scribble synthetic stress corpus
 
-This suite contains 200 distinct tasks against 20 fictional Excel workbooks,
-30 fictional PowerPoint presentations and 500 fictional Outlook messages. The
+This suite contains 200 distinct tasks against 22 fictional Excel workbooks,
+30 fictional PowerPoint presentations, one 130-page PDF and 500 fictional Outlook messages. The
 case catalog is generated from independent source calculations. Generating a
 corpus is not a model run and does not establish model quality.
 
@@ -10,6 +10,14 @@ isolated what-if calculations), 70 Outlook searches (500-message pagination,
 folder/date/unread boundaries, exact sender and project identities, current
 decisions and long-body reads), 50 PowerPoint cases (30 repairs and 20 new
 reviews), and 20 output handoffs between Office applications.
+
+Five representative high-value cases are embedded without changing the
+200-case total: full-workbook Korean-to-English translation (EX60), a dense
+Samsung-style deck from five emails and attachments (OL68), a complete
+130-page PDF summary (OL69), a verified live UAE trade-in flow in Chrome
+(OL70), and an exact eight-sheet Excel-to-Word table transfer plus analysis
+(XA20). Live browsing is limited to the exact per-case HTTPS host allow-list;
+all other sources remain synthetic.
 
 ## Build and seal
 

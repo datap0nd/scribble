@@ -151,6 +151,43 @@ namespace GuardrailTests
                 Check(Evaluate(mailOracle, new[] { mail }, "", new[] { "msg" }).Any(c => !c.passed), "An incorrect first amount or contradictory labeled amount passed.");
             }
         }
+        public static void HeroCasesRequireExactNativeAndBrowserEvidence()
+        {
+            var workbookOracle = new { id = "EX01", checks = new object[] { new { kind = "workbook_exact_text", sheets = new[] {
+                new { name = "Operations", cells = new[] { new { row = 1, column = 1, text = "Category" }, new { row = 2, column = 1, text = "Logistics" } } } } } } };
+            var workbook = new StressReadback { run_id = "test", native_readback = true, run_created_output = true, output_boundary = true, artifact_extension = "xlsx",
+                stress_native = new StressNative { host = "Excel", sheets = new[] { new StressSheet { name = "Operations", recalculated = true, cells = new[] {
+                    new StressCell { row = 1, column = 1, value = "Category" }, new StressCell { row = 2, column = 1, value = "Logistics" } } } } } };
+            Check(Evaluate(workbookOracle, new[] { workbook }, "", new[] { "xlsx" }).All(c => c.passed), "Exact translated workbook cells were rejected.");
+            workbook.stress_native.sheets[0].cells[1].value = "물류";
+            Check(Evaluate(workbookOracle, new[] { workbook }, "", new[] { "xlsx" }).Any(c => !c.passed), "Remaining Korean text passed the full-workbook translation gate.");
+
+            var expectedTable = new[] { new[] { "Month", "Revenue" }, new[] { "2026-09", "420000" } };
+            var wordOracle = new { id = "EX01", checks = new object[] { new { kind = "word_tables", tables = new[] { expectedTable } } } };
+            var word = new StressReadback { run_id = "test", native_readback = true, run_created_output = true, output_boundary = true, artifact_extension = "docx",
+                stress_native = new StressNative { host = "Word", tables = new[] { new StressTable { number = 1, rows = 2, columns = 2, borders = true, cells = new[] {
+                    new StressWordCell { row = 1, column = 1, text = "Month", bold = true }, new StressWordCell { row = 1, column = 2, text = "Revenue", bold = true },
+                    new StressWordCell { row = 2, column = 1, text = "2026-09" }, new StressWordCell { row = 2, column = 2, text = "420000" } } } } } };
+            Check(Evaluate(wordOracle, new[] { word }, "", new[] { "docx" }).All(c => c.passed), "Exact bordered Word table was rejected.");
+            word.stress_native.tables[0].cells[3].text = "42000";
+            Check(Evaluate(wordOracle, new[] { word }, "", new[] { "docx" }).Any(c => !c.passed), "A dropped Word table digit passed exact transfer grading.");
+
+            var browserOracle = new { id = "OL01", checks = new object[] { new { kind = "browser_evidence", purchasedProduct = "Galaxy Z Fold8",
+                tradeInProduct = "Apple iPhone 16 Pro", storage = "256 GB", condition = "Flawless", market = "United Arab Emirates", currency = "AED",
+                allowed_hosts = new[] { "www.samsungtradein.ae" } } } };
+            var evidence = new { purchasedProduct = "Galaxy Z Fold8", tradeInProduct = "Apple iPhone 16 Pro", storage = "256 GB", condition = "Flawless",
+                market = "United Arab Emirates", amount = "1,660", currency = "AED", caveat = "Estimate subject to inspection", sourceUrl = "https://www.samsungtradein.ae/ae-en/result" };
+            var tool = new { stage = "tool_result", detail = new { name = "browser_record_evidence", Content = "[VERIFIED_BROWSER_EVIDENCE]\n" + TestLab.Serialize(evidence) } };
+            var final = new { stage = "pane_event", detail = new { type = "assistant", text = "AED 1,660. Estimate subject to inspection. Source: www.samsungtradein.ae" } };
+            Check(Evaluate(browserOracle, new StressReadback[0], TestLab.Serialize(tool) + "\n" + TestLab.Serialize(final), new string[0]).All(c => c.passed), "Verified live browser evidence was rejected.");
+            var wrong = new { stage = "pane_event", detail = new { type = "assistant", text = "AED 1,760. Estimate subject to inspection. Source: www.samsungtradein.ae" } };
+            Check(Evaluate(browserOracle, new StressReadback[0], TestLab.Serialize(tool) + "\n" + TestLab.Serialize(wrong), new string[0]).Any(c => !c.passed), "An answer that changed the verified amount passed.");
+
+            var liveCase = new LabCase { browser_allowed_hosts = new[] { "www.samsungtradein.ae" } };
+            Check(TestLab.IsBrowserSourceAllowed(liveCase, new Uri("https://www.samsungtradein.ae/ae-en/result?quote=1")), "The exact case allow-list rejected its HTTPS result page.");
+            Check(!TestLab.IsBrowserSourceAllowed(liveCase, new Uri("https://evil.example/")), "An unrelated live host escaped the case allow-list.");
+            Check(!TestLab.IsBrowserSourceAllowed(liveCase, new Uri("https://user@www.samsungtradein.ae/")), "A credential-bearing URL escaped the case allow-list.");
+        }
         public static void ReportRetainsTwoHundredResults()
         {
             var root = Path.Combine(Path.GetTempPath(), "scribble-stress-report-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);

@@ -336,9 +336,12 @@ def main() -> int:
             else:
                 modules.symlink_to(Path(args.node_modules).resolve(),target_is_directory=True)
         shutil.copyfile(Path(__file__).with_name("author_office.mjs"),build/"author_office.mjs")
+        shutil.copyfile(Path(__file__).with_name("author_hero_inputs.mjs"),build/"author_hero_inputs.mjs")
         env=os.environ.copy()
         env.update(PRESENTATIONS_SKILL=str(Path(args.presentations_skill).resolve()),RUNTIME_PYTHON=sys.executable,RUNTIME_NODE=str(Path(args.runtime_node).resolve()),RUNTIME_NODE_MODULES=str(Path(args.node_modules).resolve()),OFFICE_STRESS_ROOT=str(root),OFFICE_STRESS_ONLY=args.only,OFFICE_STRESS_PREVIEWS="0" if args.skip_previews else "1")
         subprocess.run([args.runtime_node,str(build/"author_office.mjs")],env=env,check=True,cwd=build)
+        subprocess.run([args.runtime_node,str(build/"author_hero_inputs.mjs")],env=env,check=True,cwd=build)
+        subprocess.run([sys.executable,str(Path(__file__).with_name("author_hero_pdf.py")),"--output",str(root)],check=True)
     if args.verify:
         result=verify(root,catalog)
         print(f"Verified {len(result['checks'])} Office sources; native and model acceptance remain separate.")
