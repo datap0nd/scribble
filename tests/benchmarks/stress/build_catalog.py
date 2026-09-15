@@ -305,7 +305,7 @@ def hero_cases(cases, oracles, hero, report, presentations):
 
     add(cases, oracles, "OL69", "Outlook",
         "Read the attached 130-page synthetic PDF in full and write a concise executive summary covering the approved baseline, service-level result versus target, the critical risk and owner, and the final recommendation with its date and prerequisite. State important caveats, distinguish evidence from proposed action, and include the final page marker to demonstrate complete-page coverage. Do not invent missing facts.",
-        [report["path"]], [], [{"kind": "required_text", "values": report["required_facts"] + [report["terminal_marker"]]}],
+        [report["path"]], [], [{"kind": "required_text", "values": report["required_fragments"] + [report["terminal_marker"]]}],
         "long_pdf_full_document_summary", timeout_seconds=1800)
 
     allowed = ["www.samsungtradein.ae", "samsungtradein.ae"]

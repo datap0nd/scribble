@@ -23,7 +23,8 @@ class CatalogContractTests(unittest.TestCase):
             "word": {"path": "inputs/excel/EightSheetWorkbook.xlsx", "tables": [[['Header'], ['Value']]]},
         })
         build_catalog.write(cls.root, "evaluator-only/hero_pdf.json", {"path": "inputs/pdf/ExecutiveRiskReport130.pdf",
-            "required_facts": ["late-page fact"], "terminal_marker": "ORION-PAGE-130"})
+            "required_facts": ["late-page fact"], "required_fragments": ["late-page", "fact"],
+            "terminal_marker": "ORION-PAGE-130"})
         cls.summary = build_catalog.build(cls.root)
         cls.cases = build_catalog.read(cls.root / "operator/cases.json")
         cls.oracles = {c["id"]: build_catalog.read(cls.root / c["oracle_ref"]) for c in cls.cases}
@@ -82,6 +83,9 @@ class CatalogContractTests(unittest.TestCase):
         self.assertEqual(cases_by_id["OL70"]["host"], "Chrome")
         self.assertEqual(cases_by_id["OL70"]["browser_allowed_hosts"], ["www.samsungtradein.ae", "samsungtradein.ae"])
         self.assertEqual(cases_by_id["OL70"]["browser_start_url"], "https://www.samsungtradein.ae/ae-en/")
+        ol69_required = next(rule for rule in self.oracles["OL69"]["checks"] if rule["kind"] == "required_text")
+        self.assertEqual(ol69_required["values"], ["late-page", "fact", "ORION-PAGE-130"])
+        self.assertNotIn("late-page fact", ol69_required["values"])
         self.assertTrue(any(rule["kind"] == "word_tables" for rule in self.oracles["XA20"]["checks"]))
         # Incomplete June stock is a known subtotal; it is not zero or an
         # annual sum, and the output must disclose that it is incomplete.

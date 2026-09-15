@@ -52,7 +52,13 @@ def build(root: Path) -> Path:
                             title="ORION Continuity Review", author="Scribble synthetic benchmark")
     doc.build(story)
     metadata = {"schema": 1, "path": "inputs/pdf/ExecutiveRiskReport130.pdf", "page_count": 130,
-                "required_facts": list(facts.values()), "terminal_marker": "ORION-PAGE-130"}
+                "required_facts": list(facts.values()),
+                # Check the facts, not one exact prose rendering of them.  A
+                # correct executive summary may use symbols (96.7%) or split a
+                # sentence into bullets while retaining every material value.
+                "required_fragments": ["AED 18.4 million", "96.7", "97.5", "R-317", "Noura Ali",
+                                       "defer Wave 3", "2026-11-15", "failover drill"],
+                "terminal_marker": "ORION-PAGE-130"}
     evaluator = root / "evaluator-only/hero_pdf.json"
     evaluator.parent.mkdir(parents=True, exist_ok=True)
     evaluator.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
