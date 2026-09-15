@@ -101,8 +101,9 @@ namespace Scribble.Outlook
             try
             {
                 var identity = "";
-                if (folder != "sent") { inbox = session.GetDefaultFolder(6); dynamic item = inbox; identity += Convert.ToString(item.StoreID); }
-                if (folder != "inbox") { sent = session.GetDefaultFolder(5); dynamic item = sent; identity += ":" + Convert.ToString(item.StoreID); }
+                Scribble.Testing.TestLabMailbox.AssertScope(_fixtureScope);
+                if (folder != "sent") { inbox = _fixtureScope == null ? session.GetDefaultFolder(6) : Scribble.Testing.TestLabMailbox.GetFolder(_application, 6); dynamic item = inbox; identity += Convert.ToString(item.StoreID); }
+                if (folder != "inbox") { sent = _fixtureScope == null ? session.GetDefaultFolder(5) : Scribble.Testing.TestLabMailbox.GetFolder(_application, 5); dynamic item = sent; identity += ":" + Convert.ToString(item.StoreID); }
                 return identity;
             }
             finally

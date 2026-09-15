@@ -24,6 +24,12 @@ foreach ($pattern in $forbidden) {
             -not ($_.Path -like '*\Testing\TestLabSuite.cs' -and
                 ($_.Line.Trim() -eq 'if (File.Exists(Descriptor)) File.Replace(temporary, Descriptor, null); else File.Move(temporary, Descriptor);' -or
                  $_.Line.Trim() -eq 'if (File.Exists(file)) File.Replace(temp, file, null); else File.Move(temp, file);')) -and
+            # The operator publishes its protected fixture binding and places
+            # a newly created, unsaved synthetic item in the verified PST.
+            # No model tool reaches the import method or can move user mail.
+            -not ($_.Path -like '*\Testing\TestLabMailbox.cs' -and
+                ($_.Line.Trim() -eq 'try { File.WriteAllBytes(temporary, bytes); File.Move(temporary, Descriptor(state)); }' -or
+                 $_.Line.Trim() -eq 'moved = mail.Move(folder);')) -and
             # Reporter-only cleanup of its fresh, validated staging directory.
             -not ($_.Path -like '*\Testing\TestLabPdfWriter.cs' -and
                 $_.Line.Trim() -eq 'try { Directory.Delete(staging, true); } catch (IOException) { } catch (UnauthorizedAccessException) { }') -and

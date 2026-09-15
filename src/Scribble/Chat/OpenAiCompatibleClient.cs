@@ -73,6 +73,7 @@ namespace Scribble.Chat
         {
             if (RoutesToGemini(settings, requestModel))
             {
+                await Scribble.Testing.TestLabStressBudget.GuardRequestAsync(settings, requestModel?.model, cancellationToken).ConfigureAwait(true);
                 return await _gemini.GenerateStreamAsync(
                     _httpClient,
                     settings,
@@ -132,6 +133,7 @@ namespace Scribble.Chat
             ChatCompletionRequest requestModel,
             CancellationToken cancellationToken)
         {
+            await Scribble.Testing.TestLabStressBudget.GuardRequestAsync(settings, requestModel?.model, cancellationToken).ConfigureAwait(true);
             if (settings == null || !settings.IsConfigured)
             {
                 throw new AiEndpointException(
@@ -258,6 +260,7 @@ namespace Scribble.Chat
 
                 using (response)
                 {
+                    Scribble.Testing.TestLabStressBudget.RecordProviderResponse((int)response.StatusCode);
                     string responseText;
                     try
                     {

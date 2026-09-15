@@ -391,6 +391,14 @@ namespace GuardrailTests
                 Run("Web reads cache and preserve redirect identity", HardeningTests.WebCacheAndRedirects);
                 Run("Source spans and shared tool contracts reject malformed writes", HardeningTests.SourceSpansAndContracts);
                 Run("Actual 20000-row writes reconcile before/after interruption", DurableTransformTests.TwentyThousandRows);
+                Run("Stress external options retain exact requested scope", StressKitTests.ExternalOptionsAndExactScope);
+                Run("Stress kit snapshots isolate only selected case inputs", StressKitTests.ExternalSnapshotAndProjection);
+                Run("Stress presentation grading checks table fills and native text roles", StressKitTests.PresentationMeasurementsDistinguishBodyAndTables);
+                Run("Stress API budget requires a finite total cap", StressGradingTests.BudgetRequiresFiniteTotal);
+                Run("Stress numeric outputs require native recalculation", StressGradingTests.NativeCellsRequireRecalculation);
+                Run("Stress mailbox grading requires complete search and exact IDs", StressGradingTests.MailRequiresCompleteSearchAndExactIds);
+                Run("Stress incomplete cells and draft metric labels stay grounded", StressGradingTests.IncompleteCellsAndDraftMetricsRemainGrounded);
+                Run("Stress PDF and HTML retain 200 explicit results", StressGradingTests.ReportRetainsTwoHundredResults);
                 Console.WriteLine("PASS: " + _passed + " guardrail tests");
                 if (_passed == 0) throw new InvalidOperationException("No tests matched the requested filter.");
                 return 0;

@@ -127,6 +127,11 @@ namespace Scribble.Testing
             }
             if (c.host == "Outlook")
             {
+                if (TestLabMailbox.Enabled)
+                {
+                    TestLabMailbox.Prepare((object)origin, cancel, log);
+                    return;
+                }
                 TestLabMail.Prepare((object)origin, c, cancel, log);
                 // The add-in task pane belongs to the explorer. No mailbox
                 // import or PST registration is needed for local MSG fixtures.
@@ -198,7 +203,10 @@ namespace Scribble.Testing
         {
             dynamic ns = session;
             if (!(entryId ?? "").StartsWith(Prefix, StringComparison.Ordinal))
+            {
+                TestLabMailbox.ValidateIdentity(entryId, storeId);
                 return string.IsNullOrEmpty(storeId) ? ns.GetItemFromID(entryId) : ns.GetItemFromID(entryId, storeId);
+            }
             var parts = entryId.Split(':');
             int index;
             var runId = TestLab.ActiveRunId();
@@ -214,6 +222,7 @@ namespace Scribble.Testing
 
         public static IReadOnlyList<MessageSnapshot> Load(object application, LabCase c)
         {
+            if (TestLabMailbox.Enabled) return TestLabMailbox.Load(application, c);
             var runId = TestLab.ActiveRunId();
             if (runId == null) throw new InvalidOperationException("No active synthetic run.");
             var run = TestLab.GetRun(runId);

@@ -17,6 +17,8 @@ namespace Scribble.Testing
     public sealed class SuiteState
     {
         public string id, folder, commit, kitHash, caseId, host, runId, chromeToken, sourceUrl;
+        public string catalogRoot, fixtureSuiteId;
+        public string[] requestedCaseIds;
         public int pid;
         public long processStart;
         public DateTime expires;
@@ -233,6 +235,113 @@ namespace Scribble.Testing
                 throw new InvalidDataException("Case " + caseId.ToUpperInvariant() + " is not present in the downloaded kit.");
             return selected;
         }
+        public static LabCase[] SelectRequestedCases(LabCase[] cases, string[] requested)
+        {
+            cases = cases ?? new LabCase[0];
+            if (cases.Any(c => c == null || !Regex.IsMatch(c.id ?? "", "^[A-Z]{2}[0-9]{2}$")) ||
+                cases.Select(c => c.id).Distinct(StringComparer.OrdinalIgnoreCase).Count() != cases.Length)
+                throw new InvalidDataException("The kit contains invalid or duplicate case IDs.");
+            if (requested == null) return SelectCases(cases, null);
+            if (requested.Length == 0 || requested.Distinct(StringComparer.OrdinalIgnoreCase).Count() != requested.Length)
+                throw new InvalidDataException("Select at least one distinct case.");
+            var selected = requested.Select(id => SelectCases(cases, id).Single()).ToArray();
+            if (selected.Any(c => !new[] { "Excel", "PowerPoint", "Outlook" }.Contains(c.host)))
+                throw new InvalidDataException("The operator supports only Excel, PowerPoint and Outlook cases.");
+            return selected;
+        }
+
+        // External input is copied once into a suite-owned, checksum-verified
+        // snapshot. Case projections below never open the user's original files.
+        public static string SnapshotExternalKit(string source, string manifestHash, string destination, CancellationToken cancel)
+        {
+            source = Path.GetFullPath(source);
+            var manifestPath = TestLab.SafeChild(source, "manifest.json");
+            if (!string.Equals(TestLab.FileHash(manifestPath), manifestHash, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("External kit manifest checksum mismatch.");
+            var manifest = TestLab.VerifyKit(source);
+            if (manifest.files.Length > 5000 || manifest.files.Sum(f => f.size) > 1024L * 1024 * 1024)
+                throw new InvalidDataException("External kit exceeds the 5,000-file or 1 GiB limit.");
+            if (Directory.Exists(destination)) throw new IOException("The kit snapshot destination already exists.");
+            Directory.CreateDirectory(destination);
+            foreach (var file in manifest.files) { cancel.ThrowIfCancellationRequested(); CopyVerifiedKitFile(source, destination, file); }
+            File.Copy(manifestPath, Path.Combine(destination, "manifest.json"));
+            if (!string.Equals(TestLab.FileHash(Path.Combine(destination, "manifest.json")), manifestHash, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("External kit manifest changed while creating the snapshot.");
+            TestLab.VerifyKit(destination);
+            return destination;
+        }
+
+        public static string ProjectExternalCase(string catalog, string destination, LabCase testCase, CancellationToken cancel)
+        {
+            var manifest = Read<KitManifest>(Path.Combine(catalog, "manifest.json"));
+            var files = manifest.files.ToDictionary(f => f.path, StringComparer.OrdinalIgnoreCase);
+            var selected = new HashSet<string>(testCase.inputs ?? new string[0], StringComparer.OrdinalIgnoreCase);
+            if (selected.Any(p => !p.StartsWith("inputs/", StringComparison.Ordinal)))
+                throw new InvalidDataException("Model-visible case inputs must remain inside inputs/.");
+            selected.Add("operator/cases.json");
+            var mailIndex = "operator/mail-index.json";
+            if (files.ContainsKey(mailIndex))
+            {
+                selected.Add(mailIndex);
+                foreach (var mail in Read<MailFixture[]>(TestLab.SafeChild(catalog, mailIndex)))
+                    if (selected.Contains(mail.path)) foreach (var path in mail.attachments ?? new string[0]) selected.Add(path);
+            }
+            if (!string.IsNullOrEmpty(testCase.oracle_ref))
+            {
+                if (!testCase.oracle_ref.StartsWith("evaluator-only/", StringComparison.Ordinal))
+                    throw new InvalidDataException("Case oracle must remain in evaluator-only.");
+                selected.Add(testCase.oracle_ref);
+                var oracle = Read<Dictionary<string, object>>(TestLab.SafeChild(catalog, testCase.oracle_ref));
+                foreach (var reference in OracleFileReferences(oracle)) selected.Add(reference);
+            }
+            var root = Path.Combine(destination, "scribble-test-kit-v1");
+            if (Directory.Exists(root)) throw new IOException("The case fixture destination already exists.");
+            Directory.CreateDirectory(root);
+            foreach (var path in selected)
+            {
+                cancel.ThrowIfCancellationRequested(); KitFile file;
+                if (!files.TryGetValue(path, out file)) throw new InvalidDataException("Case references an unmanifested file: " + path);
+                CopyVerifiedKitFile(catalog, root, file);
+            }
+            File.WriteAllText(Path.Combine(root, "manifest.json"), TestLab.Serialize(new KitManifest {
+                schema = manifest.schema, suite_id = manifest.suite_id,
+                parent_manifest_sha256 = TestLab.FileHash(Path.Combine(catalog, "manifest.json")),
+                files = selected.OrderBy(p => p, StringComparer.Ordinal).Select(p => files[p]).ToArray()
+            }), new UTF8Encoding(false));
+            TestLab.VerifyKit(root);
+            return root;
+        }
+
+        private static IEnumerable<string> OracleFileReferences(object value)
+        {
+            var map = value as Dictionary<string, object>;
+            if (map != null)
+                foreach (var pair in map)
+                {
+                    if ((pair.Key == "theme_ref" || pair.Key == "reference_path") && pair.Value is string)
+                        yield return (string)pair.Value;
+                    else foreach (var path in OracleFileReferences(pair.Value)) yield return path;
+                }
+            else if (value is System.Collections.IEnumerable && !(value is string))
+                foreach (var item in (System.Collections.IEnumerable)value)
+                    foreach (var path in OracleFileReferences(item)) yield return path;
+        }
+
+        private static void CopyVerifiedKitFile(string source, string destination, KitFile file)
+        {
+            var sourcePath = TestLab.SafeChild(source, file.path);
+            var current = sourcePath;
+            while (!string.Equals(current.TrimEnd(Path.DirectorySeparatorChar), source.TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase))
+            {
+                if ((File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
+                    throw new InvalidDataException("External kits cannot contain filesystem links: " + file.path);
+                current = Path.GetDirectoryName(current);
+            }
+            var target = TestLab.SafeChild(destination, file.path);
+            Directory.CreateDirectory(Path.GetDirectoryName(target)); File.Copy(sourcePath, target, false);
+            if (new FileInfo(target).Length != file.size || !string.Equals(TestLab.FileHash(target), file.sha256, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("Kit file changed while being copied: " + file.path);
+        }
         public static string ClassifyFailure(Exception error, bool submitted)
         {
             if (error is OperationCanceledException) return "stopped";
@@ -359,11 +468,16 @@ namespace Scribble.Testing
         private int hostPid;
         private long hostProcessStart;
         private readonly string caseFilter;
+        private readonly TestLabOperatorOptions options;
+        internal string[] RequestedCaseIds => State.requestedCaseIds ?? options?.RequestedCaseIds ??
+            (string.IsNullOrWhiteSpace(caseFilter) ? TestLabOperatorOptions.OfficeCaseIds : new[] { caseFilter.Trim().ToUpperInvariant() });
         internal TestLabSuiteRunner(string folder, Action<string> changed, CancellationToken cancel)
             : this(folder, changed, cancel, null) { }
         internal TestLabSuiteRunner(string folder, Action<string> changed, CancellationToken cancel, string caseFilter)
+            : this(folder, changed, cancel, caseFilter, null) { }
+        internal TestLabSuiteRunner(string folder, Action<string> changed, CancellationToken cancel, string caseFilter, TestLabOperatorOptions options)
         {
-            this.changed = changed; this.cancel = cancel; this.caseFilter = caseFilter;
+            this.changed = changed; this.cancel = cancel; this.caseFilter = caseFilter; this.options = options;
             using (var p = Process.GetCurrentProcess()) State = new SuiteState { id = Guid.NewGuid().ToString("N"), folder = folder, pid = p.Id, processStart = p.StartTime.ToUniversalTime().Ticks, expires = DateTime.UtcNow.AddHours(8) };
         }
         internal void Log(string message)
@@ -381,27 +495,40 @@ namespace Scribble.Testing
                 if (TestLab.ActiveRunId() != null) throw new InvalidOperationException("An unfinished capture is active. Use Stop in this window to recheck it and preserve the incomplete PDF.");
                 TestLabSuite.Save(State);
                 try {
-                    Log("Verifying the test kit bundled with this Scribble build...");
-                    var zip = await Task.Run(() => TestLabSuite.DownloadKit(State, cancel));
-                    var catalog = await Task.Run(() => TestLabSuite.Extract(zip, Path.Combine(State.folder, "catalog")));
+                    Log(options?.KitPath == null ? "Verifying the test kit bundled with this Scribble build..." : "Verifying the explicitly selected external test kit...");
+                    string zip = null, catalog;
+                    if (options?.KitPath == null) {
+                        zip = await Task.Run(() => TestLabSuite.DownloadKit(State, cancel));
+                        catalog = await Task.Run(() => TestLabSuite.Extract(zip, Path.Combine(State.folder, "catalog")));
+                    } else {
+                        State.kitHash = options.KitSha256;
+                        State.commit = System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(typeof(TestLab).Assembly)?.InformationalVersion;
+                        catalog = await Task.Run(() => TestLabSuite.SnapshotExternalKit(options.KitPath, options.KitSha256, Path.Combine(State.folder, "catalog"), cancel));
+                    }
+                    State.catalogRoot = catalog; State.fixtureSuiteId = TestLabSuite.Read<KitManifest>(Path.Combine(catalog, "manifest.json")).suite_id;
                     var catalogCases = TestLabSuite.Read<LabCase[]>(Path.Combine(catalog, "operator", "cases.json"));
-                    var cases = TestLabSuite.SelectCases(catalogCases, caseFilter);
+                    var cases = options == null ? TestLabSuite.SelectCases(catalogCases, caseFilter) : TestLabSuite.SelectRequestedCases(catalogCases, options.RequestedCaseIds);
+                    State.requestedCaseIds = cases.Select(c => c.id).ToArray(); TestLabSuite.Save(State);
                     Results.AddRange(cases.Select(c => new SuiteCaseResult { id = c.id, host = c.host }));
                     await Task.Run(() => TestLabPreparation.VerifyReadableInputs(catalog, cancel));
                     Log("Required synthetic PDFs passed Scribble text extraction preflight.");
                     Log("Verified kit " + State.kitHash + " at main " + State.commit + "; " + catalogCases.Length +
-                        " cases. Execution scope: " + (string.IsNullOrWhiteSpace(caseFilter) ? "16 Excel, PowerPoint and Outlook cases" : cases[0].id + " only") + ".");
+                        " cases. Execution scope: " + cases.Length + " selected Office cases.");
                     foreach (var c in cases) {
                         cancel.ThrowIfCancellationRequested();
+                        if (options?.KitPath != null && !string.Equals(TestLab.FileHash(Path.Combine(catalog, "manifest.json")), State.kitHash, StringComparison.OrdinalIgnoreCase))
+                            throw new InvalidDataException("The pinned external kit snapshot manifest changed. Remaining cases were not submitted.");
+                        if (State.fixtureSuiteId == "scribble-stress-v1") await TestLabStressBudget.CheckAsync(State, cancel);
                         var result = Results.Single(r => r.id == c.id); result.started = DateTime.UtcNow.ToString("O"); result.status = "running";
                         State.caseId = c.id; State.host = c.host; State.runId = null; State.chromeToken = Guid.NewGuid().ToString("N"); State.sourceUrl = null;
+                        State.expires = DateTime.UtcNow.AddHours(State.fixtureSuiteId == "scribble-stress-v1" ? 2 : 8);
                         activeSubmitId = null; hostPid = 0; hostProcessStart = 0;
                         TestLabSuite.Save(State); Journal();
                         var folder = TestLab.SafeChild(State.folder, "cases/" + c.id);
                         bool submitted = false, quiescent = true, captureComplete = false;
                         try {
                             Log(c.id + " / " + c.host + ": preparing visible apps and isolated files.");
-                            var kit = await Task.Run(() => TestLabSuite.Extract(zip, folder)); cancel.ThrowIfCancellationRequested();
+                            var kit = await Task.Run(() => options?.KitPath == null ? TestLabSuite.Extract(zip, folder) : TestLabSuite.ProjectExternalCase(catalog, folder, c, cancel)); cancel.ThrowIfCancellationRequested();
                             TestLab.Enable(kit, transport.PipeName, State.pid, State.processStart);
                             if (c.host == "Chrome") await Prepare(c.id, folder);
                             else {
@@ -415,14 +542,16 @@ namespace Scribble.Testing
                             if (c.host == "Chrome") OpenChrome(); else ConnectOffice(c.host);
                             await Command("load", 0, 90, true);
                             submitted = true; quiescent = false;
-                            if (c.id == "RC01") await CancellationCase(c);
+                            var atlasCase = State.fixtureSuiteId == "atlas-v1";
+                            var timeout = c.timeout_seconds > 0 ? Math.Max(60, Math.Min(c.timeout_seconds, 1800)) : 600;
+                            if (atlasCase && c.id == "RC01") await CancellationCase(c);
                             else {
-                                await Command("submit", 0, 600, true);
+                                await Command("submit", 0, timeout, true);
                                 if (!string.IsNullOrEmpty(c.prerequisite_prompt)) {
                                     Log(c.id + ": prerequisite completed; capturing intermediate output.");
                                     Log(BenchmarkArtifactCollector.Capture(State.runId, "intermediate"));
-                                    if (c.id == "XA04") SaveSelectedDeck();
-                                    await Command("submit", 1, 600, true);
+                                    if (atlasCase && c.id == "XA04") SaveSelectedDeck();
+                                    await Command("submit", 1, timeout, true);
                                 }
                             }
                             quiescent = true;
@@ -471,6 +600,7 @@ namespace Scribble.Testing
                             application = null; controller = null;
                         }
                         if (!quiescent) throw new InvalidOperationException("Suite stopped because the previous request may still be running. Remaining cases were not submitted.");
+                        if (State.fixtureSuiteId == "scribble-stress-v1") await TestLabStressBudget.CheckAsync(State, cancel);
                     }
                 } catch (Exception e) { Log("Suite stopped: " + e); foreach (var r in Results.Where(r => r.status == "not_run")) r.error = "Not attempted: " + e.Message; }
                 finally {
