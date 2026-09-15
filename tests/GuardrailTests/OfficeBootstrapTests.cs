@@ -128,6 +128,18 @@ namespace GuardrailTests
             throw new InvalidOperationException("A cancelled cold start was not cancelled.");
         }
 
+        public static void OutlookEmbeddingStartupWaitsForAddIn()
+        {
+            var type = typeof(TestLab).Assembly.GetType("Scribble.Testing.TestLabOfficeEnvironment", true);
+            var wait = type.GetMethod("WaitForAddInAsync", BindingFlags.Instance | BindingFlags.NonPublic);
+            var display = type.GetMethod("DisplayOutlookExplorer", BindingFlags.Static | BindingFlags.NonPublic);
+            Check(wait != null && display != null,
+                "The Outlook -Embedding startup path does not display an Explorer and wait for COM add-in discovery.");
+            var parameters = wait.GetParameters();
+            Check(parameters.Length == 4 && parameters[3].ParameterType == typeof(CancellationToken),
+                "The Outlook add-in discovery wait is not cancellation-bound.");
+        }
+
         public static void PowerPointLaunchTracksReusedOrFreshProcess()
         {
             var candidate = typeof(TestLabOfficeConnection).GetMethod("IsLaunchCandidate", BindingFlags.Static | BindingFlags.NonPublic);

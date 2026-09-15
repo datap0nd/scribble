@@ -97,9 +97,22 @@ namespace Scribble.Testing
             }
             dynamic origin = await ConnectAsync(c.host, cancel);
             var progId = c.host == "Outlook" ? "Scribble.AddIn" : "Scribble." + c.host + "AddIn";
-            dynamic addin = origin.COMAddIns.Item(progId);
-            if (!Convert.ToBoolean(addin.Connect)) addin.Connect = true;
-            if (!Convert.ToBoolean(addin.Connect)) throw new InvalidOperationException("Scribble is disabled in " + c.host + ". Check that app's Disabled Items or organizational policy.");
+            if (c.host == "Outlook")
+            {
+                // Activator can initially return Outlook's -Embedding server.
+                // Display an Explorer before asking for COMAddIns; otherwise a
+                // newly started Outlook can expose an incomplete collection and
+                // Item(progId) fails with DISP_E_BADINDEX.
+                DisplayOutlookExplorer((object)origin);
+            }
+            object addinObject = await WaitForAddInAsync((object)origin, progId, c.host, cancel);
+            try
+            {
+                dynamic addin = addinObject;
+                if (!Convert.ToBoolean(addin.Connect)) addin.Connect = true;
+                if (!Convert.ToBoolean(addin.Connect)) throw new InvalidOperationException("Scribble is disabled in " + c.host + ". Check that app's Disabled Items or organizational policy.");
+            }
+            finally { Release(addinObject); }
             var extension = c.host == "Excel" ? ".xlsx" : c.host == "PowerPoint" ? ".pptx" : c.host == "Word" ? ".docx" : null;
             foreach (var relative in (c.inputs ?? new string[0]).Where(p => extension != null && p.EndsWith(extension, StringComparison.OrdinalIgnoreCase)))
             {
@@ -139,10 +152,37 @@ namespace Scribble.Testing
                 TestLabMail.Prepare((object)origin, c, cancel, log);
                 // The add-in task pane belongs to the explorer. No mailbox
                 // import or PST registration is needed for local MSG fixtures.
-                object explorer = origin.ActiveExplorer();
-                if (explorer == null) explorer = origin.Session.GetDefaultFolder(6).GetExplorer();
-                try { ((dynamic)explorer).Display(); } finally { Release(explorer); }
+                DisplayOutlookExplorer((object)origin);
             }
+        }
+
+        private async Task<object> WaitForAddInAsync(object application, string progId, string host, CancellationToken cancel)
+        {
+            var started = DateTime.UtcNow;
+            var announced = false;
+            while (DateTime.UtcNow - started < TimeSpan.FromSeconds(30))
+            {
+                cancel.ThrowIfCancellationRequested();
+                try { return ((dynamic)application).COMAddIns.Item(progId); }
+                catch (COMException error) when ((uint)error.HResult == 0x8002000B)
+                {
+                    if (!announced)
+                    {
+                        log(host + ": waiting for the Scribble COM add-in to appear after Office startup.");
+                        announced = true;
+                    }
+                    await Task.Delay(250, cancel);
+                }
+            }
+            throw new InvalidOperationException("Scribble is not present in " + host + "'s COM add-in collection after startup. Repair the selected Scribble component or check Office Disabled Items.");
+        }
+
+        private static void DisplayOutlookExplorer(object application)
+        {
+            dynamic outlook = application;
+            object explorer = outlook.ActiveExplorer();
+            if (explorer == null) explorer = outlook.Session.GetDefaultFolder(6).GetExplorer();
+            try { ((dynamic)explorer).Display(); } finally { Release(explorer); }
         }
 
         internal static void Release(object value) { if (value != null && Marshal.IsComObject(value)) Marshal.ReleaseComObject(value); }
