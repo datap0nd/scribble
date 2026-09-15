@@ -102,6 +102,7 @@ namespace GuardrailTests
                 Run("Samsung slide numbers require verified source evidence", SamsungSlideTests.EvidenceAndNumbers);
                 Run("PowerPoint and Outlook slide tool calls reach independent review", SlideToolCallsReachReview);
                 Run("Empty endpoint responses retry once without replaying tools", EmptyEndpointResponsesRecover);
+                Run("OpenRouter Qwen requests use bounded serial reasoning", OpenRouterQwenPolicy);
                 Run("Every Office source launches the requested sibling draft and preserves content", CrossApplicationWriters);
                 Run("Chrome model tool calls create Office drafts on a pumped STA", BrowserOfficeRoundTrip);
                 Run("Semantic repairs retain source alignment", TaskContinuationTests.ReviewRepairsAndAlignment);
@@ -7987,6 +7988,66 @@ namespace GuardrailTests
                 }
             }
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+        }
+
+        private static void OpenRouterQwenPolicy()
+        {
+            var method = typeof(OpenAiCompatibleClient).GetMethod(
+                "SerializablePayload",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert(method != null, "The bounded request serializer is missing.");
+            var request = new ChatCompletionRequest
+            {
+                model = "qwen/qwen3.8-27b",
+                messages = new List<object>(),
+                tools = new List<ChatToolDefinition>
+                {
+                    new ChatToolDefinition()
+                },
+                stream = false,
+                max_tokens = 2048,
+                parallel_tool_calls = true
+            };
+            var openRouter = (Dictionary<string, object>)method.Invoke(
+                null,
+                new object[]
+                {
+                    request,
+                    new Uri("https://openrouter.ai/api/v1/chat/completions"),
+                    true
+                });
+            var reasoning = openRouter["reasoning"] as Dictionary<string, object>;
+            Assert(
+                reasoning != null &&
+                (string)reasoning["effort"] == "low" &&
+                (bool)openRouter["parallel_tool_calls"] == false,
+                "The exact OpenRouter Qwen route must use low reasoning and serial tools.");
+
+            var fallback = (Dictionary<string, object>)method.Invoke(
+                null,
+                new object[]
+                {
+                    request,
+                    new Uri("https://openrouter.ai/api/v1/chat/completions"),
+                    false
+                });
+            Assert(
+                fallback.ContainsKey("reasoning") &&
+                !fallback.ContainsKey("parallel_tool_calls"),
+                "Optional-control fallback must retain bounded reasoning and remove parallel controls.");
+
+            var unrelated = (Dictionary<string, object>)method.Invoke(
+                null,
+                new object[]
+                {
+                    request,
+                    new Uri("https://api.example.test/v1/chat/completions"),
+                    true
+                });
+            Assert(
+                !unrelated.ContainsKey("reasoning") &&
+                (bool)unrelated["parallel_tool_calls"],
+                "Provider-specific policy must not change unrelated endpoints.");
         }
 
         private static void EmptyEndpointResponsesRecover()

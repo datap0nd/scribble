@@ -167,9 +167,13 @@ namespace Scribble.Chat
             }
 
             var capabilityKey = endpoint.AbsoluteUri + "\n" + requestModel.model;
+            var openRouterQwenPolicy = UsesOpenRouterQwenPolicy(
+                endpoint,
+                requestModel.model);
             var hasOptionalToolControls =
                 requestModel.temperature.HasValue ||
-                requestModel.parallel_tool_calls.HasValue;
+                requestModel.parallel_tool_calls.HasValue ||
+                openRouterQwenPolicy;
             var includeOptionalToolControls = hasOptionalToolControls &&
                 !OptionalToolControlsUnsupported(capabilityKey);
             try
@@ -214,6 +218,7 @@ namespace Scribble.Chat
             var requestJson = _serializer.Serialize(
                 SerializablePayload(
                     requestModel,
+                    endpoint,
                     includeOptionalToolControls));
             requestModel.Diagnostics?.Record("inference_request", new { endpoint = endpoint.GetLeftPart(UriPartial.Path),
                 model = requestModel.model, request = requestJson });
@@ -851,6 +856,7 @@ namespace Scribble.Chat
         // optional fields are included only when they carry a value.
         private static Dictionary<string, object> SerializablePayload(
             ChatCompletionRequest requestModel,
+            Uri endpoint,
             bool includeOptionalToolControls = true)
         {
             var payload = new Dictionary<string, object>
@@ -887,7 +893,54 @@ namespace Scribble.Chat
                     requestModel.parallel_tool_calls.Value;
             }
 
+            // OpenRouter exposes reasoning as provider metadata rather than
+            // part of Scribble's endpoint-neutral request contract. Qwen 3.8
+            // defaults to xhigh reasoning there, which can consume the entire
+            // response allowance before a tool call or answer is emitted.
+            // Office tools also operate on one COM apartment and must not be
+            // dispatched in parallel. Keep both overrides narrowly bound to
+            // the exact stress-suite endpoint/model pair.
+            if (UsesOpenRouterQwenPolicy(endpoint, requestModel.model))
+            {
+                payload["reasoning"] = new Dictionary<string, object>
+                {
+                    { "effort", "low" }
+                };
+                if (includeOptionalToolControls &&
+                    requestModel.tools != null &&
+                    requestModel.tools.Count > 0)
+                {
+                    payload["parallel_tool_calls"] = false;
+                }
+            }
+
             return payload;
+        }
+
+        private static bool UsesOpenRouterQwenPolicy(
+            Uri endpoint,
+            string model)
+        {
+            return endpoint != null &&
+                string.Equals(
+                    endpoint.Scheme,
+                    Uri.UriSchemeHttps,
+                    StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(
+                    endpoint.Host,
+                    "openrouter.ai",
+                    StringComparison.OrdinalIgnoreCase) &&
+                endpoint.IsDefaultPort &&
+                string.IsNullOrEmpty(endpoint.UserInfo) &&
+                string.IsNullOrEmpty(endpoint.Query) &&
+                string.Equals(
+                    endpoint.AbsolutePath.TrimEnd('/'),
+                    "/api/v1/chat/completions",
+                    StringComparison.Ordinal) &&
+                string.Equals(
+                    model,
+                    "qwen/qwen3.8-27b",
+                    StringComparison.Ordinal);
         }
 
         private bool OptionalToolControlsUnsupported(string capabilityKey)
