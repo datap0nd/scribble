@@ -820,7 +820,12 @@ jobs:
           }
           foreach ($gone in @(
             (Join-Path $installedDir "com.scribble.browser.json"),
-            (Join-Path $installedDir "BrowserExtension")
+            (Join-Path $installedDir "BrowserExtension\manifest.json"),
+            (Join-Path $installedDir "BrowserExtension\background.js"),
+            (Join-Path $installedDir "BrowserExtension\sidepanel.html"),
+            (Join-Path $installedDir "BrowserExtension\sidepanel.css"),
+            (Join-Path $installedDir "BrowserExtension\sidepanel.js"),
+            (Join-Path $installedDir "BrowserExtension\README.md")
           )) {
             if (Test-Path $gone) {
               throw "Deselected browser component file survived: $gone"
