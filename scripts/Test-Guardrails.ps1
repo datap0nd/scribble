@@ -945,6 +945,7 @@ $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $browserExtensionRoot = Join-Path $repositoryRoot "src\Scribble.BrowserExtension"
 $browserHostRoot = Join-Path $repositoryRoot "src\Scribble.BrowserHost"
 $browserInstallerPath = Join-Path $repositoryRoot "installer\Scribble.iss"
+$payloadRetirementPath = Join-Path $repositoryRoot "installer\PayloadRetirement.iss"
 $browserManifestPath = Join-Path $browserExtensionRoot "manifest.json"
 $nativeManifestPath = Join-Path $browserHostRoot "com.scribble.browser.json"
 $browserHostProgramPath = Join-Path $browserHostRoot "Program.cs"
@@ -970,7 +971,8 @@ foreach ($requiredBrowserFile in @(
     $browserFactoryPath,
     $browserServicePath,
     $browserActionPolicyPath,
-    $browserInstallerPath
+    $browserInstallerPath,
+    $payloadRetirementPath
 )) {
     if (-not (Test-Path -LiteralPath $requiredBrowserFile -PathType Leaf)) {
         throw "Browser companion file is missing: $requiredBrowserFile"
@@ -1127,6 +1129,57 @@ foreach ($dangerousBrowserPattern in $dangerousBrowserPatterns) {
 
 $browserInstallerSource = Get-Content -LiteralPath $browserInstallerPath -Raw
 $browserInstallerLines = Get-Content -LiteralPath $browserInstallerPath
+$payloadRetirementSource = Get-Content -LiteralPath $payloadRetirementPath -Raw
+foreach ($transactionalBrowserPayload in @(
+    "ScribbleBrowserHost.exe.config",
+    "com.scribble.browser.json",
+    "BrowserExtension\manifest.json",
+    "BrowserExtension\background.js",
+    "BrowserExtension\sidepanel.html",
+    "BrowserExtension\sidepanel.css",
+    "BrowserExtension\sidepanel.js",
+    "BrowserExtension\README.md"
+)) {
+    $transactionalLines = @($browserInstallerLines | Where-Object {
+        $_.Contains("RetirePayload('$transactionalBrowserPayload'") -and
+        $_.Contains("VerifyPayload('$transactionalBrowserPayload'")
+    })
+    if ($transactionalLines.Count -ne 1 -or
+        $payloadRetirementSource -notmatch
+            ("(?i)(?:\||')" + [regex]::Escape($transactionalBrowserPayload) + "\|")) {
+        throw "Installer payload is outside the explicit recovery transaction: $transactionalBrowserPayload."
+    }
+}
+$installDeleteMatch = [regex]::Match(
+    $browserInstallerSource,
+    '(?ms)^\[InstallDelete\]\s*(?<body>.*?)(?=^\[)')
+if (-not $installDeleteMatch.Success) {
+    throw "Installer cleanup section is missing."
+}
+foreach ($currentDeleteTarget in @(
+    "{app}\BrowserExtension",
+    "{app}\ScribbleBrowserHost.exe",
+    "{app}\ScribbleBrowserHost.exe.config",
+    "{app}\com.scribble.browser.json"
+)) {
+    if ($installDeleteMatch.Groups['body'].Value.Contains($currentDeleteTarget)) {
+        throw "Current payload is deleted before its recovery journal is active: $currentDeleteTarget."
+    }
+}
+foreach ($deselectedBrowserPayload in @(
+    "com.scribble.browser.json",
+    "BrowserExtension\manifest.json",
+    "BrowserExtension\background.js",
+    "BrowserExtension\sidepanel.html",
+    "BrowserExtension\sidepanel.css",
+    "BrowserExtension\sidepanel.js",
+    "BrowserExtension\README.md"
+)) {
+    if (-not $payloadRetirementSource.Contains(
+        "RetireRemovedPayload('" + $deselectedBrowserPayload + "')")) {
+        throw "Browser component deselection is not journaled: $deselectedBrowserPayload."
+    }
+}
 if ($browserInstallerSource -notmatch
     '(?m)^PrivilegesRequired=lowest\s*$') {
     throw "Browser support must preserve the per-user, non-elevated installer."

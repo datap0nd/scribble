@@ -336,6 +336,10 @@ jobs:
         shell: pwsh
         run: choco install innosetup --no-progress --yes
 
+      - name: Verify loaded-payload replacement and recovery
+        shell: powershell
+        run: ./tests/Updater/Test-PayloadRetirement.ps1
+
       - name: Build single-file installer
         shell: pwsh
         run: |
