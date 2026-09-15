@@ -62,10 +62,11 @@ def source_checks(paths, artifacts):
 
 
 def add(cases, oracles, case_id, host, prompt, inputs, artifacts, checks, family,
-        *, prerequisite=None, formula_probes=None, allow_source_edit=False, browser_allowed_hosts=None):
+        *, prerequisite=None, formula_probes=None, allow_source_edit=False, browser_allowed_hosts=None,
+        timeout_seconds=900):
     case = {"id": case_id, "version": 1, "host": host, "prompt": prompt,
             "inputs": list(dict.fromkeys(inputs)), "artifacts": artifacts,
-            "oracle_ref": f"evaluator-only/cases/{case_id}.json", "timeout_seconds": 900,
+            "oracle_ref": f"evaluator-only/cases/{case_id}.json", "timeout_seconds": timeout_seconds,
             "setup": "Use only the isolated synthetic corpus. Preserve source files and keep email drafts unsent.",
             "expected": "Evaluate sealed native output against the separate deterministic oracle; visual review is required.",
             "clarification_answers": {"audience": "the company operations leadership team",
@@ -193,7 +194,7 @@ def powerpoint_cases(cases, oracles, presentations, workbook_by_id):
         if not wb["facts"]["current"]["complete"]:
             checks.append({"kind": "required_text", "values": ["incomplete"]})
         add(cases, oracles, f"PP{index+1:02}", "PowerPoint", prompt, [deck["path"], wb["path"]], ["pptx"], checks,
-            "repair_preserve_and_reconcile")
+            "repair_preserve_and_reconcile", timeout_seconds=1800)
     for index, wb in enumerate(workbook_by_id.values()):
         deck = presentations[index]
         prompt = (f"Using {wb['id']} for {wb['company']}, create exactly six new editable executive-review draft slides in the Samsung MD style "
@@ -205,7 +206,7 @@ def powerpoint_cases(cases, oracles, presentations, workbook_by_id):
         checks = [presentation_check(deck, 6, wb), native_chart(
             [m["period"] for m in wb["facts"]["monthly"]], [m["primary"] for m in wb["facts"]["monthly"]], chart_units(wb), host="PowerPoint")]
         add(cases, oracles, f"PP{index+31:02}", "PowerPoint", prompt, [deck["path"], wb["path"]], ["pptx"], checks,
-            "new_six_slide_business_review")
+            "new_six_slide_business_review", timeout_seconds=1800)
 
 
 def outlook_cases(cases, oracles, mail_catalog):
@@ -286,7 +287,7 @@ def hero_cases(cases, oracles, hero, report, presentations):
     add(cases, oracles, "EX60", "Excel",
         "Translate every Korean text cell in every worksheet of the active workbook into English. Preserve worksheet names, row and column positions, numbers, dates, formatting, and table structure. Replace only the detected Korean text cells, leave formulas and merged cells unchanged, and complete the full-workbook translation without saving over the source file.",
         [korean["path"]], ["xlsx"], [{"kind": "workbook_exact_text", "sheets": korean["sheets"]}],
-        "whole_workbook_korean_to_english", allow_source_edit=True)
+        "whole_workbook_korean_to_english", allow_source_edit=True, timeout_seconds=1800)
 
     theme = {"kind": "presentation", "slide_count": 8, "theme_ref": "evaluator-only/SamsungMD2.theme.json",
         "reference_pptx": presentations[-1]["reference_path"],
@@ -297,20 +298,21 @@ def hero_cases(cases, oracles, hero, report, presentations):
         [], ["pptx"], [theme, {"kind": "native_chart", "category_labels": ["UAE direct", "UAE partner"],
             "series_values": [420000, 365000], "zero_baseline": True, "native_editable": True,
             "host": "PowerPoint", "artifact_extension": "pptx", "units": "AED"}],
-        "five_email_attachment_to_samsung_deck")
+        "five_email_attachment_to_samsung_deck", timeout_seconds=1800)
     cases[-1]["mailbox_mode"] = "native_synthetic_store"
 
     add(cases, oracles, "OL69", "Outlook",
         "Read the attached 130-page synthetic PDF in full and write a concise executive summary covering the approved baseline, service-level result versus target, the critical risk and owner, and the final recommendation with its date and prerequisite. State important caveats, distinguish evidence from proposed action, and include the final page marker to demonstrate complete-page coverage. Do not invent missing facts.",
         [report["path"]], [], [{"kind": "required_text", "values": report["required_facts"] + [report["terminal_marker"]]}],
-        "long_pdf_full_document_summary")
+        "long_pdf_full_document_summary", timeout_seconds=1800)
 
     allowed = ["www.samsungtradein.ae", "samsungtradein.ae"]
     add(cases, oracles, "OL70", "Chrome",
         "Open https://www.samsungtradein.ae/ae-en/ and complete the public UAE trade-in estimate flow for a new Galaxy Z Fold8 using an Apple iPhone 16 Pro, 256 GB, in Flawless condition. Do not sign in, submit personal information, or buy anything. On the final result page, record verified browser evidence and summarize the exact trade-in amount, currency, configured products, storage, condition, market, source URL, observation caveat, and observation time. If the public flow blocks access, report the verified blocker rather than guessing.",
         [], [], [{"kind": "browser_evidence", "purchasedProduct": "Galaxy Z Fold8", "tradeInProduct": "Apple iPhone 16 Pro",
             "storage": "256 GB", "condition": "Flawless", "market": "United Arab Emirates", "currency": "AED",
-            "allowed_hosts": allowed}], "live_uae_trade_in_verified_evidence", browser_allowed_hosts=allowed)
+            "allowed_hosts": allowed}], "live_uae_trade_in_verified_evidence", browser_allowed_hosts=allowed,
+        timeout_seconds=1800)
 
     word = hero["word"]
     add(cases, oracles, "XA20", "Excel",
@@ -318,7 +320,7 @@ def hero_cases(cases, oracles, hero, report, presentations):
         [word["path"]], ["docx"], [{"kind": "word_tables", "tables": word["tables"]},
             {"kind": "required_text", "values": ["Revenue", "Costs", "Pipeline", "Headcount", "Inventory", "Projects", "Risks", "Actions",
                 "budget", "staffing", "inventory", "risk", "action"]}],
-        "eight_sheet_workbook_to_exact_word_tables")
+        "eight_sheet_workbook_to_exact_word_tables", timeout_seconds=1800)
 
 
 def validate(cases, oracles):

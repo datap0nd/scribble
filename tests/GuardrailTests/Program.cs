@@ -8024,6 +8024,65 @@ namespace GuardrailTests
                 (string)reasoning["effort"] == "low" &&
                 (bool)openRouter["parallel_tool_calls"] == false,
                 "The exact OpenRouter Qwen route must use low reasoning and serial tools.");
+            Assert(
+                (int)openRouter["max_tokens"] == 2048,
+                "Compact OpenRouter review requests must retain their bounded response allowance.");
+
+            var presentationRequest = new ChatCompletionRequest
+            {
+                model = request.model,
+                messages = new List<object>(),
+                tools = new List<ChatToolDefinition>
+                {
+                    new ChatToolDefinition
+                    {
+                        function = new ChatToolFunctionDefinition
+                        {
+                            name = PresentationToolCatalog.AddDraftSlides
+                        }
+                    }
+                },
+                max_tokens = DocumentChatRequestFactory.DraftResponseTokens
+            };
+            var presentation = (Dictionary<string, object>)method.Invoke(
+                null,
+                new object[]
+                {
+                    presentationRequest,
+                    new Uri("https://openrouter.ai/api/v1/chat/completions"),
+                    true
+                });
+            Assert(
+                (int)presentation["max_tokens"] == 32768,
+                "OpenRouter Qwen PowerPoint drafts need the route's full tool-payload allowance.");
+
+            var ordinaryDraft = new ChatCompletionRequest
+            {
+                model = request.model,
+                messages = new List<object>(),
+                tools = new List<ChatToolDefinition>
+                {
+                    new ChatToolDefinition
+                    {
+                        function = new ChatToolFunctionDefinition
+                        {
+                            name = "create_word_draft"
+                        }
+                    }
+                },
+                max_tokens = DocumentChatRequestFactory.DraftResponseTokens
+            };
+            var ordinary = (Dictionary<string, object>)method.Invoke(
+                null,
+                new object[]
+                {
+                    ordinaryDraft,
+                    new Uri("https://openrouter.ai/api/v1/chat/completions"),
+                    true
+                });
+            Assert(
+                (int)ordinary["max_tokens"] == 8192,
+                "Non-presentation OpenRouter Qwen drafts should remain bounded at 8K.");
 
             var fallback = (Dictionary<string, object>)method.Invoke(
                 null,

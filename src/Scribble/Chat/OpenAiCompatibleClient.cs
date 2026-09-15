@@ -904,12 +904,23 @@ namespace Scribble.Chat
             {
                 // Dense Office authoring calls carry native table/chart JSON.
                 // Qwen can otherwise truncate a syntactically valid tool call at
-                // the generic 4K draft ceiling and spend more on retries. Keep the
-                // larger allowance scoped to this exact endpoint/model route.
-                if (requestModel.max_tokens.HasValue &&
-                    requestModel.max_tokens.Value < 8192)
+                // the generic 4K draft ceiling and spend more on retries. A full
+                // six-to-eight-slide payload can exceed 8K, while the model route
+                // supports 32K completions. Keep that ceiling exclusive to the
+                // PowerPoint draft tool; other draft calls get 8K and compact
+                // reviewers/summarizers retain their original smaller limits.
+                var isDraftRequest = requestModel.max_tokens ==
+                    DocumentChatRequestFactory.DraftResponseTokens;
+                if (isDraftRequest)
                 {
-                    payload["max_tokens"] = 8192;
+                    var hasPresentationDraftTool = requestModel.tools != null &&
+                        requestModel.tools.Any(tool => tool?.function != null &&
+                            string.Equals(tool.function.name,
+                                PresentationToolCatalog.AddDraftSlides,
+                                StringComparison.Ordinal));
+                    payload["max_tokens"] = hasPresentationDraftTool
+                        ? 32768
+                        : 8192;
                 }
                 payload["reasoning"] = new Dictionary<string, object>
                 {
