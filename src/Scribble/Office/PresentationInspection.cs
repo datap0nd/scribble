@@ -55,6 +55,23 @@ namespace Scribble.Office
             }
             finally { if (File.Exists(path)) File.Delete(path); }
         }
+        public static bool ContainsNativeChart(object slide)
+        {
+            dynamic page = slide;
+            return ContainsNativeChartInShapes((object)page.Shapes, 0);
+        }
+        private static bool ContainsNativeChartInShapes(object value, int depth)
+        {
+            if (depth > 16) return false;
+            dynamic shapes = value;
+            for (var i = 1; i <= (int)shapes.Count; i++)
+            {
+                dynamic shape = shapes[i];
+                if ((int)shape.HasChart != 0) return true;
+                if ((int)shape.Type == 6 && ContainsNativeChartInShapes((object)shape.GroupItems, depth + 1)) return true;
+            }
+            return false;
+        }
         public static Dictionary<string, object> Capture(object slide)
         {
             dynamic page = slide;
@@ -175,9 +192,13 @@ namespace Scribble.Office
         }
         public static string Fingerprint(object slide)
         {
-            // Native render includes geometry, formatting and artwork not exposed as text.
             var json = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
-            return TaskCheckpointStore.Fingerprint(json.Serialize(Capture(slide)) + Preview(slide));
+            var content = json.Serialize(Capture(slide));
+            // Some Office builds terminate POWERPNT in chart.dll while exporting a
+            // slide that contains a native chart. Structured capture includes chart
+            // data and geometry, so retain the stronger rendered fingerprint only
+            // for slides that PowerPoint can safely export.
+            return TaskCheckpointStore.Fingerprint(content + (ContainsNativeChart(slide) ? string.Empty : Preview(slide)));
         }
         public static object ReadPage(object presentation, object slide, int offset, bool preview)
         {
@@ -185,11 +206,14 @@ namespace Scribble.Office
             var content = json.Serialize(Capture(slide));
             if (offset < 0 || offset > content.Length) throw new InvalidOperationException("Invalid inspection page offset.");
             var count = Math.Min(12000, content.Length - offset);
-            var render = Preview(slide);
+            var previewSuppressed = ContainsNativeChart(slide);
+            var render = previewSuppressed ? string.Empty : Preview(slide);
             return new { presentation_id = IdentityFor(presentation), slide_id = (int)((dynamic)slide).SlideID,
                 fingerprint = TaskCheckpointStore.Fingerprint(content + render), content = content.Substring(offset, count), offset, total_characters = content.Length,
                 next_offset = offset + count < content.Length ? (int?)(offset + count) : null,
-                image = preview ? render : null, untrusted_document_data = true };
+                image = preview && !string.IsNullOrEmpty(render) ? render : null,
+                preview_unavailable = preview && previewSuppressed ? "Native-chart preview omitted because this Office build may terminate while exporting it; structured chart data is included." : null,
+                untrusted_document_data = true };
         }
     }
 }
