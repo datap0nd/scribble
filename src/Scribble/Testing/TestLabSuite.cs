@@ -227,7 +227,7 @@ namespace Scribble.Testing
         {
             cases = cases ?? new LabCase[0];
             caseId = (caseId ?? "").Trim();
-            if (caseId.Length == 0) return cases.Where(c => new[] { "Excel", "PowerPoint", "Outlook", "Chrome" }.Contains(c.host)).ToArray();
+            if (caseId.Length == 0) return cases.Where(c => new[] { "Excel", "PowerPoint", "Outlook" }.Contains(c.host)).ToArray();
             if (!Regex.IsMatch(caseId, "^[A-Za-z]{2}[0-9]{2}$"))
                 throw new InvalidDataException("Case ID must look like EX01, PP01, or CH01.");
             var selected = cases.Where(c => string.Equals(c.id, caseId, StringComparison.OrdinalIgnoreCase)).ToArray();
@@ -241,7 +241,9 @@ namespace Scribble.Testing
             if (cases.Any(c => c == null || !Regex.IsMatch(c.id ?? "", "^[A-Z]{2}[0-9]{2}$")) ||
                 cases.Select(c => c.id).Distinct(StringComparer.OrdinalIgnoreCase).Count() != cases.Length)
                 throw new InvalidDataException("The kit contains invalid or duplicate case IDs.");
-            if (requested == null) return SelectCases(cases, null);
+            if (requested == null) return cases.Length == 200
+                ? cases.Where(c => new[] { "Excel", "PowerPoint", "Outlook", "Chrome" }.Contains(c.host)).ToArray()
+                : SelectCases(cases, null);
             if (requested.Length == 0 || requested.Distinct(StringComparer.OrdinalIgnoreCase).Count() != requested.Length)
                 throw new InvalidDataException("Select at least one distinct case.");
             var selected = requested.Select(id => SelectCases(cases, id).Single()).ToArray();

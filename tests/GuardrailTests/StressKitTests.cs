@@ -40,6 +40,13 @@ namespace GuardrailTests
             var catalog = Enumerable.Range(1, 70).Select(n => new LabCase { id = "OL" + n.ToString("00"), host = "Outlook" }).ToArray();
             var selected = TestLabSuite.SelectRequestedCases(catalog, new[] { "OL70", "OL01" });
             Check(selected.Select(c => c.id).SequenceEqual(new[] { "OL70", "OL01" }), "Explicit execution order changed.");
+            var full = Enumerable.Range(1, 60).Select(n => new LabCase { id = "EX" + n.ToString("00"), host = "Excel" })
+                .Concat(Enumerable.Range(1, 70).Select(n => new LabCase { id = "OL" + n.ToString("00"), host = n == 70 ? "Chrome" : "Outlook" }))
+                .Concat(Enumerable.Range(1, 50).Select(n => new LabCase { id = "PP" + n.ToString("00"), host = "PowerPoint" }))
+                .Concat(Enumerable.Range(1, 20).Select(n => new LabCase { id = "XA" + n.ToString("00"), host = "Excel" })).ToArray();
+            Check(TestLabSuite.SelectRequestedCases(full, null).Length == 200, "The full external stress scope omitted its Chrome case.");
+            Check(TestLabSuite.SelectCases(full.Take(19).Concat(new[] { new LabCase { id = "CH01", host = "Chrome" } }).ToArray(), null).All(c => c.host != "Chrome"),
+                "The legacy default suite unexpectedly selected Chrome.");
             Rejected(() => TestLabSuite.SelectRequestedCases(catalog, new[] { "OL71" }), "Absent case accepted.");
             Rejected(() => TestLabSuite.SelectRequestedCases(catalog.Concat(catalog.Take(1)).ToArray(), null), "Duplicate catalog accepted.");
             var requested = catalog.Select(c => c.id).ToArray();
