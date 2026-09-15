@@ -7850,8 +7850,9 @@ namespace GuardrailTests
                 null,
                 new ChatTurn[0],
                 "Find every message in July 2026 and report every matching message ID plus Total matches: N.");
-            var enumerationBoundary = ((ChatCompletionInputMessage)
-                enumerationRequest.messages[0]).content;
+            var enumerationBoundary = Convert.ToString(
+                ((ChatCompletionInputMessage)
+                    enumerationRequest.messages[0]).content);
             Assert(
                 enumerationBoundary.Contains("Never mention an excluded or nonmatching identifier"),
                 "Enumeration-only output did not forbid leaking rejected identifiers into the final answer.");
