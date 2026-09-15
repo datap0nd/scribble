@@ -1,6 +1,6 @@
-; Included inside [Code]. Only explicitly allowlisted shipped payloads participate.
-; A loaded Windows image may be renamed even when DeleteFile is denied.
-; Keep its old bytes available while installing the new image at its usual path.
+// Included inside [Code]. Only explicitly allowlisted shipped payloads participate.
+// A loaded Windows image may be renamed even when DeleteFile is denied.
+// Keep its old bytes available while installing the new image at its usual path.
 type
   TPayloadRecord = record
     Name: String;
