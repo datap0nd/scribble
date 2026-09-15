@@ -53,8 +53,8 @@ model configuration or budget authorization produces an explicit blocked case.
 
 Excel and PowerPoint start normally with a private blank document so their
 installed Scribble add-ins load. The runner retains that document while cases
-open and close their own files. It verifies the native window's process and
-startup document before connecting; cross-app writes use the same prepared
+open and close their own files. It verifies the process and its unique startup
+document before connecting; cross-app writes use the same prepared
 destination. An unavailable or stale destination blocks the case rather than
 opening a second automation instance. The blank startup files contain no task
 data or expected answers. Existing Office documents are preserved.

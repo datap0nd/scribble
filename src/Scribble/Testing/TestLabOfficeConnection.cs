@@ -53,7 +53,7 @@ namespace Scribble.Testing
                 object app = null;
                 try
                 {
-                    app = TryAttach(host, existing.pid, existing.process_start, null, cancel);
+                    app = TryAttach(host, existing.pid, existing.process_start, executable, null, cancel);
                     if (app != null && !HasScribble(app, host, existing.pid, attemptedConnect))
                         throw new InvalidOperationException("The existing PowerPoint instance does not expose Scribble. It was preserved. Open PowerPoint normally with Scribble available, then retry the suite.");
                 }
@@ -92,7 +92,7 @@ namespace Scribble.Testing
                         {
                             cancel.ThrowIfCancellationRequested();
                             if (!SamePath(candidate.executable, executable)) continue;
-                            app = TryAttach(host, candidate.pid, candidate.process_start, startup, cancel);
+                            app = TryAttach(host, candidate.pid, candidate.process_start, executable, startup, cancel);
                             if (app == null) continue;
                             if (binding.pid != candidate.pid || binding.process_start != candidate.process_start)
                             {
@@ -131,7 +131,7 @@ namespace Scribble.Testing
             var state = RequireScope(true);
             RequireSta();
             var binding = ReadBinding(state, host, true);
-            var application = TryAttach(host, binding.pid, binding.process_start, binding.startup_path, CancellationToken.None);
+            var application = TryAttach(host, binding.pid, binding.process_start, binding.executable, binding.startup_path, CancellationToken.None);
             if (application == null)
                 throw new InvalidOperationException(host + " lost its prepared document window. The Test Lab will not create a different automation destination.");
             try { RequireSameSuite(state.id, true); return application; }
@@ -150,7 +150,7 @@ namespace Scribble.Testing
                 try
                 {
                     if (!ProcessMatches(binding)) throw new InvalidOperationException("The prepared " + binding.host + " process ended during attachment.");
-                    app = TryAttach(binding.host, binding.pid, binding.process_start, binding.startup_path, cancel);
+                    app = TryAttach(binding.host, binding.pid, binding.process_start, binding.executable, binding.startup_path, cancel);
                     if (app != null && HasScribble(app, binding.host, binding.pid, attemptedConnect))
                     { var result = app; app = null; log(binding.host + ": reused its verified interactive process."); return result; }
                 }
@@ -308,21 +308,38 @@ namespace Scribble.Testing
             finally { Release(controller); Release(addin); Release(collection); }
         }
 
-        private static object TryAttach(string host, int pid, long started, string startup, CancellationToken cancel)
+        private static object TryAttach(string host, int pid, long started, string executable, string startup, CancellationToken cancel)
         {
             cancel.ThrowIfCancellationRequested();
             if (!ProcessAlive(pid, started)) return null;
             object candidate = null;
             try
             {
-                // PowerPoint.Application has no Hwnd property. Its exact-PID
-                // NativeOM document window below supplies the host identity.
+                // PowerPoint.Application has no Hwnd property. Its singleton
+                // or native document-window identity is verified below.
                 try { if (host == "Excel") candidate = Marshal.GetActiveObject("Excel.Application"); }
                 catch (COMException) { }
                 if (candidate != null && ApplicationPid(candidate) == pid && (startup == null || FindDocument(candidate, host, startup, false)) && ProcessAlive(pid, started))
                 { var result = candidate; candidate = null; return result; }
             }
             finally { Release(candidate); }
+            // Current PowerPoint builds can expose mdiClass without paneClassDC
+            // or an automation HWND. Its ROT entry is still usable when the
+            // complete process inventory proves a single, unchanged approved
+            // host and that Application contains our unique startup document.
+            if (host == "PowerPoint" && PowerPointSingleton(pid, started, executable))
+            {
+                candidate = null;
+                try
+                {
+                    try { candidate = Marshal.GetActiveObject("PowerPoint.Application"); }
+                    catch (COMException) { }
+                    if (candidate != null && (startup == null || FindDocument(candidate, host, startup, false)) &&
+                        PowerPointSingleton(pid, started, executable))
+                    { var result = candidate; candidate = null; return result; }
+                }
+                finally { Release(candidate); }
+            }
             foreach (var window in Windows(pid, host == "Excel" ? "EXCEL7" : "paneClassDC"))
             {
                 cancel.ThrowIfCancellationRequested(); object native = null; candidate = null;
@@ -339,6 +356,13 @@ namespace Scribble.Testing
                 finally { Release(candidate); Release(native); }
             }
             return null;
+        }
+
+        private static bool PowerPointSingleton(int pid, long started, string executable)
+        {
+            var processes = Processes("PowerPoint");
+            return processes.Count == 1 && processes[0].pid == pid && processes[0].process_start == started &&
+                SamePath(processes[0].executable, executable);
         }
 
         private static bool ProcessAlive(int pid, long started)
@@ -385,7 +409,7 @@ namespace Scribble.Testing
             {
                 var state = new SuiteState { id = suiteId };
                 var binding = ReadBinding(state, host, true);
-                application = TryAttach(host, binding.pid, binding.process_start, binding.startup_path, CancellationToken.None);
+                application = TryAttach(host, binding.pid, binding.process_start, binding.executable, binding.startup_path, CancellationToken.None);
                 if (application == null) return;
                 if (FindDocument(application, host, binding.startup_path, true)) log(host + ": closed its unchanged private startup document.");
                 else log(host + ": retained its private startup document because it was changed or unavailable.");
