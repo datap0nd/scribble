@@ -183,8 +183,10 @@ namespace GuardrailTests
             var wrong = new { stage = "pane_event", detail = new { type = "assistant", text = "AED 1,760. Estimate subject to inspection. Source: www.samsungtradein.ae" } };
             Check(Evaluate(browserOracle, new StressReadback[0], TestLab.Serialize(tool) + "\n" + TestLab.Serialize(wrong), new string[0]).Any(c => !c.passed), "An answer that changed the verified amount passed.");
 
-            var liveCase = new LabCase { browser_allowed_hosts = new[] { "www.samsungtradein.ae" } };
+            var liveCase = new LabCase { host = "Chrome", browser_allowed_hosts = new[] { "www.samsungtradein.ae" },
+                browser_start_url = "https://www.samsungtradein.ae/ae-en/" };
             Check(TestLab.IsBrowserSourceAllowed(liveCase, new Uri("https://www.samsungtradein.ae/ae-en/result?quote=1")), "The exact case allow-list rejected its HTTPS result page.");
+            Check(TestLab.BrowserStartUri(liveCase).AbsoluteUri == liveCase.browser_start_url, "The verified live browser start URL changed.");
             Check(!TestLab.IsBrowserSourceAllowed(liveCase, new Uri("https://evil.example/")), "An unrelated live host escaped the case allow-list.");
             Check(!TestLab.IsBrowserSourceAllowed(liveCase, new Uri("https://user@www.samsungtradein.ae/")), "A credential-bearing URL escaped the case allow-list.");
         }

@@ -614,6 +614,13 @@ namespace Scribble.Testing
         }
         private async Task Prepare(string caseId, string folder)
         {
+            var currentCase = TestLabSuite.CurrentCase(State);
+            var liveStart = TestLab.BrowserStartUri(currentCase);
+            if (currentCase.host == "Chrome" && liveStart != null)
+            {
+                Log("Verified live Chrome start URL: " + liveStart.GetLeftPart(UriPartial.Path));
+                return;
+            }
             preparation = TestLabPreparation.Launch(caseId, true); var started = DateTime.UtcNow; string previous = "";
             while (true) {
                 cancel.ThrowIfCancellationRequested();
@@ -706,8 +713,16 @@ namespace Scribble.Testing
         private void OpenChrome()
         {
             var session = TestLab.Status();
-            var receipt = TestLabSuite.Read<Dictionary<string, object>>(Path.Combine(TestLab.Root, "fixture-server-" + session.session_id + ".json"));
-            State.sourceUrl = "http://127.0.0.1:" + Convert.ToInt32(receipt["port"]) + "/operations.html"; TestLabSuite.Save(State);
+            var testCase = TestLabSuite.CurrentCase(State);
+            var liveStart = TestLab.BrowserStartUri(testCase);
+            if (liveStart != null) State.sourceUrl = liveStart.AbsoluteUri;
+            else
+            {
+                var receipt = TestLabSuite.Read<Dictionary<string, object>>(Path.Combine(TestLab.Root, "fixture-server-" + session.session_id + ".json"));
+                State.sourceUrl = "http://127.0.0.1:" + Convert.ToInt32(receipt["port"]) + "/operations.html";
+            }
+            TestLabSuite.Save(State);
+            TestLab.CheckBrowserSource(State.sourceUrl);
             var chrome = new[] { Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData) }.Select(p => Path.Combine(p, @"Google\Chrome\Application\chrome.exe")).First(File.Exists);
             Process.Start(new ProcessStartInfo(chrome, "--new-window \"chrome-extension://olkepladbgkfkhlglooilnmalckpdada/sidepanel.html?suite=" + State.id + "&token=" + State.chromeToken + "\"") { UseShellExecute = false });
         }

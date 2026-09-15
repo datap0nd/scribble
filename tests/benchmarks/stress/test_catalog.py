@@ -81,6 +81,7 @@ class CatalogContractTests(unittest.TestCase):
         self.assertTrue(cases_by_id["EX60"]["allow_source_edit"])
         self.assertEqual(cases_by_id["OL70"]["host"], "Chrome")
         self.assertEqual(cases_by_id["OL70"]["browser_allowed_hosts"], ["www.samsungtradein.ae", "samsungtradein.ae"])
+        self.assertEqual(cases_by_id["OL70"]["browser_start_url"], "https://www.samsungtradein.ae/ae-en/")
         self.assertTrue(any(rule["kind"] == "word_tables" for rule in self.oracles["XA20"]["checks"]))
         # Incomplete June stock is a known subtotal; it is not zero or an
         # annual sum, and the output must disclose that it is incomplete.

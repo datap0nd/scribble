@@ -63,7 +63,7 @@ def source_checks(paths, artifacts):
 
 def add(cases, oracles, case_id, host, prompt, inputs, artifacts, checks, family,
         *, prerequisite=None, formula_probes=None, allow_source_edit=False, browser_allowed_hosts=None,
-        timeout_seconds=900):
+        browser_start_url=None, timeout_seconds=900):
     case = {"id": case_id, "version": 1, "host": host, "prompt": prompt,
             "inputs": list(dict.fromkeys(inputs)), "artifacts": artifacts,
             "oracle_ref": f"evaluator-only/cases/{case_id}.json", "timeout_seconds": timeout_seconds,
@@ -80,6 +80,8 @@ def add(cases, oracles, case_id, host, prompt, inputs, artifacts, checks, family
         case["allow_source_edit"] = True
     if browser_allowed_hosts:
         case["browser_allowed_hosts"] = browser_allowed_hosts
+    if browser_start_url:
+        case["browser_start_url"] = browser_start_url
     cases.append(case)
     oracles[case_id] = {"schema": 1, "suite_id": SUITE, "id": case_id,
         "checks": source_checks([] if allow_source_edit else inputs, artifacts) + checks,
@@ -312,7 +314,7 @@ def hero_cases(cases, oracles, hero, report, presentations):
         [], [], [{"kind": "browser_evidence", "purchasedProduct": "Galaxy Z Fold8", "tradeInProduct": "Apple iPhone 16 Pro",
             "storage": "256 GB", "condition": "Flawless", "market": "United Arab Emirates", "currency": "AED",
             "allowed_hosts": allowed}], "live_uae_trade_in_verified_evidence", browser_allowed_hosts=allowed,
-        timeout_seconds=1800)
+        browser_start_url="https://www.samsungtradein.ae/ae-en/", timeout_seconds=1800)
 
     word = hero["word"]
     add(cases, oracles, "XA20", "Excel",
