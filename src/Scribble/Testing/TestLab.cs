@@ -241,7 +241,7 @@ namespace Scribble.Testing
             if (!IsBrowserSourceAllowed(testCase, uri))
             { MarkIncomplete(id, "Browser source is outside the synthetic fixture site."); throw new InvalidOperationException("Test Lab requires the loopback synthetic fixture page."); }
         }
-        internal static bool IsBrowserSourceAllowed(LabCase testCase, Uri uri)
+        public static bool IsBrowserSourceAllowed(LabCase testCase, Uri uri)
         {
             if (uri == null || testCase == null) return false;
             var synthetic = uri.Scheme == "http" && uri.IsLoopback &&

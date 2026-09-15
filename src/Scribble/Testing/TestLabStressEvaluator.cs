@@ -153,6 +153,7 @@ namespace Scribble.Testing
             if (workbooks.Length != 1 || workbooks[0].sheets.Any(s => s.cells.Any(c => Regex.IsMatch(Convert.ToString(c.value) ?? "", "[\\uAC00-\\uD7AF]")))) return false;
             var expectedSheets = Items(Value(rule, "sheets")).Cast<Dictionary<string, object>>().ToArray();
             if (expectedSheets.Length == 0 || workbooks[0].sheets.Length != expectedSheets.Length) return false;
+            if (workbooks[0].sheets.Sum(s => s.cells.Length) != expectedSheets.Sum(s => Items(Value(s, "cells")).Count())) return false;
             foreach (var expectedSheet in expectedSheets)
             {
                 var matches = workbooks[0].sheets.Where(s => string.Equals(s.name, Text(expectedSheet, "name"), StringComparison.Ordinal)).ToArray();

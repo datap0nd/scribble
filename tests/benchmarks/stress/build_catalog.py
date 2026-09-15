@@ -316,7 +316,8 @@ def hero_cases(cases, oracles, hero, report, presentations):
     add(cases, oracles, "XA20", "Excel",
         "Transfer all eight worksheets from the active workbook into one new Word document. For each worksheet, create a clearly titled native Word table in the original workbook order, preserving every header, row, column, value, symbol, date, percentage, and identifier exactly. Do not omit or reformat source values. After the eight tables, write a concise cross-sheet analysis that identifies the revenue pattern, budget variances, staffing gaps, inventory position, project and risk dependencies, and dated actions. Keep the source workbook unchanged and leave the Word draft open for review.",
         [word["path"]], ["docx"], [{"kind": "word_tables", "tables": word["tables"]},
-            {"kind": "required_text", "values": ["revenue", "budget", "staffing", "inventory", "risk", "action"]}],
+            {"kind": "required_text", "values": ["Revenue", "Costs", "Pipeline", "Headcount", "Inventory", "Projects", "Risks", "Actions",
+                "budget", "staffing", "inventory", "risk", "action"]}],
         "eight_sheet_workbook_to_exact_word_tables")
 
 
