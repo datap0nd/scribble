@@ -74,6 +74,9 @@ marked `not_run` in the same corpus; earlier failures remain recorded. Supply
 are known. Without both, environment metadata explicitly records Office parity
 as unverified. `summarize_usage.py <suite.json>` extracts provider token counts
 and reported costs from recorded inference responses without making API calls.
+The launcher also records the installed Scribble assembly version and SHA256.
+Startup errors are preserved in the adjacent `.host.log`, including failures
+that occur before an operator result can be created.
 
 The result JSON publishes the current folder and stop token. Writing that token
 to its `stop_file` requests the usual bounded stop and evidence finalization.
@@ -101,6 +104,10 @@ make zero matches and incomplete result sets unambiguous.
 
 `Test-SyntheticMailbox.ps1` imports the verified 500-message corpus and exercises
 all 70 query scopes through the production Outlook adapter without a model.
+Use `-CaseIds OL01,OL03,OL10,OL65` for selected scopes and `-ResumeFolder` to
+continue an existing native probe. Its checkpoint names a `stop-after-case`
+file that requests a stop between scopes. Reused results must match the exact
+assembly and corpus hashes; partial coverage is explicitly reported as partial.
 `Test-StressNativeGrading.ps1 -ScribbleAssembly <absolute Scribble.dll path>`
 checks the presentation grader against a clean native reference and isolated
 colour/layout defects. These are native adapter and grader preflights; neither

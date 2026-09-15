@@ -43,9 +43,10 @@ def numeric(cell, expected, *, formula=True, source_sheet="Ledger"):
             "formula_required": formula, "source_sheet": source_sheet}
 
 
-def native_chart(labels, values, units=None):
+def native_chart(labels, values, units=None, *, host):
+    extension = {"Excel": "xlsx", "PowerPoint": "pptx"}[host]
     check = {"kind": "native_chart", "category_labels": labels, "series_values": values,
-             "zero_baseline": True, "native_editable": True}
+             "zero_baseline": True, "native_editable": True, "host": host, "artifact_extension": extension}
     if units:
         check["units"] = units
     return check
@@ -109,7 +110,7 @@ def excel_cases(cases, oracles, workbooks):
         for row, month in enumerate(facts["monthly"], 4):
             checks.extend([numeric(f"B{row}", month["primary"]), numeric(f"C{row}", month["secondary"]),
                            numeric(f"D{row}", month["budget"]), numeric(f"E{row}", month["units"])])
-        checks.append(native_chart(labels, series, chart_units(wb)))
+        checks.append(native_chart(labels, series, chart_units(wb), host="Excel"))
         if not facts["current"]["complete"]:
             checks.append({"kind": "required_text", "values": ["incomplete"]})
         add(cases, oracles, f"EX{base+1:02}", "Excel", prompt, [wb["path"]], ["xlsx"], checks,
@@ -130,7 +131,7 @@ def excel_cases(cases, oracles, workbooks):
             if ratio:
                 checks.append(numeric(f"F{row}", group["ratio"]) if group.get("ratio") is not None else
                               {"kind": "cell_text", "sheet": "Scribble Draft*", "cell": f"F{row}", "expected": "incomplete"})
-        checks.append(native_chart([g["group"] for g in groups], [g["primary"] for g in groups], chart_units(wb)))
+        checks.append(native_chart([g["group"] for g in groups], [g["primary"] for g in groups], chart_units(wb), host="Excel"))
         add(cases, oracles, f"EX{base+2:02}", "Excel", prompt, [wb["path"]], ["xlsx"], checks,
             "group_weighted_metric_and_data_quality")
 
@@ -184,7 +185,7 @@ def powerpoint_cases(cases, oracles, presentations, workbook_by_id):
             "Use the correct period and units, and disclose incomplete figures. Keep all text readable on the existing 16:9 canvas. "
             f"The current primary measure is {wb['primary_label']}; the secondary measure is {wb['secondary_label']}.")
         checks = [presentation_check(deck, deck["slide_count"], wb),
-                  native_chart([m["period"] for m in monthly], series, chart_units(wb))]
+                  native_chart([m["period"] for m in monthly], series, chart_units(wb), host="PowerPoint")]
         if not wb["facts"]["current"]["complete"]:
             checks.append({"kind": "required_text", "values": ["incomplete"]})
         add(cases, oracles, f"PP{index+1:02}", "PowerPoint", prompt, [deck["path"], wb["path"]], ["pptx"], checks,
@@ -198,7 +199,7 @@ def powerpoint_cases(cases, oracles, presentations, workbook_by_id):
             "Use 16:9, readable text and no unintended overlap. Preserve all source slides and worksheets. "
             "Derive facts from unique RowIDs and distinguish missing data from zero; proposed actions must be labelled as recommendations.")
         checks = [presentation_check(deck, 6, wb), native_chart(
-            [m["period"] for m in wb["facts"]["monthly"]], [m["primary"] for m in wb["facts"]["monthly"]], chart_units(wb))]
+            [m["period"] for m in wb["facts"]["monthly"]], [m["primary"] for m in wb["facts"]["monthly"]], chart_units(wb), host="PowerPoint")]
         add(cases, oracles, f"PP{index+31:02}", "PowerPoint", prompt, [deck["path"], wb["path"]], ["pptx"], checks,
             "new_six_slide_business_review")
 
@@ -250,7 +251,7 @@ def cross_app_cases(cases, oracles, workbooks, presentations):
         checks = [numeric("B4", wb["facts"]["previous"]["primary"]), numeric("C4", wb["facts"]["current"]["primary"]),
                   numeric("B5", wb["facts"]["previous"]["secondary"]), numeric("C5", wb["facts"]["current"]["secondary"]),
                   presentation_check(deck, 4, wb), native_chart(["2026-05", "2026-06"],
-                    [wb["facts"]["previous"]["primary"], wb["facts"]["current"]["primary"]], chart_units(wb))]
+                    [wb["facts"]["previous"]["primary"], wb["facts"]["current"]["primary"]], chart_units(wb), host="PowerPoint")]
         add(cases, oracles, f"XA{index+1:02}", "Excel", prompt, [wb["path"], deck["path"]], ["xlsx", "pptx"], checks,
             "excel_output_to_powerpoint", prerequisite=initial)
     for index in range(10, 20):
@@ -290,6 +291,11 @@ def validate(cases, oracles):
             raise ValueError("An oracle leaked into the operator case.")
         if not oracles[case["id"]]["checks"]:
             raise ValueError("Every case must have deterministic checks.")
+        for check in oracles[case["id"]]["checks"]:
+            if check["kind"] == "native_chart" and (check.get("host"), check.get("artifact_extension")) not in (
+                ("Excel", "xlsx"), ("PowerPoint", "pptx")
+            ):
+                raise ValueError("Every native chart must target its intended host and artifact type.")
 
 
 def manifest(root):

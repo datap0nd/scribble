@@ -88,6 +88,45 @@ namespace GuardrailTests
             foreach (var invalid in new[] { "1,000", "1.5", "1\nTotal matches: 5" })
                 Check(!evaluate(true, "MAIL0001\nTotal matches: " + invalid), "A partial or contradictory total passed: " + invalid);
         }
+        public static void NativeChartsStayInRequestedHost()
+        {
+            var chartRule = new Dictionary<string, object> { ["kind"] = "native_chart", ["host"] = "PowerPoint", ["artifact_extension"] = "pptx",
+                ["category_labels"] = new[] { "2026-05", "2026-06" }, ["series_values"] = new[] { 100000, 120000 }, ["zero_baseline"] = true, ["units"] = "EUR" };
+            var oracle = new { id = "EX01", checks = new object[] { new { kind = "native_artifact", extension = "pptx" }, chartRule } };
+            Func<StressChart> correctChart = () => new StressChart { title = "Revenue EUR", minimum = 0, series = new[] {
+                new StressSeries { name = "Revenue", categories = new[] { "2026-05", "2026-06" }, values = new[] { "100000", "120000" } } } };
+            var slide = new StressSlide { number = 1, charts = new[] { correctChart() } };
+            var sheet = new StressSheet { name = "Scribble Draft", charts = new[] { correctChart() } };
+            var workbook = new StressReadback { run_id = "test", native_readback = true, run_created_output = true, output_boundary = true,
+                artifact_extension = "xlsx", stress_native = new StressNative { host = "Excel", sheets = new[] { sheet } } };
+            var presentation = new StressReadback { run_id = "test", native_readback = true, run_created_output = true, output_boundary = true,
+                artifact_extension = "pptx", stress_native = new StressNative { host = "PowerPoint", slides = new[] { slide } } };
+            Func<TestLabCheck[]> evaluate = () => Evaluate(oracle, new[] { workbook, presentation }, "", new[] { "xlsx", "pptx" });
+            Func<bool> passes = () => evaluate().All(c => c.passed);
+            Check(passes(), "A valid PowerPoint chart with an additional matching Excel chart was rejected.");
+            slide.charts = new StressChart[0];
+            Check(!passes(), "A matching Excel chart rescued a chartless PowerPoint output.");
+            slide.charts = new[] { correctChart() }; slide.charts[0].series[0].values[1] = "130000";
+            Check(!passes(), "A matching Excel chart rescued incorrect PowerPoint chart values.");
+            slide.charts = new[] { correctChart() }; presentation.output_boundary = false;
+            Check(!passes(), "A source-only PowerPoint chart satisfied an output chart rule.");
+            presentation.output_boundary = true; presentation.artifact_extension = "xlsx";
+            Check(evaluate().Any(c => c.name.EndsWith("_native_chart", StringComparison.Ordinal) && !c.passed),
+                "A chart capture with the wrong artifact type satisfied the PowerPoint rule.");
+            presentation.artifact_extension = "pptx";
+            chartRule["host"] = "Excel"; chartRule["artifact_extension"] = "xlsx";
+            Check(passes(), "A valid Excel chart was rejected by its explicit host scope.");
+            sheet.charts = new StressChart[0];
+            Check(!passes(), "A PowerPoint chart rescued a chartless Excel output.");
+            sheet.charts = new[] { correctChart() };
+            foreach (var invalid in new[] { "", "Word", "PowerPoint" })
+            {
+                chartRule["host"] = invalid;
+                Check(!passes(), "An absent or invalid native chart host/extension scope was accepted: " + invalid);
+            }
+            chartRule["host"] = "Excel"; chartRule.Remove("artifact_extension");
+            Check(!passes(), "A native chart rule without an artifact extension was accepted.");
+        }
         public static void IncompleteCellsAndDraftMetricsRemainGrounded()
         {
             var cellOracle = new { id = "EX01", checks = new object[] { new { kind = "cell_text", sheet = "Scribble Draft*", cell = "F4", expected = "incomplete" } } };

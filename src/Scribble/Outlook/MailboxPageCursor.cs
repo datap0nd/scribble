@@ -134,15 +134,18 @@ namespace Scribble.Outlook
                     ScannedRows++;
                     if (!MessageReader.IsReadableItemClass(Convert.ToString(entry["MessageClass"]))) continue;
                     if (!_seen.Add(_storeId + "\n" + id)) continue;
-                    // Metadata only. Missing/unreadable items are errors, not coverage.
-                    var message = reader.CaptureById(id, _storeId, true);
+                    // A synthetic text scan needs the body as well as headers.
+                    // Capture it once; both paths retain the same identity and
+                    // native source guards. The search payload below still
+                    // exposes headers only, through explicit serialization.
+                    var needsBody = _fixtureScope != null && _query.Length > 0;
+                    var message = reader.CaptureById(id, _storeId, !needsBody);
                     if (!message.ReceivedAt.HasValue || message.ReceivedAt.Value < _after ||
                         message.ReceivedAt.Value > _before || (_unread && !message.IsUnread)) continue;
-                    if (_fixtureScope != null && _query.Length > 0)
+                    if (needsBody)
                     {
-                        var complete = reader.CaptureById(id, _storeId);
-                        if (!Contains(complete.Subject, _query) && !Contains(complete.Sender, _query) &&
-                            !Contains(complete.Recipients, _query) && !Contains(complete.Body, _query)) continue;
+                        if (!Contains(message.Subject, _query) && !Contains(message.Sender, _query) &&
+                            !Contains(message.Recipients, _query) && !Contains(message.Body, _query)) continue;
                     }
                     hits.Add(new MailboxSearchHit(message, _folderName, ""));
                     MatchedRows++;

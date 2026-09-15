@@ -85,6 +85,20 @@ class CatalogContractTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             build_catalog.safe(self.root, "../outside.json")
 
+    def test_chart_requirements_target_the_requested_output_host(self):
+        charts = [(case_id, rule) for case_id, oracle in self.oracles.items()
+                  for rule in oracle["checks"] if rule["kind"] == "native_chart"]
+        self.assertEqual(len(charts), 100)
+        for case_id, rule in charts:
+            expected = ("Excel", "xlsx") if case_id.startswith("EX") else ("PowerPoint", "pptx")
+            self.assertEqual((rule["host"], rule["artifact_extension"]), expected, case_id)
+        for host, extension in [(None, "pptx"), ("PowerPoint", None), ("PowerPoint", "xlsx")]:
+            poisoned = copy.deepcopy(self.oracles)
+            rule = next(r for r in poisoned["XA01"]["checks"] if r["kind"] == "native_chart")
+            rule.update(host=host, artifact_extension=extension)
+            with self.assertRaisesRegex(ValueError, "intended host"):
+                build_catalog.validate(self.cases, poisoned)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -396,6 +396,7 @@ namespace GuardrailTests
                 Run("Stress presentation grading checks table fills and native text roles", StressKitTests.PresentationMeasurementsDistinguishBodyAndTables);
                 Run("Stress API budget requires a finite total cap", StressGradingTests.BudgetRequiresFiniteTotal);
                 Run("Stress numeric outputs require native recalculation", StressGradingTests.NativeCellsRequireRecalculation);
+                Run("Stress charts stay in their requested Office host", StressGradingTests.NativeChartsStayInRequestedHost);
                 Run("Stress mailbox grading requires complete search and exact IDs", StressGradingTests.MailRequiresCompleteSearchAndExactIds);
                 Run("Stress incomplete cells and draft metric labels stay grounded", StressGradingTests.IncompleteCellsAndDraftMetricsRemainGrounded);
                 Run("Stress PDF and HTML retain 200 explicit results", StressGradingTests.ReportRetainsTwoHundredResults);

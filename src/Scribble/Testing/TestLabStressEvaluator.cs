@@ -96,8 +96,13 @@ namespace Scribble.Testing
                     return textCells.Length == 1 && string.Equals(Convert.ToString(textCells[0].value, CultureInfo.InvariantCulture).Trim(),
                         Text(rule, "expected").Trim(), StringComparison.OrdinalIgnoreCase);
                 case "native_chart":
-                    reason = "Native chart categories and calculated series must match the oracle in order.";
-                    var charts = native.Where(n => string.IsNullOrEmpty(n.error)).SelectMany(n => n.sheets.SelectMany(s => s.charts).Concat(n.slides.SelectMany(s => s.charts)));
+                    var chartHost = Text(rule, "host"); var chartExtension = Text(rule, "artifact_extension");
+                    if (!(chartHost == "Excel" && chartExtension == "xlsx") && !(chartHost == "PowerPoint" && chartExtension == "pptx"))
+                        throw new InvalidDataException("Native chart rules require an explicit valid host and artifact extension.");
+                    reason = "Native " + chartHost + " chart categories and calculated series must match the oracle in order.";
+                    var chartOutputs = captures.Where(c => c.artifact_extension == chartExtension && c.stress_native?.host == chartHost &&
+                        string.IsNullOrEmpty(c.stress_native.error)).Select(c => c.stress_native);
+                    var charts = chartOutputs.SelectMany(n => chartHost == "Excel" ? n.sheets.SelectMany(s => s.charts) : n.slides.SelectMany(s => s.charts));
                     return charts.Any(c => ChartMatches(c, rule));
                 case "mail_search":
                     var expected = Strings(Value(rule, "expected_ids")).Distinct().OrderBy(x => x, StringComparer.Ordinal).ToArray();
