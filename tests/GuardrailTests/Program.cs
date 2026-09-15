@@ -403,6 +403,7 @@ namespace GuardrailTests
                 Run("Stress PDF and HTML retain 200 explicit results", StressGradingTests.ReportRetainsTwoHundredResults);
                 Run("Office bootstrap documents contain no task data or external content", OfficeBootstrapTests.NeutralEmbeddedDocuments);
                 Run("Office bootstrap respects Stop before launching Office", OfficeBootstrapTests.CancelledStartupDoesNotReachOffice);
+                Run("PowerPoint bootstrap tracks reused and fresh native processes", OfficeBootstrapTests.PowerPointLaunchTracksReusedOrFreshProcess);
                 Run("Office bootstrap rejects missing, foreign, stale and finished sibling bindings", OfficeBootstrapTests.UnverifiedSiblingCannotStartOffice);
                 Console.WriteLine("PASS: " + _passed + " guardrail tests");
                 if (_passed == 0) throw new InvalidOperationException("No tests matched the requested filter.");

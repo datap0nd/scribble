@@ -82,9 +82,9 @@ namespace Scribble.Testing
                 {
                     cancel.ThrowIfCancellationRequested();
                     RequireSameSuite(state.id, false);
-                    var candidates = host == "PowerPoint" && before.Count == 1 ? before :
-                        Processes(host).Where(p => !before.Any(old => old.pid == p.pid && old.process_start == p.process_start) &&
-                            p.process_start >= launchedAt.AddSeconds(-2).Ticks).ToList();
+                    var candidates = Processes(host).Where(p => IsLaunchCandidate(host, before.Count,
+                        before.Any(old => old.pid == p.pid && old.process_start == p.process_start),
+                        p.process_start, launchedAt.Ticks)).ToList();
                     foreach (var candidate in candidates)
                     {
                         object app = null;
@@ -340,7 +340,7 @@ namespace Scribble.Testing
                 }
                 finally { Release(candidate); }
             }
-            foreach (var window in Windows(pid, host == "Excel" ? "EXCEL7" : "paneClassDC"))
+            foreach (var window in Windows(pid, NativeWindowClasses(host)))
             {
                 cancel.ThrowIfCancellationRequested(); object native = null; candidate = null;
                 try
@@ -363,6 +363,22 @@ namespace Scribble.Testing
             var processes = Processes("PowerPoint");
             return processes.Count == 1 && processes[0].pid == pid && processes[0].process_start == started &&
                 SamePath(processes[0].executable, executable);
+        }
+
+        private static bool IsLaunchCandidate(string host, int beforeCount, bool existedBefore, long processStart, long launchedAt)
+        {
+            // A normal PowerPoint file launch may reuse the one approved process
+            // or create a fresh process. Keep both possibilities in scope; the
+            // exact private document and native PID are still verified by
+            // TryAttach. Other old processes and all old Excel processes remain
+            // outside the candidate set.
+            return (host == "PowerPoint" && beforeCount == 1 && existedBefore) ||
+                (!existedBefore && processStart >= launchedAt - TimeSpan.FromSeconds(2).Ticks);
+        }
+
+        private static string[] NativeWindowClasses(string host)
+        {
+            return host == "Excel" ? new[] { "EXCEL7" } : new[] { "paneClassDC", "mdiClass" };
         }
 
         private static bool ProcessAlive(int pid, long started)
@@ -421,11 +437,11 @@ namespace Scribble.Testing
         private static int ApplicationPid(object application)
         { uint pid; GetWindowThreadProcessId(new IntPtr(Convert.ToInt64(((dynamic)application).Hwnd)), out pid); return checked((int)pid); }
         private static void Release(object value) { if (value != null && Marshal.IsComObject(value)) Marshal.ReleaseComObject(value); }
-        private static IntPtr[] Windows(int pid, string childClass)
+        private static IntPtr[] Windows(int pid, string[] childClasses)
         {
             var result = new List<IntPtr>();
             EnumCallback child = (window, unused) => { uint actual; GetWindowThreadProcessId(window, out actual); if (actual != pid) return true;
-                var name = new StringBuilder(128); GetClassName(window, name, name.Capacity); if (name.ToString() == childClass) result.Add(window); return true; };
+                var name = new StringBuilder(128); GetClassName(window, name, name.Capacity); if (childClasses.Contains(name.ToString())) result.Add(window); return true; };
             EnumCallback top = (window, unused) => { uint actual; GetWindowThreadProcessId(window, out actual); if (actual == pid) EnumChildWindows(window, child, IntPtr.Zero); return true; };
             EnumWindows(top, IntPtr.Zero); GC.KeepAlive(child); GC.KeepAlive(top); return result.ToArray();
         }

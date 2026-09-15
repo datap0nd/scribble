@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
@@ -125,6 +126,29 @@ namespace GuardrailTests
                 }
             }
             throw new InvalidOperationException("A cancelled cold start was not cancelled.");
+        }
+
+        public static void PowerPointLaunchTracksReusedOrFreshProcess()
+        {
+            var candidate = typeof(TestLabOfficeConnection).GetMethod("IsLaunchCandidate", BindingFlags.Static | BindingFlags.NonPublic);
+            var classes = typeof(TestLabOfficeConnection).GetMethod("NativeWindowClasses", BindingFlags.Static | BindingFlags.NonPublic);
+            Check(candidate != null && classes != null, "The PowerPoint native launch boundary is missing.");
+            var launchedAt = DateTime.UtcNow.Ticks;
+            Func<string, int, bool, long, bool> accepts = (host, beforeCount, existedBefore, processStart) =>
+                Convert.ToBoolean(candidate.Invoke(null, new object[] { host, beforeCount, existedBefore, processStart, launchedAt }));
+            Check(accepts("PowerPoint", 1, true, launchedAt - TimeSpan.FromHours(1).Ticks),
+                "PowerPoint cannot reuse its one pre-approved process.");
+            Check(accepts("PowerPoint", 1, false, launchedAt),
+                "PowerPoint cannot bind a fresh process created for the private startup document.");
+            Check(!accepts("PowerPoint", 1, false, launchedAt - TimeSpan.FromMinutes(1).Ticks),
+                "An unrelated old PowerPoint process entered the startup candidate set.");
+            Check(!accepts("Excel", 1, true, launchedAt),
+                "An existing Excel process entered the private startup candidate set.");
+            var powerPointClasses = (string[])classes.Invoke(null, new object[] { "PowerPoint" });
+            Check(powerPointClasses.SequenceEqual(new[] { "paneClassDC", "mdiClass" }),
+                "PowerPoint does not cover both supported native document-window classes.");
+            Check(((string[])classes.Invoke(null, new object[] { "Excel" })).SequenceEqual(new[] { "EXCEL7" }),
+                "Excel's native attachment class changed unexpectedly.");
         }
 
         public static void NeutralEmbeddedDocuments()
