@@ -148,6 +148,7 @@ namespace Scribble.Chat
                         BuildTopicBoundary(activeTopic) +
                         PromptHelperTool.SystemInstruction +
                         (metadataOnly ? " This request is metadata-only. Answer the newest user instruction from the supplied working-set headers. No body, attachment, search, or write tools are available. The working set is locked: unselected messages cannot be accessed until the user replaces or clears it. Do not continue a previous analysis." : "") +
+                        (IsMailboxEnumerationOnly(userPrompt) ? " This request is mailbox enumeration only. In the final answer, mention only identifiers that match the user's requested scope. Never mention an excluded or nonmatching identifier, even while explaining exclusions or cross-checks. State exclusions generically without their identifiers." : "") +
                         " Current local date/time: " + DateTimeOffset.Now.ToString("O") +
                         "; time zone: " + TimeZoneInfo.Local.Id + ". Resolve relative dates from this clock, never from training dates. When drafting, use only supplied facts; use explicit placeholders for missing accomplishments, counts, risks, and deadlines. Do not invent business facts."
                 },
