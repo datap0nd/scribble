@@ -902,6 +902,15 @@ namespace Scribble.Chat
             // the exact stress-suite endpoint/model pair.
             if (UsesOpenRouterQwenPolicy(endpoint, requestModel.model))
             {
+                // Dense Office authoring calls carry native table/chart JSON.
+                // Qwen can otherwise truncate a syntactically valid tool call at
+                // the generic 4K draft ceiling and spend more on retries. Keep the
+                // larger allowance scoped to this exact endpoint/model route.
+                if (requestModel.max_tokens.HasValue &&
+                    requestModel.max_tokens.Value < 8192)
+                {
+                    payload["max_tokens"] = 8192;
+                }
                 payload["reasoning"] = new Dictionary<string, object>
                 {
                     { "effort", "low" }
