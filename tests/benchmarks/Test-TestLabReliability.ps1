@@ -8,6 +8,8 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 function Assert($value,$message){if(-not $value){throw $message}}
 function Reject([scriptblock]$action,$message){$rejected=$false;try{& $action}catch{$rejected=$true};Assert $rejected $message}
 Assert ($null -eq [Scribble.Testing.TestLab]::Status()) 'Do not run reliability checks during an operator session.'
+Assert ($null -eq [Scribble.Testing.TestLabSuite]::Active()) 'Do not run reliability checks during an active suite.'
+Assert (-not [Scribble.Testing.TestLabSuiteWindow]::HasLiveWindow(-1)) 'Close the Test Lab window before running reliability checks.'
 $cancel=New-Object Threading.CancellationTokenSource
 $filter=New-Object Scribble.Testing.TestLabComMessageFilter($cancel.Token)
 try {
@@ -31,6 +33,29 @@ try {
  # Reproduce a legacy pane/antivirus reader briefly denying File.Replace.
  # The descriptor must remain a complete readable snapshot while Start retries.
  Add-Type -TypeDefinition 'using System;using System.IO;using System.Threading;using System.Threading.Tasks;public static class SessionSharingRegression{public static Task Hold(string path,ManualResetEvent ready){return Task.Run(()=>{using(var file=new FileStream(path,FileMode.Open,FileAccess.Read,FileShare.Read)){ready.Set();Thread.Sleep(300);}});}}'
+ # Pane status readers also poll suite.bin while the runner advances cases.
+ # A legacy reader must not abort that transition or leave the old case active.
+ $suiteReaderReady=New-Object Threading.ManualResetEvent($false)
+ $suiteHeldReader=$null
+ $liveSuiteState=New-Object Scribble.Testing.SuiteState
+ $liveSuiteState.id=[guid]::NewGuid().ToString('N');$liveSuiteState.folder=$folder
+ $liveSuiteState.pid=$PID;$liveSuiteState.processStart=[Diagnostics.Process]::GetCurrentProcess().StartTime.ToUniversalTime().Ticks
+ $liveSuiteState.expires=[DateTime]::UtcNow.AddMinutes(1);$liveSuiteState.caseId='EX01'
+ try {
+  [Scribble.Testing.TestLabSuite]::Save($liveSuiteState)
+  $suiteHeldReader=[SessionSharingRegression]::Hold((Join-Path ([Scribble.Testing.TestLab]::Root) 'suite.bin'),$suiteReaderReady)
+  Assert ($suiteReaderReady.WaitOne(5000)) 'The suite sharing regression reader did not start.'
+  Assert ([Scribble.Testing.TestLabSuite]::Active().caseId -eq 'EX01') 'An open reader hid the active suite snapshot.'
+  $liveSuiteState.caseId='PP01'
+  [Scribble.Testing.TestLabSuite]::Save($liveSuiteState)
+  Assert ([Scribble.Testing.TestLabSuite]::Active().caseId -eq 'PP01') 'A sharing retry did not advance the active suite case.'
+ } finally {
+  if($null -ne $suiteHeldReader){$suiteHeldReader.GetAwaiter().GetResult()}
+  $suiteReaderReady.Dispose()
+  $liveSuiteState.expires=[DateTime]::UtcNow.AddMinutes(-1)
+  [Scribble.Testing.TestLabSuite]::Save($liveSuiteState)
+ }
+ Assert ($null -eq [Scribble.Testing.TestLabSuite]::Active()) 'The sharing regression left a live synthetic suite behind.'
  $readerReady=New-Object Threading.ManualResetEvent($false)
  $heldReader=[SessionSharingRegression]::Hold((Join-Path ([Scribble.Testing.TestLab]::Root) 'session.bin'),$readerReady)
  Assert ($readerReady.WaitOne(5000)) 'The sharing regression reader did not start.'

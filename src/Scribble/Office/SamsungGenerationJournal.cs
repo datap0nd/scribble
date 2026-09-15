@@ -71,21 +71,26 @@ namespace Scribble.Office
             for (var i = 1; i <= (int)deck.Slides.Count; i++) ids.Add((int)deck.Slides[i].SlideID);
             return ids.ToArray();
         }
-        internal void Bind(object value, int pages)
+        internal void Bind(object value, int pages, Action beforeNativeWrite = null)
         {
             _deck = value; dynamic deck = value;
             if (Data.OriginalIds == null)
             {
                 Data.OriginalIds = Ids(value); Data.LastOrder = Data.OriginalIds; Data.Pages = pages;
-                deck.Tags.Add("ScribbleTask", _task.State.Id);
+                dynamic tags = deck.Tags;
+                beforeNativeWrite?.Invoke();
+                tags.Add("ScribbleTask", _task.State.Id);
                 _task.State.HostData["samsung_destination"] = _task.State.Id;
-                _task.State.HostData["samsung_recovery_payload"] = _task.Store.PutEvidence(_task.State.Id, Data.Arguments);
+                _task.State.HostData["samsung_recovery_payload"] = _task.RegisterEvidence(Data.Arguments);
                 Persist(); // Before the first slide mutation.
             }
             else
             {
                 if (!SamsungSlideDesign.SameOwner(Convert.ToString(deck.Tags["ScribbleTask"]), _task.State.Id)) throw new InvalidOperationException("SLIDE_RECOVERY_WRONG_DECK");
                 ValidateReceipts(Data, pages, Ids(value), id => PresentationInspection.Fingerprint(PresentationInspection.FindSlide(value, id)));
+                // These receipts prove that the original attempt already wrote.
+                // A subsequent review failure must retain its recovery boundary.
+                beforeNativeWrite?.Invoke();
             }
         }
         internal static void ValidateReceipts(State state, int pages, int[] order, Func<int, string> fingerprint)

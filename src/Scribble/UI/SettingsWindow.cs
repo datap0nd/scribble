@@ -534,8 +534,9 @@ namespace Scribble.UI
 
             ConfigureSupportingLabel(_updateStatus);
             _updateStatus.Text =
-                "Update opens a progress window, verifies the release, waits for Office and Test Bench to close, " +
-                "and confirms the installed version. Your app selections and settings are preserved.";
+                "Update checks the public stable release. Development test builds are installed separately from GitHub Actions. " +
+                "When a newer public version is available, the progress window verifies it, waits for Office and Test Bench to close, " +
+                "and confirms installation. Your app selections and settings are preserved.";
             _updateStatus.AccessibleRole = AccessibleRole.StatusBar;
             layout.Controls.Add(_updateStatus, 0, 13);
             page.Controls.Add(layout);
@@ -547,7 +548,7 @@ namespace Scribble.UI
             if (_updating || _checking || _refreshingModels || _analyzingTone) return;
             _error.Text = string.Empty;
             if (MessageBox.Show(this,
-                "Download and verify the latest Scribble update? The update window will ask Office and Test Bench to close. Respond to any save prompts; installation continues automatically when they close.",
+                "Check for a newer public stable release of Scribble? If one is available, the update window downloads and verifies it, then asks Office and Test Bench to close. Respond to any save prompts; installation continues automatically when they close. Development test builds are distributed separately through GitHub Actions.",
                 "Update Scribble", MessageBoxButtons.OKCancel, MessageBoxIcon.Information) != DialogResult.OK) return;
             _updating = true;
             try

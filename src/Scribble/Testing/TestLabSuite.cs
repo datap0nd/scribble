@@ -36,14 +36,37 @@ namespace Scribble.Testing
         public static T Read<T>(string path) { return new JavaScriptSerializer { MaxJsonLength = int.MaxValue }.Deserialize<T>(File.ReadAllText(path)); }
         public static void Save(SuiteState state)
         {
-            var temporary = Descriptor + "." + Guid.NewGuid().ToString("N");
-            File.WriteAllBytes(temporary, ProtectedData.Protect(Encoding.UTF8.GetBytes(TestLab.Serialize(state)), null, DataProtectionScope.CurrentUser));
-            if (File.Exists(Descriptor)) File.Replace(temporary, Descriptor, null); else File.Move(temporary, Descriptor);
+            Directory.CreateDirectory(TestLab.Root);
+            var temporary = Descriptor + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            try
+            {
+                File.WriteAllBytes(temporary, ProtectedData.Protect(Encoding.UTF8.GetBytes(TestLab.Serialize(state)), null, DataProtectionScope.CurrentUser));
+                for (var attempt = 0; ; attempt++)
+                {
+                    try
+                    {
+                        if (File.Exists(Descriptor)) File.Replace(temporary, Descriptor, null); else File.Move(temporary, Descriptor);
+                        return;
+                    }
+                    catch (IOException error) when (attempt < 39 &&
+                        ((error.HResult & 0xffff) == 32 || (error.HResult & 0xffff) == 33))
+                    { Thread.Sleep(25); }
+                }
+            }
+            finally { if (File.Exists(temporary)) File.Delete(temporary); }
+        }
+        private static byte[] ReadSuiteBytes()
+        {
+            using (var file = new FileStream(Descriptor, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+            {
+                if (file.Length > 256 * 1024) throw new InvalidDataException("The suite descriptor exceeds the size limit.");
+                using (var bytes = new MemoryStream()) { file.CopyTo(bytes); return bytes.ToArray(); }
+            }
         }
         public static SuiteState Active()
         {
             try {
-                var state = new JavaScriptSerializer().Deserialize<SuiteState>(Encoding.UTF8.GetString(ProtectedData.Unprotect(File.ReadAllBytes(Descriptor), null, DataProtectionScope.CurrentUser)));
+                var state = new JavaScriptSerializer().Deserialize<SuiteState>(Encoding.UTF8.GetString(ProtectedData.Unprotect(ReadSuiteBytes(), null, DataProtectionScope.CurrentUser)));
                 using (var p = Process.GetProcessById(state.pid))
                     if (p.HasExited || p.StartTime.ToUniversalTime().Ticks != state.processStart || state.expires <= DateTime.UtcNow) return null;
                 return state;

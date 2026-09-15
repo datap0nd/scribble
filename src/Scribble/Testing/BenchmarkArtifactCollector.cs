@@ -82,6 +82,7 @@ namespace Scribble.Testing
                                 File.WriteAllText(stem + "-readback.json", TestLab.Serialize(new { schema = 1, run_id = runId,
                                     host = kind, captured_utc = DateTime.UtcNow.ToString("O"), native_readback = true,
                                     phase = phase, run_created_output = effectiveOutput,
+                                    output_boundary = effectiveOutput,
                                     artifact_extension = effectiveOutput ? readbackExtension.TrimStart('.') : null,
                                     text = readback }), Encoding.UTF8);
                                 TestLab.Collect(runId, stem + "-readback.json");
@@ -179,9 +180,12 @@ namespace Scribble.Testing
                         if (Convert.ToBoolean(mail.Sent)) throw new InvalidOperationException("A run-owned email has been sent. It cannot be certified as an unsent draft.");
                         var stem = Path.Combine(directory, "Outlook-" + phase + "-output-" + i);
                         var nativeText = "To: " + Convert.ToString(mail.To) + "\nCC: " + Convert.ToString(mail.CC) +
+                            "\nBCC: " + Convert.ToString(mail.BCC) +
                             "\nSubject: " + Convert.ToString(mail.Subject) + "\nUnsent: true\n" + Convert.ToString(mail.Body);
                         File.WriteAllText(stem + "-readback.json", TestLab.Serialize(new { schema = 1, run_id = runId,
-                            native_readback = true, phase, run_created_output = true, artifact_extension = "msg", unsent = true, text = nativeText }), Encoding.UTF8);
+                            native_readback = true, phase, run_created_output = true, output_boundary = true,
+                            artifact_extension = "msg", unsent = true, to = Convert.ToString(mail.To),
+                            cc = Convert.ToString(mail.CC), bcc = Convert.ToString(mail.BCC), text = nativeText }), Encoding.UTF8);
                         TestLab.Collect(runId, stem + "-readback.json");
                         var nativeMail = Path.Combine(nativeDirectory, Path.GetFileName(stem) + ".msg");
                         try { mail.SaveAs(nativeMail, 9); TestLab.Collect(runId, nativeMail); }
@@ -197,7 +201,7 @@ namespace Scribble.Testing
                             attachments.Add(new { name = Convert.ToString(attachment.FileName), sha256 = TestLab.FileHash(saved), size = new FileInfo(saved).Length });
                         }
                         File.WriteAllText(stem + ".json", TestLab.Serialize(new { schema = 1, run_id = runId, native_readback = true, unsent = true,
-                            to = Convert.ToString(mail.To), cc = Convert.ToString(mail.CC), subject = Convert.ToString(mail.Subject), body = Convert.ToString(mail.Body), attachments }), Encoding.UTF8);
+                            to = Convert.ToString(mail.To), cc = Convert.ToString(mail.CC), bcc = Convert.ToString(mail.BCC), subject = Convert.ToString(mail.Subject), body = Convert.ToString(mail.Body), attachments }), Encoding.UTF8);
                         TestLab.Collect(runId, stem + ".json");
                         report.Add("Captured unsent Outlook draft and attachment hashes.");
                     }
@@ -328,6 +332,8 @@ namespace Scribble.Testing
                     if (excludeScribbleDrafts && (boundary != null ? !boundary.sheets.Contains(sheetName) :
                         (sheetName == "Scribble Draft" || sheetName.StartsWith("Scribble Draft ", StringComparison.Ordinal))))
                         continue;
+                    if (!excludeScribbleDrafts && boundary != null && boundary.sheets.Contains(sheetName))
+                        continue;
                     int rows = (int)used.Rows.Count, columns = (int)used.Columns.Count;
                     text.AppendLine("Worksheet: " + sheetName + " | used range: " + Convert.ToString(used.Address));
                     if ((long)rows * columns > 100000) { text.AppendLine("READBACK LIMIT: range exceeds 100000 cells. Screenshot the relevant range in Excel."); continue; }
@@ -355,8 +361,11 @@ namespace Scribble.Testing
             } else {
                 var selectedSlides = new List<int>();
                 for (int n = 1; n <= (int)document.Slides.Count; n++)
-                    if (!excludeScribbleDrafts || (boundary != null ? boundary.slides.Contains((int)Convert.ToInt32(document.Slides.Item(n).SlideID)) :
-                        !IsDraftSlide((object)document.Slides.Item(n)))) selectedSlides.Add(n);
+                {
+                    var isSource = boundary != null && boundary.slides.Contains((int)Convert.ToInt32(document.Slides.Item(n).SlideID));
+                    if (boundary != null ? excludeScribbleDrafts == isSource :
+                        (!excludeScribbleDrafts || !IsDraftSlide((object)document.Slides.Item(n)))) selectedSlides.Add(n);
+                }
                 text.AppendLine("Slide count: " + selectedSlides.Count);
                 for (int n = 1; n <= (int)document.Slides.Count; n++) {
                     if (!selectedSlides.Contains(n)) continue;
@@ -371,7 +380,25 @@ namespace Scribble.Testing
                             for (int r = 1; r <= (int)table.Rows.Count; r++) for (int c = 1; c <= (int)table.Columns.Count; c++)
                                 text.AppendLine("Table R" + r + "C" + c + ": " + Convert.ToString(table.Cell(r, c).Shape.TextFrame.TextRange.Text));
                         }
-                        if ((int)shape.HasChart != 0) text.AppendLine("Native chart type: " + Convert.ToString(shape.Chart.ChartType));
+                        if ((int)shape.HasChart != 0)
+                        {
+                            dynamic chart = shape.Chart;
+                            text.AppendLine("Native chart type: " + Convert.ToString(chart.ChartType));
+                            try
+                            {
+                                // Read cached series through the chart itself.
+                                // Do not activate its data editor or refresh links.
+                                dynamic series = chart.SeriesCollection();
+                                var count = (int)series.Count;
+                                for (var index = 1; index <= Math.Min(count, 32); index++)
+                                {
+                                    dynamic item = series.Item(index);
+                                    text.Append(FormatChartSeries(Convert.ToString(item.Name), (object)item.XValues, (object)item.Values));
+                                }
+                                if (count > 32) text.AppendLine("Chart data readback: additional series omitted by capture limit.");
+                            }
+                            catch (Exception error) { text.AppendLine("Chart data readback: cached series unavailable (" + error.GetType().Name + ")."); }
+                        }
                     }
                     try
                     {
@@ -397,6 +424,41 @@ namespace Scribble.Testing
                 }
             }
             return text.ToString();
+        }
+
+        internal static string FormatChartSeries(string name, object categories, object values)
+        {
+            var text = new StringBuilder("Chart series: " + ChartScalar(name, false) + "\n");
+            var data = ChartArray(values); var labels = ChartArray(categories);
+            if (data.Length == 0) return text + "Chart data readback: no cached values available.\n";
+            for (var i = 0; i < data.Length; i++)
+                text.Append("Chart point: ").Append(i < labels.Length ? ChartScalar(labels[i], false) : "(unlabelled)")
+                    .Append(" | value: ").AppendLine(ChartScalar(data[i], true));
+            if ((values is Array && ((Array)values).Length > 128) || (categories is Array && ((Array)categories).Length > 128))
+                text.AppendLine("Chart data readback: additional points omitted by capture limit.");
+            return text.ToString();
+        }
+
+        private static object[] ChartArray(object value)
+        {
+            if (value == null || Marshal.IsComObject(value)) return new object[0];
+            var array = value as Array;
+            if (array != null) return array.Cast<object>().Take(128).ToArray();
+            // A formula/reference is not a cached series value. Never dereference
+            // it or interpret its operands as calculated chart evidence.
+            if (value is string && ((string)value).StartsWith("=", StringComparison.Ordinal)) return new object[0];
+            return new[] { value };
+        }
+
+        private static string ChartScalar(object value, bool errorValue)
+        {
+            if (value == null) return "";
+            if (Marshal.IsComObject(value)) return "(cached value unavailable)";
+            var error = errorValue ? Scribble.Office.ExcelErrorValue.Text(value) : null;
+            var text = error ?? Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture) ?? "";
+            if (text.StartsWith("=", StringComparison.Ordinal)) return "(reference; cached text unavailable)";
+            text = text.Replace('\r', ' ').Replace('\n', ' ');
+            return text.Length <= 250 ? text : text.Substring(0, 250) + "...";
         }
         public static void SaveFlatOpc(string xml, string path)
         {

@@ -131,6 +131,7 @@
     <Compile Include="Testing\TestLabSuite.cs" />
     <Compile Include="Testing\TestLabSuitePane.cs" />
     <Compile Include="Testing\TestLabSuiteWindow.cs" />
+    <Compile Include="Testing\TestLabOperator.cs" />
     <Compile Include="Testing\TestLabPdfWriter.cs" />
     <Compile Include="Testing\TestLabEvaluator.cs" />
     <Compile Include="Testing\TestLabWindow.cs" />

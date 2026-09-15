@@ -25,6 +25,18 @@ namespace Scribble.Updater
             var v = FileVersionInfo.GetVersionInfo(path);
             return v.FileMajorPart + "." + v.FileMinorPart + "." + v.FileBuildPart + "." + v.FilePrivatePart;
         }
+        public static string NoUpdateMessage(string installedVersion, string publicVersion)
+        {
+            Version installed, available;
+            if (!Version.TryParse(installedVersion, out installed) || !Version.TryParse(publicVersion, out available))
+                throw new InvalidDataException("The installed or public release version is invalid.");
+            if (available > installed) return null;
+            var versions = " Installed: " + installedVersion + ". Public stable: " + publicVersion + ".";
+            if (available == installed)
+                return "Scribble is already up to date with the public stable release." + versions;
+            return "No newer public update is available." + versions +
+                " Your installed build was kept. Development test builds are distributed separately through GitHub Actions.";
+        }
         public static Candidate ParseCandidate(string json)
         {
             var candidate = new JavaScriptSerializer().Deserialize<Candidate>(json.TrimStart('\uFEFF'));
@@ -94,6 +106,7 @@ namespace Scribble.Updater
             if (!Path.IsPathRooted(installed) || !File.Exists(Path.Combine(installed, "Scribble.dll"))) throw new InvalidDataException("The Scribble install directory is unavailable.");
             if (!new[] { "", "outlook.exe", "excel.exe", "powerpnt.exe", "winword.exe" }.Contains(restart ?? "")) throw new InvalidDataException("Unsupported restart application.");
             ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
+            var installedVersion = VersionOf(Path.Combine(installed, "Scribble.dll"));
             Candidate candidate = null;
             var installer = Path.Combine(staging, "ScribbleSetup.exe");
             using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancel))
@@ -105,12 +118,13 @@ namespace Scribble.Updater
                 // never execute bytes that failed checksum/version validation.
                 for (int attempt = 0; attempt < 3; attempt++)
                 {
-                    report("Downloading and verifying the latest release...");
+                    report("Checking the public stable release. Installed version: " + installedVersion + ".");
                     var manifest = Path.Combine(staging, "candidate.json");
                     await Download(http, "candidate.json", manifest, 65536, timeout.Token);
                     candidate = ParseCandidate(File.ReadAllText(manifest));
-                    if (new Version(candidate.version) < new Version(VersionOf(Path.Combine(installed, "Scribble.dll"))))
-                        throw new InvalidOperationException("The published release is older than your installed build. No downgrade was performed.");
+                    var noUpdate = NoUpdateMessage(installedVersion, candidate.version);
+                    if (noUpdate != null) return noUpdate;
+                    report("Installed version: " + installedVersion + ". Public stable version: " + candidate.version + ". Downloading and verifying the update...");
                     await Download(http, "ScribbleSetup.exe", installer, MaxInstallerBytes, timeout.Token);
                     try { ValidateInstaller(installer, candidate); break; }
                     catch (InvalidDataException) when (attempt < 2) { await Task.Delay(2000, timeout.Token); }

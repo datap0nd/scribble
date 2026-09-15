@@ -39,8 +39,14 @@ namespace Scribble.Testing
                 var memoryOutputs = MemoryOutputs(archive).ToArray();
                 foreach (var memory in memoryOutputs)
                 {
-                    var output = OutputText(memory.extension, memory.text);
+                    if (memory.extension == "xlsx" || memory.extension == "pptx" || memory.extension == "docx")
+                        Add(checks, "output_boundary_" + memory.name,
+                            memory.outputBoundary || (!memory.invalidBoundary && LegacyBoundaryClear(archive, memory.name)),
+                            "Output-only native evidence is required when the captured source boundary is missing or already contains draft markers. An invalid boundary flag cannot establish ownership.");
+                    var output = memory.outputBoundary ? memory.text : OutputText(memory.extension, memory.text);
                     finalText.AppendLine(output);
+                    if (run.case_id == "OL02" && memory.extension == "msg")
+                        checks.AddRange(CheckMailReadback(memory.metadata));
                 }
                 foreach (var entry in archive.Entries.Where(e => e.FullName.StartsWith("artifacts/", StringComparison.Ordinal) &&
                     e.FullName.IndexOf("-final-output-", StringComparison.OrdinalIgnoreCase) >= 0 &&
@@ -49,20 +55,15 @@ namespace Scribble.Testing
                     try
                     {
                         var inspection = InspectOffice(entry);
-                        if (!memoryOutputs.Any(m => "." + m.extension == Path.GetExtension(entry.Name))) finalText.AppendLine(inspection.text);
-                        if (entry.FullName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+                        // The disk package may also contain unchanged source
+                        // sheets/slides. Grade the captured output boundary once;
+                        // keep the full native package available for inspection.
+                        if (!memoryOutputs.Any(m => SameOutput(m.name, entry.Name)))
                         {
-                            Add(checks, "no_formula_errors_" + entry.Name, inspection.formulaErrors == 0, "Native formula error cells: " + inspection.formulaErrors);
-                            if (new[] { "EX01", "EX04", "EX05", "XA01", "RC01" }.Contains(run.case_id))
-                                Add(checks, "native_formulas_" + entry.Name, inspection.formulas > 0, "Formula count: " + inspection.formulas);
-                            if (new[] { "EX01", "EX04", "XA01", "XA03", "RC01" }.Contains(run.case_id))
-                                Add(checks, "native_chart_" + entry.Name, inspection.charts > 0, "Chart count: " + inspection.charts);
-                        }
-                        if (entry.FullName.EndsWith(".pptx", StringComparison.OrdinalIgnoreCase))
-                        {
-                            var expected = run.case_id == "PP02" ? 4 : 6;
-                            Add(checks, "final_slide_count_" + entry.Name, inspection.slides == expected || inspection.slides == expected + 1,
-                                "Expected " + expected + " draft slides (plus at most one preserved source); observed " + inspection.slides + ".");
+                            Add(checks, "output_boundary_" + entry.Name, LegacyBoundaryClear(archive, entry.Name),
+                                "File-only evidence needs a captured source boundary without pre-existing draft markers; otherwise a native output-only readback is required.");
+                            finalText.AppendLine(inspection.text);
+                            AddNamedChecks(checks, CheckOutputStructure(run.case_id, Path.GetExtension(entry.Name).TrimStart('.'), inspection.text, true), entry.Name);
                         }
                     }
                     catch (Exception error) { Add(checks, "readable_" + entry.Name, false, error.GetType().Name + ": " + error.Message); }
@@ -76,7 +77,9 @@ namespace Scribble.Testing
                     var answer = FinalAnswer(Read(archive, "timeline.jsonl"));
                     finalText.AppendLine(answer);
                 }
-                checks.AddRange(CheckOutputFacts(run.case_id, finalText.ToString()));
+                checks.AddRange(CheckOutputFacts(run.case_id, finalText.ToString(), false));
+                if (run.case_id == "OL02" && !memoryOutputs.Any(m => m.extension == "msg"))
+                    Add(checks, "native_mail_headers", false, "Native draft recipient and unsent metadata are missing.");
                 CheckSourcePreservation(checks, archive);
             }
             var failed = checks.Where(c => c.hard && !c.passed).ToArray();
@@ -175,10 +178,15 @@ namespace Scribble.Testing
                     !data.TryGetValue("artifact_extension", out extension) ||
                     !data.TryGetValue("text", out text))
                     continue;
+                object boundary;
+                var hasBoundary = data.TryGetValue("output_boundary", out boundary);
                 yield return new MemoryOutput {
-                    extension = Convert.ToString(extension),
+                    extension = Convert.ToString(extension).ToLowerInvariant(),
                     text = Convert.ToString(text) ?? "",
-                    name = entry.Name
+                    name = entry.Name,
+                    outputBoundary = hasBoundary && boundary is bool && (bool)boundary,
+                    invalidBoundary = hasBoundary && (!(boundary is bool) || !(bool)boundary),
+                    metadata = data
                 };
             }
         }
@@ -188,32 +196,62 @@ namespace Scribble.Testing
             string caseId,
             MemoryOutput[] outputs)
         {
-            foreach (var output in outputs.Where(o => o.extension == "xlsx"))
+            foreach (var output in outputs)
+                AddNamedChecks(checks, CheckOutputStructure(caseId, output.extension, output.text, output.outputBoundary), output.name);
+        }
+
+        private static bool SameOutput(string first, string second)
+        {
+            const string pattern = @"(Excel|PowerPoint|Outlook|Word)-final-output-(\d+)(?:-readback\.json|\.[^.]+)$";
+            var left = Regex.Match(first, pattern, RegexOptions.IgnoreCase); var right = Regex.Match(second, pattern, RegexOptions.IgnoreCase);
+            return left.Success && right.Success && string.Equals(left.Groups[1].Value, right.Groups[1].Value, StringComparison.OrdinalIgnoreCase) &&
+                left.Groups[2].Value == right.Groups[2].Value;
+        }
+
+        private static void AddNamedChecks(List<TestLabCheck> checks, TestLabCheck[] additions, string name)
+        {
+            foreach (var check in additions) { check.name += "_" + name; checks.Add(check); }
+        }
+
+        private static bool LegacyBoundaryClear(ZipArchive archive, string name)
+        {
+            var host = Regex.Match(name, @"(Excel|PowerPoint|Word)-final-output-", RegexOptions.IgnoreCase).Groups[1].Value;
+            var sources = Readbacks(archive, "-source-source-").Where(p => p.Key.StartsWith(host + "-", StringComparison.OrdinalIgnoreCase)).Select(p => p.Value).ToArray();
+            return sources.Length > 0 && sources.All(s => !s.Contains("Worksheet: Scribble Draft") && !s.Contains("[Scribble draft]"));
+        }
+
+        public static TestLabCheck[] CheckOutputStructure(string caseId, string extension, string text, bool outputBoundary = false)
+        {
+            var checks = new List<TestLabCheck>();
+            var output = outputBoundary ? text ?? "" : OutputText(extension, text);
+            if (extension == "xlsx")
             {
-                var formulas = Regex.Matches(output.text, @"\| formula: =").Count;
+                var formulas = Regex.Matches(output, @"(?m)^R\d+C\d+: [^\r\n]*\| formula: =").Count;
                 var formulaErrors = Regex.Matches(
-                    NormalizeExcelErrors(output.text),
-                    @"#(?:REF!|NAME\?|VALUE!|DIV/0!|NULL!|NUM!|N/A|SPILL!|CALC!|GETTING_DATA|EXCEL_ERROR\()",
+                    NormalizeExcelErrors(output),
+                    @"(?m)^R\d+C\d+: #(?:REF!|NAME\?|VALUE!|DIV/0!|NULL!|NUM!|N/A|SPILL!|CALC!|GETTING_DATA|EXCEL_ERROR\(\d+\))(?=\s*(?:\||$))",
                     RegexOptions.IgnoreCase).Count;
-                var charts = Regex.Matches(output.text, @"Native charts: ([1-9][0-9]*)").Count;
-                Add(checks, "no_formula_errors_" + output.name, formulaErrors == 0,
-                    "Native formula error cells in memory readback: " + formulaErrors);
+                var charts = Regex.Matches(output, @"(?m)^Native charts: ([1-9][0-9]*)\r?$").Count;
+                Add(checks, "no_formula_errors", formulaErrors == 0,
+                    "Native formula error cells in the output boundary: " + formulaErrors);
                 if (new[] { "EX01", "EX04", "EX05", "XA01", "RC01" }.Contains(caseId))
-                    Add(checks, "native_formulas_" + output.name, formulas > 0,
-                        "Formula count in memory readback: " + formulas);
+                    Add(checks, "native_formulas", formulas > 0,
+                        "Formula count in the output boundary: " + formulas);
                 if (new[] { "EX01", "EX04", "XA01", "XA03", "RC01" }.Contains(caseId))
-                    Add(checks, "native_chart_" + output.name, charts > 0,
-                        "Chart-bearing sheets in memory readback: " + charts);
+                    Add(checks, "native_chart", charts > 0,
+                        "Chart-bearing output sheets: " + charts);
             }
-            foreach (var output in outputs.Where(o => o.extension == "pptx"))
+            if (extension == "pptx")
             {
-                var match = Regex.Match(output.text, @"Slide count: (\d+)");
+                var match = Regex.Match(output, outputBoundary ? @"(?m)^Slide count: (\d+)\r?$" : @"(?m)^Draft slide count: (\d+)\r?$");
                 var observed = match.Success ? Convert.ToInt32(match.Groups[1].Value) : 0;
                 var expected = caseId == "PP02" ? 4 : 6;
-                Add(checks, "final_slide_count_" + output.name,
-                    observed == expected || observed == expected + 1,
-                    "Expected " + expected + " draft slides (plus at most one preserved source); observed " + observed + ".");
+                Add(checks, "final_slide_count", observed == expected,
+                    "Expected " + expected + " new draft slides; observed " + observed + ". Preserved source slides do not count.");
+                if (caseId == "PP04") Add(checks, "native_chart", Regex.IsMatch(output, @"(?m)^Native chart type: "),
+                    "The financial review must contain a native editable chart in its draft slides.");
             }
+            return checks.ToArray();
         }
 
         private static Dictionary<string, string> Readbacks(ZipArchive archive, string marker)
@@ -241,11 +279,15 @@ namespace Scribble.Testing
         }
 
         public static TestLabCheck[] CheckOutputFacts(string caseId, string output)
+        { return CheckOutputFacts(caseId, output, true); }
+
+        private static TestLabCheck[] CheckOutputFacts(string caseId, string output, bool checkMailHeaders)
         {
             var checks = new List<TestLabCheck>();
             // Cell coordinates and formula operands are not calculated answers.
             var values = Regex.Replace(output ?? "", @"(?m)^R\d+C\d+: ([^\r\n]*)", m =>
                 m.Groups[1].Value.Split('|')[0]);
+            values = Regex.Replace(values, @"(?m)^(?:Worksheet: |Shape \d+ \||Native charts?: |Native chart type: |Chart data readback: |Series \d+: |Chart \d+ \||Slide count: |Draft slide count: |Slide \d+\r?$)[^\r\n]*", "");
             var numbers = Numbers(values);
             var facts = new Dictionary<string, double[]> {
                 { "EX01", new[] { 120000d, 130000d, 46000d } }, { "EX02", new[] { 120000d } },
@@ -278,8 +320,7 @@ namespace Scribble.Testing
             if (caseId == "OL01" || caseId == "OL02") CheckFinanceStatements(checks, output ?? "");
             if (caseId == "OL02")
             {
-                Add(checks, "draft_recipient", Regex.IsMatch(output ?? "", @"(?im)^To:\s*review@example\.test\s*$"), "The draft must be addressed only to review@example.test.");
-                Add(checks, "draft_unsent", Regex.IsMatch(output ?? "", @"(?im)^Unsent:\s*true\s*$"), "The recorded native draft must remain unsent.");
+                if (checkMailHeaders) checks.AddRange(CheckLegacyMailHeaders(output ?? ""));
                 foreach (var owner in new[] { "Mira Cole", "Leon Park" })
                     Add(checks, "action_owner_" + owner.Replace(" ", "_"), (output ?? "").IndexOf(owner, StringComparison.OrdinalIgnoreCase) >= 0, "Required planned action owner is missing: " + owner);
                 CheckActionDate(checks, output ?? "", "Mira Cole", "Leon Park", 10);
@@ -291,9 +332,55 @@ namespace Scribble.Testing
         private static void CheckActionDate(List<TestLabCheck> checks, string output, string owner, string other, int day)
         {
             var date = @"(?:\b" + day + @"(?:th)?\s+July\s+2026\b|\bJuly\s+" + day + @"(?:th)?,?\s+2026\b|\b2026-07-" + day + @"\b)";
-            Add(checks, "action_date_" + owner.Replace(" ", "_"), Regex.IsMatch(output,
-                Regex.Escape(owner) + @"(?:(?!" + Regex.Escape(other) + @").){0,240}?" + date,
-                RegexOptions.IgnoreCase | RegexOptions.Singleline), owner + " must retain the due date " + day + " July 2026.");
+            var clauses = Regex.Split(output, @"[;\r\n]+|\.\s+|,\s*(?=(?:Mira Cole|Leon Park)\b)", RegexOptions.IgnoreCase);
+            Add(checks, "action_date_" + owner.Replace(" ", "_"), clauses.Any(clause => clause.Length <= 500 &&
+                clause.IndexOf(owner, StringComparison.OrdinalIgnoreCase) >= 0 && clause.IndexOf(other, StringComparison.OrdinalIgnoreCase) < 0 &&
+                Regex.IsMatch(clause, date, RegexOptions.IgnoreCase)), owner + " must retain the due date " + day + " July 2026.");
+        }
+
+        public static TestLabCheck[] CheckMailReadback(string readbackJson)
+        {
+            return CheckMailReadback(new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(readbackJson));
+        }
+
+        private static TestLabCheck[] CheckMailReadback(Dictionary<string, object> data)
+        {
+            // New captures keep native headers outside the model-authored body.
+            // Never fall back to quoted body headers when structured fields exist.
+            if (data.ContainsKey("to") || data.ContainsKey("cc") || data.ContainsKey("bcc"))
+                return CheckMailHeaders(Field(data, "to"), Field(data, "cc"), Field(data, "bcc"), Field(data, "unsent"));
+            return CheckLegacyMailHeaders(Field(data, "text"));
+        }
+
+        private static string Field(Dictionary<string, object> data, string name)
+        { object value; return data.TryGetValue(name, out value) ? Convert.ToString(value) ?? "" : ""; }
+
+        private static TestLabCheck[] CheckLegacyMailHeaders(string text)
+        {
+            var headers = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+            var lines = (text ?? "").Split('\n');
+            // The collector writes one fixed header block, then the body. Stop
+            // at its Unsent field so a body line cannot impersonate native data.
+            if (lines.Length > 0 && lines[0].StartsWith("To:", StringComparison.OrdinalIgnoreCase))
+                foreach (var line in lines)
+                {
+                    var match = Regex.Match(line, @"^(To|CC|BCC|Subject|Unsent):\s*(.*?)\r?$", RegexOptions.IgnoreCase);
+                    if (!match.Success || headers.ContainsKey(match.Groups[1].Value)) break;
+                    headers.Add(match.Groups[1].Value, match.Groups[2].Value);
+                    if (match.Groups[1].Value.Equals("Unsent", StringComparison.OrdinalIgnoreCase)) break;
+                }
+            return CheckMailHeaders(Field(headers, "To"), Field(headers, "CC"), Field(headers, "BCC"), Field(headers, "Unsent"));
+        }
+
+        private static TestLabCheck[] CheckMailHeaders(string to, string cc, string bcc, string unsent)
+        {
+            var checks = new List<TestLabCheck>();
+            Add(checks, "draft_recipient", string.Equals(to.Trim(), "review@example.test", StringComparison.OrdinalIgnoreCase) &&
+                string.IsNullOrWhiteSpace(cc) && string.IsNullOrWhiteSpace(bcc),
+                "The native draft must be addressed only to review@example.test, with no CC or BCC recipients.");
+            Add(checks, "draft_unsent", string.Equals(unsent.Trim(), "true", StringComparison.OrdinalIgnoreCase),
+                "The recorded native draft must remain unsent.");
+            return checks.ToArray();
         }
 
         private static void RequirePercent(List<TestLabCheck> checks, List<double> numbers, string name, double expected, bool magnitude = false)
@@ -322,13 +409,16 @@ namespace Scribble.Testing
                 foreach (var line in Regex.Split(output, @"[\r\n;]+|\.\s+(?=[A-Z])"))
                 {
                     foreach (Match match in Regex.Matches(line,
-                        metric[1] + @"[\s:*]*(?:(?:EUR|€|is|was|of|at|equals|=)\s*)*(?<value>[-+\u2212]?\d[\d,]*(?:\.\d+)?)", RegexOptions.IgnoreCase))
+                        metric[1] + @"[\s*]*(?:\(\s*(?:EUR|€|%|pp|percentage points)\s*\)[\s*]*)?[:\s*]*(?:(?:EUR|€|is|was|of|at|equals|=)\s*)*(?<value>[-+\u2212]?\d[\d,]*(?:\.\d+)?)", RegexOptions.IgnoreCase))
                     {
                         var prefix = line.Substring(0, match.Groups["value"].Index);
                         var periods = Regex.Matches(prefix, @"\b(?:May|June)\b", RegexOptions.IgnoreCase);
                         if (periods.Count > 0 && periods[periods.Count - 1].Value.Equals("May", StringComparison.OrdinalIgnoreCase)) continue;
+                        var suffix = line.Substring(match.Index + match.Length);
+                        if (Regex.IsMatch(suffix, @"^\s*%?\s*(?:(?:in|for|during)\s+|\()May\b", RegexOptions.IgnoreCase)) continue;
                         if (Regex.IsMatch(line.Substring(0, match.Index), @"\b(?:North|South|Product\s+[AB])\s*$", RegexOptions.IgnoreCase)) continue;
-                        observed.AddRange(Numbers(match.Groups["value"].Value));
+                        observed.AddRange(Numbers(match.Groups["value"].Value).Select(n =>
+                            metric[0].StartsWith("margin", StringComparison.Ordinal) && Math.Abs(n) < 1 ? n * 100 : n));
                     }
                 }
                 var expected = double.Parse(metric[2], CultureInfo.InvariantCulture);
@@ -350,26 +440,133 @@ namespace Scribble.Testing
                 {
                     if (package.Entries.Sum(e => e.Length) > 100L * 1024 * 1024) throw new InvalidDataException("Expanded package exceeds 100 MB.");
                     if (package.Entries.Any(e => e.FullName.IndexOf("vbaProject", StringComparison.OrdinalIgnoreCase) >= 0)) throw new InvalidDataException("Unexpected macro payload.");
-                    var text = new StringBuilder(); int formulas = 0, formulaErrors = 0;
-                    foreach (var part in package.Entries.Where(e => e.FullName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase) &&
-                        (e.FullName.StartsWith("xl/worksheets/", StringComparison.Ordinal) || e.FullName.StartsWith("ppt/slides/", StringComparison.Ordinal) ||
-                         e.FullName.StartsWith("ppt/notesSlides/", StringComparison.Ordinal) || e.FullName == "word/document.xml" || e.FullName == "xl/sharedStrings.xml")))
-                    {
-                        using (var stream = part.Open())
-                        {
-                            var document = XDocument.Load(stream); text.AppendLine(string.Join(" ", document.Descendants().Select(n => n.Value)));
-                            if (part.FullName.StartsWith("xl/worksheets/", StringComparison.Ordinal)) {
-                                formulas += document.Descendants().Count(n => n.Name.LocalName == "f");
-                                formulaErrors += document.Descendants().Count(n => n.Name.LocalName == "c" && (string)n.Attribute("t") == "e");
-                            }
-                        }
-                    }
-                    var value = text.ToString();
-                    return new OfficeInspection { text = value, numbers = Numbers(value), formulas = formulas,
-                        formulaErrors = formulaErrors, charts = package.Entries.Count(e => Regex.IsMatch(e.FullName, @"^(?:xl|ppt)/charts/chart\d+\.xml$")),
-                        slides = package.Entries.Count(e => Regex.IsMatch(e.FullName, @"^ppt/slides/slide\d+\.xml$")) };
+                    // Read actual leaf values in draft parts only. XML ancestor
+                    // Values duplicate text and concatenate formula operands with
+                    // cached results, allowing source facts to pass as answers.
+                    var text = entry.FullName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase) ? ReadPackageExcel(package) :
+                        entry.FullName.EndsWith(".pptx", StringComparison.OrdinalIgnoreCase) ? ReadPackageSlides(package) :
+                        LeafText(PackageXml(package, "word/document.xml"));
+                    return new OfficeInspection { text = text };
                 }
             }
+        }
+
+        private static XDocument PackageXml(ZipArchive package, string path)
+        {
+            var entry = package.GetEntry(path); if (entry == null) return null;
+            using (var stream = entry.Open()) return XDocument.Load(stream);
+        }
+
+        private static string LeafText(XDocument document)
+        { return document == null ? "" : string.Join("\n", document.Descendants().Where(n => n.Name.LocalName == "t").Select(n => n.Value)); }
+
+        private static Dictionary<string, string> PackageRelationships(ZipArchive package, string part)
+        {
+            var slash = part.LastIndexOf('/');
+            var rels = PackageXml(package, part.Substring(0, slash + 1) + "_rels/" + part.Substring(slash + 1) + ".rels");
+            var result = new Dictionary<string, string>();
+            if (rels != null) foreach (var item in rels.Descendants().Where(n => n.Name.LocalName == "Relationship" && (string)n.Attribute("TargetMode") != "External"))
+            {
+                var id = (string)item.Attribute("Id"); var target = (string)item.Attribute("Target");
+                if (id != null && target != null)
+                    result[id] = new Uri(new Uri("https://package.invalid/" + part), target).AbsolutePath.TrimStart('/');
+            }
+            return result;
+        }
+
+        private static string RelationshipTarget(XElement element, Dictionary<string, string> relationships)
+        {
+            var id = (string)element.Attribute(XName.Get("id", "http://schemas.openxmlformats.org/officeDocument/2006/relationships"));
+            string target; return id != null && relationships.TryGetValue(id, out target) ? target : null;
+        }
+
+        private static int PackageCharts(ZipArchive package, string part, XDocument document, int depth = 0)
+        {
+            if (document == null || depth > 2) return 0;
+            var relationships = PackageRelationships(package, part); int count = 0;
+            foreach (var node in document.Descendants().Where(n => n.Name.LocalName == "chart" || n.Name.LocalName == "drawing"))
+            {
+                var target = RelationshipTarget(node, relationships); if (target == null) continue;
+                if (node.Name.LocalName == "chart") { if (package.GetEntry(target) != null) count++; }
+                else count += PackageCharts(package, target, PackageXml(package, target), depth + 1);
+            }
+            return count;
+        }
+
+        private static string ReadPackageExcel(ZipArchive package)
+        {
+            var text = new StringBuilder(); var workbook = PackageXml(package, "xl/workbook.xml");
+            if (workbook == null) return "";
+            var relationships = PackageRelationships(package, "xl/workbook.xml");
+            var shared = PackageXml(package, "xl/sharedStrings.xml");
+            var strings = shared == null ? new string[0] : shared.Descendants().Where(n => n.Name.LocalName == "si")
+                .Select(n => string.Concat(n.Descendants().Where(t => t.Name.LocalName == "t").Select(t => t.Value))).ToArray();
+            foreach (var sheet in workbook.Descendants().Where(n => n.Name.LocalName == "sheet"))
+            {
+                var name = (string)sheet.Attribute("name") ?? "";
+                if (name != "Scribble Draft" && !name.StartsWith("Scribble Draft ", StringComparison.Ordinal)) continue;
+                var part = RelationshipTarget(sheet, relationships); var document = part == null ? null : PackageXml(package, part);
+                if (document == null) continue;
+                text.AppendLine("Worksheet: " + name);
+                foreach (var cell in document.Descendants().Where(n => n.Name.LocalName == "c"))
+                {
+                    var formula = cell.Elements().FirstOrDefault(n => n.Name.LocalName == "f");
+                    var value = cell.Elements().FirstOrDefault(n => n.Name.LocalName == "v"); var contents = value == null ? "" : value.Value;
+                    var type = (string)cell.Attribute("t");
+                    if (type == "s") { int index; contents = int.TryParse(contents, out index) && index >= 0 && index < strings.Length ? strings[index] : ""; }
+                    else if (type == "inlineStr") contents = string.Concat(cell.Descendants().Where(n => n.Name.LocalName == "t").Select(n => n.Value));
+                    var coordinate = Regex.Match((string)cell.Attribute("r") ?? "A1", @"^([A-Z]+)(\d+)$"); int column = 0;
+                    foreach (var letter in coordinate.Groups[1].Value) column = column * 26 + letter - 'A' + 1;
+                    text.Append("R").Append(coordinate.Groups[2].Value).Append("C").Append(column).Append(": ").Append(contents);
+                    if (formula != null) text.Append(" | formula: =").Append(formula.Value);
+                    text.AppendLine();
+                }
+                text.AppendLine("Native charts: " + PackageCharts(package, part, document));
+            }
+            return text.ToString();
+        }
+
+        private static string ReadPackageSlides(ZipArchive package)
+        {
+            var slides = new List<string>();
+            foreach (var part in package.Entries.Where(e => Regex.IsMatch(e.FullName, @"^ppt/slides/slide\d+\.xml$")))
+            {
+                var document = PackageXml(package, part.FullName); var text = LeafText(document);
+                if (!text.Contains("[Scribble draft]")) continue;
+                var slide = new StringBuilder(text);
+                for (var n = 0; n < PackageCharts(package, part.FullName, document); n++) slide.AppendLine("\nNative chart type: editable OOXML chart");
+                var relationships = PackageRelationships(package, part.FullName);
+                foreach (var chart in document.Descendants().Where(n => n.Name.LocalName == "chart").Take(32))
+                {
+                    var target = RelationshipTarget(chart, relationships); var data = target == null ? null : PackageXml(package, target);
+                    if (data == null) continue;
+                    foreach (var series in data.Descendants().Where(n => n.Name.LocalName == "ser").Take(32))
+                    {
+                        var name = series.Elements().FirstOrDefault(n => n.Name.LocalName == "tx");
+                        var category = series.Elements().FirstOrDefault(n => n.Name.LocalName == "cat" || n.Name.LocalName == "xVal");
+                        var value = series.Elements().FirstOrDefault(n => n.Name.LocalName == "val" || n.Name.LocalName == "yVal");
+                        slide.AppendLine("\n" + BenchmarkArtifactCollector.FormatChartSeries(name == null ? "" : name.Descendants().FirstOrDefault(n => n.Name.LocalName == "v")?.Value,
+                            CachedChartPoints(category), CachedChartPoints(value)));
+                    }
+                }
+                foreach (var notes in PackageRelationships(package, part.FullName).Values.Where(p => p.StartsWith("ppt/notesSlides/", StringComparison.Ordinal)))
+                    slide.AppendLine("\nNotes: " + LeafText(PackageXml(package, notes)));
+                slides.Add(slide.ToString());
+            }
+            return "Slide count: " + slides.Count + "\n" + string.Join("\n", slides.Select((s, i) => "Slide " + (i + 1) + "\n" + s));
+        }
+
+        private static object[] CachedChartPoints(XElement parent)
+        {
+            if (parent == null) return new object[0];
+            var points = new object[128]; var count = 0;
+            foreach (var point in parent.Descendants().Where(n => n.Name.LocalName == "pt").Take(128))
+            {
+                int index; if (!int.TryParse((string)point.Attribute("idx"), out index) || index < 0 || index >= points.Length) continue;
+                points[index] = point.Elements().FirstOrDefault(n => n.Name.LocalName == "v")?.Value;
+                count = Math.Max(count, index + 1);
+            }
+            return points.Take(count).ToArray();
         }
 
         private static List<double> Numbers(string text)
@@ -387,9 +584,9 @@ namespace Scribble.Testing
         { checks.Add(new TestLabCheck { name = name, passed = passed, detail = detail, hard = true }); }
 
         private sealed class OfficeInspection
-        { public string text; public List<double> numbers; public int formulas, formulaErrors, charts, slides; }
+        { public string text; }
         private sealed class MemoryOutput
-        { public string extension; public string text; public string name; }
+        { public string extension; public string text; public string name; public bool outputBoundary, invalidBoundary; public Dictionary<string, object> metadata; }
     }
 
     public sealed class TestLabEvaluation

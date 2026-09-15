@@ -78,6 +78,13 @@ namespace GuardrailTests
                 Run("Test Bench extracts the actual operations PDF filters", TestBenchRegressionTests.OperationsPdf);
                 Run("Test Bench detects work-PC Excel error representations", TestBenchRegressionTests.ExcelErrors);
                 Run("Test Bench rejects incorrect final financial statements", TestBenchRegressionTests.ReportFacts);
+                Run("Test Bench grades only generated native structures", TestBenchRegressionTests.NativeOutputBoundaries);
+                Run("Test Bench checks native email recipient boundaries", TestBenchRegressionTests.NativeMailHeaders);
+                Run("Test Bench keeps saved packages inside output boundaries", TestBenchRegressionTests.NativePackageBoundaries);
+                Run("PowerPoint canvas rejection keeps retry available", PowerPointRecoveryBoundaryTests.CanvasRejectionKeepsRetryAvailable);
+                Run("PowerPoint legacy recovery payloads stay task scoped", PowerPointRecoveryBoundaryTests.LegacyRecoveryPayloadsRemainTaskScoped);
+                Run("Test Lab operator arguments and outcomes", PowerPointRecoveryBoundaryTests.OperatorArgumentsAndOutcomes);
+                Run("Test Lab operator logging failure waits for terminal runner", PowerPointRecoveryBoundaryTests.OperatorLoggingFailureRetainsTerminalBoundary);
                 Run("PowerPoint rejected outline can be corrected before writing", RejectedSlideOutlineCanChange);
                 Run("QA metadata followup forbids reads and old task continuation", QaMetadataScope);
                 Run("QA repeated attachments reuse extraction and invalidate changed bytes", QaAttachmentCache);

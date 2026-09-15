@@ -83,6 +83,14 @@ foreach($pair in @(@('EX01','Excel'),@('PP01','PowerPoint'),@('PP03','PowerPoint
     $shape=$slide.Shapes.AddTextbox(1,40,60,600,180)
     $shape.TextFrame.TextRange.Text="[Scribble draft] Native smoke slide $i`rRevenue 120000; budget 130000; gap -10000 (-7.69%); cost 74000; profit 46000; margin 38.33%; growth 20%; delivery 94% against 97%."
    }
+   if($id -eq 'PP01') {
+    $chartSlide=$document.Slides.Item($document.Slides.Count-5)
+    $chartShape=$chartSlide.Shapes.AddChart2(-1,51,40,260,600,220)
+    $chartSeries=$chartShape.Chart.SeriesCollection(1)
+    $chartSeries.Name='Native capture probe'
+    $chartSeries.Values=[double[]]@(31001,32002)
+    $chartSeries.XValues=[string[]]@('Probe A','Probe B')
+   }
    [void][Scribble.Testing.TestLabSuite]::SaveSelectedDeckForMail($application,$run.run_id)
   } else {
    $messages=[Scribble.Testing.TestLabMail]::Load($application,$case)
@@ -95,6 +103,24 @@ foreach($pair in @(@('EX01','Excel'),@('PP01','PowerPoint'),@('PP03','PowerPoint
   [Scribble.Testing.BenchmarkArtifactCollector]::Capture($run.run_id,'final') | Write-Output
   [Scribble.Testing.TestLab]::Finish($false)
   $result.evidence=[Scribble.Testing.TestLab]::Export($run.run_id,$caseFolder)
+  if($id -in @('EX01','PP01','OL02')) {
+   $boundaryZip=[IO.Compression.ZipFile]::OpenRead($result.evidence)
+   try {
+    $entry=$boundaryZip.Entries | Where-Object {$_.Name -like '*-final-output-*-readback.json'} | Select-Object -First 1
+    Assert ($null -ne $entry) 'Native output readback is missing.'
+    $reader=New-Object IO.StreamReader($entry.Open())
+    try {$readback=$reader.ReadToEnd() | ConvertFrom-Json} finally {$reader.Dispose()}
+    Assert ($readback.output_boundary -eq $true) 'Native output boundary was not recorded.'
+    if($id -eq 'EX01') {
+     Assert ($readback.text.Contains('Worksheet: Scribble Draft') -and -not $readback.text.Contains('Worksheet: Sales')) 'Preserved source sheets contaminated final output grading.'
+    } elseif($id -eq 'PP01') {
+     Assert ($readback.text.StartsWith('Slide count: 6')) 'Preserved source slides contaminated final output slide count.'
+     Assert ($readback.text.Contains('31001') -and $readback.text.Contains('32002') -and $readback.text.Contains('Probe A')) 'Native chart-only values or categories are missing from evidence.'
+    } else {
+     Assert ($readback.to -eq 'review@example.test' -and $readback.cc -eq '' -and $readback.bcc -eq '' -and $readback.unsent -eq $true) 'Native recipient fields or unsent state were not recorded.'
+    }
+   } finally {$boundaryZip.Dispose()}
+  }
   if($id -eq 'PP03') {
    $evidenceZip=[IO.Compression.ZipFile]::OpenRead($result.evidence)
    try {

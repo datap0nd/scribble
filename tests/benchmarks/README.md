@@ -11,8 +11,10 @@ only authored clarification answers. Expected answers are used after capture.
 
 ## One-button workflow
 
-1. Install the current Scribble release over the existing installation and
-   restart Office. Configure and test the model connection in Settings.
+1. Install a tested development installer from the repository's Actions
+   artifacts over the existing installation and restart Office. Public updates
+   are frozen at 2.0.91; they do not deliver the development Test Lab fixes.
+   Configure and test the model connection in Settings.
 2. Open **Scribble Test Lab** from Start or the **Test Lab** button in a pane.
    Opening it makes no model request. Leave Case ID blank for the 16-case run.
 3. Click **Start**. The runner verifies the kit embedded in that exact build,
@@ -75,6 +77,43 @@ the starter cannot turn an untouched fixture into a generated result.
 
 ## Verification boundary
 
+### Run the configured model from a local terminal
+
+The installed browser host also has an explicit operator command. It opens the
+same visible Test Lab window and invokes the same Start workflow, including stale
+capture recovery, Office preparation, normal Scribble permissions and final PDF:
+
+```powershell
+$hostExe = Join-Path $env:LOCALAPPDATA 'Programs\Scribble\ScribbleBrowserHost.exe'
+$result = Join-Path $env:TEMP ('scribble-run-' + [guid]::NewGuid().ToString('N') + '.json')
+& $hostExe --test-lab-run --result-json $result
+Get-Content -LiteralPath $result -Raw | ConvertFrom-Json
+```
+
+Add `--case EX01` to run one of the 16 Office cases. The result path must be a new
+absolute `.json` file. The command refuses an existing Test Lab window or live
+suite; it never closes or replaces another operator's window. Configure the model
+normally in Scribble Settings before running; this command does not select a
+different model.
+
+The result JSON first reports `starting`, then `running` with the exact suite
+folder. Read `suite.log` there for progress. The command exits only after the
+current report is finalized and publishes the PDF path and all case statuses.
+Exit `0` means all requested cases completed and the PDF is valid, with model
+quality still needing review; `3` means the run completed but deterministic
+correctness checks failed; `2` means a blocked/incomplete run or report failure;
+`4` means stopped; `1` means the operator launch or arguments failed.
+
+To stop from a second local terminal, read the result JSON and write its exact
+`stop_token` to its `stop_file`. This requests the same Stop action as the visible
+button and waits for evidence/PDF finalization. Do not terminate the host process
+to stop a test.
+
+```powershell
+$state = Get-Content -LiteralPath $result -Raw | ConvertFrom-Json
+[IO.File]::WriteAllText($state.stop_file, $state.stop_token)
+```
+
 `Test-TestLabReliability.ps1` reproduces dead-recorder recovery and restart,
 checks run-isolated message IDs, rejects correct-input/wrong-answer evidence,
 and generates a complete 16-case PDF without Office or a model. The optional
@@ -95,7 +134,7 @@ entry points without contacting a model.
 
 The ZIP and the `operator` scripts remain available for individual-case diagnosis and evidence exports. `Enable-ScribbleTestLab.ps1` loads the installed DLL, preferring `%LOCALAPPDATA%/Programs/Scribble/Scribble.dll`. `Prepare-ScribbleTestCase.ps1 -CaseId PP01 -PlanOnly` prints the setup plan without opening apps. The suite supplies `-Suite` to prepare without manual next-step instructions. `Export-ScribbleTestRun.ps1` exports an existing finished run. Do not run a separate manual capture during a suite.
 
-If a script reports `Unable to find type [Scribble.Testing.TestLab]`, install the [current Scribble installer](https://github.com/datap0nd/scribble/releases/latest/download/ScribbleSetup.exe), restart Office, and use its **Test Lab** button. The manual scripts accept `-AssemblyPath` for custom installations.
+If a script reports `Unable to find type [Scribble.Testing.TestLab]`, install a tested [development Actions artifact](https://github.com/datap0nd/scribble/actions/workflows/build.yml), restart Office, and use its **Test Lab** button. The manual scripts accept `-AssemblyPath` for custom installations. See [release channels](../../docs/release-channels.md) for the stable release freeze.
 
 ## Evidence and evaluation
 
