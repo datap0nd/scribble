@@ -35,7 +35,7 @@ namespace Scribble.Chat
             return new List<ChatToolDefinition>
             {
                 new ChatToolDefinition { type = "function", function = new ChatToolFunctionDefinition {
-                    name = InspectSlide, description = "Inspect one slide with stable presentation/slide/shape IDs, fingerprint, paginated structured content, tables, chart data, notes, geometry, styling, groups and unsupported objects. Read every page before editing. Optional preview is a private PNG, never a presentation export.",
+                    name = InspectSlide, description = "Inspect one slide with stable presentation/slide/shape IDs, fingerprint, paginated structured content, tables, chart data, notes, geometry, styling, groups and unsupported objects. Read every page before editing. Optional preview is a private PNG, never a presentation export; the host may omit it for native-chart slides when Office cannot render them safely.",
                     parameters = ToolSchema.Build(new Dictionary<string, object> {
                         { "index", ToolSchema.Integer("1-based position from list_slides; response provides stable slide_id.", 1, 1000) },
                         { "offset", ToolSchema.Integer("Character offset; follow next_offset until null.", 0, int.MaxValue) },

@@ -131,6 +131,8 @@
     <EmbeddedResource Include="Skills\PublicSkills.json" />
     <EmbeddedResource Include="..\..\tests\benchmarks\releases\scribble-test-kit-v1.zip"><LogicalName>Scribble.Testing.test-kit.zip</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="..\..\tests\benchmarks\releases\scribble-test-kit-v1.zip.sha256"><LogicalName>Scribble.Testing.test-kit.sha256</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="Testing\Fixtures\Startup.xlsx"><LogicalName>Scribble.Testing.Bootstrap.Excel.xlsx</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="Testing\Fixtures\Startup.pptx"><LogicalName>Scribble.Testing.Bootstrap.PowerPoint.pptx</LogicalName></EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Testing\TestLab.cs" />
@@ -141,9 +143,14 @@
     <Compile Include="Testing\TestLabOperator.cs" />
     <Compile Include="Testing\TestLabPdfWriter.cs" />
     <Compile Include="Testing\TestLabEvaluator.cs" />
+    <Compile Include="Testing\TestLabStressEvidence.cs" />
+    <Compile Include="Testing\TestLabStressBudget.cs" />
+    <Compile Include="Testing\TestLabStressEvaluator.cs" />
+    <Compile Include="Testing\TestLabMailbox.cs" />
     <Compile Include="Testing\TestLabWindow.cs" />
     <Compile Include="Testing\TestLabPreparation.cs" />
     <Compile Include="Testing\TestLabOfficeEnvironment.cs" />
+    <Compile Include="Testing\TestLabOfficeConnection.cs" />
     <Compile Include="Testing\TestLabComMessageFilter.cs" />
     <Compile Include="Testing\TestLabReport.cs" />
     <Compile Include="Testing\BenchmarkArtifactCollector.cs" />

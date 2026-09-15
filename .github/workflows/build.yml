@@ -245,6 +245,8 @@ jobs:
         run: |
           python tests/benchmarks/evaluator/test_kit.py
           if ($LASTEXITCODE -ne 0) { throw 'Fixture kit validation failed.' }
+          python tests/benchmarks/stress/test_catalog.py
+          if ($LASTEXITCODE -ne 0) { throw 'The 200-case stress catalog contract failed.' }
           Expand-Archive -LiteralPath tests/benchmarks/releases/scribble-test-kit-v1.zip -DestinationPath tests/benchmarks/generated -Force
           foreach ($testScript in @('Test-TestLab.ps1','Test-TestLabLoader.ps1','Test-TestLabPreparation.ps1')) {
             & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path 'tests/benchmarks' $testScript)
@@ -333,6 +335,10 @@ jobs:
       - name: Install Inno Setup
         shell: pwsh
         run: choco install innosetup --no-progress --yes
+
+      - name: Verify loaded-payload replacement and recovery
+        shell: powershell
+        run: ./tests/Updater/Test-PayloadRetirement.ps1
 
       - name: Build single-file installer
         shell: pwsh
@@ -814,7 +820,12 @@ jobs:
           }
           foreach ($gone in @(
             (Join-Path $installedDir "com.scribble.browser.json"),
-            (Join-Path $installedDir "BrowserExtension")
+            (Join-Path $installedDir "BrowserExtension\manifest.json"),
+            (Join-Path $installedDir "BrowserExtension\background.js"),
+            (Join-Path $installedDir "BrowserExtension\sidepanel.html"),
+            (Join-Path $installedDir "BrowserExtension\sidepanel.css"),
+            (Join-Path $installedDir "BrowserExtension\sidepanel.js"),
+            (Join-Path $installedDir "BrowserExtension\README.md")
           )) {
             if (Test-Path $gone) {
               throw "Deselected browser component file survived: $gone"

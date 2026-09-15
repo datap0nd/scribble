@@ -72,7 +72,7 @@ namespace Scribble.Office
                         var inspectionPayload = inspectionJson.Deserialize<Dictionary<string, object>>(inspectionJson.Serialize(inspected));
                         var imageUrl = Convert.ToString(inspectionPayload["image"]); inspectionPayload.Remove("image");
                         return new MailboxToolResult(call.id, inspectionJson.Serialize(inspectionPayload), "Inspected slide " + inspectedIndex,
-                            preview ? new[] { new VisionImagePayload("slide-" + inspectedIndex + ".png", imageUrl) } : null);
+                            string.IsNullOrEmpty(imageUrl) ? null : new[] { new VisionImagePayload("slide-" + inspectedIndex + ".png", imageUrl) });
                     case PresentationToolCatalog.ReadSlide:
                         return ReadSlide(call.id, arguments);
                     default:

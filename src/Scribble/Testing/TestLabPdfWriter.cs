@@ -89,12 +89,14 @@ namespace Scribble.Testing
 
                     // Equal space per case: the first deck must not consume the
                     // page budget and hide later formula/mail failures.
+                    var reviewResults = RepresentativeCases(results);
+                    if (results.Length > 16) writer.Text("Review cards show " + reviewResults.Length + " representative cases, prioritizing failures across every case family. All " + results.Length + " case results remain in report.html and suite.json.");
                     if (results.Length > 1) {
-                        for (int i = 0; i < results.Length; i++) {
+                        for (int i = 0; i < reviewResults.Length; i++) {
                             if (i % 2 == 0) writer.PageBreak();
                             string preview;
-                            var review = CaseReview(results[i], staging, out preview);
-                            writer.ReviewCard(results[i].id + " / " + results[i].host + " / " + results[i].status, review, preview);
+                            var review = CaseReview(reviewResults[i], staging, out preview);
+                            writer.ReviewCard(reviewResults[i].id + " / " + reviewResults[i].host + " / " + reviewResults[i].status, review, preview);
                         }
                     } else foreach (var result in results) {
                         if (!string.IsNullOrEmpty(result.evidence) && File.Exists(result.evidence)) AppendVisualEvidence(document, writer, result, staging);
@@ -139,13 +141,19 @@ namespace Scribble.Testing
                 " | Not run: " + results.Count(r => r.status == "not_run"));
             text.AppendLine("Completion is not a correctness pass. Review the native outputs and evidence files.");
             text.AppendLine();
-            foreach (var result in results)
+            foreach (var result in results.Length > 16 ? new SuiteCaseResult[0] : results)
             {
                 var error = FirstLine(result.error);
                 if (error.Length > 100) error = error.Substring(0, 100) + "...";
                 text.AppendLine(result.id + " | " + result.host + " | " + result.status +
                     (string.IsNullOrEmpty(result.failureKind) ? "" : " | " + result.failureKind) +
                     (string.IsNullOrEmpty(error) ? "" : " | " + error));
+            }
+            if (results.Length > 16)
+            {
+                foreach (var group in results.GroupBy(r => r.id.Substring(0, Math.Min(2, r.id.Length))))
+                    text.AppendLine(group.Key + " | " + group.Count() + " cases | " + string.Join("; ", group.GroupBy(r => r.status).Select(g => g.Count() + " " + g.Key)));
+                text.AppendLine("The complete case index, errors, and evidence are in the adjacent HTML report.");
             }
             if (results.Length == 0) text.AppendLine("No cases ran. See suite.log for the startup or download failure.");
             var first = results.FirstOrDefault(r => !string.IsNullOrEmpty(r.error));
@@ -163,6 +171,18 @@ namespace Scribble.Testing
             text.AppendLine("Interactive report: " + Path.Combine(state.folder, "report.html"));
             text.AppendLine("Native evidence: " + Path.Combine(state.folder, "cases"));
             return text.ToString();
+        }
+
+        private static SuiteCaseResult[] RepresentativeCases(SuiteCaseResult[] results)
+        {
+            if (results.Length <= 16) return results;
+            var queues = results.GroupBy(r => r.id.Substring(0, Math.Min(2, r.id.Length)))
+                .Select(group => new Queue<SuiteCaseResult>(group.OrderBy(r => r.status == "failed" ? 0 :
+                    r.status == "blocked" || r.status == "incomplete" || r.status == "stopped" ? 1 : r.status == "needs_review" ? 2 : 3))).ToArray();
+            var selected = new List<SuiteCaseResult>();
+            while (selected.Count < 16 && queues.Any(q => q.Count > 0))
+                foreach (var queue in queues) if (queue.Count > 0 && selected.Count < 16) selected.Add(queue.Dequeue());
+            return selected.ToArray();
         }
 
         private static string FirstLine(string value)
@@ -227,10 +247,10 @@ namespace Scribble.Testing
 
         private static string TerminalLabel(SuiteCaseResult[] results)
         {
-            if (results.Length == 0) return "BLOCKED — NO CASES RAN";
+            if (results.Length == 0 || results.All(r => r.status == "not_run")) return "BLOCKED — NO CASES RAN";
             if (results.Any(r => r.status == "stopped")) return "STOPPED — PARTIAL EVIDENCE PRESERVED";
             if (results.Any(r => r.status == "failed")) return "DETERMINISTIC CHECKS FAILED — REVIEW FINDINGS";
-            if (results.Any(r => r.status == "blocked" || r.status == "incomplete")) return "COMPLETED WITH EVIDENCE GAPS";
+            if (results.Any(r => r.status == "blocked" || r.status == "incomplete" || r.status == "not_run")) return "INCOMPLETE — REVIEW EXECUTION GAPS";
             return "READY FOR REVIEW — CORRECTNESS NOT IMPLIED";
         }
 

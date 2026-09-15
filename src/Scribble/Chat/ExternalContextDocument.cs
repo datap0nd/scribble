@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using Scribble.Security;
 
@@ -15,17 +16,45 @@ namespace Scribble.Chat
 
         public ExternalContextDocument(
             string name,
-            string content)
+            string content,
+            string sourcePath = null,
+            bool hasMoreContent = false,
+            string sourceFingerprint = null)
         {
             Name = TextBoundary.SingleLine(name, 180);
             Content = TextBoundary.PlainText(
                 content,
                 ContextScale.Scaled(MaxCharactersPerDocument));
+            SourcePath = string.IsNullOrWhiteSpace(sourcePath)
+                ? string.Empty
+                : Path.GetFullPath(sourcePath);
+            HasMoreContent = hasMoreContent && SourcePath.Length > 0;
+            SourceFingerprint = sourceFingerprint ??
+                (SourcePath.Length > 0 && File.Exists(SourcePath)
+                    ? FingerprintFile(SourcePath)
+                    : string.Empty);
         }
 
         public string Name { get; }
 
         public string Content { get; }
+
+        // The path never enters model context. It is retained only in the
+        // encrypted recovery record so a user-selected file can be read in
+        // verified pages beyond the bounded inline preview.
+        public string SourcePath { get; }
+
+        public string SourceFingerprint { get; }
+
+        public bool HasMoreContent { get; }
+
+        public static string FingerprintFile(string path)
+        {
+            using (var stream = File.OpenRead(path))
+            using (var hash = SHA256.Create())
+                return BitConverter.ToString(hash.ComputeHash(stream))
+                    .Replace("-", string.Empty);
+        }
 
         public static IReadOnlyList<ExternalContextDocument> Normalize(
             IEnumerable<ExternalContextDocument> documents)
@@ -63,7 +92,10 @@ namespace Scribble.Chat
                 result.Add(
                     new ExternalContextDocument(
                         document.Name,
-                        content));
+                        content,
+                        document.SourcePath,
+                        document.HasMoreContent,
+                        document.SourceFingerprint));
                 totalCharacters += content.Length;
                 if (result.Count == MaxDocuments)
                 {

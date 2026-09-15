@@ -40,6 +40,7 @@
     <Reference Include="System.IO.Compression" />
     <Reference Include="System.IO.Compression.FileSystem" />
     <Reference Include="System.Net.Http" />
+    <Reference Include="System.Security" />
     <Reference Include="System.Xml" />
     <Reference Include="System.Xml.Linq" />
     <Reference Include="System.Web.Extensions" />
@@ -56,6 +57,9 @@
     <Compile Include="ScaleTaskTests.cs" />
     <Compile Include="HardeningTests.cs" />
     <Compile Include="TestBenchRegressionTests.cs" />
+    <Compile Include="StressKitTests.cs" />
+    <Compile Include="StressGradingTests.cs" />
+    <Compile Include="OfficeBootstrapTests.cs" />
     <Compile Include="DurableTransformTests.cs" />
     <Compile Include="TaskContinuationTests.cs" />
     <Compile Include="SamsungSlideTests.cs" />

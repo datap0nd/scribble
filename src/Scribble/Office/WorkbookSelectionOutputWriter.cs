@@ -320,6 +320,7 @@ namespace Scribble.Office
                 throw;
             }
 
+            Scribble.Testing.TestLab.RegisterOutput((object)workbook, "xlsx");
             return "Translated and replaced " + translations.Count +
                 " Korean text cells across the active workbook. " +
                 "Formula and merged cells were left unchanged. " +

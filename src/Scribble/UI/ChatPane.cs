@@ -516,11 +516,12 @@ namespace Scribble.UI
         }
 
         private readonly Scribble.Testing.TestLabSuitePane _suiteDriver = new Scribble.Testing.TestLabSuitePane();
+        private bool _stressSettingsLoaded;
         public string StopTestLabRun(string runId) { return _suiteDriver.RecoverStop(runId, () => _busy, () => HandleStop()); }
         public string RunTestLabCommand(string suiteId, string commandId, string action, int phase)
         {
             return _suiteDriver.Command(suiteId, commandId, action, phase, "Outlook", _webReady && !_shutdown,
-                () => _busy, () => HandleNewChat(), c => {
+                () => _busy, () => { ReloadStressSettings(); HandleNewChat(); }, c => {
                     var expected = (c.inputs ?? new string[0]).Count(p => p.EndsWith(".eml", StringComparison.OrdinalIgnoreCase));
                         if (expected > 0) {
                             var messages = Scribble.Testing.TestLabSuite.Active() != null
@@ -531,6 +532,20 @@ namespace Scribble.UI
                         }
                     AddExternalFiles(Scribble.Testing.TestLabPreparation.ContextFiles(c));
                 }, prompt => HandleSendMessageCore(prompt), () => HandleStop());
+        }
+
+        private void ReloadStressSettings()
+        {
+            var stress = Scribble.Testing.TestLabSuite.Active()?.fixtureSuiteId == "scribble-stress-v1";
+            if (!stress && !_stressSettingsLoaded) return;
+            if (_busy) throw new InvalidOperationException("Stop the active request before changing test configuration.");
+            var saved = _settingsStore.Load();
+            _settings = stress ? Scribble.Testing.TestLabStressSettings.Isolate(saved) : saved;
+            ContextScale.Apply(GeminiCodeAssistGateway.IsGeminiModel(_settings.Model));
+            _settings.ApplyLimits();
+            _mcpTools?.Dispose(); _mcpTools = new McpToolHost(_settings.McpServers);
+            _stressSettingsLoaded = stress;
+            RefreshModelPicker(); PushSkillsToWeb(); PushTopicsToWeb(false);
         }
 
         private void PostToWeb(IDictionary<string, object> payload)
@@ -1753,12 +1768,17 @@ namespace Scribble.UI
 
                     var document = new ExternalContextDocument(
                         content.FileName,
-                        documentText);
+                        documentText,
+                        loadedFile.Path,
+                        content.Truncated);
                     if (document.Content.Length > remaining)
                     {
                         document = new ExternalContextDocument(
                             content.FileName,
-                            document.Content.Substring(0, remaining));
+                            document.Content.Substring(0, remaining),
+                            document.SourcePath,
+                            true,
+                            document.SourceFingerprint);
                         warn = true;
                         if (subtitle.Length == 0)
                         {
@@ -2194,7 +2214,8 @@ namespace Scribble.UI
                 var restored = TaskRecoveryInput.Read(_resumeRecovery);
                 requestSelectedMessage = restored.Selected?.Restore();
                 requestWorkingMessages = restored.Working.Select(m => m.Restore()).ToList();
-                requestExternalContext = restored.Documents.Select(d => new ExternalContextDocument(d.Name, d.Content)).ToList();
+                requestExternalContext = restored.Documents.Select(d => new ExternalContextDocument(
+                    d.Name, d.Content, d.SourcePath, d.HasMoreContent, d.SourceFingerprint)).ToList();
                 requestExternalImages = restored.Images.Select(i => new VisionImagePayload(i.FileName, i.DataUrl)).ToList();
                 foreach (var source in requestWorkingMessages.Concat(requestSelectedMessage == null ?
                     new MessageSnapshot[0] : new[] { requestSelectedMessage }))
@@ -2514,7 +2535,9 @@ namespace Scribble.UI
                     {
                         Prompt = prompt, Selected = TaskRecoveryInput.Copy<SavedMessage>(selectedMessage),
                         Working = workingMessages.Select(m => TaskRecoveryInput.Copy<SavedMessage>(m)).ToList(),
-                        Documents = externalContext.Select(d => new SavedReference { Name = d.Name, Content = d.Content }).ToList(),
+                        Documents = externalContext.Select(d => new SavedReference { Name = d.Name, Content = d.Content,
+                            SourcePath = d.SourcePath, SourceFingerprint = d.SourceFingerprint,
+                            HasMoreContent = d.HasMoreContent }).ToList(),
                         Images = externalImages.Select(i => new SavedImage { FileName = i.FileName, DataUrl = i.DataUrl }).ToList()
                     }.PersistTo(taskContext.State);
                     taskContext.Checkpoint();
@@ -2543,7 +2566,8 @@ namespace Scribble.UI
                                 "The model stopped without returning text.");
                         }
 
-                        var blocker = mailboxTools.CompletionBlocker ?? _crossAppTools?.CompletionBlocker;
+                        var blocker = mailboxTools.CompletionBlocker ?? _crossAppTools?.CompletionBlocker ??
+                            taskContext.Sources.CompletionBlocker;
                         if (!string.IsNullOrEmpty(blocker))
                         {
                             request.messages.Add(new ChatCompletionInputMessage { role = "user", content = blocker });
@@ -2728,6 +2752,9 @@ namespace Scribble.UI
             {
                 return;
             }
+
+            if (_stressSettingsLoaded && Scribble.Testing.TestLabSuite.Active()?.fixtureSuiteId != "scribble-stress-v1")
+                ReloadStressSettings();
 
             _history.Clear();
             _selectedMessage = null;

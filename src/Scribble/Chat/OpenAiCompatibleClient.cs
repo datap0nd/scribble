@@ -73,6 +73,7 @@ namespace Scribble.Chat
         {
             if (RoutesToGemini(settings, requestModel))
             {
+                await Scribble.Testing.TestLabStressBudget.GuardRequestAsync(settings, requestModel?.model, cancellationToken).ConfigureAwait(true);
                 return await _gemini.GenerateStreamAsync(
                     _httpClient,
                     settings,
@@ -132,6 +133,7 @@ namespace Scribble.Chat
             ChatCompletionRequest requestModel,
             CancellationToken cancellationToken)
         {
+            await Scribble.Testing.TestLabStressBudget.GuardRequestAsync(settings, requestModel?.model, cancellationToken).ConfigureAwait(true);
             if (settings == null || !settings.IsConfigured)
             {
                 throw new AiEndpointException(
@@ -165,9 +167,13 @@ namespace Scribble.Chat
             }
 
             var capabilityKey = endpoint.AbsoluteUri + "\n" + requestModel.model;
+            var openRouterQwenPolicy = UsesOpenRouterQwenPolicy(
+                endpoint,
+                requestModel.model);
             var hasOptionalToolControls =
                 requestModel.temperature.HasValue ||
-                requestModel.parallel_tool_calls.HasValue;
+                requestModel.parallel_tool_calls.HasValue ||
+                openRouterQwenPolicy;
             var includeOptionalToolControls = hasOptionalToolControls &&
                 !OptionalToolControlsUnsupported(capabilityKey);
             try
@@ -212,6 +218,7 @@ namespace Scribble.Chat
             var requestJson = _serializer.Serialize(
                 SerializablePayload(
                     requestModel,
+                    endpoint,
                     includeOptionalToolControls));
             requestModel.Diagnostics?.Record("inference_request", new { endpoint = endpoint.GetLeftPart(UriPartial.Path),
                 model = requestModel.model, request = requestJson });
@@ -258,6 +265,7 @@ namespace Scribble.Chat
 
                 using (response)
                 {
+                    Scribble.Testing.TestLabStressBudget.RecordProviderResponse((int)response.StatusCode);
                     string responseText;
                     try
                     {
@@ -848,6 +856,7 @@ namespace Scribble.Chat
         // optional fields are included only when they carry a value.
         private static Dictionary<string, object> SerializablePayload(
             ChatCompletionRequest requestModel,
+            Uri endpoint,
             bool includeOptionalToolControls = true)
         {
             var payload = new Dictionary<string, object>
@@ -884,7 +893,74 @@ namespace Scribble.Chat
                     requestModel.parallel_tool_calls.Value;
             }
 
+            // OpenRouter exposes reasoning as provider metadata rather than
+            // part of Scribble's endpoint-neutral request contract. Qwen 3.8
+            // defaults to xhigh reasoning there, which can consume the entire
+            // response allowance before a tool call or answer is emitted.
+            // Office tools also operate on one COM apartment and must not be
+            // dispatched in parallel. Keep both overrides narrowly bound to
+            // the exact stress-suite endpoint/model pair.
+            if (UsesOpenRouterQwenPolicy(endpoint, requestModel.model))
+            {
+                // Dense Office authoring calls carry native table/chart JSON.
+                // Qwen can otherwise truncate a syntactically valid tool call at
+                // the generic 4K draft ceiling and spend more on retries. A full
+                // six-to-eight-slide payload can exceed 8K, while the model route
+                // supports 32K completions. Keep that ceiling exclusive to the
+                // PowerPoint draft tool; other draft calls get 8K and compact
+                // reviewers/summarizers retain their original smaller limits.
+                var isDraftRequest = requestModel.max_tokens ==
+                    DocumentChatRequestFactory.DraftResponseTokens;
+                if (isDraftRequest)
+                {
+                    var hasPresentationDraftTool = requestModel.tools != null &&
+                        requestModel.tools.Any(tool => tool?.function != null &&
+                            string.Equals(tool.function.name,
+                                PresentationToolCatalog.AddDraftSlides,
+                                StringComparison.Ordinal));
+                    payload["max_tokens"] = hasPresentationDraftTool
+                        ? 32768
+                        : 8192;
+                }
+                payload["reasoning"] = new Dictionary<string, object>
+                {
+                    { "effort", "low" }
+                };
+                if (includeOptionalToolControls &&
+                    requestModel.tools != null &&
+                    requestModel.tools.Count > 0)
+                {
+                    payload["parallel_tool_calls"] = false;
+                }
+            }
+
             return payload;
+        }
+
+        private static bool UsesOpenRouterQwenPolicy(
+            Uri endpoint,
+            string model)
+        {
+            return endpoint != null &&
+                string.Equals(
+                    endpoint.Scheme,
+                    Uri.UriSchemeHttps,
+                    StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(
+                    endpoint.Host,
+                    "openrouter.ai",
+                    StringComparison.OrdinalIgnoreCase) &&
+                endpoint.IsDefaultPort &&
+                string.IsNullOrEmpty(endpoint.UserInfo) &&
+                string.IsNullOrEmpty(endpoint.Query) &&
+                string.Equals(
+                    endpoint.AbsolutePath.TrimEnd('/'),
+                    "/api/v1/chat/completions",
+                    StringComparison.Ordinal) &&
+                string.Equals(
+                    model,
+                    "qwen/qwen3.8-27b",
+                    StringComparison.Ordinal);
         }
 
         private bool OptionalToolControlsUnsupported(string capabilityKey)

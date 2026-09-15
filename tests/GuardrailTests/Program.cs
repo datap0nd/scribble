@@ -102,6 +102,7 @@ namespace GuardrailTests
                 Run("Samsung slide numbers require verified source evidence", SamsungSlideTests.EvidenceAndNumbers);
                 Run("PowerPoint and Outlook slide tool calls reach independent review", SlideToolCallsReachReview);
                 Run("Empty endpoint responses retry once without replaying tools", EmptyEndpointResponsesRecover);
+                Run("OpenRouter Qwen requests use bounded serial reasoning", OpenRouterQwenPolicy);
                 Run("Every Office source launches the requested sibling draft and preserves content", CrossApplicationWriters);
                 Run("Chrome model tool calls create Office drafts on a pumped STA", BrowserOfficeRoundTrip);
                 Run("Semantic repairs retain source alignment", TaskContinuationTests.ReviewRepairsAndAlignment);
@@ -297,6 +298,9 @@ namespace GuardrailTests
                     "External context is explicit and bounded",
                     ExternalContextIsBounded);
                 Run(
+                    "Truncated external documents require verified contiguous paging",
+                    ExternalDocumentPagingIsCompleteAndBound);
+                Run(
                     "Local Topics are explicit, bounded, and isolated",
                     LocalTopicsAreExplicitBoundedAndIsolated);
                 Run(
@@ -391,6 +395,21 @@ namespace GuardrailTests
                 Run("Web reads cache and preserve redirect identity", HardeningTests.WebCacheAndRedirects);
                 Run("Source spans and shared tool contracts reject malformed writes", HardeningTests.SourceSpansAndContracts);
                 Run("Actual 20000-row writes reconcile before/after interruption", DurableTransformTests.TwentyThousandRows);
+                Run("Stress external options retain exact requested scope", StressKitTests.ExternalOptionsAndExactScope);
+                Run("Stress kit snapshots isolate only selected case inputs", StressKitTests.ExternalSnapshotAndProjection);
+                Run("Stress presentation grading checks table fills and native text roles", StressKitTests.PresentationMeasurementsDistinguishBodyAndTables);
+                Run("Stress API budget requires a finite total cap", StressGradingTests.BudgetRequiresFiniteTotal);
+                Run("Stress numeric outputs require native recalculation", StressGradingTests.NativeCellsRequireRecalculation);
+                Run("Stress charts stay in their requested Office host", StressGradingTests.NativeChartsStayInRequestedHost);
+                Run("Stress mailbox grading requires complete search and exact IDs", StressGradingTests.MailRequiresCompleteSearchAndExactIds);
+                Run("Stress incomplete cells and draft metric labels stay grounded", StressGradingTests.IncompleteCellsAndDraftMetricsRemainGrounded);
+                Run("Stress hero cases require exact native and verified browser evidence", StressGradingTests.HeroCasesRequireExactNativeAndBrowserEvidence);
+                Run("Stress PDF and HTML retain 200 explicit results", StressGradingTests.ReportRetainsTwoHundredResults);
+                Run("Office bootstrap documents contain no task data or external content", OfficeBootstrapTests.NeutralEmbeddedDocuments);
+                Run("Office bootstrap respects Stop before launching Office", OfficeBootstrapTests.CancelledStartupDoesNotReachOffice);
+                Run("Outlook embedding startup waits for the registered add-in", OfficeBootstrapTests.OutlookEmbeddingStartupWaitsForAddIn);
+                Run("PowerPoint bootstrap tracks reused and fresh native processes", OfficeBootstrapTests.PowerPointLaunchTracksReusedOrFreshProcess);
+                Run("Office bootstrap rejects missing, foreign, stale and finished sibling bindings", OfficeBootstrapTests.UnverifiedSiblingCannotStartOffice);
                 Console.WriteLine("PASS: " + _passed + " guardrail tests");
                 if (_passed == 0) throw new InvalidOperationException("No tests matched the requested filter.");
                 return 0;
@@ -7823,6 +7842,23 @@ namespace GuardrailTests
                 reuseTask.CompleteTask(request);
             }
             Assert(!ChatRequestFactory.IsMetadataOnly("Compare the contents of only the selected emails"), "Content analysis was mistaken for metadata.");
+            Assert(ChatRequestFactory.IsMailboxEnumerationOnly(
+                "Find every message in July 2026 and report every matching message ID plus Total matches: N."),
+                "Mailbox ID enumeration was mistaken for content analysis.");
+            var enumerationRequest = ChatRequestFactory.Create(
+                "test",
+                null,
+                new ChatTurn[0],
+                "Find every message in July 2026 and report every matching message ID plus Total matches: N.");
+            var enumerationBoundary = Convert.ToString(
+                ((ChatCompletionInputMessage)
+                    enumerationRequest.messages[0]).content);
+            Assert(
+                enumerationBoundary.Contains("Never mention an excluded or nonmatching identifier"),
+                "Enumeration-only output did not forbid leaking rejected identifiers into the final answer.");
+            Assert(!ChatRequestFactory.IsMailboxEnumerationOnly(
+                "Find every message in July 2026 and summarize each body and attachment."),
+                "Mailbox content analysis was mistaken for enumeration-only work.");
         }
 
         private static void QaAttachmentCache()
@@ -7975,6 +8011,211 @@ namespace GuardrailTests
                 }
             }
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+        }
+
+        private static void ExternalDocumentPagingIsCompleteAndBound()
+        {
+            var root = Path.Combine(Path.GetTempPath(), "scribble-external-page-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(root);
+            var path = Path.Combine(root, "long-report.txt");
+            try
+            {
+                var terminal = "FINAL-PAGE-MARKER";
+                File.WriteAllText(path, new string('x', 70000) + terminal, new UTF8Encoding(false));
+                var document = new ExternalContextDocument(
+                    "long-report.txt",
+                    new string('x', ExternalContextDocument.MaxCharactersPerDocument),
+                    path,
+                    true);
+                var request = MakeRequest(new List<ChatTurn>(), externalContext: new[] { document });
+                var task = new TaskContextManager(
+                    request,
+                    "outlook",
+                    "Read the attached report in full.",
+                    new TaskCheckpointStore(Path.Combine(root, "checkpoint")));
+                new TaskRecoveryInput
+                {
+                    Prompt = task.State.Objective,
+                    Documents = new List<SavedReference>
+                    {
+                        new SavedReference
+                        {
+                            Name = document.Name,
+                            Content = document.Content,
+                            SourcePath = document.SourcePath,
+                            SourceFingerprint = document.SourceFingerprint,
+                            HasMoreContent = true
+                        }
+                    }
+                }.PersistTo(task.State);
+                task.Checkpoint();
+
+                Assert(
+                    request.tools.Any(tool => tool.function.name == TaskSources.ReadDocumentTool) &&
+                    MessageContent(request.messages[1]).Contains("bounded preview only") &&
+                    task.Sources.CompletionBlocker != null,
+                    "A clipped document did not expose and require verified paging.");
+                var gap = task.ReadEvidence(MailboxCall(
+                    "gap", TaskSources.ReadDocumentTool,
+                    "{\"document_index\":1,\"offset\":6000}"));
+                Assert(gap.Content.Contains("pages cannot be skipped"),
+                    "The external document reader accepted a page gap.");
+
+                var json = new JavaScriptSerializer();
+                var offset = 0;
+                var collected = new StringBuilder();
+                while (true)
+                {
+                    var result = task.ReadEvidence(MailboxCall(
+                        "page-" + offset,
+                        TaskSources.ReadDocumentTool,
+                        "{\"document_index\":1,\"offset\":" + offset + "}"));
+                    var page = json.Deserialize<Dictionary<string, object>>(result.Content);
+                    collected.Append(Convert.ToString(page["content"]));
+                    if (page["next_offset"] == null) break;
+                    offset = Convert.ToInt32(page["next_offset"]);
+                }
+                Assert(
+                    collected.ToString().EndsWith(terminal, StringComparison.Ordinal) &&
+                    task.Sources.CompletionBlocker == null,
+                    "The external document reader did not reach and record the final page.");
+
+                File.AppendAllText(path, "changed");
+                var changed = task.ReadEvidence(MailboxCall(
+                    "changed", TaskSources.ReadDocumentTool,
+                    "{\"document_index\":1,\"offset\":0}"));
+                Assert(changed.Content.Contains("changed after it was selected"),
+                    "Changed external document bytes reused prior coverage.");
+            }
+            finally
+            {
+                if (Directory.Exists(root)) Directory.Delete(root, true);
+            }
+        }
+
+        private static void OpenRouterQwenPolicy()
+        {
+            var method = typeof(OpenAiCompatibleClient).GetMethod(
+                "SerializablePayload",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert(method != null, "The bounded request serializer is missing.");
+            var request = new ChatCompletionRequest
+            {
+                model = "qwen/qwen3.8-27b",
+                messages = new List<object>(),
+                tools = new List<ChatToolDefinition>
+                {
+                    new ChatToolDefinition()
+                },
+                stream = false,
+                max_tokens = 2048,
+                parallel_tool_calls = true
+            };
+            var openRouter = (Dictionary<string, object>)method.Invoke(
+                null,
+                new object[]
+                {
+                    request,
+                    new Uri("https://openrouter.ai/api/v1/chat/completions"),
+                    true
+                });
+            var reasoning = openRouter["reasoning"] as Dictionary<string, object>;
+            Assert(
+                reasoning != null &&
+                (string)reasoning["effort"] == "low" &&
+                (bool)openRouter["parallel_tool_calls"] == false,
+                "The exact OpenRouter Qwen route must use low reasoning and serial tools.");
+            Assert(
+                TaskContextManager.ContextBudgetForModel(request.model) ==
+                    TaskContextManager.Qwen38ContextBudget &&
+                TaskContextManager.ContextBudgetForModel("local-model") ==
+                    TaskContextManager.DefaultContextBudget,
+                "Qwen long-document tasks need a larger model-specific context ledger without changing generic endpoints.");
+            Assert(
+                (int)openRouter["max_tokens"] == 2048,
+                "Compact OpenRouter review requests must retain their bounded response allowance.");
+
+            var presentationRequest = new ChatCompletionRequest
+            {
+                model = request.model,
+                messages = new List<object>(),
+                tools = new List<ChatToolDefinition>
+                {
+                    new ChatToolDefinition
+                    {
+                        function = new ChatToolFunctionDefinition
+                        {
+                            name = PresentationToolCatalog.AddDraftSlides
+                        }
+                    }
+                },
+                max_tokens = DocumentChatRequestFactory.DraftResponseTokens
+            };
+            var presentation = (Dictionary<string, object>)method.Invoke(
+                null,
+                new object[]
+                {
+                    presentationRequest,
+                    new Uri("https://openrouter.ai/api/v1/chat/completions"),
+                    true
+                });
+            Assert(
+                (int)presentation["max_tokens"] == 32768,
+                "OpenRouter Qwen PowerPoint drafts need the route's full tool-payload allowance.");
+
+            var ordinaryDraft = new ChatCompletionRequest
+            {
+                model = request.model,
+                messages = new List<object>(),
+                tools = new List<ChatToolDefinition>
+                {
+                    new ChatToolDefinition
+                    {
+                        function = new ChatToolFunctionDefinition
+                        {
+                            name = "create_word_draft"
+                        }
+                    }
+                },
+                max_tokens = DocumentChatRequestFactory.DraftResponseTokens
+            };
+            var ordinary = (Dictionary<string, object>)method.Invoke(
+                null,
+                new object[]
+                {
+                    ordinaryDraft,
+                    new Uri("https://openrouter.ai/api/v1/chat/completions"),
+                    true
+                });
+            Assert(
+                (int)ordinary["max_tokens"] == 8192,
+                "Non-presentation OpenRouter Qwen drafts should remain bounded at 8K.");
+
+            var fallback = (Dictionary<string, object>)method.Invoke(
+                null,
+                new object[]
+                {
+                    request,
+                    new Uri("https://openrouter.ai/api/v1/chat/completions"),
+                    false
+                });
+            Assert(
+                fallback.ContainsKey("reasoning") &&
+                !fallback.ContainsKey("parallel_tool_calls"),
+                "Optional-control fallback must retain bounded reasoning and remove parallel controls.");
+
+            var unrelated = (Dictionary<string, object>)method.Invoke(
+                null,
+                new object[]
+                {
+                    request,
+                    new Uri("https://api.example.test/v1/chat/completions"),
+                    true
+                });
+            Assert(
+                !unrelated.ContainsKey("reasoning") &&
+                (bool)unrelated["parallel_tool_calls"],
+                "Provider-specific policy must not change unrelated endpoints.");
         }
 
         private static void EmptyEndpointResponsesRecover()

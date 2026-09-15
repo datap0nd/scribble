@@ -137,7 +137,7 @@ namespace Scribble.Testing
         public static KitManifest VerifyKit(string root)
         {
             var manifest = Read<KitManifest>(SafeChild(root, "manifest.json"));
-            if (manifest.schema != 1 || manifest.suite_id != "atlas-v1" || manifest.files == null || manifest.files.Length == 0)
+            if (manifest.schema != 1 || (manifest.suite_id != "atlas-v1" && manifest.suite_id != "scribble-stress-v1") || manifest.files == null || manifest.files.Length == 0)
                 throw new InvalidDataException("Unsupported or empty fixture manifest.");
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var f in manifest.files)
@@ -146,6 +146,33 @@ namespace Scribble.Testing
                 var path = SafeChild(root, f.path);
                 if (!File.Exists(path) || new FileInfo(path).Length != f.size || FileHash(path) != f.sha256)
                     throw new InvalidDataException("Fixture verification failed: " + f.path);
+            }
+            if (manifest.suite_id == "scribble-stress-v1")
+            {
+                if (!seen.Contains("operator/cases.json") || !seen.Contains("operator/mail-index.json"))
+                    throw new InvalidDataException("Stress kit operator metadata is missing from the manifest.");
+                var cases = Read<LabCase[]>(SafeChild(root, "operator/cases.json"));
+                if (cases == null || cases.Length == 0 || cases.Length > 200 || cases.Select(c => c.id).Distinct().Count() != cases.Length)
+                    throw new InvalidDataException("Stress case identities must be unique and bounded.");
+                foreach (var testCase in cases)
+                {
+                    if (!Regex.IsMatch(testCase.id ?? "", "^[A-Z]{2}[0-9]{2}$") ||
+                        !(new[] { "Excel", "PowerPoint", "Outlook", "Chrome" }).Contains(testCase.host) ||
+                        string.IsNullOrWhiteSpace(testCase.prompt) || testCase.prompt.Length > 20000 ||
+                        string.IsNullOrEmpty(testCase.oracle_ref) || !testCase.oracle_ref.StartsWith("evaluator-only/cases/", StringComparison.Ordinal) ||
+                        (testCase.inputs ?? new string[0]).Any(p => p == null || !p.StartsWith("inputs/", StringComparison.Ordinal) || p.Contains("\\") || p.Split('/').Contains("..")))
+                        throw new InvalidDataException("Stress cases must separate model inputs from evaluator-only answers.");
+                    if (testCase.allow_source_edit && (testCase.host != "Excel" || !(testCase.inputs ?? new string[0]).Any(p => p.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))))
+                        throw new InvalidDataException("Source edits require an explicit Excel workbook case.");
+                    if ((testCase.browser_allowed_hosts ?? new string[0]).Any(host =>
+                        testCase.host != "Chrome" || !Regex.IsMatch(host ?? "", @"^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$", RegexOptions.IgnoreCase)))
+                        throw new InvalidDataException("Live browser sources require exact DNS hosts on a Chrome case.");
+                    BrowserStartUri(testCase);
+                    SafeChild(root, testCase.oracle_ref);
+                    if (string.IsNullOrEmpty(manifest.parent_manifest_sha256) &&
+                        !new[] { testCase.oracle_ref }.Concat(testCase.inputs ?? new string[0]).All(seen.Contains))
+                        throw new InvalidDataException("Stress case refers to an unverified file.");
+                }
             }
             return manifest;
         }
@@ -165,6 +192,12 @@ namespace Scribble.Testing
                 VerifyKit(s.fixture_root);
                 if (FileHash(Path.Combine(s.fixture_root, "manifest.json")) != s.manifest_sha256) throw new InvalidDataException("Manifest changed since activation.");
                 var c = Cases().Single(x => x.id == caseId);
+                if (s.suite_id == "scribble-stress-v1")
+                {
+                    var files = Read<KitManifest>(SafeChild(s.fixture_root, "manifest.json")).files.Select(f => f.path).ToArray();
+                    if (!new[] { c.oracle_ref }.Concat(c.inputs ?? new string[0]).All(files.Contains))
+                        throw new InvalidDataException("The selected stress case is not completely verified.");
+                }
                 var allowedPaths = new HashSet<string>(c.inputs ?? new string[0], StringComparer.OrdinalIgnoreCase);
                 foreach (var source in Read<MailFixture[]>(SafeChild(s.fixture_root, "operator/mail-index.json")))
                     if (allowedPaths.Contains(source.path)) foreach (var attachment in source.attachments ?? new string[0]) allowedPaths.Add(attachment);
@@ -202,9 +235,30 @@ namespace Scribble.Testing
         {
             var id = ActiveRunId(); if (string.IsNullOrEmpty(id)) return;
             Uri uri;
-            if (!Uri.TryCreate(url, UriKind.Absolute, out uri) || uri.Scheme != "http" || !uri.IsLoopback ||
-                !new[] { "/", "/index.html", "/operations.html", "/archive.html" }.Contains(uri.AbsolutePath) || uri.Query.Length > 0)
+            if (!Uri.TryCreate(url, UriKind.Absolute, out uri))
+            { MarkIncomplete(id, "Browser source URL is invalid."); throw new InvalidOperationException("Test Lab requires a verified case source URL."); }
+            var run = GetRun(id);
+            var testCase = TestLabSuite.Read<LabCase[]>(SafeChild(run.fixture_root, "operator/cases.json")).Single(c => c.id == run.case_id);
+            if (!IsBrowserSourceAllowed(testCase, uri))
             { MarkIncomplete(id, "Browser source is outside the synthetic fixture site."); throw new InvalidOperationException("Test Lab requires the loopback synthetic fixture page."); }
+        }
+        public static bool IsBrowserSourceAllowed(LabCase testCase, Uri uri)
+        {
+            if (uri == null || testCase == null) return false;
+            var synthetic = uri.Scheme == "http" && uri.IsLoopback &&
+                new[] { "/", "/index.html", "/operations.html", "/archive.html" }.Contains(uri.AbsolutePath) && uri.Query.Length == 0;
+            var liveAllowed = uri.Scheme == "https" && uri.IsDefaultPort && string.IsNullOrEmpty(uri.UserInfo) &&
+                (testCase.browser_allowed_hosts ?? new string[0]).Any(host => string.Equals(host, uri.IdnHost, StringComparison.OrdinalIgnoreCase));
+            return synthetic || liveAllowed;
+        }
+        public static Uri BrowserStartUri(LabCase testCase)
+        {
+            if (testCase == null || string.IsNullOrWhiteSpace(testCase.browser_start_url)) return null;
+            Uri uri;
+            if (testCase.host != "Chrome" || !Uri.TryCreate(testCase.browser_start_url, UriKind.Absolute, out uri) ||
+                uri.Scheme != Uri.UriSchemeHttps || !IsBrowserSourceAllowed(testCase, uri))
+                throw new InvalidDataException("A live browser start URL must be HTTPS and match the case's exact host allow-list.");
+            return uri;
         }
         public static void CheckOfficeSource(object application, string host)
         {
@@ -251,6 +305,7 @@ namespace Scribble.Testing
         public static void CheckMailSource(object item)
         {
             var id = ActiveRunId(); if (string.IsNullOrEmpty(id)) return;
+            if (TestLabMailbox.Enabled) { TestLabMailbox.ValidateSource(item); return; }
             var run = GetRun(id); dynamic mail = item;
             var sources = Read<MailFixture[]>(SafeChild(run.fixture_root, "operator/mail-index.json"));
             string subject = Convert.ToString(mail.Subject), sender = Convert.ToString(mail.SenderEmailAddress);
@@ -511,11 +566,11 @@ namespace Scribble.Testing
     public sealed class LabSession
     { public int schema { get; set; } public string session_id { get; set; } public string suite_id { get; set; } public string fixture_root { get; set; } public string manifest_sha256 { get; set; } public DateTime expires_utc { get; set; } public string run_id { get; set; } public string transport_pipe { get; set; } public int transport_pid { get; set; } public long transport_process_start { get; set; } }
     public sealed class KitManifest
-    { public int schema { get; set; } public string suite_id { get; set; } public KitFile[] files { get; set; } }
+    { public int schema { get; set; } public string suite_id { get; set; } public string parent_manifest_sha256 { get; set; } public KitFile[] files { get; set; } }
     public sealed class KitFile
     { public string path { get; set; } public string sha256 { get; set; } public long size { get; set; } public string role { get; set; } }
     public sealed class LabCase
-    { public Dictionary<string, string> clarification_answers { get; set; } public string id { get; set; } public string host { get; set; } public string prompt { get; set; } public string prerequisite_prompt { get; set; } public string expected { get; set; } public string setup { get; set; } public string[] inputs { get; set; } public string[] artifacts { get; set; } public override string ToString() { return id + " / " + host; } }
+    { public Dictionary<string, string> clarification_answers { get; set; } public string id { get; set; } public string host { get; set; } public string prompt { get; set; } public string prerequisite_prompt { get; set; } public string expected { get; set; } public string setup { get; set; } public string[] inputs { get; set; } public string[] artifacts { get; set; } public string oracle_ref { get; set; } public int timeout_seconds { get; set; } public bool allow_source_edit { get; set; } public string[] browser_allowed_hosts { get; set; } public string browser_start_url { get; set; } public override string ToString() { return id + " / " + host; } }
     public sealed class LabRun
     {
         public int schema { get; set; } public string run_id { get; set; } public string session_id { get; set; } public string suite_id { get; set; }

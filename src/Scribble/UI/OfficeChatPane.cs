@@ -518,13 +518,28 @@ namespace Scribble.UI
         }
 
         private readonly Scribble.Testing.TestLabSuitePane _suiteDriver = new Scribble.Testing.TestLabSuitePane();
+        private bool _stressSettingsLoaded;
         public string StopTestLabRun(string runId) { return _suiteDriver.RecoverStop(runId, () => _busy, () => HandleStop()); }
         public string RunTestLabCommand(string suiteId, string commandId, string action, int phase)
         {
             return _suiteDriver.Command(suiteId, commandId, action, phase, HostName, _webReady && !_shutdown,
-                () => _busy, () => HandleNewChat(), c => {
+                () => _busy, () => { ReloadStressSettings(); HandleNewChat(); }, c => {
                     AddExternalFiles(Scribble.Testing.TestLabPreparation.ContextFiles(c));
                 }, prompt => HandleSendMessageCore(prompt), () => HandleStop());
+        }
+
+        private void ReloadStressSettings()
+        {
+            var stress = Scribble.Testing.TestLabSuite.Active()?.fixtureSuiteId == "scribble-stress-v1";
+            if (!stress && !_stressSettingsLoaded) return;
+            if (_busy) throw new InvalidOperationException("Stop the active request before changing test configuration.");
+            var saved = _settingsStore.Load();
+            _settings = stress ? Scribble.Testing.TestLabStressSettings.Isolate(saved) : saved;
+            ContextScale.Apply(GeminiCodeAssistGateway.IsGeminiModel(_settings.Model));
+            _settings.ApplyLimits();
+            _mcpTools?.Dispose(); _mcpTools = new McpToolHost(_settings.McpServers);
+            _stressSettingsLoaded = stress;
+            RefreshModelPicker(); PushSkillsToWeb(); PushTopicsToWeb(false);
         }
 
         private void PostToWeb(IDictionary<string, object> payload)
@@ -1159,7 +1174,9 @@ namespace Scribble.UI
             string name,
             string content,
             string subtitle,
-            ExcelSelectionSnapshot excelSelection = null)
+            ExcelSelectionSnapshot excelSelection = null,
+            string sourcePath = null,
+            bool hasMoreContent = false)
         {
             if (_externalContext.Count >=
                 ExternalContextDocument.MaxDocuments)
@@ -1193,14 +1210,19 @@ namespace Scribble.UI
 
             var document = new ExternalContextDocument(
                 name,
-                content);
+                content,
+                sourcePath,
+                hasMoreContent);
             var warn = document.Content.Length <
                 (content ?? string.Empty).Length;
             if (document.Content.Length > remaining)
             {
                 document = new ExternalContextDocument(
                     name,
-                    document.Content.Substring(0, remaining));
+                    document.Content.Substring(0, remaining),
+                    document.SourcePath,
+                    true,
+                    document.SourceFingerprint);
                 warn = true;
             }
 
@@ -1335,7 +1357,10 @@ namespace Scribble.UI
                             : content.Truncated
                             ? "truncated to the text cap"
                             : content.Text.Length +
-                              " text characters");
+                              " text characters",
+                        null,
+                        loadedFile.Path,
+                        content.Truncated);
                     added++;
                 }
 
@@ -2037,7 +2062,9 @@ namespace Scribble.UI
                     ReplaceSource = selectionRequest != null && selectionRequest.AllowSourceReplacement,
                     KoreanHandle = koreanWorkbookRequest?.Handle,
                     Korean = TaskRecoveryInput.Copy<SavedKoreanWorkbook>(koreanWorkbookRequest?.Snapshot),
-                    Documents = externalContext.Select(d => new SavedReference { Name = d.Name, Content = d.Content }).ToList(),
+                    Documents = externalContext.Select(d => new SavedReference { Name = d.Name, Content = d.Content,
+                        SourcePath = d.SourcePath, SourceFingerprint = d.SourceFingerprint,
+                        HasMoreContent = d.HasMoreContent }).ToList(),
                     Images = externalImages.Select(i => new SavedImage { FileName = i.FileName, DataUrl = i.DataUrl }).ToList()
                 }.PersistTo(taskContext.State);
                 taskContext.Checkpoint();
@@ -2076,7 +2103,7 @@ namespace Scribble.UI
                             "The model stopped without returning text.");
                     }
 
-                    var blocker = _draftHost?.CompletionBlocker;
+                    var blocker = _draftHost?.CompletionBlocker ?? taskContext.Sources.CompletionBlocker;
                     if (!string.IsNullOrEmpty(blocker))
                     {
                         request.messages.Add(new ChatCompletionInputMessage { role = "user", content = blocker });
@@ -2424,6 +2451,9 @@ namespace Scribble.UI
             {
                 return;
             }
+
+            if (_stressSettingsLoaded && Scribble.Testing.TestLabSuite.Active()?.fixtureSuiteId != "scribble-stress-v1")
+                ReloadStressSettings();
 
             _history.Clear();
             _externalContext.Clear();
