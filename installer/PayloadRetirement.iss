@@ -78,7 +78,8 @@ end;
 function PayloadToken: String;
 begin
   Result := Copy(Lowercase(GetSHA256OfUnicodeString(
-    GetDateTimeString('yyyymmddhhnnsszzz', '', '') + IntToStr(Random(2147483647)))), 1, 32);
+    ExpandConstant('{app}') + GetDateTimeString('yyyymmddhhnnsszzz', '-', ':') +
+    IntToStr(Random(2147483647)))), 1, 32);
 end;
 
 function RetiredPath(Name: String): String;
@@ -201,9 +202,10 @@ begin
   NewHash := Lowercase(NewHash);
   if (NewHash <> '') and not PayloadHex(NewHash, 64) then
     RaiseException('The installer payload hash is invalid.');
-  if VerifyInstallerFile then
-    if (NewHash = '') or (CompareText(CurrentFileName, Destination) <> 0) then
+  if VerifyInstallerFile then begin
+    if (NewHash = '') or (CompareText(ExpandConstant(CurrentFileName), Destination) <> 0) then
       RaiseException('The installer payload does not match its declared destination.');
+  end;
   if not PayloadStarted then begin
     if FileExists(PayloadJournal) then RaiseException('An unresolved update journal exists.');
     PayloadTransaction := PayloadToken;

@@ -62,6 +62,7 @@ Source: "@SOURCE@"; DestDir: "{app}\BrowserExtension"; DestName: "sidepanel.css"
 Source: "@SOURCE@"; DestDir: "{app}\BrowserExtension"; DestName: "sidepanel.js"; Flags: ignoreversion; Check: ShouldCopy; Components: browser; BeforeInstall: RetirePayload('BrowserExtension\sidepanel.js', '@HASH@'); AfterInstall: VerifyPayload('BrowserExtension\sidepanel.js', '@HASH@')
 Source: "@SOURCE@"; DestDir: "{app}\BrowserExtension"; DestName: "README.md"; Flags: ignoreversion; Check: ShouldCopy; Components: browser; BeforeInstall: RetirePayload('BrowserExtension\README.md', '@HASH@'); AfterInstall: VerifyPayload('BrowserExtension\README.md', '@HASH@')
 Source: "@SOURCE@"; DestDir: "{app}"; DestName: "ExcelDataReader.dll"; Flags: ignoreversion; Check: ShouldCopy; BeforeInstall: RetirePayload('ExcelDataReader.dll', '@HASH@'); AfterInstall: FinishSecondPayload
+Source: "@SOURCE@"; DestDir: "{app}"; DestName: "forced-failure.dll"; Flags: ignoreversion; Check: ShouldForceRollback
 [Code]
 #include "@INCLUDE@"
 procedure FixtureExitProcess(Code: Cardinal);
@@ -70,6 +71,10 @@ function ShouldCopy: Boolean;
 begin
   Result := ExpandConstant('{param:MODE|success}') <> 'recover';
 end;
+function ShouldForceRollback: Boolean;
+begin
+  Result := ExpandConstant('{param:MODE|success}') = 'rollback';
+end;
 procedure FinishSecondPayload;
 var Mode: String;
 begin
@@ -77,7 +82,6 @@ begin
   { Exit before AfterInstall verification: recovery must already know the new hash. }
   if Mode = 'crash' then FixtureExitProcess(23);
   VerifyPayload('ExcelDataReader.dll', '@HASH@');
-  if Mode = 'rollback' then RaiseException('Injected failure after two payload copies.');
 end;
 '@
 $script = $script.Replace('@SOURCE@', $source).Replace('@HASH@', $newHash).Replace('@INCLUDE@', $include)
@@ -138,6 +142,9 @@ foreach ($case in @('success', 'rollback', 'crash-recover', 'foreign-bytes', 'de
             elseif ($case -eq 'deselect-success') { 'success' }
             elseif ($case -eq 'deselect-rollback') { 'rollback' }
             else { $case }
+        if ($mode -eq 'rollback') {
+            [IO.Directory]::CreateDirectory((Join-Path $directory 'forced-failure.dll')) | Out-Null
+        }
         $exit = Run-Installer $directory $mode 'first-install.log' $deselectBrowser
         if ($case -in @('success', 'deselect-success')) {
             Assert ($exit -eq 0) "Successful retirement installer returned $exit."
