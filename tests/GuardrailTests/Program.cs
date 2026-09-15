@@ -298,6 +298,9 @@ namespace GuardrailTests
                     "External context is explicit and bounded",
                     ExternalContextIsBounded);
                 Run(
+                    "Truncated external documents require verified contiguous paging",
+                    ExternalDocumentPagingIsCompleteAndBound);
+                Run(
                     "Local Topics are explicit, bounded, and isolated",
                     LocalTopicsAreExplicitBoundedAndIsolated);
                 Run(
@@ -7991,6 +7994,86 @@ namespace GuardrailTests
                 }
             }
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+        }
+
+        private static void ExternalDocumentPagingIsCompleteAndBound()
+        {
+            var root = Path.Combine(Path.GetTempPath(), "scribble-external-page-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(root);
+            var path = Path.Combine(root, "long-report.txt");
+            try
+            {
+                var terminal = "FINAL-PAGE-MARKER";
+                File.WriteAllText(path, new string('x', 70000) + terminal, new UTF8Encoding(false));
+                var document = new ExternalContextDocument(
+                    "long-report.txt",
+                    new string('x', ExternalContextDocument.MaxCharactersPerDocument),
+                    path,
+                    true);
+                var request = MakeRequest(new List<ChatTurn>(), externalContext: new[] { document });
+                var task = new TaskContextManager(
+                    request,
+                    "outlook",
+                    "Read the attached report in full.",
+                    new TaskCheckpointStore(Path.Combine(root, "checkpoint")));
+                new TaskRecoveryInput
+                {
+                    Prompt = task.State.Objective,
+                    Documents = new List<SavedReference>
+                    {
+                        new SavedReference
+                        {
+                            Name = document.Name,
+                            Content = document.Content,
+                            SourcePath = document.SourcePath,
+                            SourceFingerprint = document.SourceFingerprint,
+                            HasMoreContent = true
+                        }
+                    }
+                }.PersistTo(task.State);
+                task.Checkpoint();
+
+                Assert(
+                    request.tools.Any(tool => tool.function.name == TaskSources.ReadDocumentTool) &&
+                    MessageContent(request.messages[1]).Contains("bounded preview only") &&
+                    task.Sources.CompletionBlocker != null,
+                    "A clipped document did not expose and require verified paging.");
+                var gap = task.ReadEvidence(MailboxCall(
+                    "gap", TaskSources.ReadDocumentTool,
+                    "{\"document_index\":1,\"offset\":6000}"));
+                Assert(gap.Content.Contains("pages cannot be skipped"),
+                    "The external document reader accepted a page gap.");
+
+                var json = new JavaScriptSerializer();
+                var offset = 0;
+                var collected = new StringBuilder();
+                while (true)
+                {
+                    var result = task.ReadEvidence(MailboxCall(
+                        "page-" + offset,
+                        TaskSources.ReadDocumentTool,
+                        "{\"document_index\":1,\"offset\":" + offset + "}"));
+                    var page = json.Deserialize<Dictionary<string, object>>(result.Content);
+                    collected.Append(Convert.ToString(page["content"]));
+                    if (page["next_offset"] == null) break;
+                    offset = Convert.ToInt32(page["next_offset"]);
+                }
+                Assert(
+                    collected.ToString().EndsWith(terminal, StringComparison.Ordinal) &&
+                    task.Sources.CompletionBlocker == null,
+                    "The external document reader did not reach and record the final page.");
+
+                File.AppendAllText(path, "changed");
+                var changed = task.ReadEvidence(MailboxCall(
+                    "changed", TaskSources.ReadDocumentTool,
+                    "{\"document_index\":1,\"offset\":0}"));
+                Assert(changed.Content.Contains("changed after it was selected"),
+                    "Changed external document bytes reused prior coverage.");
+            }
+            finally
+            {
+                if (Directory.Exists(root)) Directory.Delete(root, true);
+            }
         }
 
         private static void OpenRouterQwenPolicy()

@@ -489,6 +489,10 @@ namespace Scribble.Chat
                     TextBoundary.PlainText(
                         documents[index].Content,
                         ExternalContextDocument.MaxCharactersPerDocument) +
+                    (documents[index].HasMoreContent
+                        ? "\nStatus: bounded preview only. Before claiming full-document coverage, call read_external_document with document_index " +
+                          (index + 1) + " and offset 0, then follow every next_offset until null."
+                        : string.Empty) +
                     "\n</document>");
             }
 

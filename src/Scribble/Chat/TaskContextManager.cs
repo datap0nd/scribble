@@ -52,6 +52,7 @@ namespace Scribble.Chat
                 }
             }
             request.tools.Add(TaskSources.Definition());
+            request.tools.Add(TaskSources.DocumentDefinition());
             request.tools.Add(new ChatToolDefinition
             {
                 type = "function",
@@ -97,7 +98,8 @@ namespace Scribble.Chat
         public TaskDiagnostics Diagnostics { get; private set; }
         public TaskSources Sources { get { return new TaskSources(this); } }
 
-        public static bool IsTaskTool(string name) { return name == ReadEvidenceTool || name == TaskSources.ReadSourcesTool; }
+        public static bool IsTaskTool(string name) { return name == ReadEvidenceTool ||
+            name == TaskSources.ReadSourcesTool || name == TaskSources.ReadDocumentTool; }
 
         public MailboxToolResult ValidateArguments(ChatToolCall call)
         {
@@ -259,6 +261,7 @@ namespace Scribble.Chat
             try
             {
                 if (call.function.name == TaskSources.ReadSourcesTool) return Sources.Read(call);
+                if (call.function.name == TaskSources.ReadDocumentTool) return Sources.ReadDocument(call);
                 var args = _json.Deserialize<Dictionary<string, object>>(call.function.arguments);
                 var id = Convert.ToString(args["id"]);
                 var offset = Convert.ToInt32(args["offset"]);

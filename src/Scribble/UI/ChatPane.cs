@@ -1768,12 +1768,17 @@ namespace Scribble.UI
 
                     var document = new ExternalContextDocument(
                         content.FileName,
-                        documentText);
+                        documentText,
+                        loadedFile.Path,
+                        content.Truncated);
                     if (document.Content.Length > remaining)
                     {
                         document = new ExternalContextDocument(
                             content.FileName,
-                            document.Content.Substring(0, remaining));
+                            document.Content.Substring(0, remaining),
+                            document.SourcePath,
+                            true,
+                            document.SourceFingerprint);
                         warn = true;
                         if (subtitle.Length == 0)
                         {
@@ -2209,7 +2214,8 @@ namespace Scribble.UI
                 var restored = TaskRecoveryInput.Read(_resumeRecovery);
                 requestSelectedMessage = restored.Selected?.Restore();
                 requestWorkingMessages = restored.Working.Select(m => m.Restore()).ToList();
-                requestExternalContext = restored.Documents.Select(d => new ExternalContextDocument(d.Name, d.Content)).ToList();
+                requestExternalContext = restored.Documents.Select(d => new ExternalContextDocument(
+                    d.Name, d.Content, d.SourcePath, d.HasMoreContent, d.SourceFingerprint)).ToList();
                 requestExternalImages = restored.Images.Select(i => new VisionImagePayload(i.FileName, i.DataUrl)).ToList();
                 foreach (var source in requestWorkingMessages.Concat(requestSelectedMessage == null ?
                     new MessageSnapshot[0] : new[] { requestSelectedMessage }))
@@ -2529,7 +2535,9 @@ namespace Scribble.UI
                     {
                         Prompt = prompt, Selected = TaskRecoveryInput.Copy<SavedMessage>(selectedMessage),
                         Working = workingMessages.Select(m => TaskRecoveryInput.Copy<SavedMessage>(m)).ToList(),
-                        Documents = externalContext.Select(d => new SavedReference { Name = d.Name, Content = d.Content }).ToList(),
+                        Documents = externalContext.Select(d => new SavedReference { Name = d.Name, Content = d.Content,
+                            SourcePath = d.SourcePath, SourceFingerprint = d.SourceFingerprint,
+                            HasMoreContent = d.HasMoreContent }).ToList(),
                         Images = externalImages.Select(i => new SavedImage { FileName = i.FileName, DataUrl = i.DataUrl }).ToList()
                     }.PersistTo(taskContext.State);
                     taskContext.Checkpoint();
@@ -2558,7 +2566,8 @@ namespace Scribble.UI
                                 "The model stopped without returning text.");
                         }
 
-                        var blocker = mailboxTools.CompletionBlocker ?? _crossAppTools?.CompletionBlocker;
+                        var blocker = mailboxTools.CompletionBlocker ?? _crossAppTools?.CompletionBlocker ??
+                            taskContext.Sources.CompletionBlocker;
                         if (!string.IsNullOrEmpty(blocker))
                         {
                             request.messages.Add(new ChatCompletionInputMessage { role = "user", content = blocker });

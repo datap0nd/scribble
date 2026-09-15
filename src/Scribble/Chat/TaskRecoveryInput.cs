@@ -45,6 +45,9 @@ namespace Scribble.Chat
     {
         public string Name { get; set; }
         public string Content { get; set; }
+        public string SourcePath { get; set; }
+        public string SourceFingerprint { get; set; }
+        public bool HasMoreContent { get; set; }
     }
     public sealed class SavedImage
     {
