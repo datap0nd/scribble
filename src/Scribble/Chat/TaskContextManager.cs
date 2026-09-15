@@ -15,12 +15,14 @@ namespace Scribble.Chat
     public sealed class TaskContextManager
     {
         public const string ReadEvidenceTool = "read_task_evidence";
+        public const int DefaultContextBudget = 96000;
+        public const int Qwen38ContextBudget = 256000;
         private readonly JavaScriptSerializer _json = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
         private readonly TaskCheckpointStore _store;
         private readonly DurableTaskState _state;
         private int _prefixCount;
         private readonly HashSet<string> _evidence = new HashSet<string>(StringComparer.Ordinal);
-        private int _budget = 96000;
+        private int _budget;
         private int _stalled;
         private string _previousExchange;
         private readonly ChatCompletionRequest _request;
@@ -29,6 +31,7 @@ namespace Scribble.Chat
             TaskCheckpointStore store = null, DurableTaskState resume = null)
         {
             _request = request;
+            _budget = ContextBudgetForModel(request?.model);
             _store = store ?? new TaskCheckpointStore();
             _state = resume ?? new DurableTaskState { Host = host, Objective = objective, ProcessSession = TaskRecoveryInput.ProcessSession, SamsungWorkflowVersion = Scribble.Office.SamsungAuthoringPolicy.WorkflowVersion };
             string priorProgress;
@@ -80,7 +83,8 @@ namespace Scribble.Chat
                 _prefixCount = _state.PrefixCount;
                 _budget = _state.ContextBudget;
                 string previousModel;
-                if (_state.HostData.TryGetValue("context_model", out previousModel) && previousModel != request.model) _budget = 96000;
+                if (_state.HostData.TryGetValue("context_model", out previousModel) && previousModel != request.model)
+                    _budget = ContextBudgetForModel(request.model);
                 foreach (var id in _state.EvidenceIds) _evidence.Add(id);
             }
             _state.Lifecycle = TaskLifecycle.Running;
@@ -100,6 +104,17 @@ namespace Scribble.Chat
 
         public static bool IsTaskTool(string name) { return name == ReadEvidenceTool ||
             name == TaskSources.ReadSourcesTool || name == TaskSources.ReadDocumentTool; }
+
+        public static int ContextBudgetForModel(string model)
+        {
+            // Qwen3.8 27B's published context is much larger than the generic
+            // conservative boundary. A 256K-character ledger keeps a roughly
+            // 100K-character document plus tool receipts in one task turn and
+            // avoids archiving the evidence just as the final page arrives.
+            return string.Equals(model, "qwen/qwen3.8-27b", StringComparison.OrdinalIgnoreCase)
+                ? Qwen38ContextBudget
+                : DefaultContextBudget;
+        }
 
         public MailboxToolResult ValidateArguments(ChatToolCall call)
         {

@@ -8109,6 +8109,12 @@ namespace GuardrailTests
                 (bool)openRouter["parallel_tool_calls"] == false,
                 "The exact OpenRouter Qwen route must use low reasoning and serial tools.");
             Assert(
+                TaskContextManager.ContextBudgetForModel(request.model) ==
+                    TaskContextManager.Qwen38ContextBudget &&
+                TaskContextManager.ContextBudgetForModel("local-model") ==
+                    TaskContextManager.DefaultContextBudget,
+                "Qwen long-document tasks need a larger model-specific context ledger without changing generic endpoints.");
+            Assert(
                 (int)openRouter["max_tokens"] == 2048,
                 "Compact OpenRouter review requests must retain their bounded response allowance.");
 
