@@ -114,6 +114,13 @@ $state = Get-Content -LiteralPath $result -Raw | ConvertFrom-Json
 [IO.File]::WriteAllText($state.stop_file, $state.stop_token)
 ```
 
+To rebuild a failed PDF from an existing results folder, run
+`ScribbleBrowserHost.exe --test-lab-report "C:\path\to\results\suite.json"`.
+This only renders captured results; it makes no Office or model request and
+preserves each case's recorded outcome. CI checks this command in a fresh process
+using both the build output and installed payload, so host-preloaded libraries
+cannot conceal missing report dependencies.
+
 `Test-TestLabReliability.ps1` reproduces dead-recorder recovery and restart,
 checks run-isolated message IDs, rejects correct-input/wrong-answer evidence,
 and generates a complete 16-case PDF without Office or a model. The optional

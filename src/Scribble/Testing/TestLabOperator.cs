@@ -7,6 +7,39 @@ using System.Threading.Tasks;
 
 namespace Scribble.Testing
 {
+    public static class TestLabOperatorReporting
+    {
+        public sealed class Manifest
+        {
+            public int schema { get; set; }
+            public SuiteState suite { get; set; }
+            public SuiteCaseResult[] cases { get; set; }
+        }
+
+        // Re-render captured results in this executable's own runtime. This path
+        // never enables Test Lab capture, opens Office, or contacts a model.
+        public static string Create(string manifestPath)
+        {
+            if (string.IsNullOrWhiteSpace(manifestPath) || !Path.IsPathRooted(manifestPath) ||
+                (Path.GetPathRoot(manifestPath) ?? "").Length < 3 ||
+                !string.Equals(Path.GetFileName(manifestPath), "suite.json", StringComparison.OrdinalIgnoreCase))
+                throw new ArgumentException("Supply an absolute path to the captured suite.json file.");
+            manifestPath = Path.GetFullPath(manifestPath);
+            var folder = Path.GetDirectoryName(manifestPath);
+            var manifest = TestLabSuite.Read<Manifest>(manifestPath);
+            if (manifest == null || manifest.schema != 1 || manifest.suite == null || manifest.cases == null ||
+                !string.Equals(Path.GetFullPath(manifest.suite.folder ?? "" ).TrimEnd(Path.DirectorySeparatorChar), folder, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("The suite manifest must describe its own containing results folder.");
+            foreach (var result in manifest.cases)
+                foreach (var path in new[] { result.evidence, result.evaluation }.Where(p => !string.IsNullOrEmpty(p)))
+                    if (!Path.GetFullPath(path).StartsWith(folder + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidDataException("Case evidence must remain inside the captured suite folder.");
+            var pdf = TestLabSuiteReport.Create(manifest.suite, manifest.cases);
+            if (!TestLabPdfWriter.IsValid(pdf)) throw new InvalidDataException("The standalone reporter did not produce a valid PDF.");
+            return pdf;
+        }
+    }
+
     public static class TestLabOperatorExecution
     {
         // A failed diagnostic write must not replace the runner's terminal
