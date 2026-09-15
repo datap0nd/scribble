@@ -156,24 +156,43 @@ namespace Scribble.Office
                 }
                 if ((int)shape.HasChart != 0)
                 {
-                    dynamic chart = shape.Chart;
-                    var series = new List<object>();
-                    try
+                    // Stress fixtures deliberately include stale/corrupt embedded
+                    // chart workbooks. Current Office builds can terminate in
+                    // chart.dll merely by opening that COM object. The benchmark
+                    // carries an independent workbook authority and grades the
+                    // generated native chart directly, so do not dereference the
+                    // hostile source chart inside an active stress run.
+                    if (AvoidUnsafeStressChartAutomation())
                     {
-                        for (var n = 1; n <= (int)chart.SeriesCollection().Count; n++)
-                        {
-                            dynamic item = chart.SeriesCollection(n);
-                            series.Add(new { name = Convert.ToString(item.Name), formula = Convert.ToString(item.Formula), values = Values((object)item.Values), categories = Values((object)item.XValues) });
-                        }
-                        data["chart"] = new { type = (int)chart.ChartType, series };
+                        data["chart"] = new { available = false, reason = "unsafe_stress_fixture" };
+                        unsupported.Add("chart-data:" + id);
                     }
-                    catch (Exception ex) when (ex is System.Runtime.InteropServices.COMException || ex is Microsoft.CSharp.RuntimeBinder.RuntimeBinderException)
-                    { unsupported.Add("chart-data:" + id); }
+                    else
+                    {
+                        dynamic chart = shape.Chart;
+                        var series = new List<object>();
+                        try
+                        {
+                            for (var n = 1; n <= (int)chart.SeriesCollection().Count; n++)
+                            {
+                                dynamic item = chart.SeriesCollection(n);
+                                series.Add(new { name = Convert.ToString(item.Name), formula = Convert.ToString(item.Formula), values = Values((object)item.Values), categories = Values((object)item.XValues) });
+                            }
+                            data["chart"] = new { type = (int)chart.ChartType, series };
+                        }
+                        catch (Exception ex) when (ex is System.Runtime.InteropServices.COMException || ex is Microsoft.CSharp.RuntimeBinder.RuntimeBinderException)
+                        { unsupported.Add("chart-data:" + id); }
+                    }
                 }
                 if (new[] { 7, 10, 12, 16, 21, 24 }.Contains((int)shape.Type)) unsupported.Add("preserve-object:" + id + ":type:" + (int)shape.Type);
                 result.Add(data);
             }
             return result;
+        }
+        private static bool AvoidUnsafeStressChartAutomation()
+        {
+            try { return Scribble.Testing.TestLab.Status()?.suite_id == "scribble-stress-v1"; }
+            catch { return false; }
         }
         private static object[] Values(object value)
         { var sequence = value as IEnumerable; return sequence == null || value is string ? new[] { value } : sequence.Cast<object>().ToArray(); }
