@@ -18,6 +18,7 @@ namespace Scribble.Testing
         private readonly Dictionary<string, object> applications = new Dictionary<string, object>();
         private readonly Action<string> log;
         private readonly TestLabComMessageFilter messageFilter;
+        private string suiteId;
         internal TestLabOfficeEnvironment(Action<string> log) : this(log, CancellationToken.None) { }
         internal TestLabOfficeEnvironment(Action<string> log, CancellationToken cancel)
         { this.log = log; messageFilter = new TestLabComMessageFilter(cancel); previous = current; current = this; }
@@ -33,8 +34,9 @@ namespace Scribble.Testing
             return Marshal.GetActiveObject(host + ".Application");
         }
 
-        internal object Connect(string host)
+        internal async Task<object> ConnectAsync(string host, CancellationToken cancel)
         {
+            cancel.ThrowIfCancellationRequested();
             object value;
             if (applications.TryGetValue(host, out value))
             {
@@ -47,36 +49,38 @@ namespace Scribble.Testing
                     log(host + ": previous connection ended; reconnecting for this case.");
                 }
             }
-            try { value = Marshal.GetActiveObject(host + ".Application"); }
-            catch (COMException)
+            if (host == "Excel" || host == "PowerPoint")
             {
-                if (host != "Outlook")
+                value = await TestLabOfficeConnection.ConnectAsync(host, cancel, log);
+                suiteId = TestLabSuite.Active()?.id;
+            }
+            else
+            {
+                try { value = Marshal.GetActiveObject(host + ".Application"); }
+                catch (COMException)
                 {
-                    // Excel's shell-launched start screen need not publish an
-                    // automation object. Create and retain the COM application.
+                    if (host == "Outlook")
+                    {
+                        // Classic Outlook's singleton automation class attaches
+                        // to its normally launched explorer even without ROT.
+                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("outlook.exe") { UseShellExecute = true });
+                    }
                     var type = Type.GetTypeFromProgID(host + ".Application");
                     if (type == null) throw new InvalidOperationException(host + " is not installed or its automation registration is unavailable.");
                     value = Activator.CreateInstance(type);
                 }
-                else
-                {
-                    // Launch interactively so any required profile/startup
-                    // dialog is visible before attaching automation.
-                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("outlook.exe") { UseShellExecute = true });
-                    // GetActiveObject may remain unavailable even after Outlook has
-                    // opened an explorer. Its registered singleton automation class
-                    // attaches to that interactive instance without depending on ROT.
-                    var type = Type.GetTypeFromProgID("Outlook.Application");
-                    if (type == null) throw new InvalidOperationException("Classic Outlook automation is not installed.");
-                    value = Activator.CreateInstance(type);
-                }
             }
-            applications.Add(host, value);
-            dynamic app = value;
-            if (host == "PowerPoint") app.Visible = -1;
-            else if (host != "Outlook") app.Visible = true;
-            log(host + ": connected and retained for the suite lifetime.");
-            return value;
+            try
+            {
+                cancel.ThrowIfCancellationRequested();
+                dynamic app = value;
+                if (host == "PowerPoint") app.Visible = -1;
+                else if (host != "Outlook") app.Visible = true;
+                applications.Add(host, value);
+                log(host + ": connected and retained for the suite lifetime.");
+                return value;
+            }
+            catch { Release(value); throw; }
         }
 
         internal async Task Prepare(LabCase c, CancellationToken cancel)
@@ -88,10 +92,10 @@ namespace Scribble.Testing
             foreach (var host in new[] { c.host }.Concat((c.artifacts ?? new string[0]).Where(destinations.ContainsKey).Select(a => destinations[a])).Distinct())
             {
                 cancel.ThrowIfCancellationRequested();
-                Connect(host);
+                await ConnectAsync(host, cancel);
                 await Task.Delay(100, cancel);
             }
-            dynamic origin = Connect(c.host);
+            dynamic origin = await ConnectAsync(c.host, cancel);
             var progId = c.host == "Outlook" ? "Scribble.AddIn" : "Scribble." + c.host + "AddIn";
             dynamic addin = origin.COMAddIns.Item(progId);
             if (!Convert.ToBoolean(addin.Connect)) addin.Connect = true;
@@ -147,7 +151,20 @@ namespace Scribble.Testing
             var code = (uint)error.HResult;
             return code == 0x800706BE || code == 0x800706BA || code == 0x80010108 || code == 0x800401FD;
         }
-        public void Dispose() { try { foreach (var value in applications.Values) Release(value); applications.Clear(); } finally { if (current == this) current = previous; messageFilter.Dispose(); } }
+        public void Dispose()
+        {
+            try
+            {
+                foreach (var pair in applications)
+                {
+                    if (suiteId != null && (pair.Key == "Excel" || pair.Key == "PowerPoint"))
+                        TestLabOfficeConnection.Cleanup(pair.Key, suiteId, log);
+                    Release(pair.Value);
+                }
+                applications.Clear();
+            }
+            finally { if (current == this) current = previous; messageFilter.Dispose(); }
+        }
     }
 
     // Local native MSG inputs exercise MessageReader and attachment parsers

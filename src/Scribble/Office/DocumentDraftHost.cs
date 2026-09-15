@@ -1192,6 +1192,10 @@ namespace Scribble.Office
 
         private static object ResolveSiblingApplication(string progId)
         {
+            if ((progId == "Excel.Application" || progId == "PowerPoint.Application") &&
+                (Scribble.Testing.TestLab.Status() != null || Scribble.Testing.TestLabSuite.Active() != null))
+                return Scribble.Testing.TestLabOfficeConnection.ResolvePreparedSibling(progId);
+
             object application = null;
             try
             {

@@ -51,6 +51,14 @@ Outlook store is bound to the verified full snapshot; it does not search the
 user's default mailbox. Missing installation, Outlook profile, native store,
 model configuration or budget authorization produces an explicit blocked case.
 
+Excel and PowerPoint start normally with a private blank document so their
+installed Scribble add-ins load. The runner retains that document while cases
+open and close their own files. It verifies the native window's process and
+startup document before connecting; cross-app writes use the same prepared
+destination. An unavailable or stale destination blocks the case rather than
+opening a second automation instance. The blank startup files contain no task
+data or expected answers. Existing Office documents are preserved.
+
 The stress budget gate checks the dedicated provider key before each case and
 after each terminal case. Native provider limits enforce the authorized cap.
 An interrupted or budget-stopped attempt retains its results. Continue by

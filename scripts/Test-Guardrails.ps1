@@ -24,6 +24,9 @@ foreach ($pattern in $forbidden) {
             -not ($_.Path -like '*\Testing\TestLabSuite.cs' -and
                 ($_.Line.Trim() -eq 'if (File.Exists(Descriptor)) File.Replace(temporary, Descriptor, null); else File.Move(temporary, Descriptor);' -or
                  $_.Line.Trim() -eq 'if (File.Exists(file)) File.Replace(temp, file, null); else File.Move(temp, file);')) -and
+            # Atomic publication of an operator-owned DPAPI Office receipt.
+            -not ($_.Path -like '*\Testing\TestLabOfficeConnection.cs' -and
+                $_.Line.Trim() -eq 'if (File.Exists(path)) File.Replace(temporary, path, null); else File.Move(temporary, path);') -and
             # The operator publishes its protected fixture binding and places
             # a newly created, unsaved synthetic item in the verified PST.
             # No model tool reaches the import method or can move user mail.

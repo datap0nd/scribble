@@ -532,7 +532,7 @@ namespace Scribble.Testing
                             TestLab.Enable(kit, transport.PipeName, State.pid, State.processStart);
                             if (c.host == "Chrome") await Prepare(c.id, folder);
                             else {
-                                try { application = office.Connect(c.host); await office.Prepare(c, cancel); }
+                                try { application = await office.ConnectAsync(c.host, cancel); await office.Prepare(c, cancel); }
                                 catch (COMException error) when ((uint)error.HResult == 0x80010001 || (uint)error.HResult == 0x8001010A)
                                 { throw new InvalidOperationException(c.host + " is still busy after bounded startup retries. Complete any visible startup, profile, sign-in or file dialog, then retry this case. No model request was submitted.", error); }
                             }
