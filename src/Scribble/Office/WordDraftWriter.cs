@@ -338,6 +338,22 @@ namespace Scribble.Office
 
                 try
                 {
+                    wordTable.Style = "Grid Table 4 - Accent 1";
+                }
+                catch
+                {
+                    // The built-in style name is language-specific;
+                    // the manual borders above already keep the
+                    // table readable.
+                }
+
+                try
+                {
+                    // Apply the structural formatting after the style. Word
+                    // table styles can otherwise clear an explicitly bolded
+                    // header and enable first-column emphasis instead.
+                    wordTable.ApplyStyleFirstColumn = false;
+                    wordTable.ApplyStyleHeadingRows = true;
                     // 1 = wdAutoFitContent.
                     wordTable.AutoFitBehavior(1);
                     wordTable.Rows[1].Range.Font.Bold = 1;
@@ -346,17 +362,6 @@ namespace Scribble.Office
                 }
                 catch
                 {
-                }
-
-                try
-                {
-                    wordTable.Style = "Grid Table 4 - Accent 1";
-                }
-                catch
-                {
-                    // The built-in style name is language-specific;
-                    // the manual borders above already keep the
-                    // table readable.
                 }
 
                 // A spacer paragraph after the table keeps the next
