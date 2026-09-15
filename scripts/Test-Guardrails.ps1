@@ -686,6 +686,7 @@ if (-not $wordWriterSource.Contains(
     throw "Word drafts must stay marked, new, and unsaved."
 }
 foreach ($requiredWordTableBoundary in @(
+    'FormatTableHeaders(document)',
     'wordTable.ApplyStyleFirstColumn = false',
     'wordTable.ApplyStyleHeadingRows = true',
     'wordTable.Cell(1, column + 1).Range.Font.Bold = 1'

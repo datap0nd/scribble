@@ -162,6 +162,11 @@ namespace Scribble.Office
                     StyleFor(paragraph.Kind));
             }
 
+            if (tables > 0)
+            {
+                FormatTableHeaders(document);
+            }
+
             try
             {
                 document.Activate();
@@ -407,6 +412,85 @@ namespace Scribble.Office
             catch
             {
                 return false;
+            }
+        }
+
+        // Word may temporarily reject table-formatting calls while later
+        // tables are still being inserted. Reapply the hard header contract
+        // after the complete document structure exists so every table gets
+        // the same result, including tables near the end of a long draft.
+        private static void FormatTableHeaders(dynamic document)
+        {
+            int tableCount;
+            try
+            {
+                tableCount = (int)document.Tables.Count;
+            }
+            catch
+            {
+                return;
+            }
+
+            for (var tableIndex = 1;
+                 tableIndex <= tableCount;
+                 tableIndex++)
+            {
+                dynamic table;
+                try
+                {
+                    table = document.Tables.Item(tableIndex);
+                }
+                catch
+                {
+                    continue;
+                }
+
+                try
+                {
+                    table.ApplyStyleFirstColumn = false;
+                }
+                catch
+                {
+                }
+
+                try
+                {
+                    table.ApplyStyleHeadingRows = true;
+                }
+                catch
+                {
+                }
+
+                try
+                {
+                    table.Rows.Item(1).Range.Font.Bold = 1;
+                }
+                catch
+                {
+                }
+
+                int columnCount;
+                try
+                {
+                    columnCount = (int)table.Columns.Count;
+                }
+                catch
+                {
+                    continue;
+                }
+
+                for (var column = 1;
+                     column <= columnCount;
+                     column++)
+                {
+                    try
+                    {
+                        table.Cell(1, column).Range.Font.Bold = 1;
+                    }
+                    catch
+                    {
+                    }
+                }
             }
         }
 
