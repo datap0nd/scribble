@@ -178,7 +178,7 @@ namespace Scribble.Office
                     throw new InvalidOperationException("REVISION_PERMISSION_UNAVAILABLE");
                 if (_taskContext != null) { _taskContext.State.HostData["powerpoint_revision_authorized"] = "true"; _taskContext.Checkpoint(); }
                 ((dynamic)deck).Tags.Add("ScribblePresentationId", PresentationInspection.IdentityFor(deck));
-                if (_taskContext != null) _taskContext.State.HostData["powerpoint_revision_payload"] = _taskContext.Store.PutEvidence(_taskContext.State.Id, call.function.arguments);
+                if (_taskContext != null) _taskContext.State.HostData["powerpoint_revision_payload"] = _taskContext.RegisterEvidence(call.function.arguments);
                 written = true;
                 revision.Commit(status => CheckpointRevision(call, revision, status));
                 authorization.MarkCreated();

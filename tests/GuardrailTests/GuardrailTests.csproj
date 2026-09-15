@@ -61,6 +61,7 @@
     <Compile Include="SamsungSlideTests.cs" />
     <Compile Include="SamsungWorkflowTests.cs" />
     <Compile Include="SamsungRecoveryTests.cs" />
+    <Compile Include="PowerPointRecoveryBoundaryTests.cs" />
     <Compile Include="SamsungNativeAcceptance.cs" />
   </ItemGroup>
   <ItemGroup>

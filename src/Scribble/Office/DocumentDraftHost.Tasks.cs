@@ -23,6 +23,15 @@ namespace Scribble.Office
                 _samsungPresentation = null;
             }
             _taskContext = task;
+            // Older checkpoints archived these payloads without registering them
+            // for read_task_evidence. Migrate only the two host-owned references,
+            // reading from this task's encrypted store before granting access.
+            foreach (var key in new[] { "samsung_recovery_payload", "powerpoint_revision_payload" })
+            {
+                string id;
+                if (task.State.HostData.TryGetValue(key, out id) && !task.State.EvidenceIds.Contains(id))
+                    task.RegisterEvidence(task.Store.ReadEvidence(task.State.Id, id));
+            }
             _durableExcel = null;
             _excelTarget = null;
             if (_hostKind != "excel" || (_selectionRequest == null && _koreanWorkbookRequest == null) ||

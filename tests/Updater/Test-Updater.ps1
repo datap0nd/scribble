@@ -12,6 +12,16 @@ $helper=(Resolve-Path $HelperPath).Path
 $assembly=[Reflection.Assembly]::LoadFrom($helper)
 Assert (-not @($assembly.GetReferencedAssemblies() | Where-Object { $_.Name -like 'Scribble*' }).Count) 'The updater would lock an installed Scribble assembly.'
 Reject { [Scribble.Updater.UpdateEngine]::ParseCandidate('{}') } 'Incomplete manifest was accepted.'
+$olderPublic=[Scribble.Updater.UpdateEngine]::NoUpdateMessage('2.0.190.0','2.0.91.0')
+Assert (-not [string]::IsNullOrEmpty($olderPublic)) 'The frozen public release would start a downgrade instead of returning a no-update result.'
+Assert ($olderPublic.Contains('Installed: 2.0.190.0') -and $olderPublic.Contains('Public stable: 2.0.91.0')) 'The no-update result does not identify both installed and public versions.'
+Assert ($olderPublic.Contains('GitHub Actions')) 'Development installations have no explanation of their separate update path.'
+$equalPublic=[Scribble.Updater.UpdateEngine]::NoUpdateMessage('2.0.91.0','2.0.91.0')
+Assert (-not [string]::IsNullOrEmpty($equalPublic) -and $equalPublic.Contains('already up to date')) 'An equal public version would download and reinstall unnecessarily.'
+Assert ($equalPublic.Contains('Installed: 2.0.91.0') -and $equalPublic.Contains('Public stable: 2.0.91.0')) 'The equal-version result does not identify both installed and public versions.'
+Assert ($null -eq [Scribble.Updater.UpdateEngine]::NoUpdateMessage('2.0.9.0','2.0.10.0')) 'A newer public version was suppressed or compared lexically.'
+Reject { [Scribble.Updater.UpdateEngine]::NoUpdateMessage('invalid','2.0.91.0') } 'An invalid installed version was reported as up to date.'
+Reject { [Scribble.Updater.UpdateEngine]::NoUpdateMessage('2.0.91.0','invalid') } 'An invalid public version was reported as up to date.'
 $folder=Join-Path $env:TEMP ('scribble-updater-validation-'+[guid]::NewGuid().ToString('N'))
 [IO.Directory]::CreateDirectory($folder) | Out-Null
 try {
@@ -32,7 +42,7 @@ try {
   $installed=Join-Path $InstalledDirectory 'ScribbleUpdater.exe'
   Assert ((Test-Path -LiteralPath $installed) -and [Scribble.Updater.UpdateEngine]::Hash($installed) -eq [Scribble.Updater.UpdateEngine]::Hash($helper)) 'The installer omitted or altered its independent update helper.'
  }
- Write-Output 'PASS: independent updater, malformed manifest, corrupted bytes, candidate identity and installed helper checks.'
+ Write-Output 'PASS: independent updater, public update decisions, malformed manifest, corrupted bytes, candidate identity and installed helper checks.'
 } finally {
  # Only the exact two files created by this test are eligible for cleanup.
  if(Test-Path -LiteralPath (Join-Path $folder 'damaged.exe')){Remove-Item -LiteralPath (Join-Path $folder 'damaged.exe')}

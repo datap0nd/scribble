@@ -30,12 +30,76 @@ namespace Scribble.Testing
         private readonly string nonce;
         private DateTime runStarted;
         private TestLabSuiteRunner activeRunner;
+        private Task runnerCompletion;
         private readonly Button startButton;
         private readonly Button stopButton;
         private readonly Button reportButton;
         private readonly TextBox caseFilter = new TextBox { Width = 90 };
         private bool running;
         private bool finalizing;
+        private TestLabOperatorOptions operatorOptions;
+        private TestLabOperatorResult operatorResult;
+
+        public static int RunOperator(TestLabOperatorOptions options)
+        {
+            if (options == null) throw new ArgumentNullException(nameof(options));
+            if (Thread.CurrentThread.GetApartmentState() != ApartmentState.STA)
+                throw new InvalidOperationException("The Test Lab operator entry point requires an STA thread.");
+            Directory.CreateDirectory(TestLab.Root);
+            TestLabSuiteWindow lab = null;
+            using (var launch = new Mutex(false, @"Local\ScribbleTestLabWindow"))
+            {
+                bool held = false;
+                try
+                {
+                    try { held = launch.WaitOne(TimeSpan.FromSeconds(10)); } catch (AbandonedMutexException) { held = true; }
+                    if (!held) throw new TimeoutException("Another Test Lab launch is in progress.");
+                    if (HasLiveWindow(-1) || TestLabSuite.Active() != null)
+                        throw new InvalidOperationException("Another Test Lab window or suite is active. Use that window; it was not closed or replaced.");
+                    options.ReserveResult();
+                    options.WriteResult(new TestLabOperatorResult { case_id = options.CaseId,
+                        requested_count = options.CaseId == null ? 16 : 1 });
+                    lab = new TestLabSuiteWindow { operatorOptions = options };
+                    lab.caseFilter.Text = options.CaseId ?? "";
+                    lab.Shown += async (sender, args) =>
+                    {
+                        try
+                        {
+                            await lab.StartRun();
+                            if (lab.operatorResult == null)
+                                lab.operatorResult = new TestLabOperatorResult { status = "blocked", exit_code = 2,
+                                    error = lab.status.Text, case_id = options.CaseId, requested_count = options.CaseId == null ? 16 : 1 };
+                        }
+                        catch (Exception error)
+                        {
+                            // Startup/finalization can fail independently of the
+                            // runner. Clear stale UI flags only when no live
+                            // runner remains; FormClosing still protects one.
+                            if (lab.runnerCompletion == null || lab.runnerCompletion.IsCompleted)
+                            { lab.running = false; lab.finalizing = false; lab.activeRunner = null; }
+                            lab.operatorResult = new TestLabOperatorResult { status = "blocked", exit_code = 2,
+                                error = error.ToString(), case_id = options.CaseId, requested_count = options.CaseId == null ? 16 : 1 };
+                        }
+                        finally
+                        {
+                            try { options.WriteResult(lab.operatorResult); }
+                            catch (Exception error)
+                            {
+                                lab.operatorResult.exit_code = 2;
+                                try { Console.Error.WriteLine("Operator result could not be written: " + error.Message); } catch (IOException) { }
+                            }
+                            finally { lab.Close(); }
+                        }
+                    };
+                }
+                finally { if (held) launch.ReleaseMutex(); }
+            }
+            using (lab)
+            {
+                lab.ShowDialog();
+                return lab.operatorResult?.exit_code ?? 2;
+            }
+        }
 
         public static void Open()
         {
@@ -143,6 +207,15 @@ namespace Scribble.Testing
             }
             var timer = new System.Windows.Forms.Timer { Interval = 250 };
             timer.Tick += (s, e) => {
+                if (operatorOptions != null && File.Exists(operatorOptions.StopPath))
+                {
+                    try
+                    {
+                        if (File.ReadAllText(operatorOptions.StopPath).Trim() == operatorOptions.StopToken)
+                        { File.Delete(operatorOptions.StopPath); Stop(); }
+                    }
+                    catch (Exception error) when (error is IOException || error is UnauthorizedAccessException) { }
+                }
                 if (running || finalizing) elapsed.Text = "Elapsed: " + (DateTime.UtcNow - runStarted).ToString(@"hh\:mm\:ss");
                 if (activeRunner != null) {
                     var terminal = activeRunner.Results.Count(r => r.status != "not_run" && r.status != "running");
@@ -208,6 +281,7 @@ namespace Scribble.Testing
         {
             if (running || finalizing) return;
             if (TestLab.ActiveRunId() != null && !await RecoverPrior()) return;
+            runnerCompletion = null;
             cancellation = new CancellationTokenSource(); folder = CreateRunFolder(); finalPdf = null;
             runStarted = DateTime.UtcNow; running = true; Text = "Scribble Test Lab — running";
             status.Text = "Starting — acquiring run ownership and preflight."; startButton.Enabled = false; stopButton.Enabled = true; reportButton.Enabled = false;
@@ -215,8 +289,13 @@ namespace Scribble.Testing
             Append("Results: " + folder);
             caseFilter.Enabled = false;
             var runner = new TestLabSuiteRunner(folder, Append, cancellation.Token, caseFilter.Text); activeRunner = runner;
-            try { await RunOnSta(runner.Run); }
-            catch (Exception error) { runner.Log("Cannot run suite: " + error); }
+            var failure = await TestLabOperatorExecution.RunToTerminalAsync(() => {
+                if (operatorOptions != null)
+                    operatorOptions.WriteResult(new TestLabOperatorResult { status = "running", case_id = operatorOptions.CaseId,
+                        requested_count = operatorOptions.CaseId == null ? 16 : 1, suite_id = runner.State.id, folder = folder });
+                runnerCompletion = RunOnSta(runner.Run);
+                return runnerCompletion;
+            }, error => runner.Log("Cannot run suite: " + error));
             running = false; finalizing = true; status.Text = "Finalizing — creating and validating the current run PDF.";
             try
             {
@@ -232,6 +311,7 @@ namespace Scribble.Testing
             }
             catch (Exception error)
             {
+                failure = (failure == null ? "" : failure + "\n") + error;
                 Append("PDF FINALIZATION FAILED: " + error);
                 File.AppendAllText(Path.Combine(folder, "summary.txt"), "\nPDF FINALIZATION FAILED: " + error + "\n");
                 status.Text = "Reporting failed — diagnostics remain at " + folder;
@@ -242,6 +322,9 @@ namespace Scribble.Testing
                 caseFilter.Enabled = true;
                 stopButton.Enabled = TestLab.ActiveRunId() != null; reportButton.Enabled = TestLabPdfWriter.IsValid(finalPdf);
                 Text = "Scribble Test Lab — " + (reportButton.Enabled ? "finished" : "reporting failed");
+                operatorResult = TestLabOperatorResult.Classify(string.IsNullOrWhiteSpace(caseFilter.Text) ? null : caseFilter.Text.ToUpperInvariant(),
+                    runner.State, runner.Results.ToArray(), finalPdf, reportButton.Enabled, cancellation.IsCancellationRequested, failure);
+                try { operatorResult.configured_model = new SettingsStore().Load().Model; } catch { }
             }
         }
 

@@ -39,6 +39,13 @@
     <Reference Include="System.Core" />
     <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Web.Extensions" />
+    <Reference Include="System.ValueTuple">
+      <HintPath>$(NuGetPackageRoot)system.valuetuple\4.5.0\lib\net47\System.ValueTuple.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="System.ValueTuple" Version="4.5.0" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="BrowserSetup.cs" />

@@ -73,7 +73,8 @@ jobs:
             "System.Numerics.Vectors.dll",
             "System.Runtime.CompilerServices.Unsafe.dll",
             "System.Security.Cryptography.Pkcs.dll",
-            "System.Threading.Tasks.Extensions.dll"
+            "System.Threading.Tasks.Extensions.dll",
+            "System.ValueTuple.dll"
           )) {
             if (-not (Test-Path (Join-Path $bin $required))) {
               throw "Missing runtime assembly in build output: $required"
@@ -94,6 +95,8 @@ jobs:
           $hostBin = "src\Scribble.BrowserHost\bin\Release"
           foreach ($required in @(
             "ScribbleBrowserHost.exe",
+            "ScribbleBrowserHost.exe.config",
+            "System.ValueTuple.dll",
             "Scribble.dll"
           )) {
             if (-not (Test-Path (Join-Path $hostBin $required))) {
@@ -249,6 +252,8 @@ jobs:
           }
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/benchmarks/Test-TestLabReport.ps1 -RenderPdf
           if ($LASTEXITCODE -ne 0) { throw 'PDF report validation failed.' }
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/benchmarks/Test-TestLabStandalonePdf.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Standalone browser-host PDF runtime validation failed.' }
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/benchmarks/Test-TestLabSuite.ps1
           if ($LASTEXITCODE -ne 0) { throw 'Suite runner validation failed.' }
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/benchmarks/Test-TestLabLaunch.ps1
@@ -264,6 +269,7 @@ jobs:
           path: |
             tests/benchmarks/generated/report-test-*/
             tests/benchmarks/generated/suite-test-*/
+            tests/benchmarks/generated/standalone-pdf-*/
           if-no-files-found: ignore
 
       - name: Run guardrail tests
@@ -481,7 +487,8 @@ jobs:
             "System.Numerics.Vectors.dll",
             "System.Runtime.CompilerServices.Unsafe.dll",
             "System.Security.Cryptography.Pkcs.dll",
-            "System.Threading.Tasks.Extensions.dll"
+            "System.Threading.Tasks.Extensions.dll",
+            "System.ValueTuple.dll"
           )) {
             if (-not (Test-Path (Join-Path $installedDir $required))) {
               throw "Installer did not ship $required."
@@ -492,6 +499,8 @@ jobs:
             throw "Installer did not ship any WebView2Loader.dll."
           }
           $installedHost = Join-Path $installedDir "ScribbleBrowserHost.exe"
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/benchmarks/Test-TestLabStandalonePdf.ps1 -HostPath $installedHost
+          if ($LASTEXITCODE -ne 0) { throw 'Installed browser-host PDF runtime validation failed.' }
           $installedNativeManifest = Join-Path $installedDir "com.scribble.browser.json"
           $installedExtension = Join-Path $installedDir "BrowserExtension"
           foreach ($required in @(

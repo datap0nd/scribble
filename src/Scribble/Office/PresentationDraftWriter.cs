@@ -241,6 +241,20 @@ namespace Scribble.Office
             object boundPresentation = null,
             SamsungGenerationJournal journal = null)
         {
+            return AddDraftSlides(powerPointApplication, slides, afterSlide, inNewPresentation,
+                onRendered, boundPresentation, journal, null);
+        }
+
+        internal static string AddDraftSlides(
+            object powerPointApplication,
+            IReadOnlyList<DraftSlide> slides,
+            int? afterSlide,
+            bool inNewPresentation,
+            Action<SamsungOutput> onRendered,
+            object boundPresentation,
+            SamsungGenerationJournal journal,
+            Action beforeNativeWrite)
+        {
             if (slides == null || slides.Count == 0)
             {
                 throw new InvalidOperationException(
@@ -264,22 +278,26 @@ namespace Scribble.Office
             if (presentation == null)
             {
                 // msoTrue window so the new unsaved deck is visible.
-                presentation = application.Presentations.Add(-1);
+                dynamic presentations = application.Presentations;
+                beforeNativeWrite?.Invoke();
+                presentation = presentations.Add(-1);
                 Scribble.Testing.TestLab.RegisterOutput((object)presentation, "pptx");
             }
 
             var existing = (int)presentation.Slides.Count;
             if (existing == 0)
             {
-                presentation.PageSetup.SlideWidth = SamsungSlideDesign.Width;
-                presentation.PageSetup.SlideHeight = SamsungSlideDesign.Height;
+                dynamic pageSetup = presentation.PageSetup;
+                beforeNativeWrite?.Invoke();
+                pageSetup.SlideWidth = SamsungSlideDesign.Width;
+                pageSetup.SlideHeight = SamsungSlideDesign.Height;
             }
             else if (Math.Abs((double)presentation.PageSetup.SlideWidth / (double)presentation.PageSetup.SlideHeight - 16.0 / 9) > .01)
                 throw new InvalidOperationException("SAMSUNG_CANVAS_MISMATCH: Samsung reconstruction needs a 16:9 deck. Existing slides were not resized.");
             var canvasScale = (float)presentation.PageSetup.SlideWidth / SamsungSlideDesign.Width;
             if (Math.Abs(canvasScale - 1) > .001f)
                 foreach (var page in planned) ScaleSamsungPage(page, canvasScale);
-            journal?.Bind((object)presentation, planned.Count);
+            journal?.Bind((object)presentation, planned.Count, beforeNativeWrite);
             if (journal != null) existing = journal.Data.OriginalIds.Length;
             var anchor = existing;
             if (afterSlide.HasValue)
@@ -307,7 +325,9 @@ namespace Scribble.Office
                 var output = journal?.Resume(page, added);
                 if (output == null)
                 {
-                    dynamic created = presentation.Slides.Add(index, PpLayoutBlank);
+                    dynamic nativeSlides = presentation.Slides;
+                    beforeNativeWrite?.Invoke();
+                    dynamic created = nativeSlides.Add(index, PpLayoutBlank);
                     output = DrawSamsungPage((object)created, page, owner);
                     output.Image = ExportSamsung(output);
                     journal?.Record(output, added);

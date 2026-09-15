@@ -161,20 +161,6 @@ namespace Scribble.Office
                     throw new InvalidOperationException("SLIDE_COUNT_OVERFLOW: Mandatory content would create extra slides. Remove redundant wording or improve layout; do not omit required evidence. If it still cannot fit, ask which constraint may change.");
                 if (!ModelCatalog.IsVisionCapable(settings.Model))
                     throw new InvalidOperationException("SLIDE_VISION_REQUIRED: Select a vision-capable configured model so the rendered slides can be reviewed before completion.");
-                if (!authorization.TryConsume())
-                {
-                    if (_taskContext == null || !_taskContext.State.HostData.ContainsKey("samsung_authorized"))
-                        return Error(call.id, authorization, "DRAFT_PERMISSION_NOT_AVAILABLE", "No task-bound presentation authorization is available.");
-                }
-                if (_taskContext != null)
-                {
-                    _taskContext.State.HostData["samsung_authorized"] = "true";
-                    _taskContext.State.HostData["samsung_plan"] = _serializer.Serialize(plan);
-                    if (briefs != null) _taskContext.State.HostData["samsung_briefs"] = _serializer.Serialize(briefs);
-                    if (acceptedOutlineKey != null) _taskContext.State.HostData[acceptedOutlineKey] = "approved";
-                    foreach (var id in plan) if (!_taskContext.State.ExpectedSourceIds.Contains("ppt:" + id)) _taskContext.State.ExpectedSourceIds.Add("ppt:" + id);
-                    _taskContext.Checkpoint();
-                }
                 token.ThrowIfCancellationRequested();
                 stage = "WRITE";
                 if (_hostKind == "powerpoint" && _taskContext != null) OfficeTaskBinding.Validate(_taskContext.State, _hostKind, _hostApplication);
@@ -194,7 +180,26 @@ namespace Scribble.Office
                     _samsungPresentation = matches[0];
                 }
                 if (modern) journal = new SamsungGenerationJournal(_taskContext, call);
-                written = true;
+                Action beforeNativeWrite = () =>
+                {
+                    if (written) return;
+                    token.ThrowIfCancellationRequested();
+                    if (!authorization.TryConsume() && (_taskContext == null || !_taskContext.State.HostData.ContainsKey("samsung_authorized")))
+                        throw new InvalidOperationException("DRAFT_PERMISSION_NOT_AVAILABLE: No task-bound presentation authorization is available.");
+                    if (_taskContext != null)
+                    {
+                        _taskContext.State.HostData["samsung_authorized"] = "true";
+                        _taskContext.State.HostData["samsung_plan"] = _serializer.Serialize(plan);
+                        if (briefs != null) _taskContext.State.HostData["samsung_briefs"] = _serializer.Serialize(briefs);
+                        if (acceptedOutlineKey != null) _taskContext.State.HostData[acceptedOutlineKey] = "approved";
+                        foreach (var id in plan) if (!_taskContext.State.ExpectedSourceIds.Contains("ppt:" + id)) _taskContext.State.ExpectedSourceIds.Add("ppt:" + id);
+                        _taskContext.Checkpoint();
+                    }
+                    // The writer calls this immediately before a native mutation,
+                    // or after reconciling an existing native generation. A canvas
+                    // or destination preflight failure must remain retryable.
+                    written = true;
+                };
                 var status = PresentationDraftWriter.AddDraftSlides(app, slides, ParsedAfterSlide(args),
                     call.function.name == CrossAppToolCatalog.SendToPowerPoint, output =>
                     {
@@ -213,7 +218,7 @@ namespace Scribble.Office
                             _taskContext.State.HostData["samsung_render_" + call.id + "_" + outputs.Count] = imageId;
                             _taskContext.Checkpoint();
                         }
-                    }, _samsungPresentation, journal);
+                    }, _samsungPresentation, journal, beforeNativeWrite);
                 var contentById = rawSlides.Select(SamsungAuthoringPolicy.ReadMap).ToDictionary(raw => SamsungAuthoringPolicy.Text(raw, "id"));
                 if (journal != null)
                     foreach (var receipt in journal.Data.Receipts.Where(r => !string.IsNullOrEmpty(r.RepairedContent)))
