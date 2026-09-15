@@ -353,10 +353,44 @@ namespace Scribble.Office
                     // table styles can otherwise clear an explicitly bolded
                     // header and enable first-column emphasis instead.
                     wordTable.ApplyStyleFirstColumn = false;
+                }
+                catch
+                {
+                }
+
+                try
+                {
                     wordTable.ApplyStyleHeadingRows = true;
+                }
+                catch
+                {
+                }
+
+                try
+                {
                     // 1 = wdAutoFitContent.
                     wordTable.AutoFitBehavior(1);
-                    wordTable.Rows[1].Range.Font.Bold = 1;
+                }
+                catch
+                {
+                }
+
+                // Header formatting is a hard table requirement. Keep it
+                // independent from optional style and autofit calls because
+                // Word can reject either operation for an individual table.
+                for (var column = 0; column < columnCount; column++)
+                {
+                    try
+                    {
+                        wordTable.Cell(1, column + 1).Range.Font.Bold = 1;
+                    }
+                    catch
+                    {
+                    }
+                }
+
+                try
+                {
                     // 1 = enable default single-line borders.
                     wordTable.Borders.Enable = 1;
                 }

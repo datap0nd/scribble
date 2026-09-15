@@ -688,14 +688,14 @@ if (-not $wordWriterSource.Contains(
 foreach ($requiredWordTableBoundary in @(
     'wordTable.ApplyStyleFirstColumn = false',
     'wordTable.ApplyStyleHeadingRows = true',
-    'wordTable.Rows[1].Range.Font.Bold = 1'
+    'wordTable.Cell(1, column + 1).Range.Font.Bold = 1'
 )) {
     if (-not $wordWriterSource.Contains($requiredWordTableBoundary)) {
         throw "Word draft tables are missing header formatting boundary $requiredWordTableBoundary."
     }
 }
 if ($wordWriterSource.IndexOf('wordTable.Style = "Grid Table 4 - Accent 1"') -gt
-    $wordWriterSource.IndexOf('wordTable.Rows[1].Range.Font.Bold = 1')) {
+    $wordWriterSource.IndexOf('wordTable.Cell(1, column + 1).Range.Font.Bold = 1')) {
     throw "Word draft table styles must be applied before explicit header formatting."
 }
 
