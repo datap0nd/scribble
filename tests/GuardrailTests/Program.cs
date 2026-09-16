@@ -8175,6 +8175,24 @@ namespace GuardrailTests
                 !compact.ContainsKey("provider"),
                 "Compact OpenRouter reviewers must reserve their response budget for the verdict.");
 
+            var exclude = typeof(OpenAiCompatibleClient).GetMethod(
+                "ApplyTransientProviderExclusion",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert(exclude != null,
+                "The transient provider exclusion helper is missing.");
+            exclude.Invoke(null, new object[]
+            {
+                compact,
+                new Uri("https://openrouter.ai/api/v1/chat/completions"),
+                "Reka"
+            });
+            var retryProvider = compact["provider"] as
+                Dictionary<string, object>;
+            Assert(
+                retryProvider != null &&
+                ((string[])retryProvider["ignore"]).Single() == "Reka",
+                "An interrupted OpenRouter retry must exclude the failed provider.");
+
             var presentationRequest = new ChatCompletionRequest
             {
                 model = request.model,

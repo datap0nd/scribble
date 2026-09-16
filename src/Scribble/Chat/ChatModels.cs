@@ -105,6 +105,8 @@ namespace Scribble.Chat
         public List<ChatCompletionChoice> choices { get; set; }
 
         public ChatCompletionError error { get; set; }
+
+        public string provider { get; set; }
     }
 
     public sealed class ModelListResponse

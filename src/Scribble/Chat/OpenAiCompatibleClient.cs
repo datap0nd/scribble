@@ -206,7 +206,8 @@ namespace Scribble.Chat
                 ChatCompletionRequest requestModel,
                 bool includeOptionalToolControls,
                 CancellationToken cancellationToken,
-                bool retryEmptyResponse = true)
+                bool retryEmptyResponse = true,
+                string ignoredProvider = null)
         {
             var circuitKey = endpoint.AbsoluteUri + "\n" + requestModel.model;
             lock (_optionalToolControlSync)
@@ -215,11 +216,15 @@ namespace Scribble.Chat
                 if (retryEmptyResponse && _emptyResponseCircuits.TryGetValue(circuitKey, out until) && until > DateTime.UtcNow)
                     throw new AiEndpointException("MODEL_CIRCUIT_OPEN", "This endpoint/model repeatedly returned empty completions. The task is retained. Wait 30 seconds or select another model before resuming.");
             }
-            var requestJson = _serializer.Serialize(
-                SerializablePayload(
-                    requestModel,
-                    endpoint,
-                    includeOptionalToolControls));
+            var payload = SerializablePayload(
+                requestModel,
+                endpoint,
+                includeOptionalToolControls);
+            ApplyTransientProviderExclusion(
+                payload,
+                endpoint,
+                ignoredProvider);
+            var requestJson = _serializer.Serialize(payload);
             requestModel.Diagnostics?.Record("inference_request", new { endpoint = endpoint.GetLeftPart(UriPartial.Path),
                 model = requestModel.model, request = requestJson });
 
@@ -300,6 +305,11 @@ namespace Scribble.Chat
                             var retryAfter = hint?.Delta ?? (hint?.Date.HasValue == true ? hint.Date.Value - DateTimeOffset.UtcNow : TimeSpan.FromSeconds(1));
                             if (retryAfter >= TimeSpan.Zero && retryAfter <= TimeSpan.FromSeconds(2))
                             {
+                                await Scribble.Testing.TestLabStressBudget
+                                    .GuardRequestAsync(
+                                        settings,
+                                        requestModel?.model,
+                                        cancellationToken).ConfigureAwait(true);
                                 await Task.Delay(retryAfter, cancellationToken).ConfigureAwait(true);
                                 return await CompleteOpenAiAsync(settings, endpoint, requestModel, includeOptionalToolControls, cancellationToken, false).ConfigureAwait(true);
                             }
@@ -355,6 +365,11 @@ namespace Scribble.Chat
                         if (retryEmptyResponse)
                         {
                             cancellationToken.ThrowIfCancellationRequested();
+                            await Scribble.Testing.TestLabStressBudget
+                                .GuardRequestAsync(
+                                    settings,
+                                    requestModel?.model,
+                                    cancellationToken).ConfigureAwait(true);
                             await Task.Delay(
                                 TimeSpan.FromSeconds(1),
                                 cancellationToken).ConfigureAwait(true);
@@ -364,7 +379,8 @@ namespace Scribble.Chat
                                 requestModel,
                                 includeOptionalToolControls,
                                 cancellationToken,
-                                false).ConfigureAwait(true);
+                                false,
+                                completion?.provider).ConfigureAwait(true);
                         }
 
                         var providerError = choice?.error;
@@ -396,6 +412,11 @@ namespace Scribble.Chat
                         if (retryEmptyResponse)
                         {
                             cancellationToken.ThrowIfCancellationRequested();
+                            await Scribble.Testing.TestLabStressBudget
+                                .GuardRequestAsync(
+                                    settings,
+                                    requestModel?.model,
+                                    cancellationToken).ConfigureAwait(true);
                             return await CompleteOpenAiAsync(settings, endpoint,
                                 requestModel, includeOptionalToolControls,
                                 cancellationToken, false).ConfigureAwait(true);
@@ -418,6 +439,24 @@ namespace Scribble.Chat
                     return message;
                 }
             }
+        }
+
+        private static void ApplyTransientProviderExclusion(
+            Dictionary<string, object> payload,
+            Uri endpoint,
+            string provider)
+        {
+            if (payload == null ||
+                !IsOpenRouter(endpoint) ||
+                string.IsNullOrWhiteSpace(provider))
+            {
+                return;
+            }
+
+            payload["provider"] = new Dictionary<string, object>
+            {
+                { "ignore", new[] { provider.Trim() } }
+            };
         }
 
         // The Gemini tick only decides whether Google models are
