@@ -96,7 +96,22 @@ namespace Scribble.Office
                     }
                     // This is a proposal, not a finished deck. Include the actual
                     // batch and allow a rejected proposal to change before writing.
-                    var outline = _serializer.Serialize(new { plan, briefs, proposed_slides = args["slides"], instruction = prompt });
+                    var batchIds = new HashSet<string>(
+                        slides.Select(slide => slide.Id),
+                        StringComparer.Ordinal);
+                    var proposedBriefs = briefs == null
+                        ? null
+                        : briefs.Where(value => batchIds.Contains(
+                            SamsungAuthoringPolicy.Text(
+                                SamsungAuthoringPolicy.ReadMap(value),
+                                "id"))).ToArray();
+                    var outline = _serializer.Serialize(new
+                    {
+                        plan,
+                        proposed_briefs = proposedBriefs,
+                        proposed_slides = args["slides"],
+                        instruction = prompt
+                    });
                     var outlineKey = "samsung_outline:" + SamsungAuthoringPolicy.CacheKey(settings.Model, settings.BaseUrl, outline, source);
                     acceptedOutlineKey = "samsung_accepted_outline:" + SamsungAuthoringPolicy.CacheKey(settings.Model, settings.BaseUrl,
                         _serializer.Serialize(new { plan, briefs, instruction = prompt }), source);

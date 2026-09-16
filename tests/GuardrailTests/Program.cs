@@ -8014,8 +8014,10 @@ namespace GuardrailTests
                     var authorization = new OneShotDraftAuthorization(true);
                     foreach (var id in new[] { "original", "corrected" })
                     {
-                        var arguments = json.Serialize(new { plan = new[] { id }, briefs = new[] { new {
-                            id, purpose = "explanatory", message = "Launch", layout = "cover", required_content = new[] { "Launch" } } },
+                        var later = id + "-later";
+                        var arguments = json.Serialize(new { plan = new[] { id, later }, briefs = new object[] { new {
+                            id, purpose = "explanatory", message = "Launch", layout = "cover", required_content = new[] { "Launch" } }, new {
+                            id = later, purpose = "explanatory", message = "LATER OMITTED BRIEF", layout = "closing", required_content = new[] { "Later" } } },
                             slides = new[] { new { id, title = "Launch", layout = "cover" } } });
                         var result = host.ExecuteAsync(MailboxCall(id, PresentationToolCatalog.AddDraftSlides, arguments), authorization,
                             true, "Create a launch presentation", client, settings, CancellationToken.None, null).GetAwaiter().GetResult();
@@ -8025,7 +8027,9 @@ namespace GuardrailTests
                             "Rejected outline changed write permission or committed the deck plan.");
                     }
                     endpoint.Wait();
-                    Assert(endpoint.Bodies.All(body => body.Contains("proposed_slides") && body.Contains("current batch only")), "Outline review did not receive stage-specific evidence.");
+                    Assert(endpoint.Bodies.All(body => body.Contains("proposed_briefs") && body.Contains("proposed_slides") &&
+                        body.Contains("current batch only") && !body.Contains("LATER OMITTED BRIEF")),
+                        "Outline review did not receive only the current batch's briefs and slides.");
                 }
             }
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }

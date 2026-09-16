@@ -49,8 +49,9 @@ namespace Scribble.Office
         public const string OutlineReview =
             "Review a proposed Samsung deck outline before any slides in this batch are written. " +
             "Check planned count, order and coverage against the user's request and the supplied evidence. " +
-            "Briefs describe the whole plan; proposed_slides contains actual content for the current batch only. " +
+            "The ordered plan describes the whole deck. proposed_briefs and proposed_slides contain the current batch only. " +
             "When briefs are absent, assess the ordered IDs and current batch; complete-deck coverage is checked at finalization. " +
+            "Review only the proposed current-batch IDs. Do not inspect retained source slides as substitutes for planned IDs absent from this batch. " +
             "Do not reject merely because later batches have not been written, rendered images are absent, or an outline is not a finished deck. " +
             "Reject factual contradictions and concrete omissions in the proposed briefs. Give specific corrections for this proposal. ";
 
