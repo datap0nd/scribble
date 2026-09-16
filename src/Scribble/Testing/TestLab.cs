@@ -420,6 +420,57 @@ namespace Scribble.Testing
                 s.run_id = null; SaveSession(s);
             }
         }
+        public static void ActivateOfficeSource(object application, string host)
+        {
+            var id = ActiveRunId();
+            if (string.IsNullOrEmpty(id) || application == null ||
+                string.Equals(host, "outlook", StringComparison.OrdinalIgnoreCase))
+                return;
+            var run = GetRun(id);
+            dynamic app = application;
+            dynamic documents = string.Equals(host, "excel", StringComparison.OrdinalIgnoreCase)
+                ? app.Workbooks
+                : string.Equals(host, "word", StringComparison.OrdinalIgnoreCase)
+                    ? app.Documents
+                    : app.Presentations;
+            var matches = new List<object>();
+            try
+            {
+                for (var index = 1; index <= (int)documents.Count; index++)
+                {
+                    object candidate = documents.Item(index);
+                    try
+                    {
+                        dynamic document = candidate;
+                        string fullName = Convert.ToString(document.FullName);
+                        if (string.IsNullOrEmpty(fullName) || !File.Exists(fullName))
+                            continue;
+                        if ((run.input_hashes ?? new string[0]).Contains(FileHash(fullName)))
+                        {
+                            matches.Add(candidate);
+                            candidate = null;
+                        }
+                    }
+                    finally
+                    {
+                        if (candidate != null && System.Runtime.InteropServices.Marshal.IsComObject(candidate))
+                            System.Runtime.InteropServices.Marshal.ReleaseComObject(candidate);
+                    }
+                }
+                if (matches.Count != 1) return;
+                dynamic source = matches[0];
+                if (string.Equals(host, "powerpoint", StringComparison.OrdinalIgnoreCase))
+                    source.Windows.Item(1).Activate();
+                else
+                    source.Activate();
+            }
+            finally
+            {
+                foreach (var match in matches)
+                    if (match != null && System.Runtime.InteropServices.Marshal.IsComObject(match))
+                        System.Runtime.InteropServices.Marshal.ReleaseComObject(match);
+            }
+        }
         internal static void RecoverStopped(string runId)
         {
             using (SessionLock())

@@ -2639,9 +2639,29 @@ namespace Scribble.UI
                         else if (PromptHelperTool.IsTool(
                                 toolCall?.function?.name))
                         {
-                            result = await _promptHelper.AskAsync(
-                                toolCall,
-                                cancellationToken);
+                            var mailboxBlocker =
+                                mailboxTools.CompletionBlocker;
+                            if (!string.IsNullOrEmpty(mailboxBlocker) &&
+                                mailboxBlocker.StartsWith(
+                                    "Mailbox enumeration is incomplete.",
+                                    StringComparison.Ordinal))
+                            {
+                                result = new MailboxToolResult(
+                                    toolCall.id,
+                                    _serializer.Serialize(new
+                                    {
+                                        error_code =
+                                            "MAILBOX_ENUMERATION_INCOMPLETE",
+                                        message = mailboxBlocker
+                                    }),
+                                    "Continue the current mailbox cursor before asking the user.");
+                            }
+                            else
+                            {
+                                result = await _promptHelper.AskAsync(
+                                    toolCall,
+                                    cancellationToken);
+                            }
                             request.tool_choice = "auto";
                         }
                         else if (isDraftCall)

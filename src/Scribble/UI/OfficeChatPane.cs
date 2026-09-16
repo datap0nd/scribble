@@ -525,7 +525,12 @@ namespace Scribble.UI
             return _suiteDriver.Command(suiteId, commandId, action, phase, HostName, _webReady && !_shutdown,
                 () => _busy, () => { ReloadStressSettings(); HandleNewChat(); }, c => {
                     AddExternalFiles(Scribble.Testing.TestLabPreparation.ContextFiles(c));
-                }, prompt => HandleSendMessageCore(prompt), () => HandleStop());
+                }, prompt => {
+                    Scribble.Testing.TestLab.ActivateOfficeSource(
+                        _hostApplication,
+                        _hostKind);
+                    return HandleSendMessageCore(prompt);
+                }, () => HandleStop());
         }
 
         private void ReloadStressSettings()
@@ -2227,14 +2232,26 @@ namespace Scribble.UI
                     }
                     else if (workbookTools != null)
                     {
+                        OfficeTaskBinding.Validate(
+                            taskContext.State,
+                            _hostKind,
+                            _hostApplication);
                         result = workbookTools.Execute(toolCall);
                     }
                     else if (wordTools != null)
                     {
+                        OfficeTaskBinding.Validate(
+                            taskContext.State,
+                            _hostKind,
+                            _hostApplication);
                         result = wordTools.Execute(toolCall);
                     }
                     else
                     {
+                        OfficeTaskBinding.Validate(
+                            taskContext.State,
+                            _hostKind,
+                            _hostApplication);
                         result = presentationTools.Execute(
                             toolCall);
                     }

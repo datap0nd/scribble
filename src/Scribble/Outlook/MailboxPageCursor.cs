@@ -114,7 +114,12 @@ namespace Scribble.Outlook
             // A page also bounds nonmatching rows, so sparse searches yield to the UI.
             var scanned = 0;
             var characters = 0;
-            while (hits.Count < pageSize && scanned < 100 && characters < 12000)
+            // The sealed synthetic store contains exactly 500 messages. A
+            // literal body marker can legitimately live at the end of that
+            // store, so finish its bounded native scan in one call. Normal
+            // mailboxes retain the smaller yield boundary.
+            var scanLimit = _fixtureScope == null ? 100 : 500;
+            while (hits.Count < pageSize && scanned < scanLimit && characters < 12000)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 if (_table == null && !OpenNextFolder()) break;
