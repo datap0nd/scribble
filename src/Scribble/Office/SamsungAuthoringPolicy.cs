@@ -17,7 +17,7 @@ namespace Scribble.Office
             "Samsung executive authoring 2.0. Create dense, editable Samsung reports. Never save or export a presentation. " +
             "Infer the audience, business question, reporting period, source completeness and total slide count from context. " +
             "Ask once for material missing details, never repeat supplied answers. When asked to proceed, state assumptions. " +
-            "Read sources fully using paginated reads. Read retained passages with read_task_sources and cite host-issued source_spans. " +
+            "Read sources fully using paginated reads. Every successful source-read receipt includes host-issued source_spans; copy those exact IDs into the briefs and factual slides they support. If an earlier ID is no longer visible, rediscover it with read_task_sources. Never put prose, citations or invented labels in source_spans, and never leave source_spans empty on a factual non-cover slide. " +
             "Provide plan (ordered unique IDs for the entire deck) and briefs (one per ID: purpose, message, layout, source_spans, required_content). " +
             "In the first draft tool call, supply plan, briefs AND a nonempty slides array together. An outline-only call cannot create slides. " +
             "Each slides item contains its planned id, title, layout and actual source-backed content. Later calls supply the next slides batch using the same IDs. " +
@@ -81,6 +81,19 @@ namespace Scribble.Office
                     Array(brief, "required_content").Any(value => !(value is string) || string.IsNullOrWhiteSpace((string)value)))
                     throw new InvalidOperationException("SLIDE_BRIEF_INVALID: Each ordered brief needs id, purpose, message, Samsung layout and required_content.");
             }
+        }
+        public static void ValidateSourceSpanCoverage(object[] briefs, IEnumerable<IDictionary<string, object>> slides, bool spansAvailable)
+        {
+            if (!spansAvailable) return;
+            var special = new HashSet<string>(new[] { "cover", "divider", "closing", "agenda" }, StringComparer.OrdinalIgnoreCase);
+            if (briefs != null)
+                foreach (var brief in briefs.Select(ReadMap))
+                    if (!special.Contains(Text(brief, "layout")) && Array(brief, "source_spans").Length == 0)
+                        throw new InvalidOperationException("SLIDE_SOURCE_SPANS_REQUIRED: Copy exact host-issued IDs from source-read receipts into every factual non-cover brief. If needed, call read_task_sources to rediscover them before retrying the draft.");
+            foreach (var slide in slides ?? new IDictionary<string, object>[0])
+                if (!special.Contains(Text(slide, "layout")) && Text(slide, "content_kind") != "sample" &&
+                    (!slide.ContainsKey("source_spans") || Array(slide, "source_spans").Length == 0))
+                    throw new InvalidOperationException("SLIDE_SOURCE_SPANS_REQUIRED: Copy exact host-issued IDs from source-read receipts into every factual non-cover slide. If needed, call read_task_sources to rediscover them before retrying the draft.");
         }
         public static bool Approved(string text)
         {

@@ -11,7 +11,7 @@ namespace Scribble.Chat
         { return List(ToolSchema.Build(new Dictionary<string, object> {
             { "id", ToolSchema.String("Stable ID in plan order.") }, { "purpose", ToolSchema.String("Purpose and business question this slide answers.") },
             { "message", ToolSchema.String("Main message, grounded in the source.") }, { "layout", ToolSchema.String("Samsung recipe name.") },
-            { "source_spans", Strings() }, { "required_content", Strings() }
+            { "source_spans", List(ToolSchema.String("Exact host-issued ID returned by a source-read receipt or read_task_sources. Never put prose or a citation label here."), 1000) }, { "required_content", Strings() }
         }, "id", "purpose", "message", "layout", "source_spans", "required_content"), 1000); }
         internal static object Claims()
         { return List(ToolSchema.Build(new Dictionary<string, object> {

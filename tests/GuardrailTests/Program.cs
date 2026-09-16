@@ -98,6 +98,7 @@ namespace GuardrailTests
                 Run("Samsung v2 evidence calculations and sample isolation", SamsungWorkflowTests.Evidence);
                 Run("Samsung v2 native chart gaps and semantic annotations", SamsungWorkflowTests.ChartGapsAndAnnotations);
                 Run("Samsung v2 shared policy and final completion gate", SamsungWorkflowTests.PolicyAndCompletion);
+                Run("Source reads expose stable Samsung citation spans", SamsungWorkflowTests.ReadReceiptsExposeSourceSpans);
                 Run("Samsung layouts preserve content and enforce overflow bounds", SamsungSlideTests.LayoutsAndOverflow);
                 Run("Samsung slide numbers require verified source evidence", SamsungSlideTests.EvidenceAndNumbers);
                 Run("PowerPoint and Outlook slide tool calls reach independent review", SlideToolCallsReachReview);

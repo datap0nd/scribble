@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Web.Script.Serialization;
@@ -52,6 +53,32 @@ namespace GuardrailTests
             var briefs = new object[] { new Dictionary<string, object> { { "id", "a" }, { "purpose", "explanation" }, { "message", "Definitions" }, { "layout", "bullets" }, { "required_content", new[] { "definition" } } } };
             SamsungAuthoringPolicy.ValidateBriefs(briefs, new[] { "a" });
             Reject(() => SamsungAuthoringPolicy.ValidateBriefs(briefs, new[] { "b" }));
+            var factualBrief = new object[] { new Dictionary<string, object> { { "id", "a" }, { "purpose", "analysis" }, { "message", "Finding" }, { "layout", "bullets" }, { "required_content", new[] { "finding" } }, { "source_spans", new string[0] } } };
+            var factualSlide = new[] { new Dictionary<string, object> { { "id", "a" }, { "title", "Finding" }, { "layout", "bullets" }, { "content_kind", "fact" } } };
+            Reject(() => SamsungAuthoringPolicy.ValidateSourceSpanCoverage(factualBrief, factualSlide, true));
+            factualBrief[0] = new Dictionary<string, object> { { "id", "a" }, { "purpose", "analysis" }, { "message", "Finding" }, { "layout", "bullets" }, { "required_content", new[] { "finding" } }, { "source_spans", new[] { "span:0" } } };
+            factualSlide[0]["source_spans"] = new[] { "span:0" };
+            SamsungAuthoringPolicy.ValidateSourceSpanCoverage(factualBrief, factualSlide, true);
+        }
+
+        internal static void ReadReceiptsExposeSourceSpans()
+        {
+            var root = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "scribble-source-spans-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var request = new ChatCompletionRequest { model = "local-model", messages = new List<object> { new ChatCompletionInputMessage { role = "user", content = "Read evidence" } } };
+                var task = new TaskContextManager(request, "outlook", "Read evidence", new TaskCheckpointStore(root));
+                var call = new ChatToolCall { id = "read-1", function = new ChatToolCallFunction { name = "read_messages", arguments = "{}" } };
+                var result = new MailboxToolResult(call.id, "{\"content\":\"Revenue AED 420000\"}", "Read message");
+                task.AfterTool(call, result);
+                var parsed = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(result.Content);
+                var ids = ((IEnumerable)parsed["source_spans"]).Cast<object>().Select(Convert.ToString).ToArray();
+                Check(ids.Length == 1 && ids[0].Contains(":"), "Read receipt did not expose its host-issued source span.");
+                var before = task.Sources.Spans().Count;
+                task.Sources.CaptureRead(call, result);
+                Check(task.Sources.Spans().Count == before, "Replaying an enriched receipt created citation-only source spans.");
+            }
+            finally { if (System.IO.Directory.Exists(root)) System.IO.Directory.Delete(root, true); }
         }
         internal static void ChartGapsAndAnnotations()
         {

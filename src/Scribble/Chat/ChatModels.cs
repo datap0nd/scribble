@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Scribble.Chat
 {
@@ -12,7 +14,7 @@ namespace Scribble.Chat
 
         public string Role { get; }
 
-        public string Content { get; }
+        public string Content { get; private set; }
     }
 
     public sealed class ChatCompletionRequest
@@ -202,6 +204,28 @@ namespace Scribble.Chat
 
         [System.Web.Script.Serialization.ScriptIgnore]
         public ToolOutcome Outcome { get { return ToolOutcome.Parse(Content); } }
+
+        internal void AttachSourceSpans(IEnumerable<string> sourceSpans)
+        {
+            var ids = (sourceSpans ?? new string[0])
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+            if (ids.Length == 0) return;
+            var json = new System.Web.Script.Serialization.JavaScriptSerializer
+                { MaxJsonLength = int.MaxValue };
+            try
+            {
+                var map = json.Deserialize<Dictionary<string, object>>(Content);
+                if (map == null) return;
+                map["source_spans"] = ids;
+                Content = json.Serialize(map);
+            }
+            catch (ArgumentException)
+            {
+                Content = json.Serialize(new { content = Content, source_spans = ids });
+            }
+        }
     }
 
     // One completed browser tool round replayed by the extension:

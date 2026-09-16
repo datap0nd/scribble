@@ -87,6 +87,9 @@ namespace Scribble.Office
                     if (briefs != null)
                     {
                         SamsungAuthoringPolicy.ValidateBriefs(briefs, plan);
+                        SamsungAuthoringPolicy.ValidateSourceSpanCoverage(briefs,
+                            ((IEnumerable)args["slides"]).Cast<object>().Select(SamsungAuthoringPolicy.ReadMap),
+                            _taskContext.Sources.Spans().Count > 0);
                         foreach (var brief in briefs.Select(SamsungAuthoringPolicy.ReadMap))
                             if (SamsungAuthoringPolicy.Array(brief, "source_spans").Length > 0)
                                 _taskContext.Sources.Resolve(SamsungAuthoringPolicy.Array(brief, "source_spans").Select(Convert.ToString));
