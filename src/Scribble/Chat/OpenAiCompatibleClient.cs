@@ -17,6 +17,9 @@ namespace Scribble.Chat
 {
     public sealed class OpenAiCompatibleClient : IDisposable
     {
+        internal static readonly TimeSpan CompletionRequestTimeout =
+            TimeSpan.FromMinutes(3);
+        private readonly TimeSpan _completionRequestTimeout;
         private readonly HttpClient _httpClient;
         // Vision requests carry multi-megabyte base64 image parts; the
         // serializer's 2 MB default would reject them. Responses stay
@@ -35,7 +38,16 @@ namespace Scribble.Chat
         private readonly Dictionary<string, DateTime> _emptyResponseCircuits = new Dictionary<string, DateTime>(StringComparer.Ordinal);
 
         public OpenAiCompatibleClient()
+            : this(CompletionRequestTimeout)
         {
+        }
+
+        internal OpenAiCompatibleClient(TimeSpan completionRequestTimeout)
+        {
+            if (completionRequestTimeout <= TimeSpan.Zero)
+                throw new ArgumentOutOfRangeException(
+                    nameof(completionRequestTimeout));
+            _completionRequestTimeout = completionRequestTimeout;
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
             // .NET Framework HTTP latency defaults hurt every
             // request: Expect: 100-continue adds a round trip per
@@ -230,7 +242,16 @@ namespace Scribble.Chat
                 model = requestModel.model, request = requestJson });
 
             using (var request = new HttpRequestMessage(HttpMethod.Post, endpoint))
+            using (var requestDeadline =
+                CancellationTokenSource.CreateLinkedTokenSource(
+                    cancellationToken))
             {
+                // ResponseHeadersRead is intentionally used for bounded body
+                // handling below, so HttpClient.Timeout alone would not cover
+                // a provider that stalls before or during the response. Give
+                // every inference attempt its own deadline while preserving
+                // the caller's Stop/cancellation token.
+                requestDeadline.CancelAfter(_completionRequestTimeout);
                 request.Headers.Authorization =
                     new AuthenticationHeaderValue("Bearer", settings.ApiKey);
                 request.Headers.Accept.Add(
@@ -247,7 +268,7 @@ namespace Scribble.Chat
                         .SendAsync(
                             request,
                             HttpCompletionOption.ResponseHeadersRead,
-                            cancellationToken)
+                            requestDeadline.Token)
                         .ConfigureAwait(true);
                 }
                 catch (OperationCanceledException exception)
@@ -277,11 +298,25 @@ namespace Scribble.Chat
                     {
                         responseText = await ReadBoundedAsync(
                             response.Content,
-                            cancellationToken).ConfigureAwait(true);
+                            requestDeadline.Token).ConfigureAwait(true);
                     }
                     catch (AiEndpointException)
                     {
                         throw;
+                    }
+                    catch (OperationCanceledException exception)
+                    {
+                        if (cancellationToken.IsCancellationRequested)
+                        {
+                            throw;
+                        }
+
+                        throw new AiEndpointException(
+                            "AI_TIMEOUT",
+                            "The AI endpoint did not complete the response " +
+                            "within three minutes. No partial tool action ran; " +
+                            "the task is preserved and can be resumed.",
+                            exception);
                     }
                     catch (Exception exception)
                     {

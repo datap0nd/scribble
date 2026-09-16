@@ -106,6 +106,7 @@ namespace GuardrailTests
                 Run("PowerPoint and Outlook slide tool calls reach independent review", SlideToolCallsReachReview);
                 Run("Empty endpoint responses retry once without replaying tools", EmptyEndpointResponsesRecover);
                 Run("Embedded provider errors retry without executing partial tools", EmbeddedProviderErrorsRecover);
+                Run("Stalled endpoint responses time out without partial actions", StalledEndpointTimesOut);
                 Run("OpenRouter Qwen requests use bounded serial reasoning", OpenRouterQwenPolicy);
                 Run("Every Office source launches the requested sibling draft and preserves content", CrossApplicationWriters);
                 Run("Chrome model tool calls create Office drafts on a pumped STA", BrowserOfficeRoundTrip);
@@ -8436,14 +8437,67 @@ namespace GuardrailTests
             }
         }
 
+        private static void StalledEndpointTimesOut()
+        {
+            const string success =
+                "{\"choices\":[{\"message\":{" +
+                "\"role\":\"assistant\",\"content\":\"Too late\"}}]}";
+            using (var server = new FakeEndpoint(
+                TimeSpan.FromMilliseconds(500),
+                success))
+            {
+                var constructor = typeof(OpenAiCompatibleClient)
+                    .GetConstructor(
+                        BindingFlags.Instance | BindingFlags.NonPublic,
+                        null,
+                        new[] { typeof(TimeSpan) },
+                        null);
+                Assert(
+                    constructor != null,
+                    "The bounded-timeout test constructor is unavailable.");
+                using (var client = (OpenAiCompatibleClient)
+                    constructor.Invoke(new object[]
+                    {
+                        TimeSpan.FromMilliseconds(100)
+                    }))
+                {
+                    try
+                    {
+                        client.CompleteAsync(
+                            EndpointSettings(server.BaseUrl),
+                            MakeRequest(new List<ChatTurn>()),
+                            CancellationToken.None).GetAwaiter().GetResult();
+                        throw new InvalidOperationException(
+                            "A stalled endpoint completed past its deadline.");
+                    }
+                    catch (AiEndpointException exception)
+                    {
+                        Assert(
+                            exception.Code == "AI_TIMEOUT",
+                            "Unexpected stalled-endpoint error: " +
+                            exception.Message);
+                    }
+                }
+            }
+        }
+
         private sealed class FakeEndpoint : IDisposable
         {
             private readonly TcpListener _listener;
             private readonly Task _requestTask;
             private readonly string[] _responseBodies;
+            private readonly TimeSpan _responseDelay;
 
             public FakeEndpoint(params string[] responseBodies)
+                : this(TimeSpan.Zero, responseBodies)
             {
+            }
+
+            public FakeEndpoint(
+                TimeSpan responseDelay,
+                params string[] responseBodies)
+            {
+                _responseDelay = responseDelay;
                 _responseBodies = responseBodies;
                 _listener = new TcpListener(
                     IPAddress.Loopback,
@@ -8575,6 +8629,10 @@ namespace GuardrailTests
                     }
 
                     Bodies.Add(Body);
+                    if (_responseDelay > TimeSpan.Zero)
+                    {
+                        Thread.Sleep(_responseDelay);
+                    }
                     var responseBytes =
                         Encoding.UTF8.GetBytes(
                             responseBody);
