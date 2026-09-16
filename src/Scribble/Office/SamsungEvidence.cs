@@ -121,10 +121,12 @@ namespace Scribble.Office
         {
             var claims = SamsungAuthoringPolicy.Array(slide, "claims");
             if (claims.Length > 24) throw new InvalidOperationException("Too many claim associations.");
+            var associationFailures = new List<string>();
             foreach (var raw in claims)
             {
                 var claim = SamsungAuthoringPolicy.ReadMap(raw);
-                if (string.IsNullOrWhiteSpace(SamsungAuthoringPolicy.Text(claim, "text"))) throw new InvalidOperationException("Claim text is required.");
+                var claimText = SamsungAuthoringPolicy.Text(claim, "text");
+                if (string.IsNullOrWhiteSpace(claimText)) throw new InvalidOperationException("Claim text is required.");
                 var passage = SamsungAuthoringPolicy.Text(claim, "evidence");
                 RequirePassage(passage, evidence);
                 // Semantic association is checked separately by the source reviewer.
@@ -135,9 +137,20 @@ namespace Scribble.Office
                         throw new InvalidOperationException("Claim associations need label, unit and period (use 'not applicable' for qualitative claims).");
                     if (!string.Equals(association, "not applicable", StringComparison.OrdinalIgnoreCase) &&
                         !AssociationOccurs(passage, association, key))
-                        throw new InvalidOperationException("SLIDE_CLAIM_ASSOCIATION: Claim label, unit and period must occur in its cited passage. Recopy a longer exact passage that contains '" + association + "'.");
+                    {
+                        var cited = Normalize(passage);
+                        if (cited.Length > 120) cited = cited.Substring(0, 120) + "...";
+                        associationFailures.Add(
+                            "Claim '" + claimText + "' cites '" + cited +
+                            "' but that passage is missing " + key +
+                            " '" + association + "'.");
+                    }
                 }
             }
+            if (associationFailures.Count > 0)
+                throw new InvalidOperationException(
+                    "SLIDE_CLAIM_ASSOCIATION: Every claim's one exact cited passage must contain its own value, label, unit and period. Fix all listed citations in one retry by copying a longer contiguous source block (include table headers and the claimed row): " +
+                    string.Join(" ", associationFailures.Take(12)));
         }
     }
 }

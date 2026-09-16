@@ -17,7 +17,7 @@ namespace Scribble.Chat
         { return List(ToolSchema.Build(new Dictionary<string, object> {
             { "text", ToolSchema.String("Displayed claim.") }, { "label", ToolSchema.String("Associated metric/category.") },
             { "unit", ToolSchema.String("Unit or not applicable.") }, { "period", ToolSchema.String("Reporting period or not applicable.") },
-            { "evidence", ToolSchema.String("Verbatim supporting passage from this slide's sources.") }
+            { "evidence", ToolSchema.String("One exact verbatim passage from this slide's sources containing this claim's value, label, unit and period together. For tables, include the relevant headers and claimed row; a value-only row or multi-period value list is invalid.") }
         }, "text", "label", "unit", "period", "evidence")); }
         internal static object Calculations()
         {

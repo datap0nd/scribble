@@ -45,6 +45,8 @@ namespace GuardrailTests
             directSlide["evidence"] = aggregateSource;
             directClaim["period"] = "May 2026";
             Reject(() => SamsungPresentationReview.ValidateEvidence(json.Serialize(directSlide), aggregateSource));
+            try { SamsungPresentationReview.ValidateEvidence(json.Serialize(directSlide), aggregateSource); throw new Exception("Expected actionable association rejection."); }
+            catch (InvalidOperationException ex) { Check(ex.Message.Contains("Gross margin was 55.76%") && ex.Message.Contains("May 2026") && ex.Message.Contains("June 2026 Gross margin 55.76%"), "Claim association failure did not identify the claim, missing period and rejected passage together."); }
             directClaim["period"] = "June 2026"; directClaim["evidence"] = "Gross margin was 55.76%.";
             try { SamsungPresentationReview.ValidateEvidence(json.Serialize(directSlide), aggregateSource); throw new Exception("Expected exact-passage rejection."); }
             catch (InvalidOperationException ex) { Check(ex.Message.Contains("exact verbatim") && ex.Message.Contains("Gross margin was 55.76%"), "Rejected association did not return actionable exact-passage guidance."); }
@@ -62,6 +64,7 @@ namespace GuardrailTests
             Check(definition.function.description.Contains(SamsungAuthoringPolicy.Instructions), "Generation policy differs from shared policy.");
             Check(!definition.function.description.Contains("takeaway sentences as titles"), "Conflicting title rules remain.");
             Check(SamsungAuthoringPolicy.Instructions.Contains("exact verbatim passage") && SamsungAuthoringPolicy.FactReview.Contains("compatible rounding"), "Generation and review prompts do not protect exact source values from paraphrase or rounding false positives.");
+            Check(SamsungAuthoringPolicy.Instructions.Contains("Revenue EUR 85519 82992") && SamsungAuthoringPolicy.Instructions.Contains("include its headers"), "Table claim instructions need an explicit ambiguous-evidence counterexample.");
             var key = SamsungAuthoringPolicy.CacheKey("model", "endpoint", "slide", "evidence");
             Check(key != SamsungAuthoringPolicy.CacheKey("model", "endpoint", "slide", "changed evidence"), "Evidence did not invalidate review.");
             Check(!SamsungAuthoringPolicy.Approved("{\"approved\":true,\"findings\":[{\"severity\":\"blocker\"}]}"), "Blocker approved.");
