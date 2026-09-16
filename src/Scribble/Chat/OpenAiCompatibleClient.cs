@@ -1164,12 +1164,12 @@ namespace Scribble.Chat
                     // the same empty/timeout failure mode.
                     var reliableToolProviders = new[]
                     {
+                        "reka",
                         "mancer",
                         "phala",
                         "coreweave",
                         "dekallm",
-                        "chutes",
-                        "reka"
+                        "chutes"
                     };
                     payload["provider"] = new Dictionary<string, object>
                     {

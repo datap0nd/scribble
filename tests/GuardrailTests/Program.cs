@@ -8249,7 +8249,7 @@ namespace GuardrailTests
                 Dictionary<string, object>;
             var expectedProviders = new[]
             {
-                "mancer", "phala", "coreweave", "dekallm", "chutes", "reka"
+                "reka", "mancer", "phala", "coreweave", "dekallm", "chutes"
             };
             Assert(
                 providerPolicy != null &&

@@ -69,6 +69,9 @@ namespace GuardrailTests
             Check(key != SamsungAuthoringPolicy.CacheKey("model", "endpoint", "slide", "changed evidence"), "Evidence did not invalidate review.");
             Check(!SamsungAuthoringPolicy.Approved("{\"approved\":true,\"findings\":[{\"severity\":\"blocker\"}]}"), "Blocker approved.");
             Check(!SamsungAuthoringPolicy.Approved("not json"), "Invalid review approved.");
+            Check(!SamsungAuthoringPolicy.WellFormedReview("{\"approved\":true,\"issues\":\"Instruction says \"four slides\"\",\"findings\":[]}"), "Malformed quoted review was treated as valid JSON.");
+            Check(SamsungAuthoringPolicy.WellFormedReview("{\"approved\":true,\"issues\":\"\",\"findings\":[]}"), "A strict empty approved review was rejected.");
+            Check(SamsungAuthoringPolicy.OutlineReview.Contains("internal stable identifiers") && SamsungAuthoringPolicy.ReviewContract.Contains("keep issues under 240"), "Outline review contract must prevent verbose invalid approval loops.");
             var state = new DurableTaskState { EnumerationComplete = true, PresentationReviewRequired = true };
             Check(!state.CanComplete(false), "Deck completed without a final review receipt.");
             state.PresentationReviewReceipt = "reviewed"; Check(state.CanComplete(false), "Valid final receipt rejected.");
