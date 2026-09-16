@@ -207,7 +207,8 @@ namespace Scribble.Chat
                 bool includeOptionalToolControls,
                 CancellationToken cancellationToken,
                 bool retryEmptyResponse = true,
-                string ignoredProvider = null)
+                string ignoredProvider = null,
+                int providerRetriesRemaining = 2)
         {
             var circuitKey = endpoint.AbsoluteUri + "\n" + requestModel.model;
             lock (_optionalToolControlSync)
@@ -361,8 +362,14 @@ namespace Scribble.Chat
                         // 5xx embedded in the first choice. Its message may
                         // contain partial text or a truncated tool call, none
                         // of which is safe to execute. Retry the identical
-                        // inference once before surfacing a resumable failure.
-                        if (retryEmptyResponse)
+                        // inference against up to two other providers before
+                        // surfacing a resumable failure. Every retry is still
+                        // checked by the Test Lab's hard spend guard.
+                        var excludedProviders = SplitProviders(ignoredProvider);
+                        if (!string.IsNullOrWhiteSpace(completion?.provider) &&
+                            !excludedProviders.Contains(completion.provider, StringComparer.OrdinalIgnoreCase))
+                            excludedProviders.Add(completion.provider);
+                        if (providerRetriesRemaining > 0)
                         {
                             cancellationToken.ThrowIfCancellationRequested();
                             await Scribble.Testing.TestLabStressBudget
@@ -380,7 +387,8 @@ namespace Scribble.Chat
                                 includeOptionalToolControls,
                                 cancellationToken,
                                 false,
-                                completion?.provider).ConfigureAwait(true);
+                                string.Join("\n", excludedProviders),
+                                providerRetriesRemaining - 1).ConfigureAwait(true);
                         }
 
                         var providerError = choice?.error;
@@ -457,10 +465,19 @@ namespace Scribble.Chat
                 return;
             }
 
+            var ignored = SplitProviders(provider).ToArray();
+            if (ignored.Length == 0) return;
             payload["provider"] = new Dictionary<string, object>
             {
-                { "ignore", new[] { provider.Trim() } }
+                { "ignore", ignored }
             };
+        }
+
+        private static List<string> SplitProviders(string providers)
+        {
+            return (providers ?? "").Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(value => value.Trim()).Where(value => value.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         }
 
         // The Gemini tick only decides whether Google models are

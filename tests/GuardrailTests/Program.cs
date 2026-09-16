@@ -8271,6 +8271,17 @@ namespace GuardrailTests
                 retryProvider != null &&
                 ((string[])retryProvider["ignore"]).Single() == "Reka",
                 "An interrupted OpenRouter retry must exclude the failed provider.");
+            exclude.Invoke(null, new object[]
+            {
+                compact,
+                new Uri("https://openrouter.ai/api/v1/chat/completions"),
+                "DekaLLM\nReka"
+            });
+            retryProvider = compact["provider"] as Dictionary<string, object>;
+            Assert(
+                retryProvider != null &&
+                ((string[])retryProvider["ignore"]).SequenceEqual(new[] { "DekaLLM", "Reka" }),
+                "Repeated OpenRouter retries must retain every failed provider exclusion.");
 
             var presentationRequest = new ChatCompletionRequest
             {

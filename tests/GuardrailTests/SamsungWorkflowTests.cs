@@ -30,6 +30,18 @@ namespace GuardrailTests
             calc["result"] = 20; calc["unit"] = "units"; Reject(() => SamsungPresentationReview.ValidateEvidence(json.Serialize(slide), source)); calc["unit"] = "%";
             var operand = (Dictionary<string, object>)((object[])calc["operands"])[0]; operand["period"] = "Q3";
             Reject(() => SamsungPresentationReview.ValidateEvidence(json.Serialize(slide), source)); operand["period"] = "Q2";
+            const string aggregateSource = "June 2026 Gross margin 55.76%.";
+            var directClaim = new Dictionary<string, object> {
+                { "text", "Gross margin was 55.76%." }, { "label", "Gross margin" }, { "unit", "%" }, { "period", "June 2026" }, { "evidence", aggregateSource }
+            };
+            var directSlide = new Dictionary<string, object> { { "title", "June margin" }, { "subtitle", "Gross margin was 55.76%" },
+                { "evidence", aggregateSource }, { "sources", "Management view" }, { "claims", new[] { directClaim } } };
+            SamsungPresentationReview.ValidateEvidence(json.Serialize(directSlide), aggregateSource);
+            directClaim["period"] = "May 2026";
+            Reject(() => SamsungPresentationReview.ValidateEvidence(json.Serialize(directSlide), aggregateSource));
+            directClaim["period"] = "June 2026"; directClaim["evidence"] = "Gross margin was 55.76%.";
+            try { SamsungPresentationReview.ValidateEvidence(json.Serialize(directSlide), aggregateSource); throw new Exception("Expected exact-passage rejection."); }
+            catch (InvalidOperationException ex) { Check(ex.Message.Contains("exact verbatim") && ex.Message.Contains("Gross margin was 55.76%"), "Rejected association did not return actionable exact-passage guidance."); }
             var factual = new Dictionary<string, object> { { "content_kind", "fact" }, { "source_spans", new[] { "source1" } } };
             Check(!SamsungPresentationReview.PrepareSampleEvidence(factual, "Use sample data for the example slide"), "Sample mode contaminated a factual slide.");
             var sample = new Dictionary<string, object> { { "content_kind", "sample" } };
@@ -43,6 +55,7 @@ namespace GuardrailTests
             var definition = PresentationToolCatalog.DraftDefinition();
             Check(definition.function.description.Contains(SamsungAuthoringPolicy.Instructions), "Generation policy differs from shared policy.");
             Check(!definition.function.description.Contains("takeaway sentences as titles"), "Conflicting title rules remain.");
+            Check(SamsungAuthoringPolicy.Instructions.Contains("exact verbatim passage") && SamsungAuthoringPolicy.FactReview.Contains("compatible rounding"), "Generation and review prompts do not protect exact source values from paraphrase or rounding false positives.");
             var key = SamsungAuthoringPolicy.CacheKey("model", "endpoint", "slide", "evidence");
             Check(key != SamsungAuthoringPolicy.CacheKey("model", "endpoint", "slide", "changed evidence"), "Evidence did not invalidate review.");
             Check(!SamsungAuthoringPolicy.Approved("{\"approved\":true,\"findings\":[{\"severity\":\"blocker\"}]}"), "Blocker approved.");

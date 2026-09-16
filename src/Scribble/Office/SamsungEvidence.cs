@@ -12,7 +12,11 @@ namespace Scribble.Office
         private static void RequirePassage(string passage, string evidence)
         {
             if (string.IsNullOrWhiteSpace(passage) || !Normalize(evidence).Contains(Normalize(passage)))
-                throw new InvalidOperationException("SLIDE_ASSOCIATION_UNVERIFIED: Association must cite a passage from the slide's resolved source evidence.");
+            {
+                var rejected = Normalize(passage);
+                if (rejected.Length > 180) rejected = rejected.Substring(0, 180) + "...";
+                throw new InvalidOperationException("SLIDE_ASSOCIATION_UNVERIFIED: Association evidence must be an exact verbatim passage from the slide's resolved source evidence (whitespace may differ). Recopy or remove this rejected passage: \"" + rejected + "\".");
+            }
         }
         private static decimal Number(IDictionary<string, object> map, string key)
         {
@@ -89,11 +93,18 @@ namespace Scribble.Office
             {
                 var claim = SamsungAuthoringPolicy.ReadMap(raw);
                 if (string.IsNullOrWhiteSpace(SamsungAuthoringPolicy.Text(claim, "text"))) throw new InvalidOperationException("Claim text is required.");
-                RequirePassage(SamsungAuthoringPolicy.Text(claim, "evidence"), evidence);
+                var passage = SamsungAuthoringPolicy.Text(claim, "evidence");
+                RequirePassage(passage, evidence);
                 // Semantic association is checked separately by the source reviewer.
                 foreach (var key in new[] { "label", "unit", "period" })
-                    if (string.IsNullOrWhiteSpace(SamsungAuthoringPolicy.Text(claim, key)))
+                {
+                    var association = SamsungAuthoringPolicy.Text(claim, key);
+                    if (string.IsNullOrWhiteSpace(association))
                         throw new InvalidOperationException("Claim associations need label, unit and period (use 'not applicable' for qualitative claims).");
+                    if (!string.Equals(association, "not applicable", StringComparison.OrdinalIgnoreCase) &&
+                        !Normalize(passage).Contains(Normalize(association)))
+                        throw new InvalidOperationException("SLIDE_CLAIM_ASSOCIATION: Claim label, unit and period must occur in its cited passage. Recopy a longer exact passage that contains '" + association + "'.");
+                }
             }
         }
     }
