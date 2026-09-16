@@ -86,6 +86,7 @@ namespace GuardrailTests
                 Run("Test Lab operator arguments and outcomes", PowerPointRecoveryBoundaryTests.OperatorArgumentsAndOutcomes);
                 Run("Test Lab operator logging failure waits for terminal runner", PowerPointRecoveryBoundaryTests.OperatorLoggingFailureRetainsTerminalBoundary);
                 Run("PowerPoint rejected outline can be corrected before writing", RejectedSlideOutlineCanChange);
+                Run("PowerPoint partial batches defer outline review", PartialSlideBatchesDeferOutlineReview);
                 Run("QA metadata followup forbids reads and old task continuation", QaMetadataScope);
                 Run("QA repeated attachments reuse extraction and invalidate changed bytes", QaAttachmentCache);
                 Run("QA structured XLS preserves positions multilingual values and sheets", QaStructuredXls);
@@ -8014,10 +8015,8 @@ namespace GuardrailTests
                     var authorization = new OneShotDraftAuthorization(true);
                     foreach (var id in new[] { "original", "corrected" })
                     {
-                        var later = id + "-later";
-                        var arguments = json.Serialize(new { plan = new[] { id, later }, briefs = new object[] { new {
-                            id, purpose = "explanatory", message = "Launch", layout = "cover", required_content = new[] { "Launch" } }, new {
-                            id = later, purpose = "explanatory", message = "LATER OMITTED BRIEF", layout = "closing", required_content = new[] { "Later" } } },
+                        var arguments = json.Serialize(new { plan = new[] { id }, briefs = new[] { new {
+                            id, purpose = "explanatory", message = "Launch", layout = "cover", required_content = new[] { "Launch" } } },
                             slides = new[] { new { id, title = "Launch", layout = "cover" } } });
                         var result = host.ExecuteAsync(MailboxCall(id, PresentationToolCatalog.AddDraftSlides, arguments), authorization,
                             true, "Create a launch presentation", client, settings, CancellationToken.None, null).GetAwaiter().GetResult();
@@ -8028,8 +8027,44 @@ namespace GuardrailTests
                     }
                     endpoint.Wait();
                     Assert(endpoint.Bodies.All(body => body.Contains("proposed_briefs") && body.Contains("proposed_slides") &&
-                        body.Contains("current batch only") && !body.Contains("LATER OMITTED BRIEF")),
-                        "Outline review did not receive only the current batch's briefs and slides.");
+                        body.Contains("current batch only")), "Outline review did not receive stage-specific evidence.");
+                }
+            }
+            finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+        }
+
+        private static void PartialSlideBatchesDeferOutlineReview()
+        {
+            var root = Path.Combine(Path.GetTempPath(), "scribble-partial-outline-" + Guid.NewGuid().ToString("N"));
+            var json = new JavaScriptSerializer();
+            var sourceReview = json.Serialize(new { choices = new[] { new { message = new {
+                role = "assistant", content = "{\"approved\":false,\"issues\":\"SOURCE_REVIEW_ONLY\"}" } } } });
+            try
+            {
+                using (var endpoint = new FakeEndpoint(sourceReview))
+                using (var client = new OpenAiCompatibleClient())
+                using (var host = new DocumentDraftHost("powerpoint", new object()))
+                {
+                    var request = MakeRequest(new List<ChatTurn>());
+                    request.tools = new List<ChatToolDefinition> { PresentationToolCatalog.DraftDefinition() };
+                    var task = new TaskContextManager(request, "powerpoint", "Create a two-slide launch presentation", new TaskCheckpointStore(root));
+                    host.BindTaskAsync(task, CancellationToken.None).GetAwaiter().GetResult();
+                    var settings = EndpointSettings(endpoint.BaseUrl); settings.Model = "qwen3-vl";
+                    var arguments = json.Serialize(new {
+                        plan = new[] { "intro", "close" },
+                        briefs = new object[] {
+                            new { id = "intro", purpose = "explanatory", message = "Launch", layout = "cover", required_content = new[] { "Launch" } },
+                            new { id = "close", purpose = "explanatory", message = "Close", layout = "closing", required_content = new[] { "Close" } }
+                        },
+                        slides = new[] { new { id = "intro", title = "Launch", layout = "cover" } }
+                    });
+                    var result = host.ExecuteAsync(MailboxCall("partial", PresentationToolCatalog.AddDraftSlides, arguments),
+                        new OneShotDraftAuthorization(true), true, task.State.Objective, client, settings,
+                        CancellationToken.None, null).GetAwaiter().GetResult();
+                    endpoint.Wait();
+                    Assert(result.Content.Contains("SOURCE_REVIEW_ONLY") && endpoint.Bodies.Count == 1 &&
+                        endpoint.Bodies[0].Contains("Review source accuracy") && !endpoint.Bodies[0].Contains("proposed_slides"),
+                        "A partial slide batch was incorrectly blocked by whole-outline review: " + result.Content);
                 }
             }
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }

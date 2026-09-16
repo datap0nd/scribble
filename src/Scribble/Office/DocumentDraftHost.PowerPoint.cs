@@ -115,7 +115,10 @@ namespace Scribble.Office
                     var outlineKey = "samsung_outline:" + SamsungAuthoringPolicy.CacheKey(settings.Model, settings.BaseUrl, outline, source);
                     acceptedOutlineKey = "samsung_accepted_outline:" + SamsungAuthoringPolicy.CacheKey(settings.Model, settings.BaseUrl,
                         _serializer.Serialize(new { plan, briefs, instruction = prompt }), source);
-                    if (!_taskContext.State.HostData.ContainsKey(acceptedOutlineKey) && !_taskContext.State.HostData.ContainsKey(outlineKey))
+                    var completeOutlineBatch = slides.Count == plan.Length;
+                    if (completeOutlineBatch &&
+                        !_taskContext.State.HostData.ContainsKey(acceptedOutlineKey) &&
+                        !_taskContext.State.HostData.ContainsKey(outlineKey))
                     {
                         stage = "OUTLINE_REVIEW";
                         var verdict = await ReviewSamsungAsync(client, settings, SamsungAuthoringPolicy.OutlineReview + SamsungAuthoringPolicy.ReviewContract,
