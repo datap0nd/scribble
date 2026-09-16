@@ -7728,7 +7728,7 @@ namespace GuardrailTests
                 var launches = 0;
                 try
                 {
-                    using (var server = new FakeEndpoint(target == "outlook" ? new[] { callResponse, approved, done } : target != "powerpoint" ? new[] { callResponse, done } : new[] { callResponse, approved, approved, approved, continuation, approved, approved, approved, approved, done }))
+                    using (var server = new FakeEndpoint(target == "outlook" ? new[] { callResponse, approved, done } : target != "powerpoint" ? new[] { callResponse, done } : new[] { callResponse, approved, approved, continuation, approved, approved, approved, approved, done }))
                     {
                         var settings = EndpointSettings(server.BaseUrl); settings.Model = "qwen3-vl";
                         using (var service = new BrowserChatService(settings, progId => {
