@@ -219,6 +219,7 @@ namespace Scribble.Chat
                 bool includeOptionalToolControls,
                 CancellationToken cancellationToken,
                 bool retryEmptyResponse = true,
+                bool retryTransientResponse = true,
                 string ignoredProvider = null,
                 int providerRetriesRemaining = 2)
         {
@@ -335,7 +336,7 @@ namespace Scribble.Chat
                     {
                         var error = TryReadError(responseText);
                         var status = (int)response.StatusCode;
-                        if (retryEmptyResponse && (status == 429 || status == 502 || status == 503 || status == 504))
+                        if (retryTransientResponse && (status == 429 || status == 502 || status == 503 || status == 504))
                         {
                             var hint = response.Headers.RetryAfter;
                             var retryAfter = hint?.Delta ?? (hint?.Date.HasValue == true ? hint.Date.Value - DateTimeOffset.UtcNow : TimeSpan.FromSeconds(1));
@@ -347,7 +348,16 @@ namespace Scribble.Chat
                                         requestModel?.model,
                                         cancellationToken).ConfigureAwait(true);
                                 await Task.Delay(retryAfter, cancellationToken).ConfigureAwait(true);
-                                return await CompleteOpenAiAsync(settings, endpoint, requestModel, includeOptionalToolControls, cancellationToken, false).ConfigureAwait(true);
+                                return await CompleteOpenAiAsync(
+                                    settings,
+                                    endpoint,
+                                    requestModel,
+                                    includeOptionalToolControls,
+                                    cancellationToken,
+                                    retryEmptyResponse,
+                                    false,
+                                    ignoredProvider,
+                                    providerRetriesRemaining).ConfigureAwait(true);
                             }
                         }
                         var reason = string.IsNullOrWhiteSpace(response.ReasonPhrase)
@@ -409,7 +419,7 @@ namespace Scribble.Chat
                             endpoint.Host,
                             "openrouter.ai",
                             StringComparison.OrdinalIgnoreCase);
-                        if (retryEmptyResponse ||
+                        if (retryTransientResponse ||
                             (openRouter && providerRetriesRemaining > 0))
                         {
                             cancellationToken.ThrowIfCancellationRequested();
@@ -427,6 +437,7 @@ namespace Scribble.Chat
                                 requestModel,
                                 includeOptionalToolControls,
                                 cancellationToken,
+                                retryEmptyResponse,
                                 false,
                                 string.Join("\n", excludedProviders),
                                 providerRetriesRemaining - 1).ConfigureAwait(true);
@@ -460,15 +471,38 @@ namespace Scribble.Chat
                         // Persistent empty responses remain a resumable failure.
                         if (retryEmptyResponse)
                         {
+                            var excludedProviders =
+                                SplitProviders(ignoredProvider);
+                            var openRouter = endpoint != null &&
+                                string.Equals(
+                                    endpoint.Host,
+                                    "openrouter.ai",
+                                    StringComparison.OrdinalIgnoreCase);
+                            if (openRouter &&
+                                !string.IsNullOrWhiteSpace(
+                                    completion?.provider) &&
+                                !excludedProviders.Contains(
+                                    completion.provider,
+                                    StringComparer.OrdinalIgnoreCase))
+                            {
+                                excludedProviders.Add(completion.provider);
+                            }
                             cancellationToken.ThrowIfCancellationRequested();
                             await Scribble.Testing.TestLabStressBudget
                                 .GuardRequestAsync(
                                     settings,
                                     requestModel?.model,
                                     cancellationToken).ConfigureAwait(true);
-                            return await CompleteOpenAiAsync(settings, endpoint,
-                                requestModel, includeOptionalToolControls,
-                                cancellationToken, false).ConfigureAwait(true);
+                            return await CompleteOpenAiAsync(
+                                settings,
+                                endpoint,
+                                requestModel,
+                                includeOptionalToolControls,
+                                cancellationToken,
+                                false,
+                                retryTransientResponse,
+                                string.Join("\n", excludedProviders),
+                                providerRetriesRemaining).ConfigureAwait(true);
                         }
                         lock (_optionalToolControlSync) _emptyResponseCircuits[circuitKey] = DateTime.UtcNow.AddSeconds(30);
                         throw new AiEndpointException(

@@ -106,6 +106,7 @@ namespace GuardrailTests
                 Run("PowerPoint and Outlook slide tool calls reach independent review", SlideToolCallsReachReview);
                 Run("Empty endpoint responses retry once without replaying tools", EmptyEndpointResponsesRecover);
                 Run("Embedded provider errors retry without executing partial tools", EmbeddedProviderErrorsRecover);
+                Run("Provider and empty response retries stay independent", ProviderAndEmptyResponseRetriesAreIndependent);
                 Run("Stalled endpoint responses time out without partial actions", StalledEndpointTimesOut);
                 Run("OpenRouter Qwen requests use bounded serial reasoning", OpenRouterQwenPolicy);
                 Run("Every Office source launches the requested sibling draft and preserves content", CrossApplicationWriters);
@@ -8434,6 +8435,41 @@ namespace GuardrailTests
                     server.Bodies.Count == 2 &&
                     server.Bodies[0] == server.Bodies[1],
                     "Embedded provider recovery must retry the identical inference once.");
+            }
+        }
+
+        private static void ProviderAndEmptyResponseRetriesAreIndependent()
+        {
+            const string interrupted =
+                "{\"choices\":[{\"finish_reason\":\"error\",\"error\":{" +
+                "\"code\":\"502\",\"message\":\"Provider stopped.\"," +
+                "\"type\":\"provider_unavailable\"},\"message\":{" +
+                "\"role\":\"assistant\",\"content\":null}}]}";
+            const string empty =
+                "{\"provider\":\"reasoning-only\",\"choices\":[{" +
+                "\"finish_reason\":\"length\",\"message\":{" +
+                "\"role\":\"assistant\",\"content\":null}}]}";
+            const string success =
+                "{\"choices\":[{\"message\":{" +
+                "\"role\":\"assistant\",\"content\":\"Recovered\"}}]}";
+            using (var server = new FakeEndpoint(
+                interrupted,
+                empty,
+                success))
+            using (var client = new OpenAiCompatibleClient())
+            {
+                var result = client.CompleteAsync(
+                    EndpointSettings(server.BaseUrl),
+                    MakeRequest(new List<ChatTurn>()),
+                    CancellationToken.None).GetAwaiter().GetResult();
+                Assert(
+                    result.content == "Recovered",
+                    "An embedded provider retry consumed the independent empty-response recovery.");
+                server.Wait();
+                Assert(
+                    server.Bodies.Count == 3 &&
+                    server.Bodies.Distinct().Count() == 1,
+                    "Provider and empty-response recovery must retry the identical inference without replaying tools.");
             }
         }
 
