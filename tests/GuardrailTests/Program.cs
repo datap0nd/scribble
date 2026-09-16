@@ -7728,19 +7728,20 @@ namespace GuardrailTests
                 var launches = 0;
                 try
                 {
-                    using (var server = new FakeEndpoint(target == "outlook" ? new[] { callResponse, approved, done } : target != "powerpoint" ? new[] { callResponse, done } : new[] { callResponse, approved, approved, continuation, approved, approved, approved, approved, done }))
+                    using (var server = new FakeEndpoint(target == "outlook" ? new[] { callResponse, approved, done } : target != "powerpoint" ? new[] { callResponse, done } : new[] { callResponse, approved, approved, continuation, approved, approved, approved, approved, approved, done }))
                     {
                         var settings = EndpointSettings(server.BaseUrl); settings.Model = "qwen3-vl";
                         using (var service = new BrowserChatService(settings, progId => {
-                            Assert(Thread.CurrentThread.GetApartmentState() == ApartmentState.STA && SynchronizationContext.Current != null, "Browser launched Office outside the pumped STA.");
-                            launches++; return target == "outlook" ? (object)outlook : office;
+                             Assert(Thread.CurrentThread.GetApartmentState() == ApartmentState.STA && SynchronizationContext.Current != null, "Browser launched Office outside the pumped STA.");
+                             launches++; return target == "outlook" ? (object)outlook : office;
                         }))
+                        using (var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30)))
                         {
                             BrowserChatResult result;
                             try
                             {
                                 result = service.CompleteAsync(new ChatTurn[0], "Create a " + target + " draft from this page", "Source page", "https://example.com/", "", "SOURCE CONTENT", "", null,
-                                    new BrowserExchangeTurn[0], chat, "1", null, null, CancellationToken.None).GetAwaiter().GetResult();
+                                    new BrowserExchangeTurn[0], chat, "1", null, null, timeout.Token).GetAwaiter().GetResult();
                             }
                             catch (Exception exception)
                             {
