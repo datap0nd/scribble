@@ -224,6 +224,27 @@ namespace Scribble.Office
             return false;
         }
 
+        // A normal typed request must unlock the same safe workbook-wide
+        // translation path as the built-in skill button. Keep the classifier
+        // deliberately narrow: it requires the language pair, a translation
+        // action, and explicit whole-workbook scope.
+        public static bool IsWholeWorkbookKoreanToEnglishRequest(
+            string userText)
+        {
+            var text = TextBoundary.PlainText(userText, 1200)
+                .ToLowerInvariant();
+            return ContainsAny(text, "translate", "translation") &&
+                   ContainsAny(text, "korean", "한국어") &&
+                   ContainsAny(text, "english", "영어") &&
+                   ContainsAny(
+                       text,
+                       "workbook",
+                       "every worksheet",
+                       "all worksheets",
+                       "every sheet",
+                       "all sheets");
+        }
+
         public static string TranslationSelectionError(
             ExcelSelectionSnapshot snapshot)
         {

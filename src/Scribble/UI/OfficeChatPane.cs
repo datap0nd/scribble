@@ -813,13 +813,14 @@ namespace Scribble.UI
         }
 
         private bool EnsureExcelSelectionForTranslation(
-            out KoreanWorkbookSnapshot koreanWorkbookSnapshot)
+            out KoreanWorkbookSnapshot koreanWorkbookSnapshot,
+            bool wholeWorkbook = false)
         {
             koreanWorkbookSnapshot = null;
             var attached = _externalContext
                 .Where(entry => entry.ExcelSelection != null)
                 .ToArray();
-            if (attached.Length > 1)
+            if (!wholeWorkbook && attached.Length > 1)
             {
                 SetStatus(
                     "Translate from Korean needs exactly one attached " +
@@ -829,7 +830,7 @@ namespace Scribble.UI
                 return false;
             }
 
-            if (attached.Length == 1)
+            if (!wholeWorkbook && attached.Length == 1)
             {
                 var attachedError =
                     ExcelSelectionOutputPolicy.TranslationSelectionError(
@@ -1651,6 +1652,18 @@ namespace Scribble.UI
                     "[HOST_NOT_READY] " + HostName +
                     " is still initializing",
                     true);
+                return;
+            }
+
+            if (_resumeRecovery == null &&
+                koreanWorkbookSnapshot == null &&
+                _hostKind == "excel" &&
+                ExcelSelectionOutputPolicy
+                    .IsWholeWorkbookKoreanToEnglishRequest(prompt) &&
+                !EnsureExcelSelectionForTranslation(
+                    out koreanWorkbookSnapshot,
+                    true))
+            {
                 return;
             }
 

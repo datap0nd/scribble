@@ -568,6 +568,8 @@ namespace Scribble.Outlook
                     ? "This request asks only for mailbox metadata. Do not read attachments or record content analysis."
                     : _skipAttachments
                     ? "The user prohibited attachment reads. Use existing evidence only and disclose any missing attachment coverage."
+                    : !_requireAttachments
+                    ? "Attachments are not required by this request. Read one only when it is necessary to answer the user's question; body-only analysis may be recorded without attachment reads."
                     : "Use read_attachment for every index from 1 through attachment_count, following next_offset. Then record_mailbox_analysis with a source-grounded summary.";
                 SaveCoverage();
                 return payload;

@@ -230,6 +230,13 @@ namespace GuardrailTests
                 Check(rejected, "An invented source span was trusted.");
                 var valid = Call(PresentationToolCatalog.AddDraftSlides, "{\"plan\":[\"a\"],\"slides\":\"[{\\\"id\\\":\\\"a\\\",\\\"title\\\":\\\"Unicode € 한글\\\"}]\"}");
                 Check(task.ValidateArguments(valid) == null && !valid.function.arguments.Contains("\\\"id\\\""), "Known encoded arrays did not normalize before validation.");
+                var recoverable = Call(PresentationToolCatalog.AddDraftSlides,
+                    "{\"plan\":[\"a\",\"b\"],\"slides\":\"[{\\\"id\\\":\\\"a\\\",\\\"title\\\":\\\"First\\\"},{\\\"id\\\":\\\"b\\\",\\\"title\\\":\\\"Second\\\"},\\\"highlight_rows\\\":[3]}\"}");
+                Check(task.ValidateArguments(recoverable) == null &&
+                    recoverable.function.arguments.Contains("First") &&
+                    recoverable.function.arguments.Contains("Second") &&
+                    !recoverable.function.arguments.Contains("highlight_rows"),
+                    "Complete slide objects were not retained from a malformed encoded-array tail.");
                 var invalid = Call(PresentationToolCatalog.AddDraftSlides, "{\"slides\":[{\"title\":false}],\"plan\":[\"a\"]}");
                 var error = task.ValidateArguments(invalid);
                 Check(error != null && error.Outcome.PermissionConsumed == false && error.Content.Contains("$.slides[0].title"), "Malformed slide fields reached the write boundary.");

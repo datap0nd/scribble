@@ -62,7 +62,8 @@ namespace Scribble.Outlook
                 var warning = AttachmentIntakePolicy.ValidateFile(Convert.ToInt64(file.Size));
                 if (warning.Length > 0) throw new InvalidOperationException(warning);
                 temporary = Path.Combine(Path.GetTempPath(), "scribble-page-" + Guid.NewGuid().ToString("N") + Path.GetExtension(name));
-                file.SaveAsFile(temporary);
+                if (!TrySaveByValue(file, temporary))
+                    file.SaveAsFile(temporary);
             }
             catch
             {
@@ -104,6 +105,31 @@ namespace Scribble.Outlook
         private static void Release(object value)
         {
             if (value != null && Marshal.IsComObject(value)) Marshal.ReleaseComObject(value);
+        }
+
+        private static bool TrySaveByValue(dynamic attachment, string path)
+        {
+            object accessor = null;
+            try
+            {
+                accessor = attachment.PropertyAccessor;
+                dynamic properties = accessor;
+                var bytes = properties.GetProperty(
+                    "http://schemas.microsoft.com/mapi/proptag/0x37010102")
+                    as byte[];
+                if (bytes == null || bytes.Length == 0) return false;
+                File.WriteAllBytes(path, bytes);
+                return true;
+            }
+            catch
+            {
+                if (File.Exists(path)) File.Delete(path);
+                return false;
+            }
+            finally
+            {
+                Release(accessor);
+            }
         }
     }
 }

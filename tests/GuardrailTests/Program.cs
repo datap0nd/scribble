@@ -7859,6 +7859,22 @@ namespace GuardrailTests
             Assert(!ChatRequestFactory.IsMailboxEnumerationOnly(
                 "Find every message in July 2026 and summarize each body and attachment."),
                 "Mailbox content analysis was mistaken for enumeration-only work.");
+            Assert(
+                !ChatRequestFactory.RequiresAttachmentReads(
+                    "Find the complete thread and summarize every message body.") &&
+                ChatRequestFactory.RequiresAttachmentReads(
+                    "Find five related emails, read their attachments, and build a deck.") &&
+                !ChatRequestFactory.RequiresAttachmentReads(
+                    "Summarize the thread but do not read attachments."),
+                "Mailbox attachment coverage did not follow the user's requested scope.");
+            Assert(
+                ExcelSelectionOutputPolicy
+                    .IsWholeWorkbookKoreanToEnglishRequest(
+                        "Translate every Korean text cell in every worksheet of the active workbook into English.") &&
+                !ExcelSelectionOutputPolicy
+                    .IsWholeWorkbookKoreanToEnglishRequest(
+                        "Explain how Korean translation works in Excel."),
+                "Natural-language workbook translation intent was not bounded correctly.");
         }
 
         private static void QaAttachmentCache()

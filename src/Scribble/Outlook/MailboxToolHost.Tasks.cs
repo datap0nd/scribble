@@ -49,6 +49,7 @@ namespace Scribble.Outlook
         private bool _metadataOnly;
         private bool _enumerationOnly;
         private bool _skipAttachments;
+        private bool _requireAttachments;
         private readonly Dictionary<string, MailboxAttachmentPage> _attachmentPages = new Dictionary<string, MailboxAttachmentPage>();
 
         internal void ConfigureRequestScope(string prompt)
@@ -56,6 +57,8 @@ namespace Scribble.Outlook
             _metadataOnly = _workingSetOnly && ChatRequestFactory.IsMetadataOnly(prompt);
             _enumerationOnly = !_workingSetOnly && ChatRequestFactory.IsMailboxEnumerationOnly(prompt);
             _skipAttachments = _metadataOnly || _enumerationOnly || ChatRequestFactory.ForbidsAttachmentReads(prompt);
+            _requireAttachments = !_skipAttachments &&
+                ChatRequestFactory.RequiresAttachmentReads(prompt);
         }
 
         public async Task BindTaskAsync(TaskContextManager task, CancellationToken token)
@@ -179,7 +182,7 @@ namespace Scribble.Outlook
                     (entry.AttachmentCount >= 0 && MailboxAttachmentPages.Count(_application, current) != entry.AttachmentCount))
                     return Error(callId, "MAILBOX_SOURCE_CHANGED", "The message body or attachment collection changed during analysis. Its old coverage cannot be used.");
                 if (entry.BodyLength < 0 || entry.ReadUntil < entry.BodyLength || entry.AttachmentCount < 0 ||
-                    (!_skipAttachments && entry.CompleteAttachments.Count != entry.AttachmentCount))
+                    (_requireAttachments && entry.CompleteAttachments.Count != entry.AttachmentCount))
                     return Error(callId, "MAILBOX_COVERAGE_INCOMPLETE", "Read the complete body and every attachment before recording analysis. Body offset " + entry.ReadUntil + "; attachments complete " + entry.CompleteAttachments.Count + " of " + entry.AttachmentCount + ".");
                 var summary = GetString(arguments, "summary", "");
                 if (summary.Length == 0) return Error(callId, "MAILBOX_ANALYSIS_REQUIRED", "Provide a source-grounded summary, including actions and important evidence.");

@@ -41,6 +41,20 @@ namespace Scribble.Chat
             return Regex.IsMatch(prompt ?? "", @"\b(do not|don't|never)\s+(?:re[- ]?)?read\s+(?:the\s+)?attachments?\b", RegexOptions.IgnoreCase);
         }
 
+        public static bool RequiresAttachmentReads(string prompt)
+        {
+            var text = prompt ?? "";
+            if (ForbidsAttachmentReads(text)) return false;
+            return Regex.IsMatch(
+                       text,
+                       @"\battachments?\b",
+                       RegexOptions.IgnoreCase) ||
+                   Regex.IsMatch(
+                       text,
+                       @"\battached\s+(?:files?|documents?|pdfs?|workbooks?|spreadsheets?|decks?|presentations?)\b",
+                       RegexOptions.IgnoreCase);
+        }
+
         private const string SystemBoundary =
             "You are a mailbox chat assistant inside a local Outlook add-in. " +
             "Use the supplied read-only mailbox tools when the user's question requires " +
