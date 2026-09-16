@@ -922,9 +922,32 @@ namespace Scribble.Chat
                         ? 32768
                         : 8192;
                 }
+                // Compact reviewers and summarizers need a verdict, not a
+                // hidden chain of thought. Some OpenRouter providers have
+                // ignored "low" and spent the entire 2K response allowance on
+                // reasoning, returning no content. Disable reasoning for those
+                // bounded internal calls. Keep a minimal allowance on normal
+                // task turns so Qwen can still reconcile source material while
+                // leaving room for complete tool-call JSON.
+                var compactInternalCall =
+                    (requestModel.tools == null ||
+                     requestModel.tools.Count == 0) &&
+                    requestModel.max_tokens.HasValue &&
+                    requestModel.max_tokens.Value <= 2048;
                 payload["reasoning"] = new Dictionary<string, object>
                 {
-                    { "effort", "low" }
+                    {
+                        "effort",
+                        compactInternalCall ? "none" : "minimal"
+                    }
+                };
+                // OpenRouter otherwise may choose a provider that silently
+                // ignores the reasoning control. Only route to providers that
+                // honor every parameter Scribble relies on for bounded cost and
+                // complete tool calls.
+                payload["provider"] = new Dictionary<string, object>
+                {
+                    { "require_parameters", true }
                 };
                 if (includeOptionalToolControls &&
                     requestModel.tools != null &&

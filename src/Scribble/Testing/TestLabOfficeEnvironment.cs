@@ -86,6 +86,7 @@ namespace Scribble.Testing
                 if (host == "PowerPoint") app.Visible = -1;
                 else if (host != "Outlook") app.Visible = true;
                 applications.Add(host, value);
+                suiteId = TestLabSuite.Active()?.id;
                 log(host + ": connected and retained for the suite lifetime.");
                 return value;
             }
@@ -235,6 +236,11 @@ namespace Scribble.Testing
                 {
                     if (suiteId != null && (pair.Key == "Excel" || pair.Key == "PowerPoint"))
                         TestLabOfficeConnection.Cleanup(pair.Key, suiteId, log);
+                    else if (suiteId != null && pair.Key == "Outlook" && TestLabMailbox.Enabled)
+                    {
+                        try { TestLabMailbox.Cleanup(pair.Value, suiteId, log); }
+                        catch (Exception error) { log("Outlook: could not detach the suite PST during cleanup; its file was preserved. " + error.Message); }
+                    }
                     Release(pair.Value);
                 }
                 applications.Clear();

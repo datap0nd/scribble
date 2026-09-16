@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -11,6 +12,16 @@ using Scribble.Outlook;
 
 namespace Scribble.Testing
 {
+    [ComImport, Guid("00063002-0000-0000-C000-000000000046"), InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
+    internal interface OutlookNameSpaceStoreControl
+    {
+        [DispId(8474)]
+        void RemoveStore([MarshalAs(UnmanagedType.Interface)] OutlookMapiFolder folder);
+    }
+
+    [ComImport, Guid("00063006-0000-0000-C000-000000000046"), InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
+    internal interface OutlookMapiFolder { }
+
     // The operator imports a manifest-verified synthetic mailbox into its own
     // PST. Model tools still enumerate native Outlook tables and opaque IDs.
     // The protected binding contains source identities, never expected answers.
@@ -185,6 +196,34 @@ namespace Scribble.Testing
                 log("Verified isolated Outlook corpus: 500 unique native messages, 400 Inbox and 100 Sent.");
             }
             finally { Release(sent); Release(inbox); Release(folders); Release(root); Release(store); Release(session); }
+        }
+
+        internal static void Cleanup(object application, string suiteId, Action<string> log)
+        {
+            var state = TestLabSuite.Active();
+            if (application == null || state == null || state.id != suiteId || state.fixtureSuiteId != SuiteId) return;
+            var pst = PstPath(state);
+            object session = null, stores = null, store = null, root = null;
+            try
+            {
+                session = ((dynamic)application).Session;
+                stores = ((dynamic)session).Stores;
+                for (var index = Convert.ToInt32(((dynamic)stores).Count); index >= 1; index--)
+                {
+                    store = ((dynamic)stores).Item(index);
+                    if (!SamePath(Convert.ToString(((dynamic)store).FilePath), pst))
+                    { Release(store); store = null; continue; }
+                    root = ((dynamic)store).GetRootFolder();
+                    ((OutlookNameSpaceStoreControl)session).RemoveStore((OutlookMapiFolder)root);
+                    (log ?? delegate { })("Outlook: detached this suite's synthetic PST; its file was preserved.");
+                    lock (Gate)
+                    {
+                        if (cached != null && cached.suite_id == suiteId) { cached = null; sources = null; }
+                    }
+                    return;
+                }
+            }
+            finally { Release(root); Release(store); Release(stores); Release(session); }
         }
 
         private static NativeMessage Import(object folder, string root, CorpusMessage source)

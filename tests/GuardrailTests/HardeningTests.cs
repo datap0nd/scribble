@@ -95,6 +95,8 @@ namespace GuardrailTests
                 var task = new TaskContextManager(request, "powerpoint", "Create a two-slide draft", new TaskCheckpointStore(root));
                 var missing = task.ValidateArguments(Call(PresentationToolCatalog.AddDraftSlides, "{\"plan\":[\"cover\",\"analysis\"]}"));
                 Check(missing != null && missing.Content.Contains("nonempty slides array") && missing.Content.Contains("$.slides") &&
+                    missing.Content.Contains("exactly one complete") && missing.Content.Contains("only tool call") &&
+                    missing.Content.Contains("never {}") &&
                     missing.Outcome.PermissionConsumed == false && task.State.Writes.Count == 0, "A plan-only call did not explain how to repair the missing slide batch without consuming permission.");
                 var empty = task.ValidateArguments(Call(PresentationToolCatalog.AddDraftSlides, "{\"plan\":[\"cover\",\"analysis\"],\"slides\":[]}"));
                 Check(empty != null && empty.Content.Contains("too few items"), "An empty slide batch passed the argument boundary.");

@@ -8137,11 +8137,15 @@ namespace GuardrailTests
                     true
                 });
             var reasoning = openRouter["reasoning"] as Dictionary<string, object>;
+            var provider = openRouter["provider"] as
+                Dictionary<string, object>;
             Assert(
                 reasoning != null &&
-                (string)reasoning["effort"] == "low" &&
+                (string)reasoning["effort"] == "minimal" &&
+                provider != null &&
+                (bool)provider["require_parameters"] &&
                 (bool)openRouter["parallel_tool_calls"] == false,
-                "The exact OpenRouter Qwen route must use low reasoning and serial tools.");
+                "The exact OpenRouter Qwen route must use minimal reasoning, parameter-aware routing and serial tools.");
             Assert(
                 TaskContextManager.ContextBudgetForModel(request.model) ==
                     TaskContextManager.Qwen38ContextBudget &&
@@ -8151,6 +8155,29 @@ namespace GuardrailTests
             Assert(
                 (int)openRouter["max_tokens"] == 2048,
                 "Compact OpenRouter review requests must retain their bounded response allowance.");
+
+            var compactReview = new ChatCompletionRequest
+            {
+                model = request.model,
+                messages = new List<object>(),
+                max_tokens = 2048
+            };
+            var compact = (Dictionary<string, object>)method.Invoke(
+                null,
+                new object[]
+                {
+                    compactReview,
+                    new Uri("https://openrouter.ai/api/v1/chat/completions"),
+                    true
+                });
+            var compactReasoning = compact["reasoning"] as
+                Dictionary<string, object>;
+            Assert(
+                compactReasoning != null &&
+                (string)compactReasoning["effort"] == "none" &&
+                ((Dictionary<string, object>)compact["provider"])
+                    .ContainsKey("require_parameters"),
+                "Compact OpenRouter reviewers must reserve their response budget for the verdict.");
 
             var presentationRequest = new ChatCompletionRequest
             {

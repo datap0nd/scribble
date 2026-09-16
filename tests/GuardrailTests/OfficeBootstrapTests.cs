@@ -142,6 +142,9 @@ namespace GuardrailTests
             parameters = normal.GetParameters();
             Check(parameters.Length == 3 && parameters[1].ParameterType == typeof(CancellationToken),
                 "The normal Outlook startup grace period is not cancellation-bound.");
+            var cleanup = typeof(TestLabMailbox).GetMethod("Cleanup", BindingFlags.Static | BindingFlags.NonPublic);
+            Check(cleanup != null && cleanup.GetParameters().Length == 3,
+                "Synthetic Outlook stores are not detached at suite cleanup.");
         }
 
         public static void PowerPointLaunchTracksReusedOrFreshProcess()
