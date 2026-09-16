@@ -336,11 +336,52 @@ namespace Scribble.Chat
                             responseSnippet: responseText);
                     }
 
-                    var message =
+                    var choice =
                         completion?.choices != null &&
                         completion.choices.Count > 0
-                            ? completion.choices[0]?.message
+                            ? completion.choices[0]
                             : null;
+                    if (choice?.error != null ||
+                        string.Equals(
+                            choice?.finish_reason,
+                            "error",
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        // OpenRouter can return HTTP 200 with a provider-side
+                        // 5xx embedded in the first choice. Its message may
+                        // contain partial text or a truncated tool call, none
+                        // of which is safe to execute. Retry the identical
+                        // inference once before surfacing a resumable failure.
+                        if (retryEmptyResponse)
+                        {
+                            cancellationToken.ThrowIfCancellationRequested();
+                            await Task.Delay(
+                                TimeSpan.FromSeconds(1),
+                                cancellationToken).ConfigureAwait(true);
+                            return await CompleteOpenAiAsync(
+                                settings,
+                                endpoint,
+                                requestModel,
+                                includeOptionalToolControls,
+                                cancellationToken,
+                                false).ConfigureAwait(true);
+                        }
+
+                        var providerError = choice?.error;
+                        throw new AiEndpointException(
+                            "PROVIDER_RESPONSE_ERROR",
+                            "The selected AI provider interrupted the response. " +
+                            "No partial tool action ran. The task is preserved; " +
+                            "resume or choose another provider.",
+                            httpStatus: (int)response.StatusCode,
+                            providerCode:
+                                providerError?.code ?? providerError?.type,
+                            requestId: requestId,
+                            responseSnippet:
+                                providerError?.message ?? responseText);
+                    }
+
+                    var message = choice?.message;
 
                     var hasToolCalls =
                         message?.tool_calls != null &&

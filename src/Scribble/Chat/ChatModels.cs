@@ -120,6 +120,12 @@ namespace Scribble.Chat
     public sealed class ChatCompletionChoice
     {
         public ChatCompletionResponseMessage message { get; set; }
+
+        public string finish_reason { get; set; }
+
+        public string native_finish_reason { get; set; }
+
+        public ChatCompletionError error { get; set; }
     }
 
     public sealed class ChatCompletionResponseMessage

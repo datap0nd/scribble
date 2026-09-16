@@ -103,6 +103,7 @@ namespace GuardrailTests
                 Run("Samsung slide numbers require verified source evidence", SamsungSlideTests.EvidenceAndNumbers);
                 Run("PowerPoint and Outlook slide tool calls reach independent review", SlideToolCallsReachReview);
                 Run("Empty endpoint responses retry once without replaying tools", EmptyEndpointResponsesRecover);
+                Run("Embedded provider errors retry without executing partial tools", EmbeddedProviderErrorsRecover);
                 Run("OpenRouter Qwen requests use bounded serial reasoning", OpenRouterQwenPolicy);
                 Run("Every Office source launches the requested sibling draft and preserves content", CrossApplicationWriters);
                 Run("Chrome model tool calls create Office drafts on a pumped STA", BrowserOfficeRoundTrip);
@@ -8276,6 +8277,54 @@ namespace GuardrailTests
                 }
                 server.Wait();
                 Assert(server.Bodies.Count == 2 && server.Bodies[0] == server.Bodies[1], "Recovery must retry the identical inference once.");
+            }
+        }
+
+        private static void EmbeddedProviderErrorsRecover()
+        {
+            const string interrupted =
+                "{\"choices\":[{\"finish_reason\":\"error\",\"error\":{" +
+                "\"code\":\"502\",\"message\":\"Network connection lost.\"," +
+                "\"type\":\"provider_unavailable\"},\"message\":{" +
+                "\"role\":\"assistant\",\"content\":\"Writing now.\"," +
+                "\"tool_calls\":[{\"id\":\"partial\",\"function\":{" +
+                "\"name\":\"add_draft_slides\",\"arguments\":\"{\"}}]}}]}";
+            const string success =
+                "{\"choices\":[{\"finish_reason\":\"tool_calls\"," +
+                "\"message\":{\"role\":\"assistant\",\"content\":null," +
+                "\"tool_calls\":[{\"id\":\"complete\",\"function\":{" +
+                "\"name\":\"add_draft_slides\",\"arguments\":\"{}\"}}]}}]}";
+            foreach (var persistent in new[] { false, true })
+            using (var server = new FakeEndpoint(
+                interrupted,
+                persistent ? interrupted : success))
+            using (var client = new OpenAiCompatibleClient())
+            {
+                try
+                {
+                    var result = client.CompleteAsync(
+                        EndpointSettings(server.BaseUrl),
+                        MakeRequest(new List<ChatTurn>()),
+                        CancellationToken.None).GetAwaiter().GetResult();
+                    Assert(
+                        !persistent && result.tool_calls.Single().id == "complete",
+                        "Embedded provider error recovery returned a partial tool call.");
+                }
+                catch (AiEndpointException exception)
+                {
+                    Assert(
+                        persistent &&
+                        exception.Code == "PROVIDER_RESPONSE_ERROR" &&
+                        exception.ProviderCode == "502",
+                        "Unexpected embedded provider recovery error: " +
+                        exception.Message);
+                }
+
+                server.Wait();
+                Assert(
+                    server.Bodies.Count == 2 &&
+                    server.Bodies[0] == server.Bodies[1],
+                    "Embedded provider recovery must retry the identical inference once.");
             }
         }
 
