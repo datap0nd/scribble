@@ -13,7 +13,12 @@ namespace Scribble.Testing
 {
     public static class TestLabStressBudget
     {
-        public const decimal MaximumTotalUsd = 10m;
+        // The user authorized a second $10 checkpoint on the original
+        // no-reset key. The provider remains the absolute lifetime backstop,
+        // while this build stops the Golden Showcase before total usage
+        // reaches $15 (about $5.50 of new spend from its $9.50 baseline).
+        public const decimal MaximumTotalUsd = 20m;
+        public const decimal MaximumCheckpointUsageUsd = 15m;
         public static async Task GuardRequestAsync(AppSettings actual, string requestedModel, CancellationToken cancel)
         {
             var state = TestLabSuite.Active();
@@ -41,7 +46,7 @@ namespace Scribble.Testing
                 endpoint.Scheme != "https" || endpoint.Host != "openrouter.ai" || !endpoint.IsDefaultPort ||
                 !string.IsNullOrEmpty(endpoint.UserInfo) || !string.IsNullOrEmpty(endpoint.Query) ||
                 endpoint.AbsolutePath.TrimEnd('/') != "/api/v1" || settings.Model != "qwen/qwen3.8-27b")
-                throw new InvalidOperationException("Stress tests require the configured Qwen3.8 27B OpenRouter endpoint and a dedicated key capped at $10 total. No model request was submitted.");
+                throw new InvalidOperationException("Stress tests require the configured Qwen3.8 27B OpenRouter endpoint and the approved no-reset key capped at $20 total. No model request was submitted.");
             using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancel))
             using (var handler = new HttpClientHandler { AllowAutoRedirect = false })
             using (var client = new HttpClient(handler))
@@ -59,7 +64,8 @@ namespace Scribble.Testing
                     File.AppendAllText(Path.Combine(state.folder, "usage.jsonl"), TestLab.Serialize(new {
                         utc = DateTime.UtcNow.ToString("O"), case_id = state.caseId, model = settings.Model,
                         limit_usd = key.limit, remaining_usd = key.limit_remaining, usage_usd = key.usage,
-                        source = "OpenRouter /api/v1/key", total_limit_no_reset = true
+                        source = "OpenRouter /api/v1/key", total_limit_no_reset = true,
+                        checkpoint_stop_usage_usd = MaximumCheckpointUsageUsd
                     }) + Environment.NewLine, new UTF8Encoding(false));
                 }
             }
@@ -126,9 +132,11 @@ namespace Scribble.Testing
                 !string.IsNullOrEmpty(key.limit_reset) || !key.limit_remaining.HasValue || !key.usage.HasValue ||
                 key.limit_remaining < 0 || key.limit_remaining > key.limit || key.usage < 0 ||
                 key.is_management_key || key.is_provisioning_key)
-                throw new InvalidOperationException("The API key must be an inference key with a positive total limit of at most $10 and no periodic reset. Unverified limits cannot start stress tests.");
+                throw new InvalidOperationException("The API key must be an inference key with a positive total limit of at most $20 and no periodic reset. Unverified limits cannot start stress tests.");
             if (key.limit_remaining <= .25m)
                 throw new InvalidOperationException("API budget nearly exhausted: $" + key.limit_remaining.Value.ToString("0.000", CultureInfo.InvariantCulture) + " remains. Remaining tests were not submitted.");
+            if (key.usage >= MaximumCheckpointUsageUsd - .25m)
+                throw new InvalidOperationException("Golden Showcase checkpoint budget nearly exhausted: total key usage is $" + key.usage.Value.ToString("0.000", CultureInfo.InvariantCulture) + ". The checkpoint stops before $15 total usage; remaining tests were not submitted.");
             return key;
         }
     }

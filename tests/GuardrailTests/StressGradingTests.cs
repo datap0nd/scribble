@@ -21,15 +21,18 @@ namespace GuardrailTests
             Check(staleRejected, "An existing pane could use its old uncapped key after the operator verified a different key.");
             Check(TestLabStressBudget.Validate("{\"data\":{\"limit\":10,\"limit_remaining\":10,\"usage\":0,\"limit_reset\":null}}").limit == 10,
                 "The requested finite budget was rejected.");
+            Check(TestLabStressBudget.Validate("{\"data\":{\"limit\":20,\"limit_remaining\":10.5,\"usage\":9.5,\"limit_reset\":null}}").limit == 20,
+                "The approved same-key checkpoint budget was rejected.");
             foreach (var response in new[] {
                 "{\"data\":{\"limit\":null,\"limit_remaining\":null,\"usage\":0}}",
                 "{\"data\":{\"limit\":100,\"limit_remaining\":100,\"usage\":0}}",
                 "{\"data\":{\"limit\":10,\"limit_remaining\":10,\"usage\":0,\"limit_reset\":\"monthly\"}}",
                 "{\"data\":{\"limit\":10,\"limit_remaining\":0.1,\"usage\":9.9}}",
+                "{\"data\":{\"limit\":20,\"limit_remaining\":5.2,\"usage\":14.8}}",
                 "{\"data\":{\"limit\":10,\"limit_remaining\":10,\"usage\":0,\"is_management_key\":true}}" })
             {
                 bool failed = false; try { TestLabStressBudget.Validate(response); } catch (InvalidOperationException) { failed = true; }
-                Check(failed, "An unbounded, resetting, exhausted or management key passed the stress budget.");
+                Check(failed, "An unbounded, resetting, exhausted, over-checkpoint or management key passed the stress budget.");
             }
             var folder = Path.Combine(Path.GetTempPath(), "scribble-provider-stop-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(folder);
