@@ -111,11 +111,9 @@ namespace Scribble.Office
             {
                 map = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(text);
                 object approved;
-                object issues;
                 object findings;
                 return map != null &&
                     map.TryGetValue("approved", out approved) && approved is bool &&
-                    map.TryGetValue("issues", out issues) && issues is string &&
                     map.TryGetValue("findings", out findings) &&
                     findings is IEnumerable && !(findings is string) &&
                     Array(map, "findings").All(value => value is Dictionary<string, object>);
