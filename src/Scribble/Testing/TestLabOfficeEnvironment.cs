@@ -59,15 +59,24 @@ namespace Scribble.Testing
                 try { value = Marshal.GetActiveObject(host + ".Application"); }
                 catch (COMException)
                 {
+                    value = null;
                     if (host == "Outlook")
                     {
                         // Classic Outlook's singleton automation class attaches
                         // to its normally launched explorer even without ROT.
-                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("outlook.exe") { UseShellExecute = true });
+                        // Give that normal UI launch time to win the singleton
+                        // race before Activator can create an -Embedding server
+                        // whose COMAddIns collection is still incomplete.
+                        using (var launched = System.Diagnostics.Process.Start(
+                            new System.Diagnostics.ProcessStartInfo("outlook.exe") { UseShellExecute = true }))
+                            value = await WaitForNormallyLaunchedOutlookAsync(launched, cancel, log);
                     }
-                    var type = Type.GetTypeFromProgID(host + ".Application");
-                    if (type == null) throw new InvalidOperationException(host + " is not installed or its automation registration is unavailable.");
-                    value = Activator.CreateInstance(type);
+                    if (value == null)
+                    {
+                        var type = Type.GetTypeFromProgID(host + ".Application");
+                        if (type == null) throw new InvalidOperationException(host + " is not installed or its automation registration is unavailable.");
+                        value = Activator.CreateInstance(type);
+                    }
                 }
             }
             try
@@ -175,6 +184,33 @@ namespace Scribble.Testing
                 }
             }
             throw new InvalidOperationException("Scribble is not present in " + host + "'s COM add-in collection after startup. Repair the selected Scribble component or check Office Disabled Items.");
+        }
+
+        private static async Task<object> WaitForNormallyLaunchedOutlookAsync(
+            System.Diagnostics.Process launched, CancellationToken cancel, Action<string> log)
+        {
+            var deadline = DateTime.UtcNow.AddSeconds(5);
+            var announced = false;
+            while (DateTime.UtcNow < deadline)
+            {
+                cancel.ThrowIfCancellationRequested();
+                try { return Marshal.GetActiveObject("Outlook.Application"); }
+                catch (COMException)
+                {
+                    if (!announced)
+                    {
+                        (log ?? delegate { })("Outlook: waiting for the normally launched Explorer before automation attachment.");
+                        announced = true;
+                    }
+                }
+                if (launched != null)
+                {
+                    try { if (launched.HasExited) break; }
+                    catch (InvalidOperationException) { break; }
+                }
+                await Task.Delay(250, cancel);
+            }
+            return null;
         }
 
         private static void DisplayOutlookExplorer(object application)

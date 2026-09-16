@@ -14,7 +14,7 @@ namespace Scribble.Chat
 
         public string Role { get; }
 
-        public string Content { get; private set; }
+        public string Content { get; }
     }
 
     public sealed class ChatCompletionRequest
@@ -194,7 +194,7 @@ namespace Scribble.Chat
 
         public string ToolCallId { get; }
 
-        public string Content { get; }
+        public string Content { get; private set; }
 
         public string StatusText { get; }
 

@@ -132,12 +132,16 @@ namespace GuardrailTests
         {
             var type = typeof(TestLab).Assembly.GetType("Scribble.Testing.TestLabOfficeEnvironment", true);
             var wait = type.GetMethod("WaitForAddInAsync", BindingFlags.Instance | BindingFlags.NonPublic);
+            var normal = type.GetMethod("WaitForNormallyLaunchedOutlookAsync", BindingFlags.Static | BindingFlags.NonPublic);
             var display = type.GetMethod("DisplayOutlookExplorer", BindingFlags.Static | BindingFlags.NonPublic);
-            Check(wait != null && display != null,
-                "The Outlook -Embedding startup path does not display an Explorer and wait for COM add-in discovery.");
+            Check(wait != null && normal != null && display != null,
+                "The Outlook -Embedding startup path does not wait for normal launch, display an Explorer and wait for COM add-in discovery.");
             var parameters = wait.GetParameters();
             Check(parameters.Length == 4 && parameters[3].ParameterType == typeof(CancellationToken),
                 "The Outlook add-in discovery wait is not cancellation-bound.");
+            parameters = normal.GetParameters();
+            Check(parameters.Length == 3 && parameters[1].ParameterType == typeof(CancellationToken),
+                "The normal Outlook startup grace period is not cancellation-bound.");
         }
 
         public static void PowerPointLaunchTracksReusedOrFreshProcess()
