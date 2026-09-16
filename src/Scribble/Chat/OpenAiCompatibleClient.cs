@@ -447,7 +447,11 @@ namespace Scribble.Chat
             string provider)
         {
             if (payload == null ||
-                !IsOpenRouter(endpoint) ||
+                endpoint == null ||
+                !string.Equals(
+                    endpoint.Host,
+                    "openrouter.ai",
+                    StringComparison.OrdinalIgnoreCase) ||
                 string.IsNullOrWhiteSpace(provider))
             {
                 return;
