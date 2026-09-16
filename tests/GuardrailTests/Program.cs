@@ -87,6 +87,7 @@ namespace GuardrailTests
                 Run("Test Lab operator logging failure waits for terminal runner", PowerPointRecoveryBoundaryTests.OperatorLoggingFailureRetainsTerminalBoundary);
                 Run("PowerPoint rejected outline can be corrected before writing", RejectedSlideOutlineCanChange);
                 Run("PowerPoint partial batches defer outline review", PartialSlideBatchesDeferOutlineReview);
+                Run("PowerPoint number failures suggest exact retained spans", NumberFailuresSuggestSourceSpans);
                 Run("QA metadata followup forbids reads and old task continuation", QaMetadataScope);
                 Run("QA repeated attachments reuse extraction and invalidate changed bytes", QaAttachmentCache);
                 Run("QA structured XLS preserves positions multilingual values and sheets", QaStructuredXls);
@@ -8066,6 +8067,44 @@ namespace GuardrailTests
                     Assert(result.Content.Contains("SOURCE_REVIEW_ONLY") && endpoint.Bodies.Count == 1 &&
                         endpoint.Bodies[0].Contains("Review source accuracy") && !endpoint.Bodies[0].Contains("proposed_slides"),
                         "A partial slide batch was incorrectly blocked by whole-outline review: " + result.Content);
+                }
+            }
+            finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+        }
+
+        private static void NumberFailuresSuggestSourceSpans()
+        {
+            var root = Path.Combine(Path.GetTempPath(), "scribble-number-hints-" + Guid.NewGuid().ToString("N"));
+            var json = new JavaScriptSerializer();
+            try
+            {
+                using (var client = new OpenAiCompatibleClient())
+                using (var host = new DocumentDraftHost("powerpoint", new object()))
+                {
+                    var request = MakeRequest(new List<ChatTurn>());
+                    request.tools = new List<ChatToolDefinition> { PresentationToolCatalog.DraftDefinition() };
+                    var task = new TaskContextManager(request, "powerpoint", "Create a two-slide financial presentation", new TaskCheckpointStore(root));
+                    host.BindTaskAsync(task, CancellationToken.None).GetAwaiter().GetResult();
+                    var cited = task.Sources.Add("Monthly source", "2026-02 Revenue EUR 86,227 Cost EUR 35,861").Single();
+                    var candidate = task.Sources.Add("June summary", "2026-06 Revenue EUR 82,992 Cost EUR 36,714").Single();
+                    var arguments = json.Serialize(new {
+                        plan = new[] { "trend", "close" },
+                        briefs = new object[] {
+                            new { id = "trend", purpose = "analytical", message = "June results", layout = "chart", source_spans = new[] { cited }, required_content = new[] { "June values" } },
+                            new { id = "close", purpose = "explanatory", message = "Close", layout = "closing", required_content = new[] { "Close" } }
+                        },
+                        slides = new[] { new { id = "trend", title = "June revenue EUR 82,992 and cost EUR 36,714", subtitle = "June results", layout = "chart",
+                            source_spans = new[] { cited }, sources = "June summary", evidence = "2026-02 Revenue EUR 86,227 Cost EUR 35,861" } }
+                    });
+                    var settings = EndpointSettings("http://127.0.0.1:9/v1"); settings.Model = "qwen3-vl";
+                    var authorization = new OneShotDraftAuthorization(true);
+                    var result = host.ExecuteAsync(MailboxCall("number-hint", PresentationToolCatalog.AddDraftSlides, arguments), authorization,
+                        true, task.State.Objective, client, settings, CancellationToken.None, null).GetAwaiter().GetResult();
+                    Assert(result.Content.Contains("SLIDE_NUMBERS_UNVERIFIED") && result.Content.Contains(candidate) &&
+                        result.Content.Contains("supports [") && result.Content.Contains("82992") && result.Content.Contains("36714") &&
+                        result.Content.Contains("do not repeat the unchanged payload") &&
+                        authorization.RemainingCalls == 1,
+                        "Missing-number recovery did not identify the exact retained source span: " + result.Content);
                 }
             }
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }

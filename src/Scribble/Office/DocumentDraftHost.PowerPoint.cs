@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Scribble.Chat;
@@ -292,11 +293,12 @@ namespace Scribble.Office
                     new AiEndpointException("SAMSUNG_" + stage + "_FAILED", "Slide operation failed.", exception));
                 // A preflight failure spent no write permission. After mutation,
                 // the shared journal blocks blind duplication of the open draft.
+                var repairMessage = exception.Message + SourceSpanRepairHint(exception.Message);
                 return new MailboxToolResult(call.id, _serializer.Serialize(new { error_code = "SAMSUNG_DRAFT_FAILED",
-                    stage, message = exception.Message, permission_consumed = written,
+                    stage, message = repairMessage, permission_consumed = written,
                     diagnostic_id = _taskContext?.State.Id,
                     field_errors = new[] { new { slide_id = slideId, field_path = stage == "SOURCE_REVIEW" ? "source_spans/content" : stage,
-                        message = exception.Message, recovery = written ? "Resume with the original generation payload unchanged. The host reconciles native IDs and fingerprints; uncertain or user-edited slides are preserved." :
+                        message = repairMessage, recovery = written ? "Resume with the original generation payload unchanged. The host reconciles native IDs and fingerprints; uncertain or user-edited slides are preserved." :
                             (_taskContext != null && _taskContext.State.HostData.ContainsKey("samsung_plan")
                                 ? "Repair this field while preserving the written deck's plan and already approved slides. Include a nonempty slides array containing actual content for the next planned IDs."
                                 : "No slides were written. Correct the proposed plan, briefs and slide content together, then resubmit with a nonempty slides array. Rejected proposals are not locked.") } } }),
@@ -307,6 +309,38 @@ namespace Scribble.Office
                 foreach (var output in outputs)
                     if (System.Runtime.InteropServices.Marshal.IsComObject(output.Slide)) System.Runtime.InteropServices.Marshal.ReleaseComObject(output.Slide);
             }
+        }
+        private string SourceSpanRepairHint(string message)
+        {
+            const string marker = "SLIDE_NUMBERS_UNVERIFIED: Values absent from cited evidence:";
+            if (_taskContext == null || string.IsNullOrWhiteSpace(message) || !message.StartsWith(marker, StringComparison.Ordinal)) return "";
+            var missing = new HashSet<string>(message.Substring(marker.Length).Split(',').Select(value => value.Trim())
+                .Where(value => value.Length > 0), StringComparer.Ordinal);
+            if (missing.Count == 0) return "";
+            var candidates = new List<Tuple<TaskSourceSpan, string[]>>();
+            foreach (var span in _taskContext.Sources.Spans())
+            {
+                string passage;
+                try { passage = _taskContext.Sources.Resolve(new[] { span.Id }); }
+                catch (Exception ex) when (ex is InvalidOperationException || ex is ArgumentException) { continue; }
+                var numbers = new HashSet<string>(Regex.Matches(passage ?? "", @"(?<![A-Za-z0-9])[-+]?(?:\d+(?:[,.]\d+)*|\.\d+)(?:[eE][-+]?\d+)?%?")
+                    .Cast<Match>().Select(match =>
+                    {
+                        var raw = match.Value.Replace(",", "").TrimStart('+').TrimEnd('%');
+                        double value;
+                        return double.TryParse(raw, System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture, out value)
+                            ? value.ToString("R", System.Globalization.CultureInfo.InvariantCulture) : raw;
+                    }), StringComparer.Ordinal);
+                var found = missing.Where(numbers.Contains).ToArray();
+                if (found.Length > 0) candidates.Add(Tuple.Create(span, found));
+            }
+            if (candidates.Count == 0)
+                return " No retained source span contains these values. Remove the displayed numbers or provide explicit calculations with fully cited operands; do not repeat the unchanged payload.";
+            var suggestions = candidates.OrderByDescending(candidate => candidate.Item2.Length).ThenBy(candidate => candidate.Item1.Id, StringComparer.Ordinal)
+                .Take(6).Select(candidate => candidate.Item1.Id + " supports [" + string.Join(", ", candidate.Item2) + "]");
+            return " Candidate host-issued spans: " + string.Join("; ", suggestions) +
+                ". Verify the matching label, unit and period before citing a candidate. Remove any unsupported numeric source identifier, and do not repeat the unchanged payload.";
         }
         private bool ReviewApproved(string text)
         {
