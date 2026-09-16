@@ -45,29 +45,39 @@ namespace Scribble.Outlook
             object session = null, item = null, attachments = null, attachment = null;
             string temporary = null;
             string name = null;
+            var ownsTemporary = false;
             try
             {
-                // Only this short capture touches Outlook COM, on its owning context.
-                dynamic app = application;
-                session = app.Session;
-                dynamic ns = session;
-                item = Scribble.Testing.TestLabMail.OpenItem((object)ns, source.EntryId, source.StoreId);
-                dynamic mail = item;
-                attachments = mail.Attachments;
-                dynamic collection = attachments;
-                if (index < 1 || index > Convert.ToInt32(collection.Count)) throw new ArgumentException("Attachment index is outside the captured message.");
-                attachment = collection.Item(index);
-                dynamic file = attachment;
-                name = Convert.ToString(file.FileName);
-                var warning = AttachmentIntakePolicy.ValidateFile(Convert.ToInt64(file.Size));
-                if (warning.Length > 0) throw new InvalidOperationException(warning);
-                temporary = Path.Combine(Path.GetTempPath(), "scribble-page-" + Guid.NewGuid().ToString("N") + Path.GetExtension(name));
-                if (!TrySaveByValue(file, temporary))
-                    file.SaveAsFile(temporary);
+                // The isolated test mailbox is a verified native projection of
+                // manifest-backed files. Reading those immutable bytes avoids
+                // Outlook providers that can block indefinitely while opening
+                // PR_ATTACH_DATA_BIN. Production mail still uses Outlook COM.
+                if (!Scribble.Testing.TestLabMailbox.TryResolveAttachment(
+                    source.EntryId, source.StoreId, index, out temporary, out name))
+                {
+                    // Only this short capture touches Outlook COM, on its owning context.
+                    dynamic app = application;
+                    session = app.Session;
+                    dynamic ns = session;
+                    item = Scribble.Testing.TestLabMail.OpenItem((object)ns, source.EntryId, source.StoreId);
+                    dynamic mail = item;
+                    attachments = mail.Attachments;
+                    dynamic collection = attachments;
+                    if (index < 1 || index > Convert.ToInt32(collection.Count)) throw new ArgumentException("Attachment index is outside the captured message.");
+                    attachment = collection.Item(index);
+                    dynamic file = attachment;
+                    name = Convert.ToString(file.FileName);
+                    var warning = AttachmentIntakePolicy.ValidateFile(Convert.ToInt64(file.Size));
+                    if (warning.Length > 0) throw new InvalidOperationException(warning);
+                    temporary = Path.Combine(Path.GetTempPath(), "scribble-page-" + Guid.NewGuid().ToString("N") + Path.GetExtension(name));
+                    ownsTemporary = true;
+                    if (!TrySaveByValue(file, temporary))
+                        file.SaveAsFile(temporary);
+                }
             }
             catch
             {
-                if (temporary != null && File.Exists(temporary)) File.Delete(temporary);
+                if (ownsTemporary && temporary != null && File.Exists(temporary)) File.Delete(temporary);
                 throw;
             }
             finally { Release(attachment); Release(attachments); Release(item); Release(session); }
@@ -99,7 +109,7 @@ namespace Scribble.Outlook
                     return page;
                 }, token).ConfigureAwait(true);
             }
-            finally { if (temporary != null && File.Exists(temporary)) File.Delete(temporary); }
+            finally { if (ownsTemporary && temporary != null && File.Exists(temporary)) File.Delete(temporary); }
         }
 
         private static void Release(object value)

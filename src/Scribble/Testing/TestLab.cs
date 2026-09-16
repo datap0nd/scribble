@@ -209,6 +209,7 @@ namespace Scribble.Testing
                     assembly_sha256 = FileHash(typeof(TestLab).Assembly.Location), os = Environment.OSVersion.ToString(),
                     process_bitness = IntPtr.Size * 8, locale = System.Globalization.CultureInfo.CurrentCulture.Name,
                     required_artifacts = c.artifacts ?? new string[0], input_paths = allowedPaths.ToArray(), prompt = c.prompt,
+                    allow_source_edit = c.allow_source_edit,
                     selected_model = settings.Model, writing_profile_enabled = settings.UseToneProfile,
                     writing_profile_hash = Hash(Encoding.UTF8.GetBytes(settings.ToneProfile ?? "")),
                     process_name = Process.GetCurrentProcess().ProcessName,
@@ -632,6 +633,7 @@ namespace Scribble.Testing
         public bool trace_complete { get; set; } public bool assisted { get; set; } public bool operator_context_attested { get; set; }
         public string evidence_status { get; set; } public string[] missing_artifacts { get; set; }
         public string[] input_hashes { get; set; } public string selected_model { get; set; } public bool writing_profile_enabled { get; set; }
+        public bool allow_source_edit { get; set; }
         public string writing_profile_hash { get; set; } public string process_name { get; set; }
     }
     public sealed class MailFixture { public string path { get; set; } public string[] attachments { get; set; } public string subject { get; set; } public string sender { get; set; } public string body { get; set; } public string date { get; set; } }

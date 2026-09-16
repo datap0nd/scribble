@@ -341,6 +341,38 @@ namespace Scribble.Testing
                 throw new InvalidOperationException("This item is outside the verified synthetic PST; real mailbox reads are disabled during the case.");
         }
 
+        internal static bool TryResolveAttachment(string entryId, string storeId, int index,
+            out string path, out string fileName)
+        {
+            path = null;
+            fileName = null;
+            if (!Enabled) return false;
+
+            ScopeToken();
+            var state = RequireSuite();
+            var binding = RequireBinding(state);
+            if (storeId != binding.store_id)
+                throw new InvalidOperationException("This attachment is outside the verified synthetic PST.");
+            var identity = binding.items.FirstOrDefault(i => i.entry_id == entryId);
+            if (identity == null)
+                throw new InvalidOperationException("This attachment is outside the verified synthetic PST.");
+            var source = sources[identity.id];
+            if (index < 1 || index > (source.attachments ?? new string[0]).Length)
+                throw new ArgumentException("Attachment index is outside the captured message.");
+
+            var relative = source.attachments[index - 1];
+            var candidate = TestLab.SafeChild(state.catalogRoot, relative);
+            var manifest = TestLabSuite.Read<KitManifest>(TestLab.SafeChild(state.catalogRoot, "manifest.json"));
+            var declared = (manifest.files ?? new KitFile[0]).FirstOrDefault(f => f.path == relative);
+            if (declared == null || !File.Exists(candidate) || new FileInfo(candidate).Length != declared.size ||
+                !string.Equals(TestLab.FileHash(candidate), declared.sha256, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("The verified synthetic attachment changed: " + identity.id);
+
+            path = candidate;
+            fileName = Path.GetFileName(relative);
+            return true;
+        }
+
         public static void ValidateSource(object item)
         {
             var state = RequireSuite();

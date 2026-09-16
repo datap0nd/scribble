@@ -277,7 +277,23 @@ namespace Scribble.Chat
                       "Use write_korean_translations and no other write tool. " +
                       "Translate ONLY the supplied source cells into English, " +
                       "preserving meaning, punctuation, numbers, and line " +
-                      "structure. Return exactly one English value per source " +
+                      "structure. Use sentence case for ordinary labels and " +
+                      "statuses. Render Korean personal names in romanized " +
+                      "given-name family-name order, retaining hyphens in " +
+                      "given names. Render a Korean date-only value as ISO " +
+                      "YYYY-MM-DD. Use consistent office terminology across " +
+                      "the workbook. When the source meaning matches, use " +
+                      "these canonical translations: 마감일 = Due date; 완료 " +
+                      "= Complete; 진행 중 = In progress; 검토 필요 = Review " +
+                      "required; 비고 = Notes; 확인 필요 = Verification " +
+                      "required; 직책 = Role; 재무 담당자 = Finance " +
+                      "specialist; 배송 지연 = Delivery delay; 대체 공급업체 " +
+                      "확인 = Confirm alternate supplier; 환율 변동 = " +
+                      "Exchange-rate volatility; 환율 주간 검토 = Review " +
+                      "exchange rate weekly; 품질 문제 = Quality issue; 추가 " +
+                      "검사 실시 = Perform additional inspection; 인력 부족 " +
+                      "= Staff shortage; 임시 인력 확보 = Secure temporary " +
+                      "staff. Return exactly one English value per source " +
                       "entry in order. After every accepted call, continue from " +
                       "next_source_cells and next_start_offset until " +
                       "complete_next=true, then submit that final window with " +

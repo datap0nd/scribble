@@ -71,7 +71,20 @@ namespace Scribble.Testing
                                 source &&
                                 phase != "source" &&
                                 HasNewDraft(value, kind, boundary);
-                            var effectiveOutput = runOutput || sourceDerivedOutput;
+                            // A case may explicitly authorize an in-memory
+                            // transform of the verified source workbook. It is
+                            // still a deliverable even though the workbook was
+                            // not created by this run and no draft sheet was
+                            // added. Capture a separate copy; never save over
+                            // the verified fixture path.
+                            var sourceEditOutput =
+                                source &&
+                                phase != "source" &&
+                                kind == "Excel" &&
+                                run.allow_source_edit;
+                            var effectiveOutput = runOutput ||
+                                sourceDerivedOutput ||
+                                sourceEditOutput;
                             var role = effectiveOutput ? "output" : "source";
                             var stem = Path.Combine(
                                 directory,
