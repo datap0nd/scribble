@@ -8235,8 +8235,8 @@ namespace GuardrailTests
                 ((string[])providerPolicy["order"]).SequenceEqual(expectedProviders) &&
                 ((string[])providerPolicy["only"]).SequenceEqual(expectedProviders) &&
                 (bool)providerPolicy["allow_fallbacks"] &&
-                (bool)providerPolicy["require_parameters"],
-                "Qwen tool calls must remain on the ordered, fully compatible provider allow-list.");
+                !providerPolicy.ContainsKey("require_parameters"),
+                "Qwen tool calls must remain on the ordered provider allow-list without rejecting the serial-control flag.");
             Assert(
                 TaskContextManager.ContextBudgetForModel(request.model) ==
                     TaskContextManager.Qwen38ContextBudget &&
