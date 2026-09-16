@@ -1066,11 +1066,15 @@ namespace Scribble.Chat
                 }
                 // Compact reviewers and summarizers need a verdict, not a
                 // hidden chain of thought. Some OpenRouter providers have
-                // ignored "low" and spent the entire 2K response allowance on
-                // reasoning, returning no content. Disable reasoning for those
-                // bounded internal calls. Keep a minimal allowance on normal
-                // task turns so Qwen can still reconcile source material while
-                // leaving room for complete tool-call JSON.
+                // spent the entire 2K response allowance on reasoning,
+                // returning no content. Disable reasoning for those bounded
+                // internal calls. Qwen 3.8 advertises low as its smallest
+                // supported reasoning effort; sending the unsupported minimal
+                // value can fall back to the model's xhigh default and consume
+                // the entire response allowance before a tool call is emitted.
+                // Keep low reasoning on normal task turns so Qwen can still
+                // reconcile source material while leaving room for complete
+                // tool-call JSON.
                 var compactInternalCall =
                     (requestModel.tools == null ||
                      requestModel.tools.Count == 0) &&
@@ -1080,7 +1084,7 @@ namespace Scribble.Chat
                 {
                     {
                         "effort",
-                        compactInternalCall ? "none" : "minimal"
+                        compactInternalCall ? "none" : "low"
                     }
                 };
                 if (includeOptionalToolControls &&

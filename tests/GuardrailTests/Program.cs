@@ -8220,9 +8220,9 @@ namespace GuardrailTests
             var reasoning = openRouter["reasoning"] as Dictionary<string, object>;
             Assert(
                 reasoning != null &&
-                (string)reasoning["effort"] == "minimal" &&
+                (string)reasoning["effort"] == "low" &&
                 (bool)openRouter["parallel_tool_calls"] == false,
-                "The exact OpenRouter Qwen route must use minimal reasoning and serial tools.");
+                "The exact OpenRouter Qwen route must use its smallest supported reasoning effort and serial tools.");
             Assert(
                 TaskContextManager.ContextBudgetForModel(request.model) ==
                     TaskContextManager.Qwen38ContextBudget &&
