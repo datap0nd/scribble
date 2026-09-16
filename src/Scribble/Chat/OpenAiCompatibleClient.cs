@@ -362,14 +362,20 @@ namespace Scribble.Chat
                         // 5xx embedded in the first choice. Its message may
                         // contain partial text or a truncated tool call, none
                         // of which is safe to execute. Retry the identical
-                        // inference against up to two other providers before
+                        // inference once on generic endpoints. OpenRouter can
+                        // safely route across up to two other providers before
                         // surfacing a resumable failure. Every retry is still
                         // checked by the Test Lab's hard spend guard.
                         var excludedProviders = SplitProviders(ignoredProvider);
                         if (!string.IsNullOrWhiteSpace(completion?.provider) &&
                             !excludedProviders.Contains(completion.provider, StringComparer.OrdinalIgnoreCase))
                             excludedProviders.Add(completion.provider);
-                        if (providerRetriesRemaining > 0)
+                        var openRouter = endpoint != null && string.Equals(
+                            endpoint.Host,
+                            "openrouter.ai",
+                            StringComparison.OrdinalIgnoreCase);
+                        if (retryEmptyResponse ||
+                            (openRouter && providerRetriesRemaining > 0))
                         {
                             cancellationToken.ThrowIfCancellationRequested();
                             await Scribble.Testing.TestLabStressBudget
