@@ -941,14 +941,6 @@ namespace Scribble.Chat
                         compactInternalCall ? "none" : "minimal"
                     }
                 };
-                // OpenRouter otherwise may choose a provider that silently
-                // ignores the reasoning control. Only route to providers that
-                // honor every parameter Scribble relies on for bounded cost and
-                // complete tool calls.
-                payload["provider"] = new Dictionary<string, object>
-                {
-                    { "require_parameters", true }
-                };
                 if (includeOptionalToolControls &&
                     requestModel.tools != null &&
                     requestModel.tools.Count > 0)

@@ -8137,15 +8137,11 @@ namespace GuardrailTests
                     true
                 });
             var reasoning = openRouter["reasoning"] as Dictionary<string, object>;
-            var provider = openRouter["provider"] as
-                Dictionary<string, object>;
             Assert(
                 reasoning != null &&
                 (string)reasoning["effort"] == "minimal" &&
-                provider != null &&
-                (bool)provider["require_parameters"] &&
                 (bool)openRouter["parallel_tool_calls"] == false,
-                "The exact OpenRouter Qwen route must use minimal reasoning, parameter-aware routing and serial tools.");
+                "The exact OpenRouter Qwen route must use minimal reasoning and serial tools.");
             Assert(
                 TaskContextManager.ContextBudgetForModel(request.model) ==
                     TaskContextManager.Qwen38ContextBudget &&
@@ -8175,8 +8171,7 @@ namespace GuardrailTests
             Assert(
                 compactReasoning != null &&
                 (string)compactReasoning["effort"] == "none" &&
-                ((Dictionary<string, object>)compact["provider"])
-                    .ContainsKey("require_parameters"),
+                !compact.ContainsKey("provider"),
                 "Compact OpenRouter reviewers must reserve their response budget for the verdict.");
 
             var presentationRequest = new ChatCompletionRequest
