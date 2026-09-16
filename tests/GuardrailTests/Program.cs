@@ -8194,6 +8194,27 @@ namespace GuardrailTests
 
         private static void OpenRouterQwenPolicy()
         {
+            var timeoutMethod = typeof(OpenAiCompatibleClient).GetMethod(
+                "CompletionRequestTimeoutFor",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert(timeoutMethod != null,
+                "The endpoint-specific completion timeout helper is missing.");
+            var defaultTimeout = TimeSpan.FromMinutes(3);
+            Assert(
+                (TimeSpan)timeoutMethod.Invoke(null, new object[]
+                {
+                    new Uri("https://openrouter.ai/api/v1/chat/completions"),
+                    "qwen/qwen3.8-27b",
+                    defaultTimeout
+                }) == TimeSpan.FromMinutes(5) &&
+                (TimeSpan)timeoutMethod.Invoke(null, new object[]
+                {
+                    new Uri("https://api.example.test/v1/chat/completions"),
+                    "qwen/qwen3.8-27b",
+                    defaultTimeout
+                }) == defaultTimeout,
+                "Only the exact OpenRouter Qwen route should receive the five-minute completion window.");
+
             var method = typeof(OpenAiCompatibleClient).GetMethod(
                 "SerializablePayload",
                 BindingFlags.Static | BindingFlags.NonPublic);

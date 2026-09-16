@@ -19,6 +19,8 @@ namespace Scribble.Chat
     {
         internal static readonly TimeSpan CompletionRequestTimeout =
             TimeSpan.FromMinutes(3);
+        internal static readonly TimeSpan OpenRouterQwenCompletionRequestTimeout =
+            TimeSpan.FromMinutes(5);
         private readonly TimeSpan _completionRequestTimeout;
         private readonly HttpClient _httpClient;
         // Vision requests carry multi-megabyte base64 image parts; the
@@ -252,7 +254,11 @@ namespace Scribble.Chat
                 // a provider that stalls before or during the response. Give
                 // every inference attempt its own deadline while preserving
                 // the caller's Stop/cancellation token.
-                requestDeadline.CancelAfter(_completionRequestTimeout);
+                var completionRequestTimeout = CompletionRequestTimeoutFor(
+                    endpoint,
+                    requestModel.model,
+                    _completionRequestTimeout);
+                requestDeadline.CancelAfter(completionRequestTimeout);
                 request.Headers.Authorization =
                     new AuthenticationHeaderValue("Bearer", settings.ApiKey);
                 request.Headers.Accept.Add(
@@ -315,7 +321,8 @@ namespace Scribble.Chat
                         throw new AiEndpointException(
                             "AI_TIMEOUT",
                             "The AI endpoint did not complete the response " +
-                            "within three minutes. No partial tool action ran; " +
+                            "within " + FormatTimeout(completionRequestTimeout) +
+                            ". No partial tool action ran; " +
                             "the task is preserved and can be resumed.",
                             exception);
                     }
@@ -1200,6 +1207,29 @@ namespace Scribble.Chat
                     model,
                     "qwen/qwen3.8-27b",
                     StringComparison.Ordinal);
+        }
+
+        private static TimeSpan CompletionRequestTimeoutFor(
+            Uri endpoint,
+            string model,
+            TimeSpan defaultTimeout)
+        {
+            return UsesOpenRouterQwenPolicy(endpoint, model) &&
+                defaultTimeout == CompletionRequestTimeout
+                    ? OpenRouterQwenCompletionRequestTimeout
+                    : defaultTimeout;
+        }
+
+        private static string FormatTimeout(TimeSpan timeout)
+        {
+            if (timeout.TotalMinutes == Math.Floor(timeout.TotalMinutes))
+            {
+                var minutes = (int)timeout.TotalMinutes;
+                return minutes.ToString() +
+                    (minutes == 1 ? " minute" : " minutes");
+            }
+
+            return Math.Ceiling(timeout.TotalSeconds).ToString() + " seconds";
         }
 
         private bool OptionalToolControlsUnsupported(string capabilityKey)
