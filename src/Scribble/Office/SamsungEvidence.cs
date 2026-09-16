@@ -9,6 +9,37 @@ namespace Scribble.Office
     public static class SamsungEvidence
     {
         private static string Normalize(string value) { return Regex.Replace(value ?? "", @"\s+", " ").Trim(); }
+        private static bool AssociationOccurs(string passage, string association, string key)
+        {
+            if (Normalize(passage).Contains(Normalize(association))) return true;
+            if (!string.Equals(key, "period", StringComparison.Ordinal)) return false;
+
+            var expected = CanonicalPeriods(association);
+            if (expected.Count != 1) return false;
+            return CanonicalPeriods(passage).Contains(expected.Single());
+        }
+
+        private static HashSet<string> CanonicalPeriods(string value)
+        {
+            var result = new HashSet<string>(StringComparer.Ordinal);
+            var text = Normalize(value);
+            foreach (Match match in Regex.Matches(text,
+                @"\b(?:19|20)\d{2}[-/](?:0?[1-9]|1[0-2])\b|" +
+                @"\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|" +
+                @"Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|" +
+                @"Dec(?:ember)?)\s+(?:19|20)\d{2}\b|" +
+                @"\b(?:19|20)\d{2}\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|" +
+                @"Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|" +
+                @"Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\b",
+                RegexOptions.IgnoreCase))
+            {
+                DateTime parsed;
+                if (DateTime.TryParse(match.Value, CultureInfo.InvariantCulture,
+                    DateTimeStyles.AllowWhiteSpaces, out parsed))
+                    result.Add(parsed.ToString("yyyy-MM", CultureInfo.InvariantCulture));
+            }
+            return result;
+        }
         private static void RequirePassage(string passage, string evidence)
         {
             if (string.IsNullOrWhiteSpace(passage) || !Normalize(evidence).Contains(Normalize(passage)))
@@ -41,7 +72,8 @@ namespace Scribble.Office
                     RequirePassage(passage, evidence);
                     foreach (var key in new[] { "label", "unit", "period" })
                         if (string.IsNullOrWhiteSpace(SamsungAuthoringPolicy.Text(operand, key)) ||
-                            !Normalize(passage).Contains(Normalize(SamsungAuthoringPolicy.Text(operand, key))))
+                            !AssociationOccurs(passage,
+                                SamsungAuthoringPolicy.Text(operand, key), key))
                             throw new InvalidOperationException("SLIDE_OPERAND_ASSOCIATION: Operand label, unit and period must occur in its cited passage.");
                     var number = Number(operand, "value");
                     var found = Regex.Matches(passage, @"(?<![A-Za-z0-9])[-+]?(?:\d+(?:[,.]\d+)*|\.\d+)").Cast<Match>()
@@ -102,7 +134,7 @@ namespace Scribble.Office
                     if (string.IsNullOrWhiteSpace(association))
                         throw new InvalidOperationException("Claim associations need label, unit and period (use 'not applicable' for qualitative claims).");
                     if (!string.Equals(association, "not applicable", StringComparison.OrdinalIgnoreCase) &&
-                        !Normalize(passage).Contains(Normalize(association)))
+                        !AssociationOccurs(passage, association, key))
                         throw new InvalidOperationException("SLIDE_CLAIM_ASSOCIATION: Claim label, unit and period must occur in its cited passage. Recopy a longer exact passage that contains '" + association + "'.");
                 }
             }

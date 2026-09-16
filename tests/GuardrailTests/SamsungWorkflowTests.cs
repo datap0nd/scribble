@@ -37,6 +37,12 @@ namespace GuardrailTests
             var directSlide = new Dictionary<string, object> { { "title", "June margin" }, { "subtitle", "Gross margin was 55.76%" },
                 { "evidence", aggregateSource }, { "sources", "Management view" }, { "claims", new[] { directClaim } } };
             SamsungPresentationReview.ValidateEvidence(json.Serialize(directSlide), aggregateSource);
+            const string isoPeriodSource = "2026-06 Gross margin 55.76%.";
+            directClaim["evidence"] = isoPeriodSource;
+            directSlide["evidence"] = isoPeriodSource;
+            SamsungPresentationReview.ValidateEvidence(json.Serialize(directSlide), isoPeriodSource);
+            directClaim["evidence"] = aggregateSource;
+            directSlide["evidence"] = aggregateSource;
             directClaim["period"] = "May 2026";
             Reject(() => SamsungPresentationReview.ValidateEvidence(json.Serialize(directSlide), aggregateSource));
             directClaim["period"] = "June 2026"; directClaim["evidence"] = "Gross margin was 55.76%.";
