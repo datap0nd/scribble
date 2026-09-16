@@ -1147,8 +1147,9 @@ namespace Scribble.Chat
                     // endpoints that advertise generic tool support but do not
                     // reliably honor Qwen's bounded reasoning/tool-choice
                     // contract. Keep tool-bearing requests on the endpoints
-                    // observed to support the required tool parameters, in
-                    // current uptime order. OpenRouter's endpoint metadata does
+                    // observed to support the required tool parameters,
+                    // ordered by successful Scribble tool-turn latency.
+                    // OpenRouter's endpoint metadata does
                     // not advertise the optional parallel_tool_calls switch for
                     // any Qwen 3.8 route, so require_parameters cannot be used
                     // even though false is the serial-safe value we need. The
@@ -1156,10 +1157,10 @@ namespace Scribble.Chat
                     // the same empty/timeout failure mode.
                     var reliableToolProviders = new[]
                     {
-                        "coreweave",
                         "reka",
                         "mancer",
                         "phala",
+                        "coreweave",
                         "dekallm",
                         "chutes"
                     };
