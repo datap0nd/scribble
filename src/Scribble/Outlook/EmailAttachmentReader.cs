@@ -100,13 +100,24 @@ namespace Scribble.Outlook
 
         public static MailboxAttachmentPage LoadLocalPage(string path, int offset, int count, CancellationToken token)
         {
+            return LoadLocalPage(path, offset, count, token, true);
+        }
+
+        internal static MailboxAttachmentPage LoadVerifiedLocalPage(string path, int offset, int count, CancellationToken token)
+        {
+            return LoadLocalPage(path, offset, count, token, false);
+        }
+
+        private static MailboxAttachmentPage LoadLocalPage(string path, int offset, int count,
+            CancellationToken token, bool validateTestInput)
+        {
             if (offset < 0 || count < 1 || count > 12000 || offset > int.MaxValue - count - 1024)
                 throw new ArgumentOutOfRangeException();
             var previous = _pageExtractionLimit;
             try
             {
                 _pageExtractionLimit = offset + count + 1024;
-                var content = LoadLocalFile(path, token);
+                var content = LoadLocalFile(path, token, validateTestInput);
                 if (content == null || content.Kind == "unreadable" || content.Kind == "limit" || content.Kind == "resource-limited" ||
                     (content.Kind == "image" && string.IsNullOrEmpty(content.ImageDataUrl)) ||
                     content.Text.Contains("No machine-readable text") || content.Text.Contains("resource limit"))
@@ -553,7 +564,18 @@ namespace Scribble.Outlook
             string path,
             CancellationToken cancellationToken)
         {
-            Scribble.Testing.TestLab.CheckInputFile(path);
+            return LoadLocalFile(path, cancellationToken, true);
+        }
+
+        private static EmailAttachmentContent LoadLocalFile(
+            string path,
+            CancellationToken cancellationToken,
+            bool validateTestInput)
+        {
+            if (validateTestInput)
+            {
+                Scribble.Testing.TestLab.CheckInputFile(path);
+            }
             try
             {
                 cancellationToken.ThrowIfCancellationRequested();

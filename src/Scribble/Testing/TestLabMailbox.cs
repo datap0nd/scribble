@@ -368,6 +368,18 @@ namespace Scribble.Testing
                 !string.Equals(TestLab.FileHash(candidate), declared.sha256, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException("The verified synthetic attachment changed: " + identity.id);
 
+            var runId = TestLab.ActiveRunId();
+            if (!string.IsNullOrEmpty(runId))
+            {
+                TestLab.Record(runId, "source", "mail_attachment_verified", new
+                {
+                    source_id = source.path,
+                    attachment_index = index,
+                    attachment_path = relative,
+                    sha256 = declared.sha256
+                });
+            }
+
             path = candidate;
             fileName = Path.GetFileName(relative);
             return true;

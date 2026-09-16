@@ -46,6 +46,7 @@ namespace Scribble.Outlook
             string temporary = null;
             string name = null;
             var ownsTemporary = false;
+            var verifiedFixture = false;
             try
             {
                 // The isolated test mailbox is a verified native projection of
@@ -74,6 +75,10 @@ namespace Scribble.Outlook
                     if (!TrySaveByValue(file, temporary))
                         file.SaveAsFile(temporary);
                 }
+                else
+                {
+                    verifiedFixture = true;
+                }
             }
             catch
             {
@@ -98,7 +103,9 @@ namespace Scribble.Outlook
                         return new MailboxAttachmentPage { FileName = name, Fingerprint = fingerprint,
                             Kind = page.Kind, Text = page.Text, ImageDataUrl = page.ImageDataUrl,
                             Offset = page.Offset, NextOffset = page.NextOffset, CacheHit = true };
-                    page = EmailAttachmentReader.LoadLocalPage(temporary, offset, 6000, token);
+                    page = verifiedFixture
+                        ? EmailAttachmentReader.LoadVerifiedLocalPage(temporary, offset, 6000, token)
+                        : EmailAttachmentReader.LoadLocalPage(temporary, offset, 6000, token);
                     page.FileName = name;
                     page.Fingerprint = fingerprint;
                     if (cache != null && string.IsNullOrEmpty(page.ImageDataUrl))
