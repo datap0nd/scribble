@@ -1104,9 +1104,12 @@ namespace Scribble.Chat
                 {
                     var hasPresentationDraftTool = requestModel.tools != null &&
                         requestModel.tools.Any(tool => tool?.function != null &&
-                            string.Equals(tool.function.name,
-                                PresentationToolCatalog.AddDraftSlides,
-                                StringComparison.Ordinal));
+                            (string.Equals(tool.function.name,
+                                 PresentationToolCatalog.AddDraftSlides,
+                                 StringComparison.Ordinal) ||
+                             string.Equals(tool.function.name,
+                                 CrossAppToolCatalog.SendToPowerPoint,
+                                 StringComparison.Ordinal)));
                     payload["max_tokens"] = hasPresentationDraftTool
                         ? 32768
                         : 8192;

@@ -8328,6 +8328,20 @@ namespace GuardrailTests
                 (int)presentation["max_tokens"] == 32768,
                 "OpenRouter Qwen PowerPoint drafts need the route's full tool-payload allowance.");
 
+            presentationRequest.tools[0].function.name =
+                CrossAppToolCatalog.SendToPowerPoint;
+            var crossAppPresentation = (Dictionary<string, object>)method.Invoke(
+                null,
+                new object[]
+                {
+                    presentationRequest,
+                    new Uri("https://openrouter.ai/api/v1/chat/completions"),
+                    true
+                });
+            Assert(
+                (int)crossAppPresentation["max_tokens"] == 32768,
+                "Cross-app PowerPoint drafts need the same complete payload allowance as native slide drafts.");
+
             var ordinaryDraft = new ChatCompletionRequest
             {
                 model = request.model,
