@@ -8224,6 +8224,19 @@ namespace GuardrailTests
                 (string)reasoning["effort"] == "low" &&
                 (bool)openRouter["parallel_tool_calls"] == false,
                 "The exact OpenRouter Qwen route must use its smallest supported reasoning effort and serial tools.");
+            var providerPolicy = openRouter["provider"] as
+                Dictionary<string, object>;
+            var expectedProviders = new[]
+            {
+                "coreweave", "reka", "mancer", "phala", "dekallm", "chutes"
+            };
+            Assert(
+                providerPolicy != null &&
+                ((string[])providerPolicy["order"]).SequenceEqual(expectedProviders) &&
+                ((string[])providerPolicy["only"]).SequenceEqual(expectedProviders) &&
+                (bool)providerPolicy["allow_fallbacks"] &&
+                (bool)providerPolicy["require_parameters"],
+                "Qwen tool calls must remain on the ordered, fully compatible provider allow-list.");
             Assert(
                 TaskContextManager.ContextBudgetForModel(request.model) ==
                     TaskContextManager.Qwen38ContextBudget &&
@@ -8263,23 +8276,25 @@ namespace GuardrailTests
                 "The transient provider exclusion helper is missing.");
             exclude.Invoke(null, new object[]
             {
-                compact,
+                openRouter,
                 new Uri("https://openrouter.ai/api/v1/chat/completions"),
                 "Reka"
             });
-            var retryProvider = compact["provider"] as
+            var retryProvider = openRouter["provider"] as
                 Dictionary<string, object>;
             Assert(
                 retryProvider != null &&
-                ((string[])retryProvider["ignore"]).Single() == "Reka",
-                "An interrupted OpenRouter retry must exclude the failed provider.");
+                ((string[])retryProvider["ignore"]).Single() == "Reka" &&
+                ((string[])retryProvider["order"]).SequenceEqual(expectedProviders) &&
+                ((string[])retryProvider["only"]).SequenceEqual(expectedProviders),
+                "An interrupted OpenRouter retry must exclude the failed provider without discarding the allow-list.");
             exclude.Invoke(null, new object[]
             {
-                compact,
+                openRouter,
                 new Uri("https://openrouter.ai/api/v1/chat/completions"),
                 "DekaLLM\nReka"
             });
-            retryProvider = compact["provider"] as Dictionary<string, object>;
+            retryProvider = openRouter["provider"] as Dictionary<string, object>;
             Assert(
                 retryProvider != null &&
                 ((string[])retryProvider["ignore"]).SequenceEqual(new[] { "DekaLLM", "Reka" }),

@@ -542,10 +542,23 @@ namespace Scribble.Chat
 
             var ignored = SplitProviders(provider).ToArray();
             if (ignored.Length == 0) return;
-            payload["provider"] = new Dictionary<string, object>
+
+            Dictionary<string, object> preferences;
+            object existing;
+            if (payload.TryGetValue("provider", out existing))
             {
-                { "ignore", ignored }
-            };
+                preferences = existing as Dictionary<string, object>;
+            }
+            else
+            {
+                preferences = null;
+            }
+            if (preferences == null)
+            {
+                preferences = new Dictionary<string, object>();
+                payload["provider"] = preferences;
+            }
+            preferences["ignore"] = ignored;
         }
 
         private static List<string> SplitProviders(string providers)
@@ -1126,6 +1139,30 @@ namespace Scribble.Chat
                     requestModel.tools.Count > 0)
                 {
                     payload["parallel_tool_calls"] = false;
+
+                    // OpenRouter's default price-weighted routing can select
+                    // endpoints that advertise generic tool support but do not
+                    // reliably honor Qwen's bounded reasoning/tool-choice
+                    // contract. Keep tool-bearing requests on the endpoints
+                    // observed to support every parameter, in current uptime
+                    // order. The allow-list prevents an outside fallback from
+                    // reintroducing the same empty/timeout failure mode.
+                    var reliableToolProviders = new[]
+                    {
+                        "coreweave",
+                        "reka",
+                        "mancer",
+                        "phala",
+                        "dekallm",
+                        "chutes"
+                    };
+                    payload["provider"] = new Dictionary<string, object>
+                    {
+                        { "order", reliableToolProviders },
+                        { "only", reliableToolProviders },
+                        { "allow_fallbacks", true },
+                        { "require_parameters", true }
+                    };
                 }
             }
 
