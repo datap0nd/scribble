@@ -43,6 +43,15 @@ namespace GuardrailTests
             SamsungPresentationReview.ValidateEvidence(json.Serialize(directSlide), isoPeriodSource);
             directClaim["evidence"] = aggregateSource;
             directSlide["evidence"] = aggregateSource;
+            const string adjacentHeaderSource = "Atlas Components | January–June 2026\nJune revenue eur: 82,992.";
+            var adjacentClaim = new Dictionary<string, object> {
+                { "text", "June revenue was 82,992 EUR." }, { "label", "Revenue EUR" }, { "unit", "EUR" },
+                { "period", "June 2026" }, { "evidence", "June revenue eur: 82,992." }
+            };
+            var adjacentSlide = new Dictionary<string, object> { { "title", "June revenue" },
+                { "subtitle", "June revenue was 82,992 EUR" }, { "evidence", adjacentHeaderSource },
+                { "sources", "Management view" }, { "claims", new[] { adjacentClaim } } };
+            SamsungPresentationReview.ValidateEvidence(json.Serialize(adjacentSlide), adjacentHeaderSource);
             directClaim["period"] = "May 2026";
             Reject(() => SamsungPresentationReview.ValidateEvidence(json.Serialize(directSlide), aggregateSource));
             try { SamsungPresentationReview.ValidateEvidence(json.Serialize(directSlide), aggregateSource); throw new Exception("Expected actionable association rejection."); }
@@ -84,6 +93,24 @@ namespace GuardrailTests
             factualBrief[0] = new Dictionary<string, object> { { "id", "a" }, { "purpose", "analysis" }, { "message", "Finding" }, { "layout", "bullets" }, { "required_content", new[] { "finding" } }, { "source_spans", new[] { "span:0" } } };
             factualSlide[0]["source_spans"] = new[] { "span:0" };
             SamsungAuthoringPolicy.ValidateSourceSpanCoverage(factualBrief, factualSlide, true);
+
+            var scopeRoot = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                "scribble-slide-scope-" + System.Guid.NewGuid().ToString("N"));
+            try
+            {
+                var objective = "Use this workbook to produce four new native editable Samsung MD PowerPoint slides.";
+                var scopedRequest = DocumentChatRequestFactory.Create("model", "excel", "Workbook", new ChatTurn[0],
+                    objective, true);
+                var scopedTask = new TaskContextManager(scopedRequest, "excel", objective,
+                    new TaskCheckpointStore(scopeRoot));
+                Check(scopedTask.State.RequiredPresentationSlides == 4, "Adjectives between the requested count and slides lost the exact slide count.");
+                Check(scopedRequest.tools.Any(tool => tool.function.name == CrossAppToolCatalog.SendToPowerPoint) &&
+                    !scopedRequest.tools.Any(tool => tool.function.name == WorkbookToolCatalog.WriteDraftSheet ||
+                        tool.function.name == CrossAppToolCatalog.SendToWord ||
+                        tool.function.name == CrossAppToolCatalog.CreateEmailDraft),
+                    "An exact slide deliverable exposed an unrelated document write surface.");
+            }
+            finally { if (System.IO.Directory.Exists(scopeRoot)) System.IO.Directory.Delete(scopeRoot, true); }
         }
 
         internal static void ReadReceiptsExposeSourceSpans()

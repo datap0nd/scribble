@@ -11,12 +11,45 @@ namespace Scribble.Office
         private static string Normalize(string value) { return Regex.Replace(value ?? "", @"\s+", " ").Trim(); }
         private static bool AssociationOccurs(string passage, string association, string key)
         {
-            if (Normalize(passage).Contains(Normalize(association))) return true;
+            if (Normalize(passage).IndexOf(Normalize(association), StringComparison.OrdinalIgnoreCase) >= 0) return true;
             if (!string.Equals(key, "period", StringComparison.Ordinal)) return false;
 
             var expected = CanonicalPeriods(association);
             if (expected.Count != 1) return false;
             return CanonicalPeriods(passage).Contains(expected.Single());
+        }
+
+        // Models sometimes quote the exact data row but omit an adjacent period
+        // header. Expand only inside the already resolved, host-verified source
+        // evidence, and only to the shortest contiguous line window that contains
+        // the model's exact quote plus every declared association. This cannot
+        // introduce external or model-authored evidence.
+        private static string ExpandClaimPassage(string evidence, string passage,
+            IDictionary<string, object> claim)
+        {
+            var associations = new[] { "label", "unit", "period" }
+                .Select(key => new { Key = key, Value = SamsungAuthoringPolicy.Text(claim, key) })
+                .Where(item => !string.IsNullOrWhiteSpace(item.Value) &&
+                    !string.Equals(item.Value, "not applicable", StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+            if (associations.All(item => AssociationOccurs(passage, item.Value, item.Key))) return passage;
+            var quoted = Normalize(passage);
+            if (quoted.Length == 0) return passage;
+            var lines = Regex.Split(evidence ?? "", @"\r\n|\n|\r");
+            string best = null;
+            for (var start = 0; start < lines.Length; start++)
+            {
+                for (var end = start; end < lines.Length && end - start < 24; end++)
+                {
+                    var candidate = string.Join("\n", lines.Skip(start).Take(end - start + 1));
+                    var normalized = Normalize(candidate);
+                    if (normalized.Length > 2400) break;
+                    if (normalized.IndexOf(quoted, StringComparison.Ordinal) < 0 ||
+                        associations.Any(item => !AssociationOccurs(candidate, item.Value, item.Key))) continue;
+                    if (best == null || normalized.Length < Normalize(best).Length) best = candidate;
+                }
+            }
+            return best ?? passage;
         }
 
         private static HashSet<string> CanonicalPeriods(string value)
@@ -129,6 +162,8 @@ namespace Scribble.Office
                 if (string.IsNullOrWhiteSpace(claimText)) throw new InvalidOperationException("Claim text is required.");
                 var passage = SamsungAuthoringPolicy.Text(claim, "evidence");
                 RequirePassage(passage, evidence);
+                passage = ExpandClaimPassage(evidence, passage, claim);
+                claim["evidence"] = passage;
                 // Semantic association is checked separately by the source reviewer.
                 foreach (var key in new[] { "label", "unit", "period" })
                 {

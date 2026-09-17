@@ -45,7 +45,8 @@ namespace Scribble.Chat
                 request.tools.Any(t => t.function.name == PresentationToolCatalog.AddDraftSlides || t.function.name == CrossAppToolCatalog.SendToPowerPoint))
             {
                 var count = System.Text.RegularExpressions.Regex.Match(objective ?? "",
-                    @"\b(?<count>\d+|one|two|three|four|five|six|seven|eight|nine|ten|a)[\s-]+(?:powerpoint\s+)?slides?\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                    @"\b(?<count>\d+|one|two|three|four|five|six|seven|eight|nine|ten|a)\b(?:[\s-]+[A-Za-z][A-Za-z0-9-]*){0,8}[\s-]+slides?\b",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase);
                 if (count.Success)
                 {
                     var word = count.Groups["count"].Value.ToLowerInvariant();
@@ -54,6 +55,14 @@ namespace Scribble.Chat
                     _state.RequiredPresentationSlides = Math.Max(_state.RequiredPresentationSlides, Math.Max(1, number));
                 }
             }
+            // One request authorizes one deliverable. Once the user's own
+            // objective establishes an exact slide deliverable, unrelated
+            // workbook, Word, browser, or email writes must not be available as
+            // an attempted evidence-repair path. Read-only source tools remain.
+            if (_state.RequiredPresentationSlides > 0)
+                request.tools.RemoveAll(tool =>
+                    Scribble.Office.DocumentDraftHost.IsDraftTool(host, tool.function.name) &&
+                    !IsPresentationWriteTool(tool.function.name));
             request.tools.Add(TaskSources.Definition());
             request.tools.Add(TaskSources.DocumentDefinition());
             request.tools.Add(new ChatToolDefinition
@@ -104,6 +113,14 @@ namespace Scribble.Chat
 
         public static bool IsTaskTool(string name) { return name == ReadEvidenceTool ||
             name == TaskSources.ReadSourcesTool || name == TaskSources.ReadDocumentTool; }
+
+        private static bool IsPresentationWriteTool(string name)
+        {
+            return name == PresentationToolCatalog.AddDraftSlides ||
+                   name == CrossAppToolCatalog.SendToPowerPoint ||
+                   name == PresentationToolCatalog.ReviseSlides ||
+                   name == PresentationToolCatalog.RevertSlides;
+        }
 
         public static int ContextBudgetForModel(string model)
         {
