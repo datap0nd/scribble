@@ -2230,10 +2230,24 @@ namespace Scribble.UI
                     }
                     else if (isDraftCall)
                     {
-                        result = await _draftHost.ExecuteAsync(
-                            toolCall, draftAuthorization, toolCalls.Count == 1, prompt,
-                            _client, _settings.ForModel(activeModel), cancellationToken,
-                            (done, total) => SetStatus(_hostKind == "powerpoint" ? "Reviewing slide " + done + " of " + total : "Verified " + done + " of " + total + " output rows", false));
+                        // Model/network continuations are allowed to arrive on a
+                        // pool thread, but sibling Office attachment and every
+                        // subsequent COM write require a pumped STA. The browser
+                        // host uses this same boundary for cross-app drafts.
+                        result = await OfficeThread.RunAsync(
+                            () => _draftHost.ExecuteAsync(
+                                toolCall, draftAuthorization, toolCalls.Count == 1, prompt,
+                                _client, _settings.ForModel(activeModel), cancellationToken,
+                                (done, total) =>
+                                {
+                                    if (IsDisposed || Disposing || !IsHandleCreated) return;
+                                    BeginInvoke((Action)(() => SetStatus(
+                                        _hostKind == "powerpoint"
+                                            ? "Reviewing slide " + done + " of " + total
+                                            : "Verified " + done + " of " + total + " output rows",
+                                        false)));
+                                }),
+                            cancellationToken);
                     }
                     else if (McpToolHost.IsMcpTool(name) &&
                              mcpHost != null)
