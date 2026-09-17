@@ -59,6 +59,21 @@ namespace GuardrailTests
             directClaim["period"] = "June 2026"; directClaim["evidence"] = "Gross margin was 55.76%.";
             try { SamsungPresentationReview.ValidateEvidence(json.Serialize(directSlide), aggregateSource); throw new Exception("Expected exact-passage rejection."); }
             catch (InvalidOperationException ex) { Check(ex.Message.Contains("exact verbatim") && ex.Message.Contains("Gross margin was 55.76%"), "Rejected association did not return actionable exact-passage guidance."); }
+            const string auditTable = "Metric\tMay (History)\tJune (Ledger)\nRevenue EUR\t85519\t82992\nCost EUR\t36702\t36714";
+            var repairedClaim = new Dictionary<string, object> {
+                { "text", "June revenue was 82,992 EUR." }, { "label", "Revenue EUR" }, { "unit", "EUR" },
+                { "period", "June (Ledger)" }, { "evidence", "2026-06\t82992\t36714" }
+            };
+            var repairedSlide = new Dictionary<string, object> { { "title", "June revenue" },
+                { "subtitle", "June revenue was 82,992 EUR" }, { "evidence", auditTable },
+                { "sources", "WB01" }, { "claims", new[] { repairedClaim } } };
+            try { SamsungPresentationReview.ValidateEvidence(json.Serialize(repairedSlide), auditTable); throw new Exception("Expected fabricated-row rejection."); }
+            catch (InvalidOperationException ex) {
+                Check(ex.Message.Contains("nearby host-verified passage") &&
+                    ex.Message.Contains("Metric May (History) June (Ledger) Revenue EUR 85519 82992 Cost EUR 36702 36714") &&
+                    ex.Message.Contains("split comparisons into one claim per period"),
+                    "Rejected table citation did not return the nearest verified header-and-row block.");
+            }
             var factual = new Dictionary<string, object> { { "content_kind", "fact" }, { "source_spans", new[] { "source1" } } };
             Check(!SamsungPresentationReview.PrepareSampleEvidence(factual, "Use sample data for the example slide"), "Sample mode contaminated a factual slide.");
             var sample = new Dictionary<string, object> { { "content_kind", "sample" } };
@@ -74,6 +89,7 @@ namespace GuardrailTests
             Check(!definition.function.description.Contains("takeaway sentences as titles"), "Conflicting title rules remain.");
             Check(SamsungAuthoringPolicy.Instructions.Contains("exact verbatim passage") && SamsungAuthoringPolicy.FactReview.Contains("compatible rounding"), "Generation and review prompts do not protect exact source values from paraphrase or rounding false positives.");
             Check(SamsungAuthoringPolicy.Instructions.Contains("Revenue EUR 85519 82992") && SamsungAuthoringPolicy.Instructions.Contains("include its headers"), "Table claim instructions need an explicit ambiguous-evidence counterexample.");
+            Check(SamsungAuthoringPolicy.Instructions.Contains("never invent a reformatted row") && SamsungAuthoringPolicy.Instructions.Contains("one claim per period"), "Generation policy does not prevent synthetic comparison citations.");
             var key = SamsungAuthoringPolicy.CacheKey("model", "endpoint", "slide", "evidence");
             Check(key != SamsungAuthoringPolicy.CacheKey("model", "endpoint", "slide", "changed evidence"), "Evidence did not invalidate review.");
             Check(!SamsungAuthoringPolicy.Approved("{\"approved\":true,\"findings\":[{\"severity\":\"blocker\"}]}"), "Blocker approved.");

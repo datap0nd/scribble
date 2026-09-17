@@ -79,8 +79,52 @@ namespace Scribble.Office
             {
                 var rejected = Normalize(passage);
                 if (rejected.Length > 180) rejected = rejected.Substring(0, 180) + "...";
-                throw new InvalidOperationException("SLIDE_ASSOCIATION_UNVERIFIED: Association evidence must be an exact verbatim passage from the slide's resolved source evidence (whitespace may differ). Recopy or remove this rejected passage: \"" + rejected + "\".");
+                var suggestion = ClosestVerifiedTablePassage(evidence, passage);
+                var guidance = string.IsNullOrWhiteSpace(suggestion) ? "" :
+                    " A nearby host-verified passage is: \"" + suggestion +
+                    "\". Copy it exactly and use its literal header labels for label, unit and period; split comparisons into one claim per period.";
+                throw new InvalidOperationException("SLIDE_ASSOCIATION_UNVERIFIED: Association evidence must be an exact verbatim passage from the slide's resolved source evidence (whitespace may differ). Recopy or remove this rejected passage: \"" + rejected + "\"." + guidance);
             }
+        }
+        private static string ClosestVerifiedTablePassage(string evidence, string rejectedPassage)
+        {
+            var lines = Regex.Split(evidence ?? "", @"\r\n|\n|\r");
+            var wanted = Regex.Matches(Normalize(rejectedPassage), @"(?<![A-Za-z0-9])[-+]?(?:\d+(?:[,.]\d+)*|\.\d+)")
+                .Cast<Match>().Select(match => match.Value.Replace(",", ""))
+                .Where(value => value.Length >= 3).Distinct(StringComparer.Ordinal).ToArray();
+            if (wanted.Length == 0 || lines.Length == 0) return "";
+
+            var bestStart = -1;
+            var bestEnd = -1;
+            var bestScore = 0;
+            var bestLength = int.MaxValue;
+            for (var start = 0; start < lines.Length; start++)
+            {
+                for (var end = start; end < lines.Length && end - start < 5; end++)
+                {
+                    var candidate = Normalize(string.Join("\n", lines.Skip(start).Take(end - start + 1))).Replace(",", "");
+                    var score = wanted.Count(value => candidate.IndexOf(value, StringComparison.Ordinal) >= 0);
+                    if (score == 0 || score < bestScore || (score == bestScore && candidate.Length >= bestLength)) continue;
+                    bestStart = start;
+                    bestEnd = end;
+                    bestScore = score;
+                    bestLength = candidate.Length;
+                }
+            }
+            if (bestStart < 0) return "";
+
+            // Include the nearest nonnumeric, multi-column header so the retry has
+            // the literal period/unit labels needed for an unambiguous claim.
+            for (var index = bestStart - 1; index >= 0 && bestStart - index <= 8; index--)
+            {
+                var cells = lines[index].Split('\t');
+                if (cells.Length < 2 || cells.All(string.IsNullOrWhiteSpace)) continue;
+                if (Regex.IsMatch(lines[index], @"\d")) continue;
+                bestStart = index;
+                break;
+            }
+            var result = Normalize(string.Join("\n", lines.Skip(bestStart).Take(bestEnd - bestStart + 1)));
+            return result.Length <= 700 ? result : result.Substring(0, 697) + "...";
         }
         private static decimal Number(IDictionary<string, object> map, string key)
         {
