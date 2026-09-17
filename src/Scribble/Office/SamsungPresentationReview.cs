@@ -125,10 +125,13 @@ namespace Scribble.Office
         {
             if (plan == null || plan.Length == 0 || plan.Any(string.IsNullOrWhiteSpace) || plan.Any(p => p.Length > 80) || plan.Distinct().Count() != plan.Length)
                 throw new InvalidOperationException("SLIDE_PLAN_REQUIRED: Provide ordered unique IDs for the complete storyline.");
+            var outstanding = plan.Where(id => !completed.Contains(id)).ToArray();
+            var expected = " Outstanding planned IDs, in order: " + string.Join(", ", outstanding) +
+                ". A batch is the first one or more of these, in this order, each with complete slide content.";
             if (batch.Length == 0 || batch.Any(id => !plan.Contains(id) || completed.Contains(id)) || batch.Distinct().Count() != batch.Length)
-                throw new InvalidOperationException("SLIDE_PLAN_MISMATCH: Each batch must contain unique outstanding IDs from the original plan.");
-            var pending = plan.Where(id => !completed.Contains(id)).Take(batch.Length).ToArray();
-            if (!pending.SequenceEqual(batch)) throw new InvalidOperationException("SLIDE_PLAN_ORDER: Complete the next planned slides in storyline order.");
+                throw new InvalidOperationException("SLIDE_PLAN_MISMATCH: Each batch must contain unique outstanding IDs from the original plan." + expected);
+            var pending = outstanding.Take(batch.Length).ToArray();
+            if (!pending.SequenceEqual(batch)) throw new InvalidOperationException("SLIDE_PLAN_ORDER: Complete the next planned slides in storyline order. This batch began with '" + batch[0] + "'." + expected);
         }
 
         internal static string SourceCorpus(TaskContextManager task, string prompt)

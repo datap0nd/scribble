@@ -440,7 +440,8 @@ namespace Scribble.Office
                 else if (element.Chart != null)
                 {
                     if (!AddChartToSlide(slide, element.Chart, box.X, box.Y, box.Width, box.Height))
-                        throw new InvalidOperationException("SLIDE_CHART_FAILED: Native chart could not be created; the draft remains incomplete.");
+                        throw new InvalidOperationException("SLIDE_CHART_FAILED: Native chart could not be created; the draft remains incomplete. Host step " +
+                            (LastChartFailure ?? "unknown") + ".");
                     shape = slide.Shapes[slide.Shapes.Count];
                     chartIndices[element.Chart] = (int)slide.Shapes.Count;
                 }
