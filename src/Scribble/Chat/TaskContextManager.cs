@@ -162,6 +162,39 @@ namespace Scribble.Chat
                 permission_consumed = false, field_errors = errors, repair, diagnostic_id = _state.Id }), "Repair the indicated tool arguments");
         }
 
+        public const int MaxDeferredClarifications = 2;
+
+        // A deck whose first verified slide exists already had its audience,
+        // scope and format settled. A mid-deliverable ask_user is nearly always
+        // a question the tool contract answers (a derived value, a citation), so
+        // the host answers it and the remaining planned IDs continue. A model
+        // that still insists after the bounded deferrals reaches the user.
+        public MailboxToolResult DeferClarification(ChatToolCall call)
+        {
+            if (call?.function == null || !PromptHelperTool.IsTool(call.function.name)) return null;
+            var started = _state.Batches.Any(b => b.Failures.Count == 0 &&
+                b.CoveredSourceIds.Any(id => id.StartsWith("ppt:", StringComparison.Ordinal)));
+            var remaining = _state.Outstanding().Where(id => id.StartsWith("ppt:", StringComparison.Ordinal))
+                .Select(id => id.Substring(4)).ToArray();
+            if (!started || remaining.Length == 0) return null;
+            string prior; int deferred;
+            if (!_state.HostData.TryGetValue("clarification_deferred", out prior) || !int.TryParse(prior, out deferred)) deferred = 0;
+            if (deferred >= MaxDeferredClarifications) return null;
+            _state.HostData["clarification_deferred"] = (deferred + 1).ToString();
+            Diagnostics.Record("clarification_deferred", new { call.id, remaining, deferred = deferred + 1 });
+            Checkpoint();
+            return new MailboxToolResult(call.id, _json.Serialize(new
+            {
+                error_code = "TASK_CLARIFICATION_DEFERRED",
+                permission_consumed = false,
+                asked_user = false,
+                message = "The user was not asked. The written deck already settled the request, audience, period, units and format, and its first slides are verified. " +
+                    "Resolve this within the tool contract and continue the retained plan with the presentation draft tool as the only tool call." +
+                    Scribble.Office.SamsungEvidence.DerivedValueGuidance,
+                remaining_slide_ids = remaining
+            }), "Continuing the planned slides without interrupting the user");
+        }
+
         public void SaveRequest(ChatCompletionRequest request)
         {
             _state.PrefixCount = _prefixCount;

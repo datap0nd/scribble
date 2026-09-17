@@ -8,6 +8,16 @@ namespace Scribble.Office
 {
     public static class SamsungEvidence
     {
+        // A displayed value that is not printed in the source is never accepted
+        // from model prose. This recovery text points the model at the existing
+        // host-recomputed contract instead of a clarification request.
+        public const string DerivedValueGuidance =
+            " A percentage, margin, share, difference or total that is not printed verbatim in the cited source is a derived value. " +
+            "Declare it in calculations so the host recomputes it from cited operands: percent = a/b*100, growth_percent = (a-b)/b*100, " +
+            "margin_percent = (a-b)/a*100 (gross margin: operands Revenue then Cost for one period, unit %, result rounded to decimals). " +
+            "A source fraction such as 0.5576 does not verify a displayed 55.76%; use the calculation. " +
+            "Otherwise omit the derived value when the request does not require it. Do not call ask_user about number verification; repair the slide and continue the remaining planned IDs.";
+
         private static string Normalize(string value) { return Regex.Replace(value ?? "", @"\s+", " ").Trim(); }
         private static bool AssociationOccurs(string passage, string association, string key)
         {
@@ -169,6 +179,8 @@ namespace Scribble.Office
                         case "ratio": RequireTwo(values); result = values[0] / values[1]; break;
                         case "percent": RequireTwo(values); result = values[0] / values[1] * 100; break;
                         case "growth_percent": RequireTwo(values); result = (values[0] - values[1]) / values[1] * 100; break;
+                        // Margin on the first operand: (Revenue - Cost) / Revenue.
+                        case "margin_percent": RequireTwo(values); result = (values[0] - values[1]) / values[0] * 100; break;
                         default: throw new InvalidOperationException("Unsupported calculation operation.");
                     }
                 }
@@ -179,13 +191,15 @@ namespace Scribble.Office
                 result = Math.Round(result, (int)rounding, MidpointRounding.AwayFromZero);
                 if (result != Number(calc, "result")) throw new InvalidOperationException("SLIDE_CALCULATION_MISMATCH: Result differs from host arithmetic.");
                 var unit = SamsungAuthoringPolicy.Text(calc, "unit");
-                if (string.IsNullOrWhiteSpace(unit) || ((operation == "percent" || operation == "growth_percent") && unit != "%"))
+                if (string.IsNullOrWhiteSpace(unit) || ((operation == "percent" || operation == "growth_percent" || operation == "margin_percent") && unit != "%"))
                     throw new InvalidOperationException("SLIDE_CALCULATION_UNIT: Specify result units; percentage operations require %.");
-                if ((operation == "ratio" || operation == "percent" || operation == "growth_percent") &&
+                if ((operation == "ratio" || operation == "percent" || operation == "growth_percent" || operation == "margin_percent") &&
                     operands.Select(o => SamsungAuthoringPolicy.Text(o, "unit")).Distinct().Count() != 1)
                     throw new InvalidOperationException("SLIDE_CALCULATION_UNIT: Ratio/growth operands must use the same units; convert units explicitly in the source first.");
                 if (operation == "growth_percent" && values[1] <= 0)
                     throw new InvalidOperationException("SLIDE_CALCULATION_BASELINE: Growth percentages require a positive baseline; describe the absolute change otherwise.");
+                if (operation == "margin_percent" && values[0] <= 0)
+                    throw new InvalidOperationException("SLIDE_CALCULATION_BASELINE: Margin percentages require a positive first operand (revenue); describe the absolute difference otherwise.");
                 if ((operation == "sum" || operation == "difference") && operands.Any(o => SamsungAuthoringPolicy.Text(o, "unit") != unit))
                     throw new InvalidOperationException("SLIDE_CALCULATION_UNIT: Addition and subtraction require matching operand/result units.");
                 yield return ((double)result).ToString("R", CultureInfo.InvariantCulture);

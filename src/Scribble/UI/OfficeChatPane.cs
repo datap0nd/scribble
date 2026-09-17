@@ -2215,9 +2215,12 @@ namespace Scribble.UI
                     }
                     else if (PromptHelperTool.IsTool(name))
                     {
-                        result = await _promptHelper.AskAsync(
-                            toolCall,
-                            cancellationToken);
+                        // A started deck continues its retained plan; the
+                        // host answers contract questions itself.
+                        result = taskContext.DeferClarification(toolCall) ??
+                            await _promptHelper.AskAsync(
+                                toolCall,
+                                cancellationToken);
                         if (SelectionAnswerAllowsSourceReplacement(
                             selectionRequest,
                             result))

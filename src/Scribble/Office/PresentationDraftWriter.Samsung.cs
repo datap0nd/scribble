@@ -266,7 +266,13 @@ namespace Scribble.Office
                     elements.Add(new SamsungElement { Box = SamsungSlideDesign.Percent(50.8f, 80.2f, 5.3f, 4.5f), Connector = true });
             }
             var source = string.Join("; ", new[] { draft.Footnote, draft.Sources }.Where(s => !string.IsNullOrWhiteSpace(s)));
-            if (source.Length > 0) elements.Add(TextElement(source.Length > 240 ? "Source references and evidence: see speaker notes." : source, SamsungSlideDesign.Footer, 7, 7, "Arial Narrow"));
+            // The complete citation always reaches the speaker notes. A cover or
+            // divider keeps only a short visible reference, placed clear of the
+            // cover's accent bar instead of across it.
+            var sparse = draft.Layout == "cover" || draft.Layout == "divider" || draft.Layout == "closing";
+            var visibleSource = source.Length > (sparse ? 90 : 240) ? "Source references and evidence: see speaker notes." : source;
+            if (source.Length > 0) elements.Add(TextElement(visibleSource,
+                draft.Layout == "cover" ? SamsungSlideDesign.Percent(3.8f, 90.8f, 87f, 3f) : SamsungSlideDesign.Footer, 7, 7, "Arial Narrow"));
             var pageNumber = TextElement("- " + index + " -", SamsungSlideDesign.Page, 10.5f, 8, "Calibri"); pageNumber.Alignment = 3; elements.Add(pageNumber); page.PageNumber = pageNumber;
             elements.Add(TextElement(DraftMarker, SamsungSlideDesign.Percent(3.8f, 97, 32, 2.8f), 7, 7, "Arial", false, null, "#7F7F7F"));
             if (draft.Layout == "closing")

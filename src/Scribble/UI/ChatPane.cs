@@ -2658,9 +2658,10 @@ namespace Scribble.UI
                             }
                             else
                             {
-                                result = await _promptHelper.AskAsync(
-                                    toolCall,
-                                    cancellationToken);
+                                result = taskContext.DeferClarification(toolCall) ??
+                                    await _promptHelper.AskAsync(
+                                        toolCall,
+                                        cancellationToken);
                             }
                             request.tool_choice = "auto";
                         }

@@ -336,11 +336,14 @@ namespace Scribble.Office
                 if (found.Length > 0) candidates.Add(Tuple.Create(span, found));
             }
             if (candidates.Count == 0)
-                return " No retained source span contains these values. Remove the displayed numbers or provide explicit calculations with fully cited operands; do not repeat the unchanged payload.";
+                return " No retained source span contains these values. Remove the displayed numbers or provide explicit calculations with fully cited operands; do not repeat the unchanged payload." +
+                    SamsungEvidence.DerivedValueGuidance;
             var suggestions = candidates.OrderByDescending(candidate => candidate.Item2.Length).ThenBy(candidate => candidate.Item1.Id, StringComparer.Ordinal)
                 .Take(6).Select(candidate => candidate.Item1.Id + " supports [" + string.Join(", ", candidate.Item2) + "]");
             return " Candidate host-issued spans: " + string.Join("; ", suggestions) +
-                ". Verify the matching label, unit and period before citing a candidate. Remove any unsupported numeric source identifier, and do not repeat the unchanged payload.";
+                ". Verify the matching label, unit and period before citing a candidate. Remove any unsupported numeric source identifier, and do not repeat the unchanged payload." +
+                (candidates.SelectMany(candidate => candidate.Item2).Distinct(StringComparer.Ordinal).Count() < missing.Count
+                    ? SamsungEvidence.DerivedValueGuidance : "");
         }
         private bool ReviewApproved(string text)
         {

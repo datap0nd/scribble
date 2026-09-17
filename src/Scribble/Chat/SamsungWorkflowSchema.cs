@@ -27,8 +27,8 @@ namespace Scribble.Chat
                 { "evidence", ToolSchema.String("Verbatim passage containing value, label, unit and period.") }
             }, "value", "label", "unit", "period", "evidence");
             return List(ToolSchema.Build(new Dictionary<string, object> {
-                { "label", ToolSchema.String("Displayed derived metric.") },
-                { "operation", new { type = "string", @enum = new[] { "sum", "difference", "ratio", "percent", "growth_percent" } } },
+                { "label", ToolSchema.String("Displayed derived metric. Ordered operands a, b: difference a-b, ratio a/b, percent a/b*100, growth_percent (a-b)/b*100, margin_percent (a-b)/a*100 such as gross margin from Revenue then Cost.") },
+                { "operation", new { type = "string", @enum = new[] { "sum", "difference", "ratio", "percent", "growth_percent", "margin_percent" } } },
                 { "operands", List(operand) }, { "result", new { type = "number" } },
                 { "unit", ToolSchema.String("Result unit; percentage operations use %.") },
                 { "decimals", ToolSchema.Integer("Round half away from zero.", 0, 6) }

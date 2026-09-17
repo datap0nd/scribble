@@ -82,6 +82,137 @@ namespace GuardrailTests
             SamsungPresentationReview.ValidateEvidence(json.Serialize(new { title = "Definitions", purpose = "explanatory", evidence = "Sales means units shipped.", sources = "Glossary" }), "Sales means units shipped.");
             Reject(() => SamsungPresentationReview.ValidateEvidence(json.Serialize(new { title = "Sales", evidence = source, sources = "Report" }), source));
         }
+        // XA01: gross margin is absent from the workbook audit as a percentage.
+        // It must be accepted only as a host-recomputed calculation from the
+        // exact Revenue and Cost operands, never from model prose.
+        internal static void DerivedMarginCalculation()
+        {
+            var json = new JavaScriptSerializer();
+            const string audit = "Metric\tMay (2026-05)\tJune (2026-06)\nRevenue EUR\t85519\t82992\nCost EUR\t36702\t36714\nGross margin\t0.570832212724658\t0.55762001156738";
+            const string revenueBlock = "Metric\tMay (2026-05)\tJune (2026-06)\nRevenue EUR\t85519\t82992";
+            const string costBlock = "Metric\tMay (2026-05)\tJune (2026-06)\nRevenue EUR\t85519\t82992\nCost EUR\t36702\t36714";
+            Func<string, decimal, decimal, decimal, Dictionary<string, object>> margin = (period, revenue, cost, result) => new Dictionary<string, object> {
+                { "label", "Gross margin" }, { "operation", "margin_percent" }, { "result", result }, { "unit", "%" }, { "decimals", 2 },
+                { "operands", new object[] {
+                    new Dictionary<string, object> { { "value", revenue }, { "label", "Revenue EUR" }, { "unit", "EUR" }, { "period", period }, { "evidence", revenueBlock } },
+                    new Dictionary<string, object> { { "value", cost }, { "label", "Cost EUR" }, { "unit", "EUR" }, { "period", period }, { "evidence", costBlock } }
+                } }
+            };
+            var june = margin("June (2026-06)", 82992m, 36714m, 55.76m);
+            var may = margin("May (2026-05)", 85519m, 36702m, 57.08m);
+            var slide = new Dictionary<string, object> { { "title", "Gross margin" }, { "subtitle", "Gross margin moved from 57.08% to 55.76%" },
+                { "evidence", audit }, { "sources", "WB01 audit" }, { "calculations", new[] { may, june } } };
+            SamsungPresentationReview.ValidateEvidence(json.Serialize(slide), audit);
+
+            // The source fraction 0.5576... never verifies a displayed percentage.
+            var unsupported = new Dictionary<string, object>(slide); unsupported.Remove("calculations");
+            try { SamsungPresentationReview.ValidateEvidence(json.Serialize(unsupported), audit); throw new Exception("A derived percentage was accepted from prose."); }
+            catch (InvalidOperationException ex) { Check(ex.Message.StartsWith("SLIDE_NUMBERS_UNVERIFIED") && ex.Message.Contains("55.76") && ex.Message.Contains("57.08"), "Unsupported derived percentages were not both reported."); }
+
+            june["result"] = 55.8m; Reject(() => SamsungPresentationReview.ValidateEvidence(json.Serialize(slide), audit)); june["result"] = 55.76m;
+            june["unit"] = "EUR"; Reject(() => SamsungPresentationReview.ValidateEvidence(json.Serialize(slide), audit)); june["unit"] = "%";
+            var operands = (object[])june["operands"];
+            june["operands"] = new[] { operands[1], operands[0] };
+            Reject(() => SamsungPresentationReview.ValidateEvidence(json.Serialize(slide), audit));
+            june["operands"] = operands;
+            ((Dictionary<string, object>)operands[1])["value"] = 36000m;
+            Reject(() => SamsungPresentationReview.ValidateEvidence(json.Serialize(slide), audit));
+            ((Dictionary<string, object>)operands[1])["value"] = 36714m;
+            SamsungPresentationReview.ValidateEvidence(json.Serialize(slide), audit);
+
+            Check(SamsungAuthoringPolicy.Instructions.Contains("margin_percent") && SamsungAuthoringPolicy.Instructions.Contains("never through ask_user"), "Authoring policy does not route derived values to calculations.");
+            Check(SamsungEvidence.DerivedValueGuidance.Contains("margin_percent") && SamsungEvidence.DerivedValueGuidance.Contains("Do not call ask_user"), "Derived-value recovery guidance is incomplete.");
+            var draft = json.Serialize(PresentationToolCatalog.DraftDefinition());
+            Check(draft.Contains("margin_percent"), "The draft tool schema does not expose the margin calculation.");
+        }
+
+        // After the first verified slide, a clarification that the tool contract
+        // already answers is resolved by the host; a persistent one reaches the user.
+        internal static void ClarificationDeferral()
+        {
+            var root = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "scribble-clarify-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var objective = "Use this workbook to produce four new native editable Samsung MD PowerPoint slides.";
+                var request = DocumentChatRequestFactory.Create("model", "excel", "Workbook", new ChatTurn[0], objective, true);
+                var task = new TaskContextManager(request, "excel", objective, new TaskCheckpointStore(root));
+                var ask = new ChatToolCall { id = "ask-1", function = new ChatToolCallFunction { name = PromptHelperTool.Name,
+                    arguments = "{\"question\":\"How should I handle the gross margin percentages?\",\"options\":[{\"label\":\"Omit\",\"description\":\"Leave out\"},{\"label\":\"Keep\",\"description\":\"Show\"}]}" } };
+                Check(task.DeferClarification(ask) == null, "A clarification before any slide was written must reach the user.");
+                foreach (var id in new[] { "cover", "compare", "groups", "limits" }) task.State.ExpectedSourceIds.Add("ppt:" + id);
+                task.State.Batches.Add(new TaskBatchResult { Id = "ppt:cover", CoveredSourceIds = new List<string> { "ppt:cover" } });
+                var read = new ChatToolCall { id = "read-1", function = new ChatToolCallFunction { name = "read_range", arguments = "{}" } };
+                Check(task.DeferClarification(read) == null, "Only ask_user can be deferred.");
+                for (var attempt = 0; attempt < TaskContextManager.MaxDeferredClarifications; attempt++)
+                {
+                    var deferred = task.DeferClarification(ask);
+                    Check(deferred != null && deferred.Outcome.Failed && deferred.Outcome.ErrorCode == "TASK_CLARIFICATION_DEFERRED" &&
+                        deferred.Outcome.PermissionConsumed == false, "A mid-deliverable clarification was not deferred as a failed, permission-free result.");
+                    Check(deferred.Content.Contains("compare") && deferred.Content.Contains("groups") && deferred.Content.Contains("limits") &&
+                        !deferred.Content.Contains("\"cover\"") && deferred.Content.Contains("margin_percent"),
+                        "The deferral did not name the remaining planned slides and the calculation contract.");
+                }
+                Check(task.DeferClarification(ask) == null, "A persistent clarification must eventually reach the user.");
+                var decisions = task.State.OriginalDecisions.Count;
+                Check(decisions == 1, "A host deferral was recorded as a user decision.");
+
+                var done = new TaskContextManager(DocumentChatRequestFactory.Create("model", "excel", "Workbook", new ChatTurn[0], objective, true),
+                    "excel", objective, new TaskCheckpointStore(root));
+                done.State.ExpectedSourceIds.Add("ppt:cover");
+                done.State.Batches.Add(new TaskBatchResult { Id = "ppt:cover", CoveredSourceIds = new List<string> { "ppt:cover" } });
+                Check(done.DeferClarification(ask) == null, "A completed deck has nothing left to continue.");
+            }
+            finally { if (System.IO.Directory.Exists(root)) System.IO.Directory.Delete(root, true); }
+        }
+
+        // XA01 workbook: the model planned one group-table layout and emitted another.
+        internal static void DraftFormulaAssociations()
+        {
+            const string may = "=SUMIF(Ledger!$B$2:$B$145,\"2026-05\",Ledger!$I$2:$I$145)";
+            const string june = "=SUMIF(Ledger!$B$2:$B$145,\"2026-06\",Ledger!$I$2:$I$145)";
+            Func<string, string, string> group = (column, name) => "=SUMIFS(Ledger!$" + column + "$2:$" + column + "$145,Ledger!$B$2:$B$145,\"2026-06\",Ledger!$D$2:$D$145,\"" + name + "\")";
+            Func<string[], string[][]> sheet = tail => new[] {
+                new[] { "Metric", "May (2026-05)", "June (2026-06)" },
+                new[] { "Revenue EUR", may, june },
+                new[] { "Cost EUR", may.Replace("$I$", "$J$"), june.Replace("$I$", "$J$") },
+                new[] { "Gross profit EUR", "=B4-B5", "=C4-C5" },
+                new[] { "Gross margin", "=(B4-B5)/B4", "=(C4-C5)/C4" },
+                new[] { "Observations", "=SUMPRODUCT((Ledger!$B$2:$B$145=\"2026-05\")*(Ledger!$I$2:$I$145<>\"\"))", "=SUMPRODUCT((Ledger!$B$2:$B$145=\"2026-06\")*(Ledger!$I$2:$I$145<>\"\"))" },
+                new string[0],
+                new[] { "June by group (source 'Ledger', June 2026 rows 122-145)" },
+                new[] { "Group", "Revenue EUR", "Cost EUR", "Gross margin" },
+                new[] { "North", group("I", "North"), group("J", "North"), tail[0] },
+                new[] { "South", group("I", "South"), group("J", "South"), tail[1] },
+                new[] { "East", group("I", "East"), group("J", "East"), tail[2] },
+                new[] { "West", group("I", "West"), group("J", "West"), tail[3] },
+                new[] { "Total (check)", tail[4], tail[5], tail[6] }
+            };
+            var captured = DraftFormulaAssociation.Validate(sheet(new[] {
+                "=(B11-B12)/B11", "=(B13-B14)/B13", "=(B15-B16)/B15", "=(B17-B18)/B17", "=SUM(B11:B14)", "=SUM(B15:B18)", "=(B19-B20)/B19" }));
+            foreach (var cell in new[] { "D12", "D13", "D14", "D15", "B16", "C16", "D16" })
+                Check(captured.Any(issue => issue.StartsWith(cell + " ", StringComparison.Ordinal)), "The shifted formula in " + cell + " was not reported.");
+            Check(captured.Count == 7, "A correct audit formula was reported as misassociated: " + string.Join(" | ", captured));
+            Check(captured.Any(issue => issue.Contains("B12:B15")), "The total repair did not name the exact data block.");
+            var message = DraftFormulaAssociation.RepairMessage(captured);
+            Check(message.StartsWith("DRAFT_FORMULA_ASSOCIATION") && message.Contains("rows[i] is sheet row i+3") && message.Contains("no draft permission was consumed"),
+                "The formula repair message does not restate the deterministic layout.");
+
+            var repaired = DraftFormulaAssociation.Validate(sheet(new[] {
+                "=(B12-C12)/B12", "=(B13-C13)/B13", "=(B14-C14)/B14", "=(B15-C15)/B15", "=SUM(B12:B15)", "=SUM(C12:C15)", "=(B16-C16)/B16" }));
+            Check(repaired.Count == 0, "Correct same-row rates and totals were rejected: " + string.Join(" | ", repaired));
+            // A share of a common total is a filled column anchored on one cell.
+            var shares = DraftFormulaAssociation.Validate(sheet(new[] {
+                "=B12/B16", "=B13/B16", "=B14/B16", "=B15/$B$16", "=SUM(B12:B15)", "=SUM(C12:C15)", "=B16/B16" }));
+            Check(shares.Count == 0, "A share-of-total column was rejected: " + string.Join(" | ", shares));
+            // A numeric year header directly above the data is not a missed row.
+            var years = DraftFormulaAssociation.Validate(new[] {
+                new[] { "Region", "2025" }, new[] { "North", "10" }, new[] { "South", "12" }, new[] { "Total", "=SUM(B4:B5)" } });
+            Check(years.Count == 0, "A total under a numeric year header was rejected: " + string.Join(" | ", years));
+            var quoted = DraftFormulaAssociation.Validate(new[] {
+                new[] { "Quarter", "Units" }, new[] { "Q1", "10" }, new[] { "Q2", "=IF(A4=\"Q1\",B4,0)" }, new[] { "Label", "=LOG10(B4)" } });
+            Check(quoted.Count == 0, "Function formulas or quoted cell-like text were misread as arithmetic references.");
+        }
+
         internal static void PolicyAndCompletion()
         {
             var definition = PresentationToolCatalog.DraftDefinition();

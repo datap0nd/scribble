@@ -157,7 +157,16 @@ namespace Scribble.Chat
                                         "its header in row 3 starting at cell A3 " +
                                         "(the title goes in A1), so formulas can " +
                                         "reference the draft table itself: the " +
-                                        "first data row is row 4. A cell starting " +
+                                        "first data row is row 4, and rows[i] is " +
+                                        "always sheet row i+3, including blank " +
+                                        "spacer rows and later section headers. " +
+                                        "Count each formula's references against " +
+                                        "that layout: a per-row metric uses its " +
+                                        "own row's cells (D12 uses B12 and C12) " +
+                                        "and a total covers exactly the data rows " +
+                                        "above it, never a header; the host " +
+                                        "rejects misassociated formulas before " +
+                                        "writing. A cell starting " +
                                         "with = becomes a live Excel formula and " +
                                         "may reference other sheets of this " +
                                         "workbook (e.g. =SUM(Data!B2:B9)). Use " +

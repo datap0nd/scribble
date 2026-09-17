@@ -255,6 +255,36 @@ namespace Scribble.Office
                     authorization);
             }
 
+            // A new draft sheet has a deterministic layout, so misassociated
+            // formulas are rejected before any permission or COM write.
+            if (name == WorkbookToolCatalog.WriteDraftSheet ||
+                name == CrossAppToolCatalog.SendToExcel)
+            {
+                IReadOnlyList<string> formulaIssues;
+                try
+                {
+                    formulaIssues = DraftFormulaAssociation.Validate(
+                        ParsedRows(arguments));
+                }
+                catch (Exception exception) when (
+                    exception is InvalidOperationException ||
+                    exception is ArgumentException)
+                {
+                    // Malformed rows are reported by the write path.
+                    formulaIssues = new string[0];
+                }
+
+                if (formulaIssues.Count > 0)
+                {
+                    return Error(
+                        call.id,
+                        authorization,
+                        "DRAFT_FORMULA_ASSOCIATION",
+                        DraftFormulaAssociation.RepairMessage(
+                            formulaIssues));
+                }
+            }
+
             // A deck or workbook may be built over several bounded
             // calls, but one request may open at most ONE unsent
             // email draft - recipients are the sensitive surface,
