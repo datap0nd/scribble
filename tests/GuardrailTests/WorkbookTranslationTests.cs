@@ -75,7 +75,7 @@ namespace GuardrailTests
             var context = new List<ExternalContextDocument> { new ExternalContextDocument("Detected English workbook cells", "Workbook handle: korean_workbook_h1") };
             var request = DocumentChatRequestFactory.Create("test-model", "excel", "Workbook: Book1", new List<ChatTurn>(),
                 "Translate the whole workbook from English to Korean", true, context, null, null, false, true, ExcelSelectionOutputPolicy.TargetKorean);
-            var names = request.tools.Select(tool => tool.function.name).ToArray();
+            var names = request.tools.Select(item => item.function.name).ToArray();
             var system = Convert.ToString(((ChatCompletionInputMessage)request.messages[0]).content);
             var tool = request.tools.Single(item => item.function.name == WorkbookToolCatalog.WriteKoreanTranslations);
             Check(names.Contains("write_korean_translations") && !names.Contains("write_selection_output"), "The Korean-target request lost its snapshot-bound write tool.");
