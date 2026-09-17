@@ -253,6 +253,14 @@ namespace GuardrailTests
             var shares = DraftFormulaAssociation.Validate(sheet(new[] {
                 "=B12/B16", "=B13/B16", "=B14/B16", "=B15/$B$16", "=SUM(B12:B15)", "=SUM(C12:C15)", "=B16/B16" }));
             Check(shares.Count == 0, "A share-of-total column was rejected: " + string.Join(" | ", shares));
+            // XA01 run 2026-09-17: a derived-metric list under the audit table
+            // reads across the table's rows; it has no record row to ignore.
+            var derived = DraftFormulaAssociation.Validate(new[] {
+                new[] { "Metric", "May", "June" }, new[] { "Revenue EUR", "85519", "82992" }, new[] { "Cost EUR", "36702", "36714" }, new string[0],
+                new[] { "Revenue change EUR", "=C4-B4" }, new[] { "Revenue change", "=(C4-B4)/B4" },
+                new[] { "Cost change EUR", "=C5-B5" }, new[] { "Cost change", "=(C5-B5)/B5" },
+                new[] { "Columns summed", "=SUM(C4:C5)" }, new[] { "Rows summed", "=SUM(B4:C4)" } });
+            Check(derived.Count == 0, "A derived-metric list under a table was rejected: " + string.Join(" | ", derived));
             // A numeric year header directly above the data is not a missed row.
             var years = DraftFormulaAssociation.Validate(new[] {
                 new[] { "Region", "2025" }, new[] { "North", "10" }, new[] { "South", "12" }, new[] { "Total", "=SUM(B4:B5)" } });

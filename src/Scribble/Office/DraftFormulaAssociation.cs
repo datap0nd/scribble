@@ -116,6 +116,10 @@ namespace Scribble.Office
             }
             if (formula.References.All(reference => reference.Row == formula.Row) ||
                 formula.References.All(reference => reference.Column == formula.Column)) return null;
+            // Only a record row can be misassociated: the formula sits beside
+            // its own row's quantities and ignores them. A derived-metric list
+            // under a table (B7 =C4-B4) has a label and nothing else in its row.
+            if (!InRecordRow(formula, rows)) return null;
             if (!InconsistentWithEveryNeighbour(formula, formulas)) return null;
             return "its operands are neither all in row " + formula.Row + " nor all in column " + ColumnName(formula.Column) +
                 ", and it does not follow the adjacent formulas. A per-row metric must use the cells of row " + formula.Row + ".";
@@ -148,9 +152,19 @@ namespace Scribble.Office
                 return null;
             }
             if ((singleColumn && range.Column == formula.Column) || (singleRow && top == formula.Row)) return null;
+            if (!InRecordRow(formula, rows)) return null;
             if (!InconsistentWithEveryNeighbour(formula, formulas)) return null;
             return "its range " + range.Text + " is outside column " + ColumnName(formula.Column) + " and row " + formula.Row +
                 ", and it does not follow the adjacent totals. Total the data rows of its own column.";
+        }
+
+        private static bool InRecordRow(ParsedFormula formula, IReadOnlyList<IReadOnlyList<string>> rows)
+        {
+            var row = rows[formula.Row - DraftFirstRow];
+            var quantities = 0;
+            for (var column = 1; row != null && column <= row.Count; column++)
+                if (column != formula.Column && IsNumericOrFormula(CellText(rows, formula.Row, column))) quantities++;
+            return quantities >= 2;
         }
 
         // True only when at least one adjacent same-sheet formula exists and
