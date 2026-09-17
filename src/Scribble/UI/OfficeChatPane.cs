@@ -819,9 +819,15 @@ namespace Scribble.UI
 
         private bool EnsureExcelSelectionForTranslation(
             out KoreanWorkbookSnapshot koreanWorkbookSnapshot,
-            bool wholeWorkbook = false)
+            bool wholeWorkbook = false,
+            string targetLanguage = null)
         {
             koreanWorkbookSnapshot = null;
+            var toKorean = string.Equals(
+                targetLanguage,
+                ExcelSelectionOutputPolicy.TargetKorean,
+                StringComparison.Ordinal);
+            var sourceLanguage = toKorean ? "English" : "Korean";
             var attached = _externalContext
                 .Where(entry => entry.ExcelSelection != null)
                 .ToArray();
@@ -852,10 +858,15 @@ namespace Scribble.UI
             try
             {
                 SetStatus(
-                    "Finding Korean text throughout the workbook...",
+                    "Finding " + sourceLanguage +
+                    " text throughout the workbook...",
                     false);
-                koreanWorkbookSnapshot = new WorkbookToolHost(
-                    _hostApplication).CaptureKoreanWorkbook();
+                koreanWorkbookSnapshot = toKorean
+                    ? new WorkbookToolHost(_hostApplication)
+                        .CaptureWorkbookTranslation(
+                            ExcelSelectionOutputPolicy.TargetKorean)
+                    : new WorkbookToolHost(
+                        _hostApplication).CaptureKoreanWorkbook();
                 if (koreanWorkbookSnapshot.Cells.Count == 0)
                 {
                     var skipped =
@@ -863,17 +874,19 @@ namespace Scribble.UI
                         koreanWorkbookSnapshot.SkippedMergedCells;
                     SetStatus(
                         skipped > 0
-                            ? "No replaceable Korean text cells were found. " +
+                            ? "No replaceable " + sourceLanguage +
+                              " text cells were found. " +
                               skipped + " formula or merged cells were left " +
                               "unchanged"
-                            : "No Korean text was found in the workbook",
+                            : "No " + sourceLanguage +
+                              " text was found in the workbook",
                         false);
                     return false;
                 }
 
                 SetStatus(
                     "Found " + koreanWorkbookSnapshot.Cells.Count +
-                    " Korean text cells. Translating...",
+                    " " + sourceLanguage + " text cells. Translating...",
                     false);
                 return true;
             }
@@ -1660,14 +1673,21 @@ namespace Scribble.UI
                 return;
             }
 
-            if (_resumeRecovery == null &&
+            // Either direction of an explicit whole-workbook translation
+            // takes the deterministic snapshot path; the destination
+            // language, not the language pair, selects the discovery.
+            var workbookTranslationTarget =
+                _resumeRecovery == null &&
                 koreanWorkbookSnapshot == null &&
-                _hostKind == "excel" &&
-                ExcelSelectionOutputPolicy
-                    .IsWholeWorkbookKoreanToEnglishRequest(prompt) &&
+                _hostKind == "excel"
+                    ? ExcelSelectionOutputPolicy
+                        .WholeWorkbookTranslationTarget(prompt)
+                    : null;
+            if (workbookTranslationTarget != null &&
                 !EnsureExcelSelectionForTranslation(
                     out koreanWorkbookSnapshot,
-                    true))
+                    true,
+                    workbookTranslationTarget))
             {
                 return;
             }
@@ -1793,10 +1813,16 @@ namespace Scribble.UI
                 requestExternalContext.Insert(
                     0,
                     new ExternalContextDocument(
-                        "Detected Korean workbook cells",
+                        "Detected " +
+                        koreanWorkbookRequest.Snapshot.SourceLanguage +
+                        " workbook cells",
                         "The local Excel host detected " +
                         koreanWorkbookRequest.Snapshot.Cells.Count +
-                        " replaceable Korean text cells across the active " +
+                        " replaceable " +
+                        koreanWorkbookRequest.Snapshot.SourceLanguage +
+                        " text cells to translate into " +
+                        koreanWorkbookRequest.Snapshot.TargetLanguage +
+                        " across the active " +
                         "workbook. This is the complete sparse scope.\n" +
                         "Workbook handle: " +
                         koreanWorkbookRequest.Handle +
@@ -2034,7 +2060,8 @@ namespace Scribble.UI
                 mcpTools,
                 activeTopic,
                 selectionRequest != null,
-                koreanWorkbookRequest != null);
+                koreanWorkbookRequest != null,
+                koreanWorkbookRequest?.Snapshot.TargetLanguage);
             var topicTools = activeTopic == null
                 ? null
                 : new TopicToolHost(

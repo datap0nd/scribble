@@ -559,7 +559,11 @@ namespace Scribble.Office
                     _koreanWorkbookOutput =
                         new KoreanWorkbookOutputSession(
                             handle,
-                            _koreanWorkbookRequest.Snapshot.Cells.Count);
+                            _koreanWorkbookRequest.Snapshot.Cells.Count,
+                            _koreanWorkbookRequest.Snapshot.TargetLanguage,
+                            _koreanWorkbookRequest.Snapshot.Cells
+                                .Select(cell => cell.SourceText)
+                                .ToArray());
                 }
 
                 var values = ParseSelectionValues(arguments);
@@ -645,8 +649,9 @@ namespace Scribble.Office
             var status = committed
                 ? committedStatus
                 : "Prepared " + staged + " of " +
-                  snapshot.Cells.Count +
-                  " Korean cell translations. Excel is unchanged.";
+                  snapshot.Cells.Count + " " +
+                  snapshot.SourceLanguage +
+                  " cell translations. Excel is unchanged.";
             return new MailboxToolResult(
                 callId,
                 _serializer.Serialize(

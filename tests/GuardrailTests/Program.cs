@@ -104,6 +104,10 @@ namespace GuardrailTests
                 Run("Derived gross margin requires host-recomputed source operands", SamsungWorkflowTests.DerivedMarginCalculation);
                 Run("Started decks continue instead of asking contract questions", SamsungWorkflowTests.ClarificationDeferral);
                 Run("Draft sheet formulas must associate with their own rows and data blocks", SamsungWorkflowTests.DraftFormulaAssociations);
+                Run("Whole-workbook translation routes by destination language", WorkbookTranslationTests.DirectionRouting);
+                Run("English-to-Korean discovery skips codes, links and existing Korean", WorkbookTranslationTests.EnglishCellEligibility);
+                Run("Korean-target output accepts names but refuses an echoed window once", WorkbookTranslationTests.KoreanTargetSession);
+                Run("Korean-target request exposes direction-specific tool and instruction", WorkbookTranslationTests.RequestSurface);
                 Run("Samsung layouts preserve content and enforce overflow bounds", SamsungSlideTests.LayoutsAndOverflow);
                 Run("Samsung slide numbers require verified source evidence", SamsungSlideTests.EvidenceAndNumbers);
                 Run("PowerPoint and Outlook slide tool calls reach independent review", SlideToolCallsReachReview);

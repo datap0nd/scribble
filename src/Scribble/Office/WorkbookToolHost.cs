@@ -343,6 +343,19 @@ namespace Scribble.Office
         // cells are retained and no workbook content is changed here.
         public KoreanWorkbookSnapshot CaptureKoreanWorkbook()
         {
+            return CaptureWorkbookTranslation(
+                ExcelSelectionOutputPolicy.TargetEnglish);
+        }
+
+        // The same sparse discovery in either direction: Hangul cells for
+        // an English target, translatable English text for a Korean one.
+        public KoreanWorkbookSnapshot CaptureWorkbookTranslation(
+            string targetLanguage)
+        {
+            var toKorean = string.Equals(
+                targetLanguage,
+                ExcelSelectionOutputPolicy.TargetKorean,
+                StringComparison.Ordinal);
             dynamic application = _excelApplication;
             dynamic workbook = application.ActiveWorkbook;
             if (workbook == null)
@@ -420,6 +433,7 @@ namespace Scribble.Office
                                 firstRow + rowOffset,
                                 firstColumn + columnOffset,
                                 raw,
+                                toKorean,
                                 cells,
                                 ref skippedFormulaCells,
                                 ref skippedMergedCells);
@@ -442,6 +456,7 @@ namespace Scribble.Office
                                     grid[
                                         rowBase + row,
                                         columnBase + column],
+                                    toKorean,
                                     cells,
                                     ref skippedFormulaCells,
                                     ref skippedMergedCells);
@@ -460,7 +475,10 @@ namespace Scribble.Office
                 windowHandle,
                 cells,
                 skippedFormulaCells,
-                skippedMergedCells);
+                skippedMergedCells,
+                toKorean
+                    ? ExcelSelectionOutputPolicy.TargetKorean
+                    : ExcelSelectionOutputPolicy.TargetEnglish);
         }
 
         private static void AddKoreanWorkbookCell(
@@ -469,12 +487,24 @@ namespace Scribble.Office
             int row,
             int column,
             object rawValue,
+            bool toKorean,
             ICollection<KoreanWorkbookCellSnapshot> cells,
             ref int skippedFormulaCells,
             ref int skippedMergedCells)
         {
             var text = CellText(rawValue);
-            if (!ExcelSelectionOutputPolicy.ContainsKorean(text))
+            if (toKorean)
+            {
+                // Only literal strings: numbers, dates and booleans keep
+                // their native Excel types.
+                if (!(rawValue is string) ||
+                    !ExcelSelectionOutputPolicy
+                        .IsTranslatableEnglishText(text))
+                {
+                    return;
+                }
+            }
+            else if (!ExcelSelectionOutputPolicy.ContainsKorean(text))
             {
                 return;
             }

@@ -282,8 +282,13 @@ namespace Scribble.Chat
         // Dedicated sparse overwrite surface for the built-in Korean
         // skill. The local host—not the model—discovers and binds every
         // eligible source cell before this tool is exposed.
-        public static ChatToolDefinition KoreanTranslationDefinition()
+        public static ChatToolDefinition KoreanTranslationDefinition(
+            bool toKorean = false)
         {
+            // One snapshot-bound surface serves both directions; only the
+            // wording tells the model which language it reads and writes.
+            var source = toKorean ? "English" : "Korean";
+            var target = toKorean ? "Korean" : "English";
             return new ChatToolDefinition
             {
                 type = "function",
@@ -291,10 +296,13 @@ namespace Scribble.Chat
                 {
                     name = WriteKoreanTranslations,
                     description =
-                        "Translate the locally detected Korean text cells " +
+                        "Translate the locally detected " + source +
+                        " text cells " +
                         "throughout the active Excel workbook. Each source " +
-                        "window contains exact worksheet, address, and Korean " +
-                        "text entries. Return one English string per entry in " +
+                        "window contains exact worksheet, address, and " +
+                        source + " " +
+                        "text entries. Return one " + target +
+                        " string per entry in " +
                         "the same order, using contiguous sequential calls. " +
                         "Follow next_source_cells and next_start_offset from " +
                         "every accepted result. There is no cell-count, " +
@@ -328,7 +336,8 @@ namespace Scribble.Chat
                                     {
                                         "items",
                                         ToolSchema.String(
-                                            "One English translation aligned " +
+                                            "One " + target +
+                                            " translation aligned " +
                                             "to one source cell.")
                                     }
                                 }

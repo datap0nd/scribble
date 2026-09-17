@@ -108,11 +108,13 @@ namespace Scribble.Chat
         public List<SavedKoreanCell> Cells { get; set; } = new List<SavedKoreanCell>();
         public int SkippedFormulaCells { get; set; }
         public int SkippedMergedCells { get; set; }
+        // Absent in older checkpoints: Korean to English.
+        public string TargetLanguage { get; set; }
         public KoreanWorkbookSnapshot Restore()
         {
             return new KoreanWorkbookSnapshot(Saved, WorkbookIdentity, WorkbookName, WindowHandle,
                 Cells.Select(c => new KoreanWorkbookCellSnapshot(c.WorksheetName, c.Address, c.SourceText)).ToArray(),
-                SkippedFormulaCells, SkippedMergedCells);
+                SkippedFormulaCells, SkippedMergedCells, TargetLanguage);
         }
     }
 

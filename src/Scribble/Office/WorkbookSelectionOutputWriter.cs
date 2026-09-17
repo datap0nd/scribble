@@ -274,7 +274,7 @@ namespace Scribble.Office
                         StringComparison.Ordinal))
                 {
                     throw new InvalidOperationException(
-                        "Korean source cell " + source.WorksheetName +
+                        snapshot.SourceLanguage + " source cell " + source.WorksheetName +
                         "!" + source.Address +
                         " changed after discovery. No cells were written.");
                 }
@@ -322,7 +322,8 @@ namespace Scribble.Office
 
             Scribble.Testing.TestLab.RegisterOutput((object)workbook, "xlsx");
             return "Translated and replaced " + translations.Count +
-                " Korean text cells across the active workbook. " +
+                " " + snapshot.SourceLanguage + " text cells with " +
+                snapshot.TargetLanguage + " across the active workbook. " +
                 "Formula and merged cells were left unchanged. " +
                 "Nothing was saved.";
         }
