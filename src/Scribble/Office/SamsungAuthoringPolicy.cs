@@ -114,9 +114,9 @@ namespace Scribble.Office
                 object findings;
                 return map != null &&
                     map.TryGetValue("approved", out approved) && approved is bool &&
-                    map.TryGetValue("findings", out findings) &&
-                    findings is IEnumerable && !(findings is string) &&
-                    Array(map, "findings").All(value => value is Dictionary<string, object>);
+                    (!map.TryGetValue("findings", out findings) ||
+                     (findings is IEnumerable && !(findings is string) &&
+                      Array(map, "findings").All(value => value is Dictionary<string, object>)));
             }
             catch (Exception ex) when (ex is ArgumentException || ex is InvalidOperationException) { return false; }
         }
