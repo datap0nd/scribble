@@ -47,12 +47,14 @@ namespace Scribble.Office
             var counts = new Dictionary<string, int>(StringComparer.Ordinal);
             var skipped = new Dictionary<string, int>(StringComparer.Ordinal);
             var matched = 0;
+            string filterText = null;
             for (var row = 1; row < table.Count; row++)
             {
                 var cells = table[row];
                 if (cells == null || cells.All(string.IsNullOrWhiteSpace)) continue;
                 if (filterIndex >= 0 && !string.Equals(Cell(cells, filterIndex), wanted, StringComparison.OrdinalIgnoreCase)) continue;
                 matched++;
+                if (filterIndex >= 0 && filterText == null) filterText = Cell(cells, filterIndex);
                 var parts = groupIndexes.Select(index => Cell(cells, index)).ToArray();
                 var key = string.Join("\t", parts);
                 if (!sums.ContainsKey(key))
@@ -70,17 +72,23 @@ namespace Scribble.Office
             }
             if (matched == 0) throw new InvalidOperationException("No data row matched the filter. Check the literal cell text of " + filterColumn + ".");
 
+            // Every row carries the filter it was computed under (its literal
+            // source text, such as the period 2026-06), so a single row is a
+            // complete citation: period, group, and the summed quantities.
+            var scoped = filterIndex >= 0 && !groupIndexes.Contains(filterIndex);
+            var headerPrefix = scoped ? headers[filterIndex] + "\t" : "";
+            var rowPrefix = scoped ? filterText + "\t" : "";
             var text = new StringBuilder();
-            text.Append(string.Join("\t", groupIndexes.Select(index => headers[index]))).Append("\tRows\t")
+            text.Append(headerPrefix).Append(string.Join("\t", groupIndexes.Select(index => headers[index]))).Append("\tRows\t")
                 .Append(string.Join("\t", sumIndexes.Select(index => headers[index]))).Append("\tBlank or non-numeric cells");
             foreach (var key in order)
-                text.Append('\n').Append(string.Join("\t", keys[key])).Append('\t').Append(counts[key]).Append('\t')
+                text.Append('\n').Append(rowPrefix).Append(string.Join("\t", keys[key])).Append('\t').Append(counts[key]).Append('\t')
                     .Append(string.Join("\t", sums[key].Select(Format))).Append('\t').Append(skipped[key]);
             if (order.Count > 1)
             {
                 var totals = new decimal[sumIndexes.Length];
                 foreach (var key in order) for (var i = 0; i < totals.Length; i++) totals[i] += sums[key][i];
-                text.Append('\n').Append("All groups").Append(new string('\t', groupIndexes.Length)).Append(order.Sum(key => counts[key])).Append('\t')
+                text.Append('\n').Append(rowPrefix).Append("All groups").Append(new string('\t', groupIndexes.Length)).Append(order.Sum(key => counts[key])).Append('\t')
                     .Append(string.Join("\t", totals.Select(Format))).Append('\t').Append(order.Sum(key => skipped[key]));
             }
             return new Result { Table = text.ToString(), SourceRows = table.Count - 1, MatchedRows = matched,

@@ -84,8 +84,8 @@ namespace GuardrailTests
                 new[] { "", "", "", "", "" } };
             var june = WorkbookGroupedTotals.Compute(ledger, new[] { "Group" }, new[] { "RevenueEUR", "CostEUR" }, "period", "2026-06");
             Check(june.SourceRows == 6 && june.MatchedRows == 4 && june.Groups == 2 && june.SkippedCells == 2, "Grouped totals miscounted rows, groups or disclosed gaps.");
-            Check(june.Table == "Group\tRows\tRevenueEUR\tCostEUR\tBlank or non-numeric cells\n" +
-                "North\t2\t9752.5\t3109\t0\nSouth\t2\t3687\t0\t2\nAll groups\t4\t13439.5\t3109\t2",
+            Check(june.Table == "Period\tGroup\tRows\tRevenueEUR\tCostEUR\tBlank or non-numeric cells\n" +
+                "2026-06\tNorth\t2\t9752.5\t3109\t0\n2026-06\tSouth\t2\t3687\t0\t2\n2026-06\tAll groups\t4\t13439.5\t3109\t2",
                 "Grouped totals table changed: " + june.Table.Replace("\t", "|").Replace("\n", " / "));
             var byPeriod = WorkbookGroupedTotals.Compute(ledger, new[] { "Period", "Group" }, new[] { "RevenueEUR" }, null, null);
             Check(byPeriod.Groups == 3 && byPeriod.Table.Contains("2026-05\tNorth\t1\t100\t0") && byPeriod.Table.Contains("All groups\t\t5\t13539.5\t0"),

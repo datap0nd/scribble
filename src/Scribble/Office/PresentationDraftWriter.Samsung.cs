@@ -379,6 +379,29 @@ namespace Scribble.Office
             }
         }
 
+        // Adds one blank slide and draws the page on it. If drawing fails, the
+        // slide this call just created (never receipted, reviewed or shown as
+        // complete) is removed again, so the deck returns to its last receipted
+        // state and the same payload can be retried. Without this a single
+        // native failure left an unreceipted slide that made every retry end
+        // in SLIDE_RECOVERY_UNCERTAIN.
+        internal static SamsungOutput DrawNewSamsungSlide(object nativeSlidesObject, int index, SamsungPage page, string owner)
+        {
+            dynamic nativeSlides = nativeSlidesObject;
+            dynamic created = nativeSlides.Add(index, PpLayoutBlank);
+            try
+            {
+                var output = DrawSamsungPage((object)created, page, owner);
+                output.Image = ExportSamsung(output);
+                return output;
+            }
+            catch
+            {
+                try { created.Delete(); } catch (Exception) { }
+                throw;
+            }
+        }
+
         internal static SamsungOutput DrawSamsungPage(object slideObject, SamsungPage page, string owner, int? displaySlideNumber = null)
         {
             dynamic slide = slideObject;
