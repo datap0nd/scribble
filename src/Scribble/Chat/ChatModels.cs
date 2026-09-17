@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Scribble.Chat
 {
@@ -103,6 +105,8 @@ namespace Scribble.Chat
         public List<ChatCompletionChoice> choices { get; set; }
 
         public ChatCompletionError error { get; set; }
+
+        public string provider { get; set; }
     }
 
     public sealed class ModelListResponse
@@ -118,6 +122,12 @@ namespace Scribble.Chat
     public sealed class ChatCompletionChoice
     {
         public ChatCompletionResponseMessage message { get; set; }
+
+        public string finish_reason { get; set; }
+
+        public string native_finish_reason { get; set; }
+
+        public ChatCompletionError error { get; set; }
     }
 
     public sealed class ChatCompletionResponseMessage
@@ -192,7 +202,7 @@ namespace Scribble.Chat
 
         public string ToolCallId { get; }
 
-        public string Content { get; }
+        public string Content { get; private set; }
 
         public string StatusText { get; }
 
@@ -202,6 +212,28 @@ namespace Scribble.Chat
 
         [System.Web.Script.Serialization.ScriptIgnore]
         public ToolOutcome Outcome { get { return ToolOutcome.Parse(Content); } }
+
+        internal void AttachSourceSpans(IEnumerable<string> sourceSpans)
+        {
+            var ids = (sourceSpans ?? new string[0])
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+            if (ids.Length == 0) return;
+            var json = new System.Web.Script.Serialization.JavaScriptSerializer
+                { MaxJsonLength = int.MaxValue };
+            try
+            {
+                var map = json.Deserialize<Dictionary<string, object>>(Content);
+                if (map == null) return;
+                map["source_spans"] = ids;
+                Content = json.Serialize(map);
+            }
+            catch (ArgumentException)
+            {
+                Content = json.Serialize(new { content = Content, source_spans = ids });
+            }
+        }
     }
 
     // One completed browser tool round replayed by the extension:

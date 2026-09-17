@@ -266,7 +266,13 @@ namespace Scribble.Office
                     elements.Add(new SamsungElement { Box = SamsungSlideDesign.Percent(50.8f, 80.2f, 5.3f, 4.5f), Connector = true });
             }
             var source = string.Join("; ", new[] { draft.Footnote, draft.Sources }.Where(s => !string.IsNullOrWhiteSpace(s)));
-            if (source.Length > 0) elements.Add(TextElement(source.Length > 240 ? "Source references and evidence: see speaker notes." : source, SamsungSlideDesign.Footer, 7, 7, "Arial Narrow"));
+            // The complete citation always reaches the speaker notes. A cover or
+            // divider keeps only a short visible reference, placed clear of the
+            // cover's accent bar instead of across it.
+            var sparse = draft.Layout == "cover" || draft.Layout == "divider" || draft.Layout == "closing";
+            var visibleSource = source.Length > (sparse ? 90 : 240) ? "Source references and evidence: see speaker notes." : source;
+            if (source.Length > 0) elements.Add(TextElement(visibleSource,
+                draft.Layout == "cover" ? SamsungSlideDesign.Percent(3.8f, 90.8f, 87f, 3f) : SamsungSlideDesign.Footer, 7, 7, "Arial Narrow"));
             var pageNumber = TextElement("- " + index + " -", SamsungSlideDesign.Page, 10.5f, 8, "Calibri"); pageNumber.Alignment = 3; elements.Add(pageNumber); page.PageNumber = pageNumber;
             elements.Add(TextElement(DraftMarker, SamsungSlideDesign.Percent(3.8f, 97, 32, 2.8f), 7, 7, "Arial", false, null, "#7F7F7F"));
             if (draft.Layout == "closing")
@@ -373,6 +379,29 @@ namespace Scribble.Office
             }
         }
 
+        // Adds one blank slide and draws the page on it. If drawing fails, the
+        // slide this call just created (never receipted, reviewed or shown as
+        // complete) is removed again, so the deck returns to its last receipted
+        // state and the same payload can be retried. Without this a single
+        // native failure left an unreceipted slide that made every retry end
+        // in SLIDE_RECOVERY_UNCERTAIN.
+        internal static SamsungOutput DrawNewSamsungSlide(object nativeSlidesObject, int index, SamsungPage page, string owner)
+        {
+            dynamic nativeSlides = nativeSlidesObject;
+            dynamic created = nativeSlides.Add(index, PpLayoutBlank);
+            try
+            {
+                var output = DrawSamsungPage((object)created, page, owner);
+                output.Image = ExportSamsung(output);
+                return output;
+            }
+            catch
+            {
+                try { created.Delete(); } catch (Exception) { }
+                throw;
+            }
+        }
+
         internal static SamsungOutput DrawSamsungPage(object slideObject, SamsungPage page, string owner, int? displaySlideNumber = null)
         {
             dynamic slide = slideObject;
@@ -434,7 +463,8 @@ namespace Scribble.Office
                 else if (element.Chart != null)
                 {
                     if (!AddChartToSlide(slide, element.Chart, box.X, box.Y, box.Width, box.Height))
-                        throw new InvalidOperationException("SLIDE_CHART_FAILED: Native chart could not be created; the draft remains incomplete.");
+                        throw new InvalidOperationException("SLIDE_CHART_FAILED: Native chart could not be created; the draft remains incomplete. Host step " +
+                            (LastChartFailure ?? "unknown") + ".");
                     shape = slide.Shapes[slide.Shapes.Count];
                     chartIndices[element.Chart] = (int)slide.Shapes.Count;
                 }
@@ -454,6 +484,16 @@ namespace Scribble.Office
                         cellShape.Fill.Solid(); cellShape.Fill.ForeColor.RGB = MetoTheme.Rgb(row == 0 ? SamsungSlideDesign.Gray : "#FFFFFF");
                         for (var edge = 1; edge <= 4; edge++) { cell.Borders(edge).Weight = .5f; cell.Borders(edge).ForeColor.RGB = MetoTheme.Rgb("#A6A6A6"); }
                         ApplySamsungText(cellShape, TextElement(col < rows[row].Count ? rows[row][col] : "", new RectangleF(0, 0, element.ColumnWidths == null ? box.Width / columns : element.ColumnWidths[col], box.Height / rows.Length), element.Size, element.Minimum, "Arial Narrow", row == 0));
+                    }
+                    // New rows start at PowerPoint's default height for 18pt
+                    // text, nearly twice the planned box. With the table font
+                    // applied, return each row to its planned share so the
+                    // table cannot run into the block below it; PowerPoint
+                    // still enforces the minimum its text needs.
+                    for (var row = 0; row < rows.Length; row++)
+                    {
+                        try { table.Rows[row + 1].Height = box.Height / rows.Length; }
+                        catch (Exception exception) when (IsUnsupportedFrameSetting(exception)) { }
                     }
                 }
                 else
@@ -480,12 +520,25 @@ namespace Scribble.Office
             notes.InsertAfter((existingNotes.Length > 0 ? "\n\n" : "") + page.Source.Sources + "\n" + page.Source.Footnote + "\nEvidence:\n" + page.Source.Evidence);
             return output;
         }
+        private static bool IsUnsupportedFrameSetting(Exception exception)
+        {
+            return exception is System.Runtime.InteropServices.COMException ||
+                   exception is ArgumentException ||
+                   exception is System.Reflection.TargetInvocationException;
+        }
+
         private static void ApplySamsungText(dynamic shape, SamsungElement element)
         {
             dynamic frame = shape.TextFrame;
-            frame.AutoSize = 0; frame.WordWrap = -1;
+            // A native table cell owns its wrapping and sizing: PowerPoint
+            // rejects AutoSize and WordWrap there with "The specified value is
+            // out of range", which used to abort every slide that carried a
+            // table. They only matter for free text boxes, so each is applied
+            // where the shape accepts it.
+            try { frame.AutoSize = 0; } catch (Exception exception) when (IsUnsupportedFrameSetting(exception)) { }
+            try { frame.WordWrap = -1; } catch (Exception exception) when (IsUnsupportedFrameSetting(exception)) { }
             frame.MarginLeft = 2f; frame.MarginRight = 2f; frame.MarginTop = 1f; frame.MarginBottom = 1f;
-            shape.TextFrame2.AutoSize = 0;
+            try { shape.TextFrame2.AutoSize = 0; } catch (Exception exception) when (IsUnsupportedFrameSetting(exception)) { }
             dynamic range = frame.TextRange;
             range.Text = element.Text;
             if (element.Text.Length == 0) return;

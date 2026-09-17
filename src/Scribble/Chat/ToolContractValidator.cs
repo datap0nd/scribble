@@ -20,14 +20,39 @@ namespace Scribble.Chat
                 var schema = json.DeserializeObject(json.Serialize(definition.function.parameters)) as IDictionary<string, object>;
                 var map = args as IDictionary<string, object>;
                 // Known compatibility case only: decode one encoded slide/plan array.
+                // Some OpenAI-compatible gateways preserve a model's nested JSON
+                // array as a string. Qwen can also append one structurally misplaced
+                // optional field after otherwise complete slide objects. Retain only
+                // independently valid, complete slide objects from that array prefix;
+                // the accepted deck plan makes the model continue with any missing
+                // slides in a later call. Never attempt general JSON repair.
                 if (map != null && (call.function.name == "add_draft_slides" || call.function.name == "send_to_powerpoint"))
                     foreach (var key in new[] { "slides", "plan" })
                     {
                         object raw;
                         if (map.TryGetValue(key, out raw) && raw is string && ((string)raw).TrimStart().StartsWith("["))
                         {
-                            var decoded = json.DeserializeObject((string)raw);
-                            if (decoded is IList) map[key] = decoded;
+                            try
+                            {
+                                var decoded = json.DeserializeObject((string)raw);
+                                if (decoded is IList) map[key] = decoded;
+                            }
+                            catch (ArgumentException)
+                            {
+                                IList decodedPrefix;
+                                if (key == "slides" &&
+                                    TryDecodeCompleteObjectArrayPrefix(
+                                        (string)raw,
+                                        json,
+                                        out decodedPrefix))
+                                {
+                                    map[key] = decodedPrefix;
+                                }
+                                else
+                                {
+                                    throw;
+                                }
+                            }
                         }
                     }
                 Visit(args, schema, "$", errors);
@@ -35,6 +60,73 @@ namespace Scribble.Chat
             }
             catch (ArgumentException) { errors.Add("$: arguments must be valid JSON matching the tool schema."); }
             return errors;
+        }
+
+        private static bool TryDecodeCompleteObjectArrayPrefix(
+            string raw,
+            JavaScriptSerializer json,
+            out IList decoded)
+        {
+            var items = new ArrayList();
+            decoded = items;
+            if (string.IsNullOrWhiteSpace(raw)) return false;
+
+            var cursor = 0;
+            while (cursor < raw.Length && char.IsWhiteSpace(raw[cursor])) cursor++;
+            if (cursor >= raw.Length || raw[cursor] != '[') return false;
+            cursor++;
+
+            while (cursor < raw.Length)
+            {
+                while (cursor < raw.Length &&
+                       (char.IsWhiteSpace(raw[cursor]) || raw[cursor] == ','))
+                    cursor++;
+                if (cursor >= raw.Length || raw[cursor] == ']') break;
+                if (raw[cursor] != '{') break;
+
+                var start = cursor;
+                var depth = 0;
+                var inString = false;
+                var escaped = false;
+                var complete = false;
+                for (; cursor < raw.Length; cursor++)
+                {
+                    var character = raw[cursor];
+                    if (inString)
+                    {
+                        if (escaped) escaped = false;
+                        else if (character == '\\') escaped = true;
+                        else if (character == '"') inString = false;
+                        continue;
+                    }
+
+                    if (character == '"') inString = true;
+                    else if (character == '{') depth++;
+                    else if (character == '}' && --depth == 0)
+                    {
+                        complete = true;
+                        break;
+                    }
+                }
+
+                if (!complete) break;
+                object item;
+                try
+                {
+                    item = json.DeserializeObject(
+                        raw.Substring(start, cursor - start + 1));
+                }
+                catch (ArgumentException)
+                {
+                    break;
+                }
+
+                if (!(item is IDictionary<string, object>)) break;
+                items.Add(item);
+                cursor++;
+            }
+
+            return items.Count > 0;
         }
 
         private static void Visit(object value, IDictionary<string, object> schema, string path, List<string> errors)

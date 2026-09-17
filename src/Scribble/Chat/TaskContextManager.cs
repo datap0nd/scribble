@@ -15,12 +15,14 @@ namespace Scribble.Chat
     public sealed class TaskContextManager
     {
         public const string ReadEvidenceTool = "read_task_evidence";
+        public const int DefaultContextBudget = 96000;
+        public const int Qwen38ContextBudget = 256000;
         private readonly JavaScriptSerializer _json = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
         private readonly TaskCheckpointStore _store;
         private readonly DurableTaskState _state;
         private int _prefixCount;
         private readonly HashSet<string> _evidence = new HashSet<string>(StringComparer.Ordinal);
-        private int _budget = 96000;
+        private int _budget;
         private int _stalled;
         private string _previousExchange;
         private readonly ChatCompletionRequest _request;
@@ -29,6 +31,7 @@ namespace Scribble.Chat
             TaskCheckpointStore store = null, DurableTaskState resume = null)
         {
             _request = request;
+            _budget = ContextBudgetForModel(request?.model);
             _store = store ?? new TaskCheckpointStore();
             _state = resume ?? new DurableTaskState { Host = host, Objective = objective, ProcessSession = TaskRecoveryInput.ProcessSession, SamsungWorkflowVersion = Scribble.Office.SamsungAuthoringPolicy.WorkflowVersion };
             string priorProgress;
@@ -42,7 +45,12 @@ namespace Scribble.Chat
                 request.tools.Any(t => t.function.name == PresentationToolCatalog.AddDraftSlides || t.function.name == CrossAppToolCatalog.SendToPowerPoint))
             {
                 var count = System.Text.RegularExpressions.Regex.Match(objective ?? "",
-                    @"\b(?<count>\d+|one|two|three|four|five|six|seven|eight|nine|ten|a)[\s-]+(?:powerpoint\s+)?slides?\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                    @"\b(?<count>\d+|one|two|three|four|five|six|seven|eight|nine|ten)\b(?:[\s-]+[A-Za-z][A-Za-z0-9-]*){0,8}[\s-]+slides?\b",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                if (!count.Success)
+                    count = System.Text.RegularExpressions.Regex.Match(objective ?? "",
+                        @"\b(?<count>a)[\s-]+(?:powerpoint[\s-]+)?slide\b",
+                        System.Text.RegularExpressions.RegexOptions.IgnoreCase);
                 if (count.Success)
                 {
                     var word = count.Groups["count"].Value.ToLowerInvariant();
@@ -51,7 +59,16 @@ namespace Scribble.Chat
                     _state.RequiredPresentationSlides = Math.Max(_state.RequiredPresentationSlides, Math.Max(1, number));
                 }
             }
+            // One request authorizes one deliverable. Once the user's own
+            // objective establishes an exact slide deliverable, unrelated
+            // workbook, Word, browser, or email writes must not be available as
+            // an attempted evidence-repair path. Read-only source tools remain.
+            if (_state.RequiredPresentationSlides > 0)
+                request.tools.RemoveAll(tool =>
+                    Scribble.Office.DocumentDraftHost.IsDraftTool(host, tool.function.name) &&
+                    !IsPresentationWriteTool(tool.function.name));
             request.tools.Add(TaskSources.Definition());
+            request.tools.Add(TaskSources.DocumentDefinition());
             request.tools.Add(new ChatToolDefinition
             {
                 type = "function",
@@ -79,7 +96,8 @@ namespace Scribble.Chat
                 _prefixCount = _state.PrefixCount;
                 _budget = _state.ContextBudget;
                 string previousModel;
-                if (_state.HostData.TryGetValue("context_model", out previousModel) && previousModel != request.model) _budget = 96000;
+                if (_state.HostData.TryGetValue("context_model", out previousModel) && previousModel != request.model)
+                    _budget = ContextBudgetForModel(request.model);
                 foreach (var id in _state.EvidenceIds) _evidence.Add(id);
             }
             _state.Lifecycle = TaskLifecycle.Running;
@@ -97,7 +115,27 @@ namespace Scribble.Chat
         public TaskDiagnostics Diagnostics { get; private set; }
         public TaskSources Sources { get { return new TaskSources(this); } }
 
-        public static bool IsTaskTool(string name) { return name == ReadEvidenceTool || name == TaskSources.ReadSourcesTool; }
+        public static bool IsTaskTool(string name) { return name == ReadEvidenceTool ||
+            name == TaskSources.ReadSourcesTool || name == TaskSources.ReadDocumentTool; }
+
+        private static bool IsPresentationWriteTool(string name)
+        {
+            return name == PresentationToolCatalog.AddDraftSlides ||
+                   name == CrossAppToolCatalog.SendToPowerPoint ||
+                   name == PresentationToolCatalog.ReviseSlides ||
+                   name == PresentationToolCatalog.RevertSlides;
+        }
+
+        public static int ContextBudgetForModel(string model)
+        {
+            // Qwen3.8 27B's published context is much larger than the generic
+            // conservative boundary. A 256K-character ledger keeps a roughly
+            // 100K-character document plus tool receipts in one task turn and
+            // avoids archiving the evidence just as the final page arrives.
+            return string.Equals(model, "qwen/qwen3.8-27b", StringComparison.OrdinalIgnoreCase)
+                ? Qwen38ContextBudget
+                : DefaultContextBudget;
+        }
 
         public MailboxToolResult ValidateArguments(ChatToolCall call)
         {
@@ -117,11 +155,44 @@ namespace Scribble.Chat
                 return null;
             }
             var repair = call.function.name == PresentationToolCatalog.AddDraftSlides || call.function.name == CrossAppToolCatalog.SendToPowerPoint
-                ? "No slides were written by this call. Supply a nonempty slides array of content objects in this call, alongside plan and briefs on the first batch. Each slide needs its planned id, title, layout and source-backed content; use the exposed schema. Do not repeat a plan-only or briefs-only payload. Keep the original requested slide count and do not invent content."
+                ? "No slides were written by this call. Retry this tool as the only tool call, with no assistant prose and never {}. Supply plan and concise briefs for the full requested deck on the first batch, plus exactly one complete content object in the nonempty slides array; later batches may add the next slides. Each slide needs its planned id, title, layout and source-backed content using the exposed schema. Do not repeat a plan-only or briefs-only payload. Keep the original requested slide count and do not invent content."
                 : "Correct the listed fields using this tool's exposed parameter schema, then retry. No write permission was consumed.";
             Diagnostics.Record("argument_validation_failed", new { call.id, tool = call.function.name, arguments = call.function.arguments, errors });
             return new MailboxToolResult(call.id, _json.Serialize(new { error_code = "TOOL_ARGUMENTS_INVALID", stage = "ARGUMENTS",
                 permission_consumed = false, field_errors = errors, repair, diagnostic_id = _state.Id }), "Repair the indicated tool arguments");
+        }
+
+        public const int MaxDeferredClarifications = 2;
+
+        // A deck whose first verified slide exists already had its audience,
+        // scope and format settled. A mid-deliverable ask_user is nearly always
+        // a question the tool contract answers (a derived value, a citation), so
+        // the host answers it and the remaining planned IDs continue. A model
+        // that still insists after the bounded deferrals reaches the user.
+        public MailboxToolResult DeferClarification(ChatToolCall call)
+        {
+            if (call?.function == null || !PromptHelperTool.IsTool(call.function.name)) return null;
+            var started = _state.Batches.Any(b => b.Failures.Count == 0 &&
+                b.CoveredSourceIds.Any(id => id.StartsWith("ppt:", StringComparison.Ordinal)));
+            var remaining = _state.Outstanding().Where(id => id.StartsWith("ppt:", StringComparison.Ordinal))
+                .Select(id => id.Substring(4)).ToArray();
+            if (!started || remaining.Length == 0) return null;
+            string prior; int deferred;
+            if (!_state.HostData.TryGetValue("clarification_deferred", out prior) || !int.TryParse(prior, out deferred)) deferred = 0;
+            if (deferred >= MaxDeferredClarifications) return null;
+            _state.HostData["clarification_deferred"] = (deferred + 1).ToString();
+            Diagnostics.Record("clarification_deferred", new { call.id, remaining, deferred = deferred + 1 });
+            Checkpoint();
+            return new MailboxToolResult(call.id, _json.Serialize(new
+            {
+                error_code = "TASK_CLARIFICATION_DEFERRED",
+                permission_consumed = false,
+                asked_user = false,
+                message = "The user was not asked. The written deck already settled the request, audience, period, units and format, and its first slides are verified. " +
+                    "Resolve this within the tool contract and continue the retained plan with the presentation draft tool as the only tool call." +
+                    Scribble.Office.SamsungEvidence.DerivedValueGuidance,
+                remaining_slide_ids = remaining
+            }), "Continuing the planned slides without interrupting the user");
         }
 
         public void SaveRequest(ChatCompletionRequest request)
@@ -165,6 +236,45 @@ namespace Scribble.Chat
             var continuing = name == PresentationToolCatalog.ReviseSlides || name == PresentationToolCatalog.RevertSlides || name == "add_draft_slides" ||
                 (name == "send_to_powerpoint" && _state.HostData.ContainsKey("samsung_destination"));
             return !continuing && _state.HostData.TryGetValue(key, out spent) && spent == "true" && _state.Writes.All(w => w.Status == "verified");
+        }
+
+        public const int MaxWriteRecoveryRedirects = 3;
+
+        // A deck write that failed after its first native mutation can only be
+        // resumed with its original payload. A model that answers the failure
+        // with a revised payload used to end the task with a fatal "uncertain
+        // write". Nothing has been duplicated at that point, so the call is
+        // refused as an ordinary, bounded tool error that returns the original
+        // arguments to resend.
+        public MailboxToolResult RecoverableWriteConflict(ChatToolCall call, bool changesDocument)
+        {
+            string pending;
+            if (!changesDocument || call?.function == null || !_state.HostData.TryGetValue("samsung_pending", out pending)) return null;
+            if (!_state.Writes.Any(w => w.Status != "verified" && w.Id.StartsWith("tool:")) ||
+                Scribble.Office.SamsungGenerationJournal.CanResume(_state, call) ||
+                Scribble.Office.PresentationRevision.CanResume(_state, call)) return null;
+            string prior; int redirects;
+            if (!_state.HostData.TryGetValue("write_recovery_redirects", out prior) || !int.TryParse(prior, out redirects)) redirects = 0;
+            if (redirects >= MaxWriteRecoveryRedirects) return null;
+            _state.HostData["write_recovery_redirects"] = (redirects + 1).ToString();
+            object original = null;
+            try
+            {
+                var journal = _json.Deserialize<Dictionary<string, object>>(pending);
+                if (journal != null) journal.TryGetValue("Arguments", out original);
+            }
+            catch (ArgumentException) { }
+            Diagnostics.Record("write_recovery_redirected", new { call.id, tool = call.function.name, redirects = redirects + 1 });
+            Checkpoint();
+            return new MailboxToolResult(call.id, _json.Serialize(new
+            {
+                error_code = "SLIDE_RECOVERY_INPUT_CHANGED",
+                permission_consumed = false,
+                message = "An earlier slide write for this deck stopped part-way, and this call's arguments differ from it, so nothing ran. " +
+                    "Resend that earlier call with exactly the original_arguments below and change nothing: the host reconciles the slides it already wrote and continues from there. " +
+                    "Edit content only after that call succeeds.",
+                original_arguments = original
+            }), "Resume the interrupted slide write with its original arguments");
         }
 
         public void BeforeTool(ChatToolCall call, bool changesDocument)
@@ -259,6 +369,7 @@ namespace Scribble.Chat
             try
             {
                 if (call.function.name == TaskSources.ReadSourcesTool) return Sources.Read(call);
+                if (call.function.name == TaskSources.ReadDocumentTool) return Sources.ReadDocument(call);
                 var args = _json.Deserialize<Dictionary<string, object>>(call.function.arguments);
                 var id = Convert.ToString(args["id"]);
                 var offset = Convert.ToInt32(args["offset"]);
@@ -366,7 +477,13 @@ namespace Scribble.Chat
                 Id = Guid.NewGuid().ToString("N"), EvidenceReferences = new List<string> { reference }
             });
             _store.Save(_state);
-            if (_stalled >= 6)
+            // A preflight repair loop whose rejection changes every round is
+            // converging through successive gates, not stalled: nothing was
+            // written and each result is new. It gets a longer, still bounded,
+            // allowance; any repeated exchange keeps the original limit.
+            var converging = failed && cycleCount == 1 &&
+                results.All(r => r.Outcome.PermissionConsumed == false);
+            if (_stalled >= (converging ? 10 : 6))
             {
                 Pause("Repeated actions produced no new result. Revalidate the source or select another approach. Last result: " + string.Join("; ", results.Select(r => r.Content.Substring(0, Math.Min(600, r.Content.Length)))));
                 throw new AiEndpointException("TASK_NEEDS_RECOVERY", _state.Blocker);

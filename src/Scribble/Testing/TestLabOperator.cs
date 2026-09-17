@@ -7,6 +7,24 @@ using System.Threading.Tasks;
 
 namespace Scribble.Testing
 {
+    public static class TestLabStressSettings
+    {
+        // A disposable in-memory view. Never rewrite the user's saved settings
+        // or expose their personal repositories, writing profile, or MCP tools.
+        public static Scribble.Configuration.AppSettings Isolate(Scribble.Configuration.AppSettings saved)
+        {
+            if (saved == null) throw new ArgumentNullException(nameof(saved));
+            var isolated = saved.ForModel(saved.Model);
+            isolated.UseToneProfile = false; isolated.ToneProfile = ""; isolated.DraftRules = "";
+            isolated.Topics = new System.Collections.Generic.List<Scribble.Configuration.TopicConfig>();
+            isolated.McpServers = new System.Collections.Generic.List<Scribble.Configuration.McpServerConfig>();
+            isolated.DiscoveredModels = new System.Collections.Generic.List<string> { saved.Model };
+            isolated.SwitchToVisionModelForImages = false;
+            isolated.UseGeminiSignIn = false; isolated.GeminiRefreshToken = ""; isolated.GeminiProject = "";
+            return isolated;
+        }
+    }
+
     public static class TestLabOperatorReporting
     {
         public sealed class Manifest
@@ -65,6 +83,10 @@ namespace Scribble.Testing
     {
         public string ResultPath { get; private set; }
         public string CaseId { get; private set; }
+        public string KitPath { get; private set; }
+        public string KitSha256 { get; private set; }
+        public string[] RequestedCaseIds { get; private set; }
+        public int RequestedCount => RequestedCaseIds?.Length ?? OfficeCaseIds.Length;
         public string StopPath => ResultPath + ".stop";
         internal string StopToken { get; } = Guid.NewGuid().ToString("N");
         public static string[] OfficeCaseIds => new[] {
@@ -75,20 +97,43 @@ namespace Scribble.Testing
         {
             if (args == null || args.Length == 0 || args[0] != "--test-lab-run")
                 throw new ArgumentException("Use --test-lab-run --result-json <new absolute path> [--case EX01].");
-            string result = null, caseId = null;
+            string result = null, caseId = null, caseList = null, kit = null, kitHash = null;
             for (var i = 1; i < args.Length; i += 2)
             {
                 if (i + 1 >= args.Length || string.IsNullOrWhiteSpace(args[i + 1])) throw new ArgumentException("Missing value for " + args[i] + ".");
                 if (args[i] == "--result-json" && result == null) result = args[i + 1];
                 else if (args[i] == "--case" && caseId == null) caseId = args[i + 1].ToUpperInvariant();
+                else if (args[i] == "--cases" && caseList == null) caseList = args[i + 1].ToUpperInvariant();
+                else if (args[i] == "--kit" && kit == null) kit = args[i + 1];
+                else if (args[i] == "--kit-sha256" && kitHash == null) kitHash = args[i + 1].ToLowerInvariant();
                 else throw new ArgumentException("Unknown or repeated operator option: " + args[i]);
             }
             if (string.IsNullOrWhiteSpace(result) || !Path.IsPathRooted(result) || (Path.GetPathRoot(result) ?? "").Length < 3 ||
                 !string.Equals(Path.GetExtension(result), ".json", StringComparison.OrdinalIgnoreCase))
                 throw new ArgumentException("--result-json must name a new absolute .json file.");
-            if (caseId != null && !OfficeCaseIds.Contains(caseId))
+            if (caseId != null && caseList != null) throw new ArgumentException("Use either --case or --cases.");
+            if ((kit == null) != (kitHash == null)) throw new ArgumentException("External kits require both --kit and --kit-sha256.");
+            if (kit != null && (!Path.IsPathRooted(kit) || (Path.GetPathRoot(kit) ?? "").Length < 3 ||
+                !System.Text.RegularExpressions.Regex.IsMatch(kitHash, "^[a-f0-9]{64}$")))
+                throw new ArgumentException("--kit must be an absolute directory and --kit-sha256 must identify its manifest.json.");
+            var requested = (caseList ?? caseId)?.Split(',').Select(id => id.Trim()).ToArray();
+            if (requested != null && (requested.Length == 0 || requested.Distinct(StringComparer.OrdinalIgnoreCase).Count() != requested.Length ||
+                requested.Any(id => !System.Text.RegularExpressions.Regex.IsMatch(id, "^[A-Z]{2}[0-9]{2}$"))))
+                throw new ArgumentException("Case IDs must be unique comma-separated IDs such as EX01,OL02.");
+            if (kit == null && requested != null && requested.Any(id => !OfficeCaseIds.Contains(id)))
                 throw new ArgumentException("--case must identify one of the 16 Office cases: " + string.Join(", ", OfficeCaseIds));
-            return new TestLabOperatorOptions { ResultPath = Path.GetFullPath(result), CaseId = caseId };
+            return new TestLabOperatorOptions { ResultPath = Path.GetFullPath(result), CaseId = caseId,
+                RequestedCaseIds = requested, KitPath = kit == null ? null : Path.GetFullPath(kit), KitSha256 = kitHash };
+        }
+
+        internal void ValidateKitSelection()
+        {
+            if (KitPath == null) return;
+            if (!Directory.Exists(KitPath) || !string.Equals(TestLab.FileHash(Path.Combine(KitPath, "manifest.json")), KitSha256, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("External kit manifest checksum mismatch.");
+            TestLab.VerifyKit(KitPath);
+            var selected = TestLabSuite.SelectRequestedCases(TestLabSuite.Read<LabCase[]>(Path.Combine(KitPath, "operator", "cases.json")), RequestedCaseIds);
+            RequestedCaseIds = selected.Select(c => c.id).ToArray();
         }
 
         internal void ReserveResult()
@@ -128,8 +173,16 @@ namespace Scribble.Testing
             string pdf, bool pdfValid, bool cancelled, string error)
         {
             var expected = string.IsNullOrEmpty(caseId) ? TestLabOperatorOptions.OfficeCaseIds : new[] { caseId };
+            return ClassifyRequested(expected, caseId, state, results, pdf, pdfValid, cancelled, error);
+        }
+
+        public static TestLabOperatorResult ClassifyRequested(string[] expected, string caseId, SuiteState state, SuiteCaseResult[] results,
+            string pdf, bool pdfValid, bool cancelled, string error)
+        {
+            expected = expected ?? new string[0];
             results = results ?? new SuiteCaseResult[0];
-            var exactScope = expected.All(TestLabOperatorOptions.OfficeCaseIds.Contains) && results.Length == expected.Length && results.Select(r => r.id).OrderBy(id => id, StringComparer.Ordinal)
+            var exactScope = expected.Length > 0 && expected.Distinct(StringComparer.OrdinalIgnoreCase).Count() == expected.Length &&
+                expected.All(id => System.Text.RegularExpressions.Regex.IsMatch(id ?? "", "^[A-Z]{2}[0-9]{2}$")) && results.Length == expected.Length && results.Select(r => r.id).OrderBy(id => id, StringComparer.Ordinal)
                 .SequenceEqual(expected.OrderBy(id => id, StringComparer.Ordinal));
             var complete = exactScope && pdfValid && string.IsNullOrEmpty(error) && !cancelled &&
                 results.All(r => r.status == "needs_review" || r.status == "failed");

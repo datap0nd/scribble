@@ -16,6 +16,7 @@ namespace Scribble.Outlook
         private readonly DateTime _after;
         private readonly DateTime _before;
         private readonly bool _unread;
+        private readonly string _fixtureScope;
         private readonly Queue<int> _folders;
         private readonly HashSet<string> _seen = new HashSet<string>(StringComparer.Ordinal);
         private object _table;
@@ -40,6 +41,7 @@ namespace Scribble.Outlook
             _after = after;
             _before = before;
             _unread = unread;
+            _fixtureScope = Scribble.Testing.TestLabMailbox.ScopeToken();
             Folder = folder;
             _folders = new Queue<int>(folder == "inbox" ? new[] { 6 } :
                 folder == "sent" ? new[] { 5 } : new[] { 6, 5 });
@@ -58,10 +60,22 @@ namespace Scribble.Outlook
                 session = application.Session;
                 dynamic outlookSession = session;
                 var kind = _folders.Peek();
-                folder = outlookSession.GetDefaultFolder(kind);
+                Scribble.Testing.TestLabMailbox.AssertScope(_fixtureScope);
+                folder = _fixtureScope == null ? outlookSession.GetDefaultFolder(kind) :
+                    Scribble.Testing.TestLabMailbox.GetFolder(_application, kind);
                 dynamic source = folder;
                 _storeId = Convert.ToString(source.StoreID);
                 _folderName = kind == 6 ? "Inbox" : "Sent Items";
+                if (_fixtureScope != null)
+                {
+                    // Fresh PSTs need not be indexed. Enumerate every native
+                    // table row, then apply the same literal search semantics
+                    // to native readback. No fixture answers enter this cursor.
+                    FilterMode = "complete_native_scan";
+                    _table = source.GetTable();
+                    _folders.Dequeue();
+                    return true;
+                }
                 // Outlook evaluates the full-text predicate without materializing bodies.
                 // If the provider cannot evaluate it, fail explicitly; never silently
                 // fall back to a fixed number of recent items.
@@ -94,12 +108,18 @@ namespace Scribble.Outlook
             CancellationToken cancellationToken)
         {
             var hits = new List<MailboxSearchHit>();
+            Scribble.Testing.TestLabMailbox.AssertScope(_fixtureScope);
             PageSequence++;
             var reader = new MessageReader(_application);
             // A page also bounds nonmatching rows, so sparse searches yield to the UI.
             var scanned = 0;
             var characters = 0;
-            while (hits.Count < pageSize && scanned < 100 && characters < 12000)
+            // The sealed synthetic store contains exactly 500 messages. A
+            // literal body marker can legitimately live at the end of that
+            // store, so finish its bounded native scan in one call. Normal
+            // mailboxes retain the smaller yield boundary.
+            var scanLimit = _fixtureScope == null ? 100 : 500;
+            while (hits.Count < pageSize && scanned < scanLimit && characters < 12000)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 if (_table == null && !OpenNextFolder()) break;
@@ -119,10 +139,19 @@ namespace Scribble.Outlook
                     ScannedRows++;
                     if (!MessageReader.IsReadableItemClass(Convert.ToString(entry["MessageClass"]))) continue;
                     if (!_seen.Add(_storeId + "\n" + id)) continue;
-                    // Metadata only. Missing/unreadable items are errors, not coverage.
-                    var message = reader.CaptureById(id, _storeId, true);
+                    // A synthetic text scan needs the body as well as headers.
+                    // Capture it once; both paths retain the same identity and
+                    // native source guards. The search payload below still
+                    // exposes headers only, through explicit serialization.
+                    var needsBody = _fixtureScope != null && _query.Length > 0;
+                    var message = reader.CaptureById(id, _storeId, !needsBody);
                     if (!message.ReceivedAt.HasValue || message.ReceivedAt.Value < _after ||
                         message.ReceivedAt.Value > _before || (_unread && !message.IsUnread)) continue;
+                    if (needsBody)
+                    {
+                        if (!Contains(message.Subject, _query) && !Contains(message.Sender, _query) &&
+                            !Contains(message.Recipients, _query) && !Contains(message.Body, _query)) continue;
+                    }
                     hits.Add(new MailboxSearchHit(message, _folderName, ""));
                     MatchedRows++;
                     characters += message.EntryId.Length + message.StoreId.Length +
@@ -143,6 +172,9 @@ namespace Scribble.Outlook
         }
 
         public void Dispose() { Release(_table); _table = null; }
+
+        private static bool Contains(string value, string query)
+        { return (value ?? "").IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0; }
 
         private static void Release(object value)
         {

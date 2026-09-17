@@ -390,8 +390,8 @@ namespace Scribble.Office
                 else if (kind == "chart_point")
                 {
                     var series = Convert.ToInt32(operation["series"]); var category = Convert.ToInt32(operation["category"]);
-                    var before = ((System.Collections.IEnumerable)source.Chart.SeriesCollection(series).Values).Cast<object>().ToArray();
-                    var current = ((System.Collections.IEnumerable)target.Chart.SeriesCollection(series).Values).Cast<object>().ToArray();
+                    var before = PresentationDraftWriter.ComArrayItems((object)source.Chart.SeriesCollection(series), "Values");
+                    var current = PresentationDraftWriter.ComArrayItems((object)target.Chart.SeriesCollection(series), "Values");
                     PresentationChartEdit.SetPoint((object)target.Chart, series, category, Convert.ToDouble(current[category - 1]), Convert.ToDouble(before[category - 1]));
                 }
             }

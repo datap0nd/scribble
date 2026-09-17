@@ -255,6 +255,36 @@ namespace Scribble.Office
                     authorization);
             }
 
+            // A new draft sheet has a deterministic layout, so misassociated
+            // formulas are rejected before any permission or COM write.
+            if (name == WorkbookToolCatalog.WriteDraftSheet ||
+                name == CrossAppToolCatalog.SendToExcel)
+            {
+                IReadOnlyList<string> formulaIssues;
+                try
+                {
+                    formulaIssues = DraftFormulaAssociation.Validate(
+                        ParsedRows(arguments));
+                }
+                catch (Exception exception) when (
+                    exception is InvalidOperationException ||
+                    exception is ArgumentException)
+                {
+                    // Malformed rows are reported by the write path.
+                    formulaIssues = new string[0];
+                }
+
+                if (formulaIssues.Count > 0)
+                {
+                    return Error(
+                        call.id,
+                        authorization,
+                        "DRAFT_FORMULA_ASSOCIATION",
+                        DraftFormulaAssociation.RepairMessage(
+                            formulaIssues));
+                }
+            }
+
             // A deck or workbook may be built over several bounded
             // calls, but one request may open at most ONE unsent
             // email draft - recipients are the sensitive surface,
@@ -529,7 +559,11 @@ namespace Scribble.Office
                     _koreanWorkbookOutput =
                         new KoreanWorkbookOutputSession(
                             handle,
-                            _koreanWorkbookRequest.Snapshot.Cells.Count);
+                            _koreanWorkbookRequest.Snapshot.Cells.Count,
+                            _koreanWorkbookRequest.Snapshot.TargetLanguage,
+                            _koreanWorkbookRequest.Snapshot.Cells
+                                .Select(cell => cell.SourceText)
+                                .ToArray());
                 }
 
                 var values = ParseSelectionValues(arguments);
@@ -615,8 +649,9 @@ namespace Scribble.Office
             var status = committed
                 ? committedStatus
                 : "Prepared " + staged + " of " +
-                  snapshot.Cells.Count +
-                  " Korean cell translations. Excel is unchanged.";
+                  snapshot.Cells.Count + " " +
+                  snapshot.SourceLanguage +
+                  " cell translations. Excel is unchanged.";
             return new MailboxToolResult(
                 callId,
                 _serializer.Serialize(
@@ -1192,6 +1227,10 @@ namespace Scribble.Office
 
         private static object ResolveSiblingApplication(string progId)
         {
+            if ((progId == "Excel.Application" || progId == "PowerPoint.Application") &&
+                (Scribble.Testing.TestLab.Status() != null || Scribble.Testing.TestLabSuite.Active() != null))
+                return Scribble.Testing.TestLabOfficeConnection.ResolvePreparedSibling(progId);
+
             object application = null;
             try
             {

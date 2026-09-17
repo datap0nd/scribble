@@ -35,6 +35,7 @@ namespace Scribble.Testing
         private readonly Button stopButton;
         private readonly Button reportButton;
         private readonly TextBox caseFilter = new TextBox { Width = 90 };
+        private readonly Label scopeLabel = new Label { AutoSize = true, Margin = new Padding(0, 5, 6, 0), Text = "Case ID (blank = 16 Office tests):" };
         private bool running;
         private bool finalizing;
         private TestLabOperatorOptions operatorOptions;
@@ -45,6 +46,7 @@ namespace Scribble.Testing
             if (options == null) throw new ArgumentNullException(nameof(options));
             if (Thread.CurrentThread.GetApartmentState() != ApartmentState.STA)
                 throw new InvalidOperationException("The Test Lab operator entry point requires an STA thread.");
+            options.ValidateKitSelection();
             Directory.CreateDirectory(TestLab.Root);
             TestLabSuiteWindow lab = null;
             using (var launch = new Mutex(false, @"Local\ScribbleTestLabWindow"))
@@ -58,9 +60,11 @@ namespace Scribble.Testing
                         throw new InvalidOperationException("Another Test Lab window or suite is active. Use that window; it was not closed or replaced.");
                     options.ReserveResult();
                     options.WriteResult(new TestLabOperatorResult { case_id = options.CaseId,
-                        requested_count = options.CaseId == null ? 16 : 1 });
+                        requested_count = options.RequestedCount });
                     lab = new TestLabSuiteWindow { operatorOptions = options };
                     lab.caseFilter.Text = options.CaseId ?? "";
+                    lab.scopeLabel.Text = "Operator selection: " + options.RequestedCount + " Office case(s)" + (options.KitPath == null ? " (bundled)" : " (external kit)");
+                    lab.caseFilter.Visible = false;
                     lab.Shown += async (sender, args) =>
                     {
                         try
@@ -68,7 +72,7 @@ namespace Scribble.Testing
                             await lab.StartRun();
                             if (lab.operatorResult == null)
                                 lab.operatorResult = new TestLabOperatorResult { status = "blocked", exit_code = 2,
-                                    error = lab.status.Text, case_id = options.CaseId, requested_count = options.CaseId == null ? 16 : 1 };
+                                    error = lab.status.Text, case_id = options.CaseId, requested_count = options.RequestedCount };
                         }
                         catch (Exception error)
                         {
@@ -78,7 +82,7 @@ namespace Scribble.Testing
                             if (lab.runnerCompletion == null || lab.runnerCompletion.IsCompleted)
                             { lab.running = false; lab.finalizing = false; lab.activeRunner = null; }
                             lab.operatorResult = new TestLabOperatorResult { status = "blocked", exit_code = 2,
-                                error = error.ToString(), case_id = options.CaseId, requested_count = options.CaseId == null ? 16 : 1 };
+                                error = error.ToString(), case_id = options.CaseId, requested_count = options.RequestedCount };
                         }
                         finally
                         {
@@ -193,7 +197,7 @@ namespace Scribble.Testing
             details.Controls.Add(new Label { AutoSize = true, Font = new Font(Font, FontStyle.Bold), Text = "Configured model: " + configured });
             details.Controls.Add(status); details.Controls.Add(progress); details.Controls.Add(currentCase); details.Controls.Add(elapsed);
             var scope = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
-            scope.Controls.Add(new Label { AutoSize = true, Margin = new Padding(0, 5, 6, 0), Text = "Case ID (blank = 16 Office tests):" });
+            scope.Controls.Add(scopeLabel);
             scope.Controls.Add(caseFilter); details.Controls.Add(scope);
             Controls.Add(log); Controls.Add(details); Controls.Add(actions);
             finalPdf = ReadLastReport();
@@ -288,11 +292,11 @@ namespace Scribble.Testing
             Append("Test Lab runner " + FileVersionInfo.GetVersionInfo(typeof(TestLab).Assembly.Location).FileVersion);
             Append("Results: " + folder);
             caseFilter.Enabled = false;
-            var runner = new TestLabSuiteRunner(folder, Append, cancellation.Token, caseFilter.Text); activeRunner = runner;
+            var runner = new TestLabSuiteRunner(folder, Append, cancellation.Token, caseFilter.Text, operatorOptions); activeRunner = runner;
             var failure = await TestLabOperatorExecution.RunToTerminalAsync(() => {
                 if (operatorOptions != null)
                     operatorOptions.WriteResult(new TestLabOperatorResult { status = "running", case_id = operatorOptions.CaseId,
-                        requested_count = operatorOptions.CaseId == null ? 16 : 1, suite_id = runner.State.id, folder = folder });
+                        requested_count = operatorOptions.RequestedCount, suite_id = runner.State.id, folder = folder });
                 runnerCompletion = RunOnSta(runner.Run);
                 return runnerCompletion;
             }, error => runner.Log("Cannot run suite: " + error));
@@ -322,7 +326,7 @@ namespace Scribble.Testing
                 caseFilter.Enabled = true;
                 stopButton.Enabled = TestLab.ActiveRunId() != null; reportButton.Enabled = TestLabPdfWriter.IsValid(finalPdf);
                 Text = "Scribble Test Lab — " + (reportButton.Enabled ? "finished" : "reporting failed");
-                operatorResult = TestLabOperatorResult.Classify(string.IsNullOrWhiteSpace(caseFilter.Text) ? null : caseFilter.Text.ToUpperInvariant(),
+                operatorResult = TestLabOperatorResult.ClassifyRequested(runner.RequestedCaseIds, string.IsNullOrWhiteSpace(caseFilter.Text) ? null : caseFilter.Text.ToUpperInvariant(),
                     runner.State, runner.Results.ToArray(), finalPdf, reportButton.Enabled, cancellation.IsCancellationRequested, failure);
                 try { operatorResult.configured_model = new SettingsStore().Load().Model; } catch { }
             }

@@ -95,6 +95,8 @@ namespace GuardrailTests
                 var task = new TaskContextManager(request, "powerpoint", "Create a two-slide draft", new TaskCheckpointStore(root));
                 var missing = task.ValidateArguments(Call(PresentationToolCatalog.AddDraftSlides, "{\"plan\":[\"cover\",\"analysis\"]}"));
                 Check(missing != null && missing.Content.Contains("nonempty slides array") && missing.Content.Contains("$.slides") &&
+                    missing.Content.Contains("exactly one complete") && missing.Content.Contains("only tool call") &&
+                    missing.Content.Contains("never {}") &&
                     missing.Outcome.PermissionConsumed == false && task.State.Writes.Count == 0, "A plan-only call did not explain how to repair the missing slide batch without consuming permission.");
                 var empty = task.ValidateArguments(Call(PresentationToolCatalog.AddDraftSlides, "{\"plan\":[\"cover\",\"analysis\"],\"slides\":[]}"));
                 Check(empty != null && empty.Content.Contains("too few items"), "An empty slide batch passed the argument boundary.");
@@ -230,6 +232,13 @@ namespace GuardrailTests
                 Check(rejected, "An invented source span was trusted.");
                 var valid = Call(PresentationToolCatalog.AddDraftSlides, "{\"plan\":[\"a\"],\"slides\":\"[{\\\"id\\\":\\\"a\\\",\\\"title\\\":\\\"Unicode € 한글\\\"}]\"}");
                 Check(task.ValidateArguments(valid) == null && !valid.function.arguments.Contains("\\\"id\\\""), "Known encoded arrays did not normalize before validation.");
+                var recoverable = Call(PresentationToolCatalog.AddDraftSlides,
+                    "{\"plan\":[\"a\",\"b\"],\"slides\":\"[{\\\"id\\\":\\\"a\\\",\\\"title\\\":\\\"First\\\"},{\\\"id\\\":\\\"b\\\",\\\"title\\\":\\\"Second\\\"},\\\"highlight_rows\\\":[3]}\"}");
+                Check(task.ValidateArguments(recoverable) == null &&
+                    recoverable.function.arguments.Contains("First") &&
+                    recoverable.function.arguments.Contains("Second") &&
+                    !recoverable.function.arguments.Contains("highlight_rows"),
+                    "Complete slide objects were not retained from a malformed encoded-array tail.");
                 var invalid = Call(PresentationToolCatalog.AddDraftSlides, "{\"slides\":[{\"title\":false}],\"plan\":[\"a\"]}");
                 var error = task.ValidateArguments(invalid);
                 Check(error != null && error.Outcome.PermissionConsumed == false && error.Content.Contains("$.slides[0].title"), "Malformed slide fields reached the write boundary.");

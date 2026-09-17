@@ -162,6 +162,11 @@ namespace Scribble.Office
                     StyleFor(paragraph.Kind));
             }
 
+            if (tables > 0)
+            {
+                FormatTableHeaders(document);
+            }
+
             try
             {
                 document.Activate();
@@ -338,18 +343,6 @@ namespace Scribble.Office
 
                 try
                 {
-                    // 1 = wdAutoFitContent.
-                    wordTable.AutoFitBehavior(1);
-                    wordTable.Rows[1].Range.Font.Bold = 1;
-                    // 1 = enable default single-line borders.
-                    wordTable.Borders.Enable = 1;
-                }
-                catch
-                {
-                }
-
-                try
-                {
                     wordTable.Style = "Grid Table 4 - Accent 1";
                 }
                 catch
@@ -357,6 +350,57 @@ namespace Scribble.Office
                     // The built-in style name is language-specific;
                     // the manual borders above already keep the
                     // table readable.
+                }
+
+                try
+                {
+                    // Apply the structural formatting after the style. Word
+                    // table styles can otherwise clear an explicitly bolded
+                    // header and enable first-column emphasis instead.
+                    wordTable.ApplyStyleFirstColumn = false;
+                }
+                catch
+                {
+                }
+
+                try
+                {
+                    wordTable.ApplyStyleHeadingRows = true;
+                }
+                catch
+                {
+                }
+
+                try
+                {
+                    // 1 = wdAutoFitContent.
+                    wordTable.AutoFitBehavior(1);
+                }
+                catch
+                {
+                }
+
+                // Header formatting is a hard table requirement. Keep it
+                // independent from optional style and autofit calls because
+                // Word can reject either operation for an individual table.
+                for (var column = 0; column < columnCount; column++)
+                {
+                    try
+                    {
+                        wordTable.Cell(1, column + 1).Range.Font.Bold = 1;
+                    }
+                    catch
+                    {
+                    }
+                }
+
+                try
+                {
+                    // 1 = enable default single-line borders.
+                    wordTable.Borders.Enable = 1;
+                }
+                catch
+                {
                 }
 
                 // A spacer paragraph after the table keeps the next
@@ -368,6 +412,85 @@ namespace Scribble.Office
             catch
             {
                 return false;
+            }
+        }
+
+        // Word may temporarily reject table-formatting calls while later
+        // tables are still being inserted. Reapply the hard header contract
+        // after the complete document structure exists so every table gets
+        // the same result, including tables near the end of a long draft.
+        private static void FormatTableHeaders(dynamic document)
+        {
+            int tableCount;
+            try
+            {
+                tableCount = (int)document.Tables.Count;
+            }
+            catch
+            {
+                return;
+            }
+
+            for (var tableIndex = 1;
+                 tableIndex <= tableCount;
+                 tableIndex++)
+            {
+                dynamic table;
+                try
+                {
+                    table = document.Tables.Item(tableIndex);
+                }
+                catch
+                {
+                    continue;
+                }
+
+                try
+                {
+                    table.ApplyStyleFirstColumn = false;
+                }
+                catch
+                {
+                }
+
+                try
+                {
+                    table.ApplyStyleHeadingRows = true;
+                }
+                catch
+                {
+                }
+
+                try
+                {
+                    table.Rows.Item(1).Range.Font.Bold = 1;
+                }
+                catch
+                {
+                }
+
+                int columnCount;
+                try
+                {
+                    columnCount = (int)table.Columns.Count;
+                }
+                catch
+                {
+                    continue;
+                }
+
+                for (var column = 1;
+                     column <= columnCount;
+                     column++)
+                {
+                    try
+                    {
+                        table.Cell(1, column).Range.Font.Bold = 1;
+                    }
+                    catch
+                    {
+                    }
+                }
             }
         }
 

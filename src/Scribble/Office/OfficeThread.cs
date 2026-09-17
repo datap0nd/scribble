@@ -23,10 +23,23 @@ namespace Scribble.Office
                         SynchronizationContext.SetSynchronizationContext(new WindowsFormsSynchronizationContext());
                         control.BeginInvoke(new Action(async () =>
                         {
+                            // A new STA has no COM message filter, so an Office
+                            // server that is momentarily busy (PowerPoint starting
+                            // a chart's data grid, Excel recalculating) rejects the
+                            // call outright. Retry only calls Office rejected
+                            // before executing them; the filter is restored on
+                            // this same thread before it exits.
+                            Scribble.Testing.TestLabComMessageFilter retry = null;
+                            try { retry = new Scribble.Testing.TestLabComMessageFilter(token); }
+                            catch (Exception) { retry = null; }
                             try { token.ThrowIfCancellationRequested(); completion.TrySetResult(await action()); }
                             catch (OperationCanceledException) { completion.TrySetCanceled(); }
                             catch (Exception exception) { completion.TrySetException(exception); }
-                            finally { context.ExitThread(); }
+                            finally
+                            {
+                                try { retry?.Dispose(); } catch (Exception) { }
+                                context.ExitThread();
+                            }
                         }));
                         Application.Run(context);
                     }

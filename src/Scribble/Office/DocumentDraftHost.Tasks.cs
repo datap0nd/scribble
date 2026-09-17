@@ -51,7 +51,8 @@ namespace Scribble.Office
                 }
                 else
                 {
-                    _koreanWorkbookOutput = new KoreanWorkbookOutputSession(_koreanWorkbookRequest.Handle, _durableExcel.State.Expected);
+                    _koreanWorkbookOutput = new KoreanWorkbookOutputSession(_koreanWorkbookRequest.Handle, _durableExcel.State.Expected,
+                        _koreanWorkbookRequest.Snapshot.TargetLanguage, null);
                     _koreanWorkbookOutput.Stage(_koreanWorkbookRequest.Handle, 0, _durableExcel.Values,
                         _durableExcel.State.Staged == _durableExcel.State.Expected);
                 }

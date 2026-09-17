@@ -60,8 +60,13 @@ namespace Scribble.Chat
             IReadOnlyList<ChatToolDefinition> extraTools = null,
             Scribble.Configuration.TopicConfig activeTopic = null,
             bool hasExcelSelection = false,
-            bool hasKoreanWorkbook = false)
+            bool hasKoreanWorkbook = false,
+            string workbookTranslationTarget = null)
         {
+            var translateToKorean = hasKoreanWorkbook && string.Equals(
+                workbookTranslationTarget,
+                Scribble.Office.ExcelSelectionOutputPolicy.TargetKorean,
+                StringComparison.Ordinal);
             List<ChatToolDefinition> tools;
             if (hostKind == "excel")
             {
@@ -97,7 +102,8 @@ namespace Scribble.Chat
                     {
                         tools.Add(
                             WorkbookToolCatalog
-                                .KoreanTranslationDefinition());
+                                .KoreanTranslationDefinition(
+                                    translateToKorean));
                     }
                 }
                 else if (hostKind == "word")
@@ -138,7 +144,8 @@ namespace Scribble.Chat
                         allowDraftCreate,
                         extraTools != null && extraTools.Count > 0,
                         hasExcelSelection,
-                        hasKoreanWorkbook) +
+                        hasKoreanWorkbook,
+                        translateToKorean) +
                         BuildTopicBoundary(activeTopic) +
                         PromptHelperTool.SystemInstruction
                 },
@@ -209,12 +216,42 @@ namespace Scribble.Chat
             };
         }
 
+        private const string EnglishToKoreanWorkbookInstruction =
+            " The local Excel host found every literal English text cell " +
+            "across the active workbook before this request. Use " +
+            "write_korean_translations and no other write tool; do not read " +
+            "the workbook again, the supplied source windows are complete. " +
+            "Translate ONLY the supplied source cells into natural, concise " +
+            "business Korean, preserving meaning, punctuation, numbers, " +
+            "units, placeholders, and line structure. Column headers and " +
+            "status labels become short noun phrases (Due date = 마감일; " +
+            "Complete = 완료; In progress = 진행 중; Review required = 검토 " +
+            "필요; Notes = 비고; Owner = 담당자; Status = 상태; Total = 합계; " +
+            "Revenue = 매출; Cost = 비용; Quantity = 수량; Region = 지역). " +
+            "Use one consistent Korean term for a repeated English term " +
+            "throughout the workbook. Keep codes, identifiers, file names, " +
+            "formula-like text, currency codes, and established brand or " +
+            "product names in their original form; transliterate personal " +
+            "names into Hangul only when that is the workbook's evident " +
+            "convention, otherwise keep them. Never add explanations, " +
+            "romanization, or the English original in parentheses. Return " +
+            "exactly one Korean value per source entry in order. After every " +
+            "accepted call, continue from next_source_cells and " +
+            "next_start_offset until complete_next=true, then submit that " +
+            "final window with complete=true. For the initial window, use " +
+            "the attached complete value. Do not ask for confirmation or a " +
+            "destination: the user's request explicitly authorized replacing " +
+            "exactly the detected literal English text cells in memory " +
+            "throughout the workbook. Formula and merged cells, numbers and " +
+            "dates remain unchanged, and the workbook is never saved.";
+
         private static string BuildSystemBoundary(
             string hostKind,
             bool allowDraftCreate,
             bool hasExternalTools,
             bool hasExcelSelection,
-            bool hasKoreanWorkbook)
+            bool hasKoreanWorkbook,
+            bool translateToKorean = false)
         {
             var hostName = hostKind == "excel"
                 ? "Excel"
@@ -271,13 +308,31 @@ namespace Scribble.Chat
                       "is read-only. Ask only if the adjacent destination is " +
                       "occupied, using the returned empty-column candidates."
                     : string.Empty;
-                var koreanWorkbookInstruction = hasKoreanWorkbook
+                var koreanWorkbookInstruction = translateToKorean
+                    ? EnglishToKoreanWorkbookInstruction
+                    : hasKoreanWorkbook
                     ? " The built-in Korean skill found literal Korean text " +
                       "cells across the active workbook before this request. " +
                       "Use write_korean_translations and no other write tool. " +
                       "Translate ONLY the supplied source cells into English, " +
                       "preserving meaning, punctuation, numbers, and line " +
-                      "structure. Return exactly one English value per source " +
+                      "structure. Use sentence case for ordinary labels and " +
+                      "statuses. Render Korean personal names in romanized " +
+                      "given-name family-name order, retaining hyphens in " +
+                      "given names. Render a Korean date-only value as ISO " +
+                      "YYYY-MM-DD. Use consistent office terminology across " +
+                      "the workbook. When the source meaning matches, use " +
+                      "these canonical translations: 마감일 = Due date; 완료 " +
+                      "= Complete; 진행 중 = In progress; 검토 필요 = Review " +
+                      "required; 비고 = Notes; 확인 필요 = Verification " +
+                      "required; 직책 = Role; 재무 담당자 = Finance " +
+                      "specialist; 배송 지연 = Delivery delay; 대체 공급업체 " +
+                      "확인 = Confirm alternate supplier; 환율 변동 = " +
+                      "Exchange-rate volatility; 환율 주간 검토 = Review " +
+                      "exchange rate weekly; 품질 문제 = Quality issue; 추가 " +
+                      "검사 실시 = Perform additional inspection; 인력 부족 " +
+                      "= Staff shortage; 임시 인력 확보 = Secure temporary " +
+                      "staff. Return exactly one English value per source " +
                       "entry in order. After every accepted call, continue from " +
                       "next_source_cells and next_start_offset until " +
                       "complete_next=true, then submit that final window with " +
@@ -394,6 +449,10 @@ namespace Scribble.Chat
                         documents[index].Content,
                         ExternalContextDocument
                             .MaxCharactersPerDocument) +
+                    (documents[index].HasMoreContent
+                        ? "\nStatus: bounded preview only. Before claiming full-document coverage, call read_external_document with document_index " +
+                          (index + 1) + " and offset 0, then follow every next_offset until null."
+                        : string.Empty) +
                     "\n</document>");
             }
 

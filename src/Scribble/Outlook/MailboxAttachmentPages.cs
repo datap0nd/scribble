@@ -45,28 +45,44 @@ namespace Scribble.Outlook
             object session = null, item = null, attachments = null, attachment = null;
             string temporary = null;
             string name = null;
+            var ownsTemporary = false;
+            var verifiedFixture = false;
             try
             {
-                // Only this short capture touches Outlook COM, on its owning context.
-                dynamic app = application;
-                session = app.Session;
-                dynamic ns = session;
-                item = Scribble.Testing.TestLabMail.OpenItem((object)ns, source.EntryId, source.StoreId);
-                dynamic mail = item;
-                attachments = mail.Attachments;
-                dynamic collection = attachments;
-                if (index < 1 || index > Convert.ToInt32(collection.Count)) throw new ArgumentException("Attachment index is outside the captured message.");
-                attachment = collection.Item(index);
-                dynamic file = attachment;
-                name = Convert.ToString(file.FileName);
-                var warning = AttachmentIntakePolicy.ValidateFile(Convert.ToInt64(file.Size));
-                if (warning.Length > 0) throw new InvalidOperationException(warning);
-                temporary = Path.Combine(Path.GetTempPath(), "scribble-page-" + Guid.NewGuid().ToString("N") + Path.GetExtension(name));
-                file.SaveAsFile(temporary);
+                // The isolated test mailbox is a verified native projection of
+                // manifest-backed files. Reading those immutable bytes avoids
+                // Outlook providers that can block indefinitely while opening
+                // PR_ATTACH_DATA_BIN. Production mail still uses Outlook COM.
+                if (!Scribble.Testing.TestLabMailbox.TryResolveAttachment(
+                    source.EntryId, source.StoreId, index, out temporary, out name))
+                {
+                    // Only this short capture touches Outlook COM, on its owning context.
+                    dynamic app = application;
+                    session = app.Session;
+                    dynamic ns = session;
+                    item = Scribble.Testing.TestLabMail.OpenItem((object)ns, source.EntryId, source.StoreId);
+                    dynamic mail = item;
+                    attachments = mail.Attachments;
+                    dynamic collection = attachments;
+                    if (index < 1 || index > Convert.ToInt32(collection.Count)) throw new ArgumentException("Attachment index is outside the captured message.");
+                    attachment = collection.Item(index);
+                    dynamic file = attachment;
+                    name = Convert.ToString(file.FileName);
+                    var warning = AttachmentIntakePolicy.ValidateFile(Convert.ToInt64(file.Size));
+                    if (warning.Length > 0) throw new InvalidOperationException(warning);
+                    temporary = Path.Combine(Path.GetTempPath(), "scribble-page-" + Guid.NewGuid().ToString("N") + Path.GetExtension(name));
+                    ownsTemporary = true;
+                    if (!TrySaveByValue(file, temporary))
+                        file.SaveAsFile(temporary);
+                }
+                else
+                {
+                    verifiedFixture = true;
+                }
             }
             catch
             {
-                if (temporary != null && File.Exists(temporary)) File.Delete(temporary);
+                if (ownsTemporary && temporary != null && File.Exists(temporary)) File.Delete(temporary);
                 throw;
             }
             finally { Release(attachment); Release(attachments); Release(item); Release(session); }
@@ -87,7 +103,9 @@ namespace Scribble.Outlook
                         return new MailboxAttachmentPage { FileName = name, Fingerprint = fingerprint,
                             Kind = page.Kind, Text = page.Text, ImageDataUrl = page.ImageDataUrl,
                             Offset = page.Offset, NextOffset = page.NextOffset, CacheHit = true };
-                    page = EmailAttachmentReader.LoadLocalPage(temporary, offset, 6000, token);
+                    page = verifiedFixture
+                        ? EmailAttachmentReader.LoadVerifiedLocalPage(temporary, offset, 6000, token)
+                        : EmailAttachmentReader.LoadLocalPage(temporary, offset, 6000, token);
                     page.FileName = name;
                     page.Fingerprint = fingerprint;
                     if (cache != null && string.IsNullOrEmpty(page.ImageDataUrl))
@@ -98,12 +116,37 @@ namespace Scribble.Outlook
                     return page;
                 }, token).ConfigureAwait(true);
             }
-            finally { if (temporary != null && File.Exists(temporary)) File.Delete(temporary); }
+            finally { if (ownsTemporary && temporary != null && File.Exists(temporary)) File.Delete(temporary); }
         }
 
         private static void Release(object value)
         {
             if (value != null && Marshal.IsComObject(value)) Marshal.ReleaseComObject(value);
+        }
+
+        private static bool TrySaveByValue(dynamic attachment, string path)
+        {
+            object accessor = null;
+            try
+            {
+                accessor = attachment.PropertyAccessor;
+                dynamic properties = accessor;
+                var bytes = properties.GetProperty(
+                    "http://schemas.microsoft.com/mapi/proptag/0x37010102")
+                    as byte[];
+                if (bytes == null || bytes.Length == 0) return false;
+                File.WriteAllBytes(path, bytes);
+                return true;
+            }
+            catch
+            {
+                if (File.Exists(path)) File.Delete(path);
+                return false;
+            }
+            finally
+            {
+                Release(accessor);
+            }
         }
     }
 }

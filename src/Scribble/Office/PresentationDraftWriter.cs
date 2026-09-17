@@ -327,9 +327,7 @@ namespace Scribble.Office
                 {
                     dynamic nativeSlides = presentation.Slides;
                     beforeNativeWrite?.Invoke();
-                    dynamic created = nativeSlides.Add(index, PpLayoutBlank);
-                    output = DrawSamsungPage((object)created, page, owner);
-                    output.Image = ExportSamsung(output);
+                    output = DrawNewSamsungSlide((object)nativeSlides, index, page, owner);
                     journal?.Record(output, added);
                 }
                 onRendered?.Invoke(output);
@@ -1315,6 +1313,33 @@ namespace Scribble.Office
         // own embedded store inside the unsaved draft presentation -
         // closing it only closes the editing grid; no user file is
         // touched or saved.
+        // Office returns series values as a one-based SAFEARRAY. The C# dynamic
+        // binder converts such a result to object[] and fails with "Unable to
+        // cast System.Object[*] to System.Object[]", so the property is read by
+        // reflection and enumerated as a plain Array.
+        internal static object[] ComArrayItems(object comObject, string property)
+        {
+            var raw = comObject.GetType().InvokeMember(
+                property,
+                System.Reflection.BindingFlags.GetProperty,
+                null,
+                comObject,
+                null,
+                System.Globalization.CultureInfo.InvariantCulture);
+            var array = raw as Array;
+            if (array == null) return raw == null ? new object[0] : new[] { raw };
+            var items = new object[array.Length];
+            var index = 0;
+            foreach (var item in array) items[index++] = item;
+            return items;
+        }
+
+        // The failing automation step and its error, for the rejection text.
+        // Native chart creation crosses PowerPoint and an embedded Excel data
+        // grid; "could not be created" alone cannot be diagnosed or repaired.
+        [ThreadStatic]
+        internal static string LastChartFailure;
+
         private static bool AddChartToSlide(
             dynamic slide,
             DraftChart chart,
@@ -1323,6 +1348,8 @@ namespace Scribble.Office
             double width,
             double height)
         {
+            var step = "AddChart2";
+            LastChartFailure = null;
             try
             {
                 dynamic shape = slide.Shapes.AddChart2(
@@ -1334,11 +1361,27 @@ namespace Scribble.Office
                     (float)(height * 0.94),
                     true);
                 dynamic slideChart = shape.Chart;
-                slideChart.ChartData.Activate();
+                step = "ChartData.Activate";
+                try
+                {
+                    slideChart.ChartData.Activate();
+                }
+                catch (Exception activation)
+                    when (activation is System.Runtime.InteropServices.COMException ||
+                          activation is InvalidOperationException)
+                {
+                    // The windowless data grid does not need a foreground
+                    // Excel window, which is unavailable from some hosts.
+                    step = "ChartData.ActivateChartDataWindow";
+                    slideChart.ChartData.ActivateChartDataWindow();
+                }
+
+                step = "ChartData.Workbook";
                 dynamic dataWorkbook =
                     slideChart.ChartData.Workbook;
                 dynamic dataSheet =
                     dataWorkbook.Worksheets[1];
+                step = "write chart data";
                 dataSheet.Cells[1, 1].Value2 = " ";
                 for (var series = 0;
                      series < chart.Series.Count;
@@ -1415,12 +1458,14 @@ namespace Scribble.Office
                 {
                 }
 
+                step = "SetSourceData";
                 slideChart.SetSourceData("='" + ((string)dataSheet.Name).Replace("'", "''") + "'!$A$1:$" +
                     (char)('A' + chart.Series.Count) + "$" + (chart.Categories.Count + 1), 2);
+                step = "series readback";
                 if ((int)slideChart.SeriesCollection().Count != chart.Series.Count) throw new InvalidOperationException("Chart source series were not applied.");
                 for (var s = 0; s < chart.Series.Count; s++)
                 {
-                    var actual = ((IEnumerable)slideChart.SeriesCollection(s + 1).Values).Cast<object>().Select(Convert.ToDouble).ToArray();
+                    var actual = ComArrayItems((object)slideChart.SeriesCollection(s + 1), "Values").Select(Convert.ToDouble).ToArray();
                     for (var point = 0; point < chart.Series[s].Values.Count; point++)
                     {
                         var expected = chart.Series[s].Values[point];
@@ -1430,9 +1475,10 @@ namespace Scribble.Office
                         if (!expected.HasValue ? cellValue != null : point >= actual.Length || actual[point] != expected.Value)
                             throw new InvalidOperationException("Chart data readback failed.");
                     }
-                    var labels = ((IEnumerable)slideChart.SeriesCollection(s + 1).XValues).Cast<object>().Select(Convert.ToString).ToArray();
+                    var labels = ComArrayItems((object)slideChart.SeriesCollection(s + 1), "XValues").Select(Convert.ToString).ToArray();
                     if (!labels.SequenceEqual(chart.Categories)) throw new InvalidOperationException("Chart category readback failed.");
                 }
+                step = "style";
                 slideChart.DisplayBlanksAs = 1; // xlNotPlotted: preserve gaps.
                 StyleChart(slideChart, chart);
 
@@ -1453,8 +1499,13 @@ namespace Scribble.Office
 
                 return true;
             }
-            catch
+            catch (Exception exception)
             {
+                var com = exception as System.Runtime.InteropServices.COMException;
+                LastChartFailure = step + ": " + exception.GetType().Name +
+                    (com != null ? " 0x" + com.ErrorCode.ToString("X8") : string.Empty) + " " +
+                    TextBoundary.SingleLine(exception.Message, 200);
+                Scribble.Utilities.Log.Error("PresentationChart." + step, exception);
                 return false;
             }
         }

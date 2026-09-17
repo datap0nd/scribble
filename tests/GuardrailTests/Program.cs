@@ -86,6 +86,8 @@ namespace GuardrailTests
                 Run("Test Lab operator arguments and outcomes", PowerPointRecoveryBoundaryTests.OperatorArgumentsAndOutcomes);
                 Run("Test Lab operator logging failure waits for terminal runner", PowerPointRecoveryBoundaryTests.OperatorLoggingFailureRetainsTerminalBoundary);
                 Run("PowerPoint rejected outline can be corrected before writing", RejectedSlideOutlineCanChange);
+                Run("PowerPoint partial batches defer outline review", PartialSlideBatchesDeferOutlineReview);
+                Run("PowerPoint number failures suggest exact retained spans", NumberFailuresSuggestSourceSpans);
                 Run("QA metadata followup forbids reads and old task continuation", QaMetadataScope);
                 Run("QA repeated attachments reuse extraction and invalidate changed bytes", QaAttachmentCache);
                 Run("QA structured XLS preserves positions multilingual values and sheets", QaStructuredXls);
@@ -98,10 +100,25 @@ namespace GuardrailTests
                 Run("Samsung v2 evidence calculations and sample isolation", SamsungWorkflowTests.Evidence);
                 Run("Samsung v2 native chart gaps and semantic annotations", SamsungWorkflowTests.ChartGapsAndAnnotations);
                 Run("Samsung v2 shared policy and final completion gate", SamsungWorkflowTests.PolicyAndCompletion);
+                Run("Source reads expose stable Samsung citation spans", SamsungWorkflowTests.ReadReceiptsExposeSourceSpans);
+                Run("Derived gross margin requires host-recomputed source operands", SamsungWorkflowTests.DerivedMarginCalculation);
+                Run("Period labels verify against read sources and operands inherit table headers", SamsungWorkflowTests.PeriodLabelsAndOperandHeaders);
+                Run("Started decks continue instead of asking contract questions", SamsungWorkflowTests.ClarificationDeferral);
+                Run("An interrupted slide write redirects a revised payload to its original arguments", SamsungWorkflowTests.InterruptedWriteRedirectsToOriginalPayload);
+                Run("Draft sheet formulas must associate with their own rows and data blocks", SamsungWorkflowTests.DraftFormulaAssociations);
+                Run("Whole-workbook translation routes by destination language", WorkbookTranslationTests.DirectionRouting);
+                Run("English-to-Korean discovery skips codes, links and existing Korean", WorkbookTranslationTests.EnglishCellEligibility);
+                Run("Korean-target output accepts names but refuses an echoed window once", WorkbookTranslationTests.KoreanTargetSession);
+                Run("Korean-target request exposes direction-specific tool and instruction", WorkbookTranslationTests.RequestSurface);
+                Run("Grouped totals are host arithmetic with disclosed gaps", WorkbookTranslationTests.GroupedTotals);
                 Run("Samsung layouts preserve content and enforce overflow bounds", SamsungSlideTests.LayoutsAndOverflow);
                 Run("Samsung slide numbers require verified source evidence", SamsungSlideTests.EvidenceAndNumbers);
                 Run("PowerPoint and Outlook slide tool calls reach independent review", SlideToolCallsReachReview);
                 Run("Empty endpoint responses retry once without replaying tools", EmptyEndpointResponsesRecover);
+                Run("Embedded provider errors retry without executing partial tools", EmbeddedProviderErrorsRecover);
+                Run("Provider and empty response retries stay independent", ProviderAndEmptyResponseRetriesAreIndependent);
+                Run("Stalled endpoint responses time out without partial actions", StalledEndpointTimesOut);
+                Run("OpenRouter Qwen requests use bounded serial reasoning", OpenRouterQwenPolicy);
                 Run("Every Office source launches the requested sibling draft and preserves content", CrossApplicationWriters);
                 Run("Chrome model tool calls create Office drafts on a pumped STA", BrowserOfficeRoundTrip);
                 Run("Semantic repairs retain source alignment", TaskContinuationTests.ReviewRepairsAndAlignment);
@@ -297,6 +314,9 @@ namespace GuardrailTests
                     "External context is explicit and bounded",
                     ExternalContextIsBounded);
                 Run(
+                    "Truncated external documents require verified contiguous paging",
+                    ExternalDocumentPagingIsCompleteAndBound);
+                Run(
                     "Local Topics are explicit, bounded, and isolated",
                     LocalTopicsAreExplicitBoundedAndIsolated);
                 Run(
@@ -391,6 +411,21 @@ namespace GuardrailTests
                 Run("Web reads cache and preserve redirect identity", HardeningTests.WebCacheAndRedirects);
                 Run("Source spans and shared tool contracts reject malformed writes", HardeningTests.SourceSpansAndContracts);
                 Run("Actual 20000-row writes reconcile before/after interruption", DurableTransformTests.TwentyThousandRows);
+                Run("Stress external options retain exact requested scope", StressKitTests.ExternalOptionsAndExactScope);
+                Run("Stress kit snapshots isolate only selected case inputs", StressKitTests.ExternalSnapshotAndProjection);
+                Run("Stress presentation grading checks table fills and native text roles", StressKitTests.PresentationMeasurementsDistinguishBodyAndTables);
+                Run("Stress API budget requires a finite total cap", StressGradingTests.BudgetRequiresFiniteTotal);
+                Run("Stress numeric outputs require native recalculation", StressGradingTests.NativeCellsRequireRecalculation);
+                Run("Stress charts stay in their requested Office host", StressGradingTests.NativeChartsStayInRequestedHost);
+                Run("Stress mailbox grading requires complete search and exact IDs", StressGradingTests.MailRequiresCompleteSearchAndExactIds);
+                Run("Stress incomplete cells and draft metric labels stay grounded", StressGradingTests.IncompleteCellsAndDraftMetricsRemainGrounded);
+                Run("Stress hero cases require exact native and verified browser evidence", StressGradingTests.HeroCasesRequireExactNativeAndBrowserEvidence);
+                Run("Stress PDF and HTML retain 200 explicit results", StressGradingTests.ReportRetainsTwoHundredResults);
+                Run("Office bootstrap documents contain no task data or external content", OfficeBootstrapTests.NeutralEmbeddedDocuments);
+                Run("Office bootstrap respects Stop before launching Office", OfficeBootstrapTests.CancelledStartupDoesNotReachOffice);
+                Run("Outlook embedding startup waits for the registered add-in", OfficeBootstrapTests.OutlookEmbeddingStartupWaitsForAddIn);
+                Run("PowerPoint bootstrap tracks reused and fresh native processes", OfficeBootstrapTests.PowerPointLaunchTracksReusedOrFreshProcess);
+                Run("Office bootstrap rejects missing, foreign, stale and finished sibling bindings", OfficeBootstrapTests.UnverifiedSiblingCannotStartOffice);
                 Console.WriteLine("PASS: " + _passed + " guardrail tests");
                 if (_passed == 0) throw new InvalidOperationException("No tests matched the requested filter.");
                 return 0;
@@ -6696,7 +6731,8 @@ namespace GuardrailTests
                 workbookNames.SequenceEqual(new[]
                 {
                     "list_worksheets",
-                    "read_cells"
+                    "read_cells",
+                    "read_grouped_totals"
                 }) &&
                 readCellsJson.Contains("row_offset") &&
                 readCellsJson.Contains("column_offset") &&
@@ -6933,6 +6969,7 @@ namespace GuardrailTests
                 {
                     "list_worksheets",
                     "read_cells",
+                    "read_grouped_totals",
                     "fetch_web_page",
                     "ask_user"
                 }),
@@ -7706,19 +7743,20 @@ namespace GuardrailTests
                 var launches = 0;
                 try
                 {
-                    using (var server = new FakeEndpoint(target == "outlook" ? new[] { callResponse, approved, done } : target != "powerpoint" ? new[] { callResponse, done } : new[] { callResponse, approved, approved, approved, continuation, approved, approved, approved, approved, done }))
+                    using (var server = new FakeEndpoint(target == "outlook" ? new[] { callResponse, approved, done } : target != "powerpoint" ? new[] { callResponse, done } : new[] { callResponse, approved, approved, continuation, approved, approved, approved, approved, done }))
                     {
                         var settings = EndpointSettings(server.BaseUrl); settings.Model = "qwen3-vl";
                         using (var service = new BrowserChatService(settings, progId => {
-                            Assert(Thread.CurrentThread.GetApartmentState() == ApartmentState.STA && SynchronizationContext.Current != null, "Browser launched Office outside the pumped STA.");
-                            launches++; return target == "outlook" ? (object)outlook : office;
+                             Assert(Thread.CurrentThread.GetApartmentState() == ApartmentState.STA && SynchronizationContext.Current != null, "Browser launched Office outside the pumped STA.");
+                             launches++; return target == "outlook" ? (object)outlook : office;
                         }))
+                        using (var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30)))
                         {
                             BrowserChatResult result;
                             try
                             {
                                 result = service.CompleteAsync(new ChatTurn[0], "Create a " + target + " draft from this page", "Source page", "https://example.com/", "", "SOURCE CONTENT", "", null,
-                                    new BrowserExchangeTurn[0], chat, "1", null, null, CancellationToken.None).GetAwaiter().GetResult();
+                                    new BrowserExchangeTurn[0], chat, "1", null, null, timeout.Token).GetAwaiter().GetResult();
                             }
                             catch (Exception exception)
                             {
@@ -7823,6 +7861,39 @@ namespace GuardrailTests
                 reuseTask.CompleteTask(request);
             }
             Assert(!ChatRequestFactory.IsMetadataOnly("Compare the contents of only the selected emails"), "Content analysis was mistaken for metadata.");
+            Assert(ChatRequestFactory.IsMailboxEnumerationOnly(
+                "Find every message in July 2026 and report every matching message ID plus Total matches: N."),
+                "Mailbox ID enumeration was mistaken for content analysis.");
+            var enumerationRequest = ChatRequestFactory.Create(
+                "test",
+                null,
+                new ChatTurn[0],
+                "Find every message in July 2026 and report every matching message ID plus Total matches: N.");
+            var enumerationBoundary = Convert.ToString(
+                ((ChatCompletionInputMessage)
+                    enumerationRequest.messages[0]).content);
+            Assert(
+                enumerationBoundary.Contains("Never mention an excluded or nonmatching identifier"),
+                "Enumeration-only output did not forbid leaking rejected identifiers into the final answer.");
+            Assert(!ChatRequestFactory.IsMailboxEnumerationOnly(
+                "Find every message in July 2026 and summarize each body and attachment."),
+                "Mailbox content analysis was mistaken for enumeration-only work.");
+            Assert(
+                !ChatRequestFactory.RequiresAttachmentReads(
+                    "Find the complete thread and summarize every message body.") &&
+                ChatRequestFactory.RequiresAttachmentReads(
+                    "Find five related emails, read their attachments, and build a deck.") &&
+                !ChatRequestFactory.RequiresAttachmentReads(
+                    "Summarize the thread but do not read attachments."),
+                "Mailbox attachment coverage did not follow the user's requested scope.");
+            Assert(
+                ExcelSelectionOutputPolicy
+                    .IsWholeWorkbookKoreanToEnglishRequest(
+                        "Translate every Korean text cell in every worksheet of the active workbook into English.") &&
+                !ExcelSelectionOutputPolicy
+                    .IsWholeWorkbookKoreanToEnglishRequest(
+                        "Explain how Korean translation works in Excel."),
+                "Natural-language workbook translation intent was not bounded correctly.");
         }
 
         private static void QaAttachmentCache()
@@ -7971,10 +8042,446 @@ namespace GuardrailTests
                             "Rejected outline changed write permission or committed the deck plan.");
                     }
                     endpoint.Wait();
-                    Assert(endpoint.Bodies.All(body => body.Contains("proposed_slides") && body.Contains("current batch only")), "Outline review did not receive stage-specific evidence.");
+                    Assert(endpoint.Bodies.All(body => body.Contains("proposed_briefs") && body.Contains("proposed_slides") &&
+                        body.Contains("current batch only")), "Outline review did not receive stage-specific evidence.");
                 }
             }
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+        }
+
+        private static void PartialSlideBatchesDeferOutlineReview()
+        {
+            var root = Path.Combine(Path.GetTempPath(), "scribble-partial-outline-" + Guid.NewGuid().ToString("N"));
+            var json = new JavaScriptSerializer();
+            var sourceReview = json.Serialize(new { choices = new[] { new { message = new {
+                role = "assistant", content = "{\"approved\":false,\"issues\":\"SOURCE_REVIEW_ONLY\"}" } } } });
+            try
+            {
+                using (var endpoint = new FakeEndpoint(sourceReview))
+                using (var client = new OpenAiCompatibleClient())
+                using (var host = new DocumentDraftHost("powerpoint", new object()))
+                {
+                    var request = MakeRequest(new List<ChatTurn>());
+                    request.tools = new List<ChatToolDefinition> { PresentationToolCatalog.DraftDefinition() };
+                    var task = new TaskContextManager(request, "powerpoint", "Create a two-slide launch presentation", new TaskCheckpointStore(root));
+                    host.BindTaskAsync(task, CancellationToken.None).GetAwaiter().GetResult();
+                    var settings = EndpointSettings(endpoint.BaseUrl); settings.Model = "qwen3-vl";
+                    var arguments = json.Serialize(new {
+                        plan = new[] { "intro", "close" },
+                        briefs = new object[] {
+                            new { id = "intro", purpose = "explanatory", message = "Launch", layout = "cover", required_content = new[] { "Launch" } },
+                            new { id = "close", purpose = "explanatory", message = "Close", layout = "closing", required_content = new[] { "Close" } }
+                        },
+                        slides = new[] { new { id = "intro", title = "Launch", layout = "cover" } }
+                    });
+                    var result = host.ExecuteAsync(MailboxCall("partial", PresentationToolCatalog.AddDraftSlides, arguments),
+                        new OneShotDraftAuthorization(true), true, task.State.Objective, client, settings,
+                        CancellationToken.None, null).GetAwaiter().GetResult();
+                    endpoint.Wait();
+                    Assert(result.Content.Contains("SOURCE_REVIEW_ONLY") && endpoint.Bodies.Count == 1 &&
+                        endpoint.Bodies[0].Contains("Review source accuracy") && !endpoint.Bodies[0].Contains("proposed_slides"),
+                        "A partial slide batch was incorrectly blocked by whole-outline review: " + result.Content);
+                }
+            }
+            finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+        }
+
+        private static void NumberFailuresSuggestSourceSpans()
+        {
+            var root = Path.Combine(Path.GetTempPath(), "scribble-number-hints-" + Guid.NewGuid().ToString("N"));
+            var json = new JavaScriptSerializer();
+            try
+            {
+                using (var client = new OpenAiCompatibleClient())
+                using (var host = new DocumentDraftHost("powerpoint", new object()))
+                {
+                    var request = MakeRequest(new List<ChatTurn>());
+                    request.tools = new List<ChatToolDefinition> { PresentationToolCatalog.DraftDefinition() };
+                    var task = new TaskContextManager(request, "powerpoint", "Create a two-slide financial presentation", new TaskCheckpointStore(root));
+                    host.BindTaskAsync(task, CancellationToken.None).GetAwaiter().GetResult();
+                    var cited = task.Sources.Add("Monthly source", "2026-02 Revenue EUR 86,227 Cost EUR 35,861").Single();
+                    var candidate = task.Sources.Add("June summary", "2026-06 Revenue EUR 82,992 Cost EUR 36,714").Single();
+                    var arguments = json.Serialize(new {
+                        plan = new[] { "trend", "close" },
+                        briefs = new object[] {
+                            new { id = "trend", purpose = "analytical", message = "June results", layout = "chart", source_spans = new[] { cited }, required_content = new[] { "June values" } },
+                            new { id = "close", purpose = "explanatory", message = "Close", layout = "closing", required_content = new[] { "Close" } }
+                        },
+                        slides = new[] { new { id = "trend", title = "June revenue EUR 82,992 and cost EUR 36,714", subtitle = "June results", layout = "chart",
+                            source_spans = new[] { cited }, sources = "June summary", evidence = "2026-02 Revenue EUR 86,227 Cost EUR 35,861" } }
+                    });
+                    var settings = EndpointSettings("http://127.0.0.1:9/v1"); settings.Model = "qwen3-vl";
+                    var authorization = new OneShotDraftAuthorization(true);
+                    var result = host.ExecuteAsync(MailboxCall("number-hint", PresentationToolCatalog.AddDraftSlides, arguments), authorization,
+                        true, task.State.Objective, client, settings, CancellationToken.None, null).GetAwaiter().GetResult();
+                    Assert(result.Content.Contains("SLIDE_NUMBERS_UNVERIFIED") && result.Content.Contains(candidate) &&
+                        result.Content.Contains("supports [") && result.Content.Contains("82992") && result.Content.Contains("36714") &&
+                        result.Content.Contains("do not repeat the unchanged payload") &&
+                        authorization.RemainingCalls == 1,
+                        "Missing-number recovery did not identify the exact retained source span: " + result.Content);
+                }
+            }
+            finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+        }
+
+        private static void ExternalDocumentPagingIsCompleteAndBound()
+        {
+            var root = Path.Combine(Path.GetTempPath(), "scribble-external-page-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(root);
+            var path = Path.Combine(root, "long-report.txt");
+            try
+            {
+                var terminal = "FINAL-PAGE-MARKER";
+                File.WriteAllText(path, new string('x', 70000) + terminal, new UTF8Encoding(false));
+                var document = new ExternalContextDocument(
+                    "long-report.txt",
+                    new string('x', ExternalContextDocument.MaxCharactersPerDocument),
+                    path,
+                    true);
+                var request = MakeRequest(new List<ChatTurn>(), externalContext: new[] { document });
+                var task = new TaskContextManager(
+                    request,
+                    "outlook",
+                    "Read the attached report in full.",
+                    new TaskCheckpointStore(Path.Combine(root, "checkpoint")));
+                new TaskRecoveryInput
+                {
+                    Prompt = task.State.Objective,
+                    Documents = new List<SavedReference>
+                    {
+                        new SavedReference
+                        {
+                            Name = document.Name,
+                            Content = document.Content,
+                            SourcePath = document.SourcePath,
+                            SourceFingerprint = document.SourceFingerprint,
+                            HasMoreContent = true
+                        }
+                    }
+                }.PersistTo(task.State);
+                task.Checkpoint();
+
+                Assert(
+                    request.tools.Any(tool => tool.function.name == TaskSources.ReadDocumentTool) &&
+                    MessageContent(request.messages[1]).Contains("bounded preview only") &&
+                    task.Sources.CompletionBlocker != null,
+                    "A clipped document did not expose and require verified paging.");
+                var gap = task.ReadEvidence(MailboxCall(
+                    "gap", TaskSources.ReadDocumentTool,
+                    "{\"document_index\":1,\"offset\":6000}"));
+                Assert(gap.Content.Contains("pages cannot be skipped"),
+                    "The external document reader accepted a page gap.");
+
+                var json = new JavaScriptSerializer();
+                var offset = 0;
+                var collected = new StringBuilder();
+                while (true)
+                {
+                    var result = task.ReadEvidence(MailboxCall(
+                        "page-" + offset,
+                        TaskSources.ReadDocumentTool,
+                        "{\"document_index\":1,\"offset\":" + offset + "}"));
+                    var page = json.Deserialize<Dictionary<string, object>>(result.Content);
+                    collected.Append(Convert.ToString(page["content"]));
+                    if (page["next_offset"] == null) break;
+                    offset = Convert.ToInt32(page["next_offset"]);
+                }
+                Assert(
+                    collected.ToString().EndsWith(terminal, StringComparison.Ordinal) &&
+                    task.Sources.CompletionBlocker == null,
+                    "The external document reader did not reach and record the final page.");
+
+                File.AppendAllText(path, "changed");
+                var changed = task.ReadEvidence(MailboxCall(
+                    "changed", TaskSources.ReadDocumentTool,
+                    "{\"document_index\":1,\"offset\":0}"));
+                Assert(changed.Content.Contains("changed after it was selected"),
+                    "Changed external document bytes reused prior coverage.");
+            }
+            finally
+            {
+                if (Directory.Exists(root)) Directory.Delete(root, true);
+            }
+        }
+
+        private static void OpenRouterQwenPolicy()
+        {
+            var timeoutMethod = typeof(OpenAiCompatibleClient).GetMethod(
+                "CompletionRequestTimeoutFor",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert(timeoutMethod != null,
+                "The endpoint-specific completion timeout helper is missing.");
+            var defaultTimeout = TimeSpan.FromMinutes(3);
+            Assert(
+                (TimeSpan)timeoutMethod.Invoke(null, new object[]
+                {
+                    new Uri("https://openrouter.ai/api/v1/chat/completions"),
+                    "qwen/qwen3.8-27b",
+                    defaultTimeout
+                }) == TimeSpan.FromMinutes(5) &&
+                (TimeSpan)timeoutMethod.Invoke(null, new object[]
+                {
+                    new Uri("https://api.example.test/v1/chat/completions"),
+                    "qwen/qwen3.8-27b",
+                    defaultTimeout
+                }) == defaultTimeout,
+                "Only the exact OpenRouter Qwen route should receive the five-minute completion window.");
+
+            // The buffered client's deadline bounds generation time, so it
+            // grows with the output a request allows, within a ceiling.
+            var deadlineMethod = typeof(OpenAiCompatibleClient).GetMethod(
+                "CompletionDeadlineFor",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert(deadlineMethod != null,
+                "The output-scaled completion deadline helper is missing.");
+            Func<string, TimeSpan, int?, TimeSpan> deadline = (url, injected, tokens) =>
+                (TimeSpan)deadlineMethod.Invoke(null, new object[]
+                {
+                    new Uri(url), "qwen/qwen3.8-27b", injected, tokens
+                });
+            const string localUrl = "http://127.0.0.1:8000/v1/chat/completions";
+            const string openRouterUrl = "https://openrouter.ai/api/v1/chat/completions";
+            Assert(
+                deadline(localUrl, defaultTimeout, null) == defaultTimeout &&
+                deadline(localUrl, defaultTimeout, 4000) == TimeSpan.FromSeconds(580) &&
+                deadline(localUrl, defaultTimeout, 2048) > defaultTimeout &&
+                deadline(openRouterUrl, defaultTimeout, 32768) == TimeSpan.FromMinutes(15) &&
+                deadline(localUrl, defaultTimeout, 1000000) == TimeSpan.FromMinutes(15) &&
+                deadline(localUrl, TimeSpan.FromSeconds(2), 4000) == TimeSpan.FromSeconds(2),
+                "A slow local model needs an output-scaled, capped deadline for draft-sized tool calls, and injected test timeouts must stay exact.");
+
+            var method = typeof(OpenAiCompatibleClient).GetMethod(
+                "SerializablePayload",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert(method != null, "The bounded request serializer is missing.");
+            var authoring = (Dictionary<string, object>)method.Invoke(
+                null,
+                new object[]
+                {
+                    new ChatCompletionRequest
+                    {
+                        model = "qwen/qwen3.8-27b",
+                        messages = new List<object>(),
+                        tools = new List<ChatToolDefinition>
+                        {
+                            new ChatToolDefinition
+                            {
+                                function = new ChatToolFunctionDefinition
+                                {
+                                    name = CrossAppToolCatalog.SendToPowerPoint
+                                }
+                            }
+                        },
+                        max_tokens = DocumentChatRequestFactory.DraftResponseTokens
+                    },
+                    new Uri(openRouterUrl),
+                    true
+                });
+            var authoringProvider = authoring["provider"] as Dictionary<string, object>;
+            Assert(
+                (int)authoring["max_tokens"] == 32768 &&
+                authoringProvider != null &&
+                (string)authoringProvider["sort"] == "throughput" &&
+                !authoringProvider.ContainsKey("order") &&
+                ((string[])authoringProvider["only"]).Length == 6,
+                "Long deck-authoring completions must stay on the allow-list but prefer its fastest route.");
+            var request = new ChatCompletionRequest
+            {
+                model = "qwen/qwen3.8-27b",
+                messages = new List<object>(),
+                tools = new List<ChatToolDefinition>
+                {
+                    new ChatToolDefinition()
+                },
+                stream = false,
+                max_tokens = 2048,
+                parallel_tool_calls = true
+            };
+            var openRouter = (Dictionary<string, object>)method.Invoke(
+                null,
+                new object[]
+                {
+                    request,
+                    new Uri("https://openrouter.ai/api/v1/chat/completions"),
+                    true
+                });
+            var reasoning = openRouter["reasoning"] as Dictionary<string, object>;
+            Assert(
+                reasoning != null &&
+                (string)reasoning["effort"] == "low" &&
+                (bool)openRouter["parallel_tool_calls"] == false,
+                "The exact OpenRouter Qwen route must use its smallest supported reasoning effort and serial tools.");
+            var providerPolicy = openRouter["provider"] as
+                Dictionary<string, object>;
+            var expectedProviders = new[]
+            {
+                "reka", "mancer", "phala", "coreweave", "dekallm", "chutes"
+            };
+            Assert(
+                providerPolicy != null &&
+                ((string[])providerPolicy["order"]).SequenceEqual(expectedProviders) &&
+                ((string[])providerPolicy["only"]).SequenceEqual(expectedProviders) &&
+                (bool)providerPolicy["allow_fallbacks"] &&
+                !providerPolicy.ContainsKey("require_parameters"),
+                "Qwen tool calls must remain on the ordered provider allow-list without rejecting the serial-control flag.");
+            Assert(
+                TaskContextManager.ContextBudgetForModel(request.model) ==
+                    TaskContextManager.Qwen38ContextBudget &&
+                TaskContextManager.ContextBudgetForModel("local-model") ==
+                    TaskContextManager.DefaultContextBudget,
+                "Qwen long-document tasks need a larger model-specific context ledger without changing generic endpoints.");
+            Assert(
+                (int)openRouter["max_tokens"] == 2048,
+                "Compact OpenRouter review requests must retain their bounded response allowance.");
+
+            var compactReview = new ChatCompletionRequest
+            {
+                model = request.model,
+                messages = new List<object>(),
+                max_tokens = 2048
+            };
+            var compact = (Dictionary<string, object>)method.Invoke(
+                null,
+                new object[]
+                {
+                    compactReview,
+                    new Uri("https://openrouter.ai/api/v1/chat/completions"),
+                    true
+                });
+            var compactReasoning = compact["reasoning"] as
+                Dictionary<string, object>;
+            Assert(
+                compactReasoning != null &&
+                (string)compactReasoning["effort"] == "none" &&
+                !compact.ContainsKey("provider"),
+                "Compact OpenRouter reviewers must reserve their response budget for the verdict.");
+
+            var exclude = typeof(OpenAiCompatibleClient).GetMethod(
+                "ApplyTransientProviderExclusion",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert(exclude != null,
+                "The transient provider exclusion helper is missing.");
+            exclude.Invoke(null, new object[]
+            {
+                openRouter,
+                new Uri("https://openrouter.ai/api/v1/chat/completions"),
+                "Reka"
+            });
+            var retryProvider = openRouter["provider"] as
+                Dictionary<string, object>;
+            Assert(
+                retryProvider != null &&
+                ((string[])retryProvider["ignore"]).Single() == "Reka" &&
+                ((string[])retryProvider["order"]).SequenceEqual(expectedProviders) &&
+                ((string[])retryProvider["only"]).SequenceEqual(expectedProviders),
+                "An interrupted OpenRouter retry must exclude the failed provider without discarding the allow-list.");
+            exclude.Invoke(null, new object[]
+            {
+                openRouter,
+                new Uri("https://openrouter.ai/api/v1/chat/completions"),
+                "DekaLLM\nReka"
+            });
+            retryProvider = openRouter["provider"] as Dictionary<string, object>;
+            Assert(
+                retryProvider != null &&
+                ((string[])retryProvider["ignore"]).SequenceEqual(new[] { "DekaLLM", "Reka" }),
+                "Repeated OpenRouter retries must retain every failed provider exclusion.");
+
+            var presentationRequest = new ChatCompletionRequest
+            {
+                model = request.model,
+                messages = new List<object>(),
+                tools = new List<ChatToolDefinition>
+                {
+                    new ChatToolDefinition
+                    {
+                        function = new ChatToolFunctionDefinition
+                        {
+                            name = PresentationToolCatalog.AddDraftSlides
+                        }
+                    }
+                },
+                max_tokens = DocumentChatRequestFactory.DraftResponseTokens
+            };
+            var presentation = (Dictionary<string, object>)method.Invoke(
+                null,
+                new object[]
+                {
+                    presentationRequest,
+                    new Uri("https://openrouter.ai/api/v1/chat/completions"),
+                    true
+                });
+            Assert(
+                (int)presentation["max_tokens"] == 32768,
+                "OpenRouter Qwen PowerPoint drafts need the route's full tool-payload allowance.");
+
+            presentationRequest.tools[0].function.name =
+                CrossAppToolCatalog.SendToPowerPoint;
+            var crossAppPresentation = (Dictionary<string, object>)method.Invoke(
+                null,
+                new object[]
+                {
+                    presentationRequest,
+                    new Uri("https://openrouter.ai/api/v1/chat/completions"),
+                    true
+                });
+            Assert(
+                (int)crossAppPresentation["max_tokens"] == 32768,
+                "Cross-app PowerPoint drafts need the same complete payload allowance as native slide drafts.");
+
+            var ordinaryDraft = new ChatCompletionRequest
+            {
+                model = request.model,
+                messages = new List<object>(),
+                tools = new List<ChatToolDefinition>
+                {
+                    new ChatToolDefinition
+                    {
+                        function = new ChatToolFunctionDefinition
+                        {
+                            name = "create_word_draft"
+                        }
+                    }
+                },
+                max_tokens = DocumentChatRequestFactory.DraftResponseTokens
+            };
+            var ordinary = (Dictionary<string, object>)method.Invoke(
+                null,
+                new object[]
+                {
+                    ordinaryDraft,
+                    new Uri("https://openrouter.ai/api/v1/chat/completions"),
+                    true
+                });
+            Assert(
+                (int)ordinary["max_tokens"] == 8192,
+                "Non-presentation OpenRouter Qwen drafts should remain bounded at 8K.");
+
+            var fallback = (Dictionary<string, object>)method.Invoke(
+                null,
+                new object[]
+                {
+                    request,
+                    new Uri("https://openrouter.ai/api/v1/chat/completions"),
+                    false
+                });
+            Assert(
+                fallback.ContainsKey("reasoning") &&
+                !fallback.ContainsKey("parallel_tool_calls"),
+                "Optional-control fallback must retain bounded reasoning and remove parallel controls.");
+
+            var unrelated = (Dictionary<string, object>)method.Invoke(
+                null,
+                new object[]
+                {
+                    request,
+                    new Uri("https://api.example.test/v1/chat/completions"),
+                    true
+                });
+            Assert(
+                !unrelated.ContainsKey("reasoning") &&
+                (bool)unrelated["parallel_tool_calls"],
+                "Provider-specific policy must not change unrelated endpoints.");
         }
 
         private static void EmptyEndpointResponsesRecover()
@@ -7999,14 +8506,150 @@ namespace GuardrailTests
             }
         }
 
+        private static void EmbeddedProviderErrorsRecover()
+        {
+            const string interrupted =
+                "{\"choices\":[{\"finish_reason\":\"error\",\"error\":{" +
+                "\"code\":\"502\",\"message\":\"Network connection lost.\"," +
+                "\"type\":\"provider_unavailable\"},\"message\":{" +
+                "\"role\":\"assistant\",\"content\":\"Writing now.\"," +
+                "\"tool_calls\":[{\"id\":\"partial\",\"function\":{" +
+                "\"name\":\"add_draft_slides\",\"arguments\":\"{\"}}]}}]}";
+            const string success =
+                "{\"choices\":[{\"finish_reason\":\"tool_calls\"," +
+                "\"message\":{\"role\":\"assistant\",\"content\":null," +
+                "\"tool_calls\":[{\"id\":\"complete\",\"function\":{" +
+                "\"name\":\"add_draft_slides\",\"arguments\":\"{}\"}}]}}]}";
+            foreach (var persistent in new[] { false, true })
+            using (var server = new FakeEndpoint(
+                interrupted,
+                persistent ? interrupted : success))
+            using (var client = new OpenAiCompatibleClient())
+            {
+                try
+                {
+                    var result = client.CompleteAsync(
+                        EndpointSettings(server.BaseUrl),
+                        MakeRequest(new List<ChatTurn>()),
+                        CancellationToken.None).GetAwaiter().GetResult();
+                    Assert(
+                        !persistent && result.tool_calls.Single().id == "complete",
+                        "Embedded provider error recovery returned a partial tool call.");
+                }
+                catch (AiEndpointException exception)
+                {
+                    Assert(
+                        persistent &&
+                        exception.Code == "PROVIDER_RESPONSE_ERROR" &&
+                        exception.ProviderCode == "502",
+                        "Unexpected embedded provider recovery error: " +
+                        exception.Message);
+                }
+
+                server.Wait();
+                Assert(
+                    server.Bodies.Count == 2 &&
+                    server.Bodies[0] == server.Bodies[1],
+                    "Embedded provider recovery must retry the identical inference once.");
+            }
+        }
+
+        private static void ProviderAndEmptyResponseRetriesAreIndependent()
+        {
+            const string interrupted =
+                "{\"choices\":[{\"finish_reason\":\"error\",\"error\":{" +
+                "\"code\":\"502\",\"message\":\"Provider stopped.\"," +
+                "\"type\":\"provider_unavailable\"},\"message\":{" +
+                "\"role\":\"assistant\",\"content\":null}}]}";
+            const string empty =
+                "{\"provider\":\"reasoning-only\",\"choices\":[{" +
+                "\"finish_reason\":\"length\",\"message\":{" +
+                "\"role\":\"assistant\",\"content\":null}}]}";
+            const string success =
+                "{\"choices\":[{\"message\":{" +
+                "\"role\":\"assistant\",\"content\":\"Recovered\"}}]}";
+            using (var server = new FakeEndpoint(
+                interrupted,
+                empty,
+                success))
+            using (var client = new OpenAiCompatibleClient())
+            {
+                var result = client.CompleteAsync(
+                    EndpointSettings(server.BaseUrl),
+                    MakeRequest(new List<ChatTurn>()),
+                    CancellationToken.None).GetAwaiter().GetResult();
+                Assert(
+                    result.content == "Recovered",
+                    "An embedded provider retry consumed the independent empty-response recovery.");
+                server.Wait();
+                Assert(
+                    server.Bodies.Count == 3 &&
+                    server.Bodies.Distinct().Count() == 1,
+                    "Provider and empty-response recovery must retry the identical inference without replaying tools.");
+            }
+        }
+
+        private static void StalledEndpointTimesOut()
+        {
+            const string success =
+                "{\"choices\":[{\"message\":{" +
+                "\"role\":\"assistant\",\"content\":\"Too late\"}}]}";
+            using (var server = new FakeEndpoint(
+                TimeSpan.FromMilliseconds(500),
+                success))
+            {
+                var constructor = typeof(OpenAiCompatibleClient)
+                    .GetConstructor(
+                        BindingFlags.Instance | BindingFlags.NonPublic,
+                        null,
+                        new[] { typeof(TimeSpan) },
+                        null);
+                Assert(
+                    constructor != null,
+                    "The bounded-timeout test constructor is unavailable.");
+                using (var client = (OpenAiCompatibleClient)
+                    constructor.Invoke(new object[]
+                    {
+                        TimeSpan.FromMilliseconds(100)
+                    }))
+                {
+                    try
+                    {
+                        client.CompleteAsync(
+                            EndpointSettings(server.BaseUrl),
+                            MakeRequest(new List<ChatTurn>()),
+                            CancellationToken.None).GetAwaiter().GetResult();
+                        throw new InvalidOperationException(
+                            "A stalled endpoint completed past its deadline.");
+                    }
+                    catch (AiEndpointException exception)
+                    {
+                        Assert(
+                            exception.Code == "AI_TIMEOUT",
+                            "Unexpected stalled-endpoint error: " +
+                            exception.Message);
+                    }
+                }
+            }
+        }
+
         private sealed class FakeEndpoint : IDisposable
         {
             private readonly TcpListener _listener;
             private readonly Task _requestTask;
             private readonly string[] _responseBodies;
+            private readonly TimeSpan _responseDelay;
 
             public FakeEndpoint(params string[] responseBodies)
+                : this(TimeSpan.Zero, responseBodies)
             {
+            }
+
+            public FakeEndpoint(
+                TimeSpan responseDelay,
+                params string[] responseBodies)
+            {
+                _responseDelay = responseDelay;
                 _responseBodies = responseBodies;
                 _listener = new TcpListener(
                     IPAddress.Loopback,
@@ -8138,6 +8781,10 @@ namespace GuardrailTests
                     }
 
                     Bodies.Add(Body);
+                    if (_responseDelay > TimeSpan.Zero)
+                    {
+                        Thread.Sleep(_responseDelay);
+                    }
                     var responseBytes =
                         Encoding.UTF8.GetBytes(
                             responseBody);

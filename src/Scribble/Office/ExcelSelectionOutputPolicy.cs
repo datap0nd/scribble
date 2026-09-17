@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Text.RegularExpressions;
 using Scribble.Security;
 
 namespace Scribble.Office
@@ -136,8 +137,16 @@ namespace Scribble.Office
             int windowHandle,
             IReadOnlyList<KoreanWorkbookCellSnapshot> cells,
             int skippedFormulaCells,
-            int skippedMergedCells)
+            int skippedMergedCells,
+            string targetLanguage = null)
         {
+            // Older checkpoints carry no direction: Korean to English.
+            TargetLanguage = string.Equals(
+                targetLanguage,
+                ExcelSelectionOutputPolicy.TargetKorean,
+                StringComparison.Ordinal)
+                ? ExcelSelectionOutputPolicy.TargetKorean
+                : ExcelSelectionOutputPolicy.TargetEnglish;
             Saved = saved;
             WorkbookIdentity = workbookIdentity ?? string.Empty;
             WorkbookName = workbookName ?? string.Empty;
@@ -160,6 +169,29 @@ namespace Scribble.Office
         public int SkippedFormulaCells { get; }
 
         public int SkippedMergedCells { get; }
+
+        // "English" (Hangul cells become English) or "Korean" (English
+        // text cells become Korean).
+        public string TargetLanguage { get; }
+
+        public bool TranslatesToKorean
+        {
+            get
+            {
+                return TargetLanguage ==
+                    ExcelSelectionOutputPolicy.TargetKorean;
+            }
+        }
+
+        public string SourceLanguage
+        {
+            get
+            {
+                return TranslatesToKorean
+                    ? ExcelSelectionOutputPolicy.TargetEnglish
+                    : ExcelSelectionOutputPolicy.TargetKorean;
+            }
+        }
     }
 
     public sealed class KoreanWorkbookRequestContext
@@ -222,6 +254,102 @@ namespace Scribble.Office
             }
 
             return false;
+        }
+
+        // A normal typed request must unlock the same safe workbook-wide
+        // translation path as the built-in skill button. Keep the classifier
+        // deliberately narrow: it requires the language pair, a translation
+        // action, and explicit whole-workbook scope.
+        public static bool IsWholeWorkbookKoreanToEnglishRequest(
+            string userText)
+        {
+            return WholeWorkbookTranslationTarget(userText) ==
+                TargetEnglish;
+        }
+
+        public static bool IsWholeWorkbookEnglishToKoreanRequest(
+            string userText)
+        {
+            return WholeWorkbookTranslationTarget(userText) ==
+                TargetKorean;
+        }
+
+        public const string TargetEnglish = "English";
+        public const string TargetKorean = "Korean";
+
+        // Both directions name the same two languages, so the pair alone
+        // cannot choose the path: "English to Korean" routed into Hangul
+        // discovery finds nothing and stops. The destination marker decides;
+        // without one, the original Korean-to-English meaning is retained.
+        public static string WholeWorkbookTranslationTarget(
+            string userText)
+        {
+            var text = TextBoundary.PlainText(userText, 1200)
+                .ToLowerInvariant();
+            if (!ContainsAny(text, "translate", "translation", "번역") ||
+                !ContainsAny(text, "korean", "한국어", "한글", "국문") ||
+                !ContainsAny(
+                    text,
+                    "workbook",
+                    "every worksheet",
+                    "all worksheets",
+                    "every sheet",
+                    "all sheets",
+                    "통합 문서",
+                    "모든 시트",
+                    "전체 시트"))
+            {
+                return null;
+            }
+
+            var toKorean = Regex.IsMatch(
+                text,
+                @"\b(?:in)?to\s+korean\b|\bin\s+korean\b|\bfrom\s+english\b|한국어로|한글로|국문으로");
+            var toEnglish = Regex.IsMatch(
+                text,
+                @"\b(?:in)?to\s+english\b|\bin\s+english\b|\bfrom\s+korean\b|영어로|영문으로");
+            if (toKorean && !toEnglish)
+            {
+                return TargetKorean;
+            }
+
+            if (toEnglish && !toKorean)
+            {
+                return TargetEnglish;
+            }
+
+            // Ambiguous or unmarked: only the established pair request
+            // keeps its original meaning; anything else is not claimed.
+            return !toKorean && !toEnglish &&
+                   ContainsAny(text, "english", "영어")
+                ? TargetEnglish
+                : null;
+        }
+
+        // A literal text cell worth sending for English-to-Korean
+        // translation: real words, no Hangul yet, and not an identifier,
+        // address, or link whose exact characters must survive.
+        public static bool IsTranslatableEnglishText(string value)
+        {
+            var text = (value ?? string.Empty).Trim();
+            if (text.Length == 0 || ContainsKorean(text) ||
+                !Regex.IsMatch(text, @"\p{L}{2,}"))
+            {
+                return false;
+            }
+
+            if (Regex.IsMatch(
+                    text,
+                    @"^(?:https?://|www\.)\S+$|^\S+@\S+\.\S+$",
+                    RegexOptions.IgnoreCase))
+            {
+                return false;
+            }
+
+            // Single tokens that mix letters with digits are codes
+            // (SKU-1042, A1B2, 2026-Q3), not language.
+            return !(text.IndexOf(' ') < 0 &&
+                     Regex.IsMatch(text, @"\d"));
         }
 
         public static string TranslationSelectionError(
@@ -573,12 +701,34 @@ namespace Scribble.Office
         private readonly string _handle;
         private readonly int _expectedValues;
         private readonly List<string> _values = new List<string>();
+        private readonly bool _toKorean;
+        private readonly IReadOnlyList<string> _sources;
+        private int _untranslatedRejectedOffset = -1;
         private bool _complete;
 
         public KoreanWorkbookOutputSession(
             string handle,
             int expectedValues)
+            : this(handle, expectedValues, null, null)
         {
+        }
+
+        // sources (optional, aligned to the detected cells) lets an
+        // English-to-Korean session notice a window returned unchanged.
+        public KoreanWorkbookOutputSession(
+            string handle,
+            int expectedValues,
+            string targetLanguage,
+            IReadOnlyList<string> sources)
+        {
+            _toKorean = string.Equals(
+                targetLanguage,
+                ExcelSelectionOutputPolicy.TargetKorean,
+                StringComparison.Ordinal);
+            _sources = sources != null &&
+                sources.Count == expectedValues
+                    ? sources
+                    : null;
             if (string.IsNullOrWhiteSpace(handle))
             {
                 throw new ArgumentException(
@@ -654,7 +804,8 @@ namespace Scribble.Office
                         "A Korean cell translation cannot be empty.");
                 }
 
-                if (ExcelSelectionOutputPolicy.ContainsKorean(sanitized))
+                if (!_toKorean &&
+                    ExcelSelectionOutputPolicy.ContainsKorean(sanitized))
                 {
                     throw new InvalidOperationException(
                         "A translated value still contains Korean text.");
@@ -667,6 +818,37 @@ namespace Scribble.Office
             {
                 throw new InvalidOperationException(
                     "The output contains more translations than detected cells.");
+            }
+
+            // Proper nouns and abbreviations may legitimately stay Latin,
+            // so Hangul is not demanded per cell. A whole window echoed
+            // back unchanged is a skipped translation; it is refused once,
+            // and a deliberate identical resubmission is then accepted.
+            if (_toKorean && _sources != null && bounded.Count >= 5 &&
+                startOffset != _untranslatedRejectedOffset)
+            {
+                var unchanged = true;
+                for (var index = 0; index < bounded.Count; index++)
+                {
+                    if (!string.Equals(
+                        bounded[index].Trim(),
+                        (_sources[startOffset + index] ?? string.Empty).Trim(),
+                        StringComparison.Ordinal))
+                    {
+                        unchanged = false;
+                        break;
+                    }
+                }
+
+                if (unchanged)
+                {
+                    _untranslatedRejectedOffset = startOffset;
+                    throw new InvalidOperationException(
+                        "Every value in this window equals its English source, so nothing was translated. " +
+                        "Return natural Korean for each source entry in the same order. Keep only codes, " +
+                        "formulas-as-text, and established brand names in their original form. If this " +
+                        "window truly contains only such names, resubmit it unchanged.");
+                }
             }
 
             if (!complete &&

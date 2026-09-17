@@ -35,7 +35,7 @@ namespace Scribble.Chat
             return new List<ChatToolDefinition>
             {
                 new ChatToolDefinition { type = "function", function = new ChatToolFunctionDefinition {
-                    name = InspectSlide, description = "Inspect one slide with stable presentation/slide/shape IDs, fingerprint, paginated structured content, tables, chart data, notes, geometry, styling, groups and unsupported objects. Read every page before editing. Optional preview is a private PNG, never a presentation export.",
+                    name = InspectSlide, description = "Inspect one slide with stable presentation/slide/shape IDs, fingerprint, paginated structured content, tables, chart data, notes, geometry, styling, groups and unsupported objects. Read every page before editing. Optional preview is a private PNG, never a presentation export; the host may omit it for native-chart slides when Office cannot render them safely.",
                     parameters = ToolSchema.Build(new Dictionary<string, object> {
                         { "index", ToolSchema.Integer("1-based position from list_slides; response provides stable slide_id.", 1, 1000) },
                         { "offset", ToolSchema.Integer("Character offset; follow next_offset until null.", 0, int.MaxValue) },
@@ -126,7 +126,7 @@ namespace Scribble.Chat
                                     { "type", "array" },
                                     {
                                         "description",
-                                        "REQUIRED in every call, including the first plan/briefs call: a nonempty batch of slide content objects to add, in order. Plan IDs and briefs alone do not create slides."
+                                        "REQUIRED in every call, including the first plan/briefs call: a nonempty JSON array of slide content objects to add, in order. Do not encode this array as quoted text. Supply one or two complete slides per call, then continue with the remaining plan IDs. Plan IDs and briefs alone do not create slides."
                                     },
                                     { "minItems", 1 },
                                     { "items", SlideSchema() }
@@ -210,7 +210,7 @@ namespace Scribble.Chat
                     { "caption", ToolSchema.String("Short table caption; use with matrix/table layouts.") },
                     { "sources", ToolSchema.String("Exact source references and supporting evidence for claims and numbers. Retained in speaker notes.") },
                     { "evidence", ToolSchema.String("Verbatim source excerpt supporting this slide, copied from user input or a read-tool receipt. Required for data slides. Preserve numbers and units. Never invent an excerpt.") },
-                    { "source_spans", new Dictionary<string, object> { { "type", "array" }, { "items", new { type = "string" } }, { "description", "Host-issued span_id values from read_task_sources. Prefer these over hand-copying evidence. Multiple passages may support a slide; the host resolves their original text." } } },
+                    { "source_spans", new Dictionary<string, object> { { "type", "array" }, { "items", new { type = "string" } }, { "description", "Exact host-issued IDs returned in source_spans by search/read receipts, or rediscovered with read_task_sources. Required for factual non-cover slides when source material was read. Copy IDs exactly; never place prose here. Multiple spans may support one slide and the host resolves their original text." } } },
                     { "image_names", new Dictionary<string, object> { { "type", "array" }, { "items", new { type = "string" } }, { "description", "Up to four exact filenames of images explicitly attached to this task. Use source figures for visual layouts; never supply file paths or URLs. Charts with available data should use editable chart fields." } } },
                     { "highlight_rows", new Dictionary<string, object> { { "type", "array" }, { "items", new { type = "integer", minimum = 1 } }, { "description", "1-based primary table rows or chart categories supporting the action title. The host draws red frames." } } },
                     {

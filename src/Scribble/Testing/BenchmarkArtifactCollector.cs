@@ -71,12 +71,27 @@ namespace Scribble.Testing
                                 source &&
                                 phase != "source" &&
                                 HasNewDraft(value, kind, boundary);
-                            var effectiveOutput = runOutput || sourceDerivedOutput;
+                            // A case may explicitly authorize an in-memory
+                            // transform of the verified source workbook. It is
+                            // still a deliverable even though the workbook was
+                            // not created by this run and no draft sheet was
+                            // added. Capture a separate copy; never save over
+                            // the verified fixture path.
+                            var sourceEditOutput =
+                                source &&
+                                phase != "source" &&
+                                kind == "Excel" &&
+                                run.allow_source_edit;
+                            var effectiveOutput = runOutput ||
+                                sourceDerivedOutput ||
+                                sourceEditOutput;
                             var role = effectiveOutput ? "output" : "source";
                             var stem = Path.Combine(
                                 directory,
                                 kind + "-" + phase + "-" + role + "-" + i);
                             try {
+                                var stressNative = run.suite_id == "scribble-stress-v1" && effectiveOutput
+                                    ? TestLabStressEvidence.Read(value, kind, boundary?.sheets, boundary?.slides) : null;
                                 var readback = ReadNativeWithinBoundary(value, kind, !effectiveOutput, boundary);
                                 var readbackExtension = kind == "Excel" ? ".xlsx" : kind == "PowerPoint" ? ".pptx" : ".docx";
                                 File.WriteAllText(stem + "-readback.json", TestLab.Serialize(new { schema = 1, run_id = runId,
@@ -84,7 +99,7 @@ namespace Scribble.Testing
                                     phase = phase, run_created_output = effectiveOutput,
                                     output_boundary = effectiveOutput,
                                     artifact_extension = effectiveOutput ? readbackExtension.TrimStart('.') : null,
-                                    text = readback }), Encoding.UTF8);
+                                    stress_native = stressNative, text = readback }), Encoding.UTF8);
                                 TestLab.Collect(runId, stem + "-readback.json");
                                 report.Add("Captured " + kind + " cell/text/structure readback.");
                             } catch (Exception ex) { report.Add(kind + " readback failed: " + ex.Message); }
@@ -185,7 +200,7 @@ namespace Scribble.Testing
                         File.WriteAllText(stem + "-readback.json", TestLab.Serialize(new { schema = 1, run_id = runId,
                             native_readback = true, phase, run_created_output = true, output_boundary = true,
                             artifact_extension = "msg", unsent = true, to = Convert.ToString(mail.To),
-                            cc = Convert.ToString(mail.CC), bcc = Convert.ToString(mail.BCC), text = nativeText }), Encoding.UTF8);
+                            cc = Convert.ToString(mail.CC), bcc = Convert.ToString(mail.BCC), subject = Convert.ToString(mail.Subject), body = Convert.ToString(mail.Body), text = nativeText }), Encoding.UTF8);
                         TestLab.Collect(runId, stem + "-readback.json");
                         var nativeMail = Path.Combine(nativeDirectory, Path.GetFileName(stem) + ".msg");
                         try { mail.SaveAs(nativeMail, 9); TestLab.Collect(runId, nativeMail); }
