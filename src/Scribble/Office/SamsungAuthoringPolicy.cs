@@ -45,6 +45,7 @@ namespace Scribble.Office
             "Check claims and numeric associations against evidence, including labels, units, periods, baselines, calculations, qualifications and citations. " +
             "The host has already verified that displayed numeric tokens occur in the cited evidence and has recomputed declared calculations with decimal arithmetic. Do not replace an exact source-stated value with your own total from an incomplete excerpt. Do not reject a source-stated exact value merely because a recomputation is displayed at fewer decimals; for example, 55.76% and approximately 55.8% are compatible rounding. Preserve the explicitly stated value unless complete cited operands contradict it at its stated precision. " +
             "A number occurring somewhere in the source is insufficient. Proposals are not accomplishments; reject unsupported causal conclusions. " +
+            "The host has also verified that every displayed period label such as 2026-05 occurs in the sources this task read. A cited table may head the same column with the month name alone (May, June); treat that as the same period unless the evidence names a different year. " +
             "Title names the subject; analytical subtitle states the finding; optional takeaway adds information. Check evidence annotations.";
         public const string DeckReview =
             "Review the entire Samsung deck against the original brief and mandatory content. Check coverage, exact slide count, narrative order, repeated messages, " +

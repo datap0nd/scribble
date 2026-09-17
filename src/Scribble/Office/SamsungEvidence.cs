@@ -26,7 +26,36 @@ namespace Scribble.Office
 
             var expected = CanonicalPeriods(association);
             if (expected.Count != 1) return false;
-            return CanonicalPeriods(passage).Contains(expected.Single());
+            if (CanonicalPeriods(passage).Contains(expected.Single())) return true;
+            return MonthHeaderOccurs(passage, expected.Single());
+        }
+
+        private static readonly string[] MonthNames = { "January", "February", "March", "April", "May", "June",
+            "July", "August", "September", "October", "November", "December" };
+
+        // An audit table often heads its columns "May" and "June" while the
+        // deck must label them 2026-05 and 2026-06. The capitalized month name
+        // identifies the column; the passage must not name a different year.
+        private static bool MonthHeaderOccurs(string passage, string canonicalPeriod)
+        {
+            var year = canonicalPeriod.Substring(0, 4);
+            var name = MonthNames[int.Parse(canonicalPeriod.Substring(5, 2), CultureInfo.InvariantCulture) - 1];
+            if (!Regex.IsMatch(passage ?? "", @"(?<![A-Za-z])(?:" + name + "|" + name.Substring(0, 3) + @")(?![A-Za-z])")) return false;
+            return !Regex.Matches(passage ?? "", @"(?<![0-9])(?:19|20)[0-9]{2}(?![0-9])").Cast<Match>().Any(match => match.Value != year);
+        }
+
+        // Period labels are not quantities. A displayed YYYY-MM or "June 2026"
+        // is verified against every source the task has read; the numbers
+        // beside it remain bound to the slide's cited evidence.
+        public static string RemoveVerifiedPeriodLabels(string displayed, string taskSources)
+        {
+            var known = CanonicalPeriods(taskSources);
+            if (known.Count == 0) return displayed ?? "";
+            return PeriodPattern.Replace(displayed ?? "", match =>
+            {
+                var canonical = CanonicalPeriods(match.Value);
+                return canonical.Count == 1 && known.Contains(canonical.Single()) ? " " : match.Value;
+            });
         }
 
         // Models sometimes quote the exact data row but omit an adjacent period
@@ -62,19 +91,21 @@ namespace Scribble.Office
             return best ?? passage;
         }
 
+        private static readonly Regex PeriodPattern = new Regex(
+            @"\b(?:19|20)\d{2}[-/](?:0?[1-9]|1[0-2])\b|" +
+            @"\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|" +
+            @"Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|" +
+            @"Dec(?:ember)?)\s+(?:19|20)\d{2}\b|" +
+            @"\b(?:19|20)\d{2}\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|" +
+            @"Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|" +
+            @"Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\b",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
         private static HashSet<string> CanonicalPeriods(string value)
         {
             var result = new HashSet<string>(StringComparer.Ordinal);
             var text = Normalize(value);
-            foreach (Match match in Regex.Matches(text,
-                @"\b(?:19|20)\d{2}[-/](?:0?[1-9]|1[0-2])\b|" +
-                @"\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|" +
-                @"Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|" +
-                @"Dec(?:ember)?)\s+(?:19|20)\d{2}\b|" +
-                @"\b(?:19|20)\d{2}\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|" +
-                @"Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|" +
-                @"Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\b",
-                RegexOptions.IgnoreCase))
+            foreach (Match match in PeriodPattern.Matches(text))
             {
                 DateTime parsed;
                 if (DateTime.TryParse(match.Value, CultureInfo.InvariantCulture,
@@ -157,11 +188,23 @@ namespace Scribble.Office
                 {
                     var passage = SamsungAuthoringPolicy.Text(operand, "evidence");
                     RequirePassage(passage, evidence);
+                    // Like a claim, an exact data row may omit its adjacent header.
+                    passage = ExpandClaimPassage(evidence, passage, operand);
+                    operand["evidence"] = passage;
                     foreach (var key in new[] { "label", "unit", "period" })
                         if (string.IsNullOrWhiteSpace(SamsungAuthoringPolicy.Text(operand, key)) ||
                             !AssociationOccurs(passage,
                                 SamsungAuthoringPolicy.Text(operand, key), key))
-                            throw new InvalidOperationException("SLIDE_OPERAND_ASSOCIATION: Operand label, unit and period must occur in its cited passage.");
+                        {
+                            var cited = Normalize(passage);
+                            if (cited.Length > 160) cited = cited.Substring(0, 160) + "...";
+                            var nearby = ClosestVerifiedTablePassage(evidence, passage);
+                            throw new InvalidOperationException("SLIDE_OPERAND_ASSOCIATION: Calculation '" + SamsungAuthoringPolicy.Text(calc, "label") +
+                                "' operand " + SamsungAuthoringPolicy.Text(operand, "value") + " cites '" + cited + "' but that passage is missing " + key + " '" +
+                                SamsungAuthoringPolicy.Text(operand, key) + "'. Cite one contiguous block containing the table header and the operand's row, and use the literal " +
+                                key + " wording of that block (for a column headed June, period June or 2026-06 both match)." +
+                                (string.IsNullOrWhiteSpace(nearby) ? "" : " A nearby host-verified passage is: \"" + nearby + "\"."));
+                        }
                     var number = Number(operand, "value");
                     var found = Regex.Matches(passage, @"(?<![A-Za-z0-9])[-+]?(?:\d+(?:[,.]\d+)*|\.\d+)").Cast<Match>()
                         .Any(m => decimal.TryParse(m.Value.Replace(",", ""), NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) && parsed == number);
@@ -189,7 +232,10 @@ namespace Scribble.Office
                 var rounding = Number(calc, "decimals");
                 if (rounding < 0 || rounding > 6 || rounding != decimal.Truncate(rounding)) throw new InvalidOperationException("Rounding must be 0 to 6 decimal places.");
                 result = Math.Round(result, (int)rounding, MidpointRounding.AwayFromZero);
-                if (result != Number(calc, "result")) throw new InvalidOperationException("SLIDE_CALCULATION_MISMATCH: Result differs from host arithmetic.");
+                if (result != Number(calc, "result"))
+                    throw new InvalidOperationException("SLIDE_CALCULATION_MISMATCH: Calculation '" + SamsungAuthoringPolicy.Text(calc, "label") +
+                        "' declares " + Number(calc, "result").ToString(CultureInfo.InvariantCulture) + " but host arithmetic on the cited operands gives " +
+                        result.ToString(CultureInfo.InvariantCulture) + ". Use the host value in result and everywhere this metric is displayed.");
                 var unit = SamsungAuthoringPolicy.Text(calc, "unit");
                 if (string.IsNullOrWhiteSpace(unit) || ((operation == "percent" || operation == "growth_percent" || operation == "margin_percent") && unit != "%"))
                     throw new InvalidOperationException("SLIDE_CALCULATION_UNIT: Specify result units; percentage operations require %.");

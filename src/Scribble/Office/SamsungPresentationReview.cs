@@ -52,7 +52,10 @@ namespace Scribble.Office
             }
             foreach (var value in SamsungEvidence.ValidateCalculations(data, evidence)) allowed.Add(value);
             SamsungEvidence.ValidateClaims(data, evidence);
-            var missing = Numbers(content).Where(n => !allowed.Contains(n)).Distinct().ToArray();
+            // A period label (2026-05, June 2026) names a column rather than a
+            // quantity; it must occur in the sources this task has read.
+            var quantities = SamsungEvidence.RemoveVerifiedPeriodLabels(content, actualSource);
+            var missing = Numbers(quantities).Where(n => !allowed.Contains(n)).Distinct().ToArray();
             if (missing.Length > 0) throw new InvalidOperationException("SLIDE_NUMBERS_UNVERIFIED: Values absent from cited evidence: " + string.Join(", ", missing));
             if (special) return;
             var explanatory = SamsungAuthoringPolicy.Text(data, "purpose") == "explanatory";

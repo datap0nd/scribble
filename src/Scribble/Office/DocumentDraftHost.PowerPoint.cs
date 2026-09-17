@@ -52,6 +52,10 @@ namespace Scribble.Office
                     var ids = references as IEnumerable;
                     if (_taskContext == null || ids == null || references is string || ids.Cast<object>().Any(id => !(id is string)))
                         throw new InvalidOperationException("SLIDE_SOURCE_REF_INVALID: source_spans must be an array of host-issued span IDs.");
+                    // A cover, divider, agenda or closing slide needs no evidence;
+                    // an empty list there is the same as omitting the field.
+                    if (!ids.Cast<object>().Any() && new[] { "cover", "divider", "closing", "agenda" }.Contains(SamsungAuthoringPolicy.Text(slide, "layout")))
+                    { slide.Remove("source_spans"); continue; }
                     var evidence = _taskContext.Sources.Resolve(ids.Cast<string>());
                     if (string.IsNullOrWhiteSpace(evidence)) throw new InvalidOperationException("SLIDE_SOURCE_REF_INVALID: At least one supporting source span is required.");
                     slide["evidence"] = evidence;

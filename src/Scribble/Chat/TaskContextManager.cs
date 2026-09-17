@@ -438,7 +438,13 @@ namespace Scribble.Chat
                 Id = Guid.NewGuid().ToString("N"), EvidenceReferences = new List<string> { reference }
             });
             _store.Save(_state);
-            if (_stalled >= 6)
+            // A preflight repair loop whose rejection changes every round is
+            // converging through successive gates, not stalled: nothing was
+            // written and each result is new. It gets a longer, still bounded,
+            // allowance; any repeated exchange keeps the original limit.
+            var converging = failed && cycleCount == 1 &&
+                results.All(r => r.Outcome.PermissionConsumed == false);
+            if (_stalled >= (converging ? 10 : 6))
             {
                 Pause("Repeated actions produced no new result. Revalidate the source or select another approach. Last result: " + string.Join("; ", results.Select(r => r.Content.Substring(0, Math.Min(600, r.Content.Length)))));
                 throw new AiEndpointException("TASK_NEEDS_RECOVERY", _state.Blocker);

@@ -126,6 +126,55 @@ namespace GuardrailTests
             Check(draft.Contains("margin_percent"), "The draft tool schema does not expose the margin calculation.");
         }
 
+        // XA01 run 2026-09-17: the audit table heads its columns May and June
+        // while the required chart categories are 2026-05 and 2026-06, and the
+        // model cites bare data rows for calculation operands.
+        internal static void PeriodLabelsAndOperandHeaders()
+        {
+            var json = new JavaScriptSerializer();
+            const string audit = "Metric\tMay\tJune\nRevenue EUR\t85519\t82992\nCost EUR\t36702\t36714";
+            const string corpus = audit + "\nRowID\tPeriod\tRevenueEUR\n1\t2026-05\t2538\n2\t2026-06\t3990";
+            Func<string, decimal, decimal, Dictionary<string, object>> margin = (period, revenue, cost) => new Dictionary<string, object> {
+                { "label", "Gross margin " + period }, { "operation", "margin_percent" }, { "result", period == "2026-06" ? 55.76m : 57.08m }, { "unit", "%" }, { "decimals", 2 },
+                { "operands", new object[] {
+                    new Dictionary<string, object> { { "value", revenue }, { "label", "Revenue EUR" }, { "unit", "EUR" }, { "period", period }, { "evidence", "Revenue EUR\t85519\t82992" } },
+                    new Dictionary<string, object> { { "value", cost }, { "label", "Cost EUR" }, { "unit", "EUR" }, { "period", period }, { "evidence", "Cost EUR\t36702\t36714" } }
+                } }
+            };
+            var may = margin("2026-05", 85519m, 36702m);
+            var slide = new Dictionary<string, object> {
+                { "title", "Revenue by month (EUR)" }, { "subtitle", "Gross margin moved from 57.08% in 2026-05 to 55.76% in 2026-06" }, { "layout", "chart" },
+                { "chart", new Dictionary<string, object> { { "title", "Revenue (EUR)" }, { "categories", new[] { "2026-05", "2026-06" } },
+                    { "series", new object[] { new Dictionary<string, object> { { "name", "Revenue EUR" }, { "values", new[] { 85519, 82992 } } } } } } },
+                { "claims", new object[] { new Dictionary<string, object> { { "text", "June revenue EUR 82,992" }, { "label", "Revenue EUR" }, { "unit", "EUR" },
+                    { "period", "2026-06" }, { "evidence", "Revenue EUR\t85519\t82992" } } } },
+                { "calculations", new object[] { may, margin("2026-06", 82992m, 36714m) } },
+                { "evidence", audit }, { "sources", "WB01 audit" } };
+            SamsungPresentationReview.ValidateEvidence(json.Serialize(slide), corpus);
+
+            // A label the task never read is still refused, as is a quantity.
+            slide["subtitle"] = "Gross margin was 55.76% in 2026-06 against a 2026-07 plan";
+            try { SamsungPresentationReview.ValidateEvidence(json.Serialize(slide), corpus); throw new Exception("An unread period label was accepted."); }
+            catch (InvalidOperationException ex) { Check(ex.Message.StartsWith("SLIDE_NUMBERS_UNVERIFIED") && ex.Message.Contains("2026"), "An unread period label was not reported as unverified."); }
+            slide["subtitle"] = "Gross margin was 55.76% in 2026-06 on 4,100 units";
+            Reject(() => SamsungPresentationReview.ValidateEvidence(json.Serialize(slide), corpus));
+            slide["subtitle"] = "Gross margin moved from 57.08% in 2026-05 to 55.76% in 2026-06";
+
+            // The month header cannot stand in for a different year.
+            const string lastYear = "Metric\tMay 2025\tJune 2025\nRevenue EUR\t85519\t82992\nCost EUR\t36702\t36714";
+            var dated = new Dictionary<string, object>(slide); dated["evidence"] = lastYear;
+            Reject(() => SamsungPresentationReview.ValidateEvidence(json.Serialize(dated), lastYear + "\n" + corpus));
+
+            may["result"] = 57.18m;
+            try { SamsungPresentationReview.ValidateEvidence(json.Serialize(slide), corpus); throw new Exception("A wrong margin was accepted."); }
+            catch (InvalidOperationException ex) { Check(ex.Message.StartsWith("SLIDE_CALCULATION_MISMATCH") && ex.Message.Contains("57.08") && ex.Message.Contains("57.18"), "The mismatch did not return the host-computed value."); }
+            may["result"] = 57.08m;
+            ((Dictionary<string, object>)((object[])may["operands"])[0])["period"] = "2026-04";
+            try { SamsungPresentationReview.ValidateEvidence(json.Serialize(slide), corpus); throw new Exception("An operand for an absent column was accepted."); }
+            catch (InvalidOperationException ex) { Check(ex.Message.StartsWith("SLIDE_OPERAND_ASSOCIATION") && ex.Message.Contains("period '2026-04'") && ex.Message.Contains("Metric May June"), "The operand rejection does not name the missing period and a verified block."); }
+            Check(SamsungAuthoringPolicy.FactReview.Contains("month name alone"), "The fact reviewer is not told how period labels were verified.");
+        }
+
         // After the first verified slide, a clarification that the tool contract
         // already answers is resolved by the host; a persistent one reaches the user.
         internal static void ClarificationDeferral()
