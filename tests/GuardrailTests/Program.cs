@@ -109,6 +109,7 @@ namespace GuardrailTests
                 Run("English-to-Korean discovery skips codes, links and existing Korean", WorkbookTranslationTests.EnglishCellEligibility);
                 Run("Korean-target output accepts names but refuses an echoed window once", WorkbookTranslationTests.KoreanTargetSession);
                 Run("Korean-target request exposes direction-specific tool and instruction", WorkbookTranslationTests.RequestSurface);
+                Run("Grouped totals are host arithmetic with disclosed gaps", WorkbookTranslationTests.GroupedTotals);
                 Run("Samsung layouts preserve content and enforce overflow bounds", SamsungSlideTests.LayoutsAndOverflow);
                 Run("Samsung slide numbers require verified source evidence", SamsungSlideTests.EvidenceAndNumbers);
                 Run("PowerPoint and Outlook slide tool calls reach independent review", SlideToolCallsReachReview);
@@ -6729,7 +6730,8 @@ namespace GuardrailTests
                 workbookNames.SequenceEqual(new[]
                 {
                     "list_worksheets",
-                    "read_cells"
+                    "read_cells",
+                    "read_grouped_totals"
                 }) &&
                 readCellsJson.Contains("row_offset") &&
                 readCellsJson.Contains("column_offset") &&
@@ -6966,6 +6968,7 @@ namespace GuardrailTests
                 {
                     "list_worksheets",
                     "read_cells",
+                    "read_grouped_totals",
                     "fetch_web_page",
                     "ask_user"
                 }),

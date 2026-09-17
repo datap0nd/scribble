@@ -503,6 +503,7 @@ $workbookToolNames = [regex]::Matches(
 if (Compare-Object $workbookToolNames (@(
     "list_worksheets",
     "read_cells",
+    "read_grouped_totals",
     "write_draft_sheet",
     "write_cells",
     "write_selection_output",

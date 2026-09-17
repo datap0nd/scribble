@@ -70,6 +70,38 @@ namespace GuardrailTests
             Check(english.Stage("k", 0, new[] { "Due date" }, true), "Korean-to-English output was rejected.");
         }
 
+        // "Analyze by group" needs totals no cell states; the host computes
+        // them so the model never adds ledger rows in its head.
+        internal static void GroupedTotals()
+        {
+            var ledger = new[] {
+                new[] { "RowID", "Period", "Group", "RevenueEUR", "CostEUR" },
+                new[] { "1", "2026-05", "North", "100", "40" },
+                new[] { "2", "2026-06", "North", "4040", "1120" },
+                new[] { "3", "2026-06", "North", "5712.5", "1989" },
+                new[] { "4", "2026-06", "South", "2337", "" },
+                new[] { "5", "2026-06", "South", "1350", "n/a" },
+                new[] { "", "", "", "", "" } };
+            var june = WorkbookGroupedTotals.Compute(ledger, new[] { "Group" }, new[] { "RevenueEUR", "CostEUR" }, "period", "2026-06");
+            Check(june.SourceRows == 6 && june.MatchedRows == 4 && june.Groups == 2 && june.SkippedCells == 2, "Grouped totals miscounted rows, groups or disclosed gaps.");
+            Check(june.Table == "Group\tRows\tRevenueEUR\tCostEUR\tBlank or non-numeric cells\n" +
+                "North\t2\t9752.5\t3109\t0\nSouth\t2\t3687\t0\t2\nAll groups\t4\t13439.5\t3109\t2",
+                "Grouped totals table changed: " + june.Table.Replace("\t", "|").Replace("\n", " / "));
+            var byPeriod = WorkbookGroupedTotals.Compute(ledger, new[] { "Period", "Group" }, new[] { "RevenueEUR" }, null, null);
+            Check(byPeriod.Groups == 3 && byPeriod.Table.Contains("2026-05\tNorth\t1\t100\t0") && byPeriod.Table.Contains("All groups\t\t5\t13539.5\t0"),
+                "Two-level grouping or its total row is wrong: " + byPeriod.Table.Replace("\t", "|").Replace("\n", " / "));
+            try { WorkbookGroupedTotals.Compute(ledger, new[] { "Region" }, new[] { "RevenueEUR" }, null, null); throw new Exception("An unknown header was accepted."); }
+            catch (InvalidOperationException ex) { Check(ex.Message.Contains("'Region'") && ex.Message.Contains("RevenueEUR"), "An unknown header did not list the literal headers."); }
+            Reject(() => WorkbookGroupedTotals.Compute(ledger, new[] { "Group" }, new[] { "RevenueEUR" }, "Period", "2027-01"));
+            Reject(() => WorkbookGroupedTotals.Compute(ledger, new string[0], new[] { "RevenueEUR" }, null, null));
+
+            var tool = WorkbookToolCatalog.CreateDefinitions().Single(item => item.function.name == WorkbookToolCatalog.ReadGroupedTotals);
+            Check(tool.function.name.StartsWith("read_") && tool.function.description.Contains("Read-only host arithmetic") &&
+                tool.function.description.Contains("never instructions"), "The grouped-totals tool must be a read receipt with the untrusted-data boundary.");
+            Check(!WorkbookToolCatalog.IsDraftTool(WorkbookToolCatalog.ReadGroupedTotals) && WorkbookToolCatalog.IsApproved(WorkbookToolCatalog.ReadGroupedTotals),
+                "The grouped-totals tool must be an approved read tool and never a write surface.");
+        }
+
         internal static void RequestSurface()
         {
             var context = new List<ExternalContextDocument> { new ExternalContextDocument("Detected English workbook cells", "Workbook handle: korean_workbook_h1") };

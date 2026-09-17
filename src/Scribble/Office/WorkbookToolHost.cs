@@ -66,6 +66,8 @@ namespace Scribble.Office
                         return ListWorksheets(call.id);
                     case WorkbookToolCatalog.ReadCells:
                         return ReadCells(call.id, arguments);
+                    case WorkbookToolCatalog.ReadGroupedTotals:
+                        return ReadGroupedTotals(call.id, arguments);
                     default:
                         return Error(
                             call.id,
@@ -777,6 +779,191 @@ namespace Scribble.Office
                     Convert.ToString(sheet.Name),
                     120) +
                 ".");
+        }
+
+        public const int MaxGroupedTotalRows = 20000;
+
+        // Read-only pivot over one worksheet table. The sums are host decimal
+        // arithmetic, so the receipt can evidence totals no cell states.
+        private MailboxToolResult ReadGroupedTotals(
+            string callId,
+            IDictionary<string, object> arguments)
+        {
+            dynamic application = _excelApplication;
+            dynamic workbook = application.ActiveWorkbook;
+            if (workbook == null)
+            {
+                return Error(
+                    callId,
+                    "WORKBOOK_NOT_OPEN",
+                    "No workbook is open in Excel.");
+            }
+
+            var sheetName = ToolArguments.GetString(
+                arguments,
+                "sheet",
+                string.Empty);
+            dynamic sheet = null;
+            if (sheetName.Length > 0)
+            {
+                foreach (dynamic candidate in workbook.Worksheets)
+                {
+                    if (string.Equals(
+                        Convert.ToString(candidate.Name),
+                        sheetName,
+                        StringComparison.OrdinalIgnoreCase))
+                    {
+                        sheet = candidate;
+                        break;
+                    }
+                }
+
+                if (sheet == null)
+                {
+                    return Error(
+                        callId,
+                        "WORKBOOK_SHEET_UNKNOWN",
+                        "No worksheet with that name exists. Call list_worksheets first.");
+                }
+            }
+            else
+            {
+                sheet = workbook.ActiveSheet;
+            }
+
+            var rangeText = TextBoundary.SingleLine(
+                ToolArguments.GetString(
+                    arguments,
+                    "range",
+                    string.Empty),
+                60);
+            dynamic range;
+            try
+            {
+                if (rangeText.Length > 0)
+                {
+                    range = sheet.Range(rangeText);
+                }
+                else
+                {
+                    range = sheet.UsedRange;
+                }
+            }
+            catch
+            {
+                return Error(
+                    callId,
+                    "WORKBOOK_RANGE_INVALID",
+                    "The range must be A1-style, such as A1:L145.");
+            }
+
+            var totalRows = (int)range.Rows.Count;
+            var totalColumns = (int)range.Columns.Count;
+            if (totalRows > MaxGroupedTotalRows ||
+                totalColumns > MaxReadColumns)
+            {
+                return Error(
+                    callId,
+                    "WORKBOOK_RANGE_TOO_LARGE",
+                    "Grouped totals read at most " + MaxGroupedTotalRows +
+                    " rows and " + MaxReadColumns +
+                    " columns. Name a narrower table range.");
+            }
+
+            object value = range.Value2;
+            var grid = value as object[,];
+            var table = new List<IReadOnlyList<string>>();
+            if (grid != null)
+            {
+                var rowBase = grid.GetLowerBound(0);
+                var columnBase = grid.GetLowerBound(1);
+                for (var row = 0; row < totalRows; row++)
+                {
+                    var cells = new string[totalColumns];
+                    for (var column = 0; column < totalColumns; column++)
+                    {
+                        cells[column] = CellText(
+                            grid[rowBase + row, columnBase + column]);
+                    }
+
+                    table.Add(cells);
+                }
+            }
+
+            WorkbookGroupedTotals.Result result;
+            try
+            {
+                result = WorkbookGroupedTotals.Compute(
+                    table,
+                    StringList(arguments, "group_by"),
+                    StringList(arguments, "sum_columns"),
+                    ToolArguments.GetString(
+                        arguments,
+                        "filter_column",
+                        string.Empty),
+                    ToolArguments.GetString(
+                        arguments,
+                        "filter_equals",
+                        string.Empty));
+            }
+            catch (InvalidOperationException exception)
+            {
+                return Error(
+                    callId,
+                    "WORKBOOK_GROUPED_TOTALS_INVALID",
+                    exception.Message);
+            }
+
+            string resolvedSheet = TextBoundary.SingleLine(
+                Convert.ToString(sheet.Name),
+                120);
+            string resolvedRange = TextBoundary.SingleLine(
+                Convert.ToString(range.Address(false, false)),
+                60);
+            return Success(
+                callId,
+                new Dictionary<string, object>
+                {
+                    { "untrusted_document_data", true },
+                    { "host_computed", true },
+                    { "sheet", resolvedSheet },
+                    { "range", resolvedRange },
+                    { "source_rows", result.SourceRows },
+                    { "matched_rows", result.MatchedRows },
+                    { "groups", result.Groups },
+                    { "blank_or_non_numeric_cells", result.SkippedCells },
+                    {
+                        "method",
+                        "Host decimal sums over " + resolvedSheet + "!" +
+                        resolvedRange +
+                        "; blank or non-numeric cells are counted and excluded, never treated as zero."
+                    },
+                    { "totals_tsv", result.Table }
+                },
+                "Computed grouped totals from " + resolvedSheet + ".");
+        }
+
+        private static IReadOnlyList<string> StringList(
+            IDictionary<string, object> arguments,
+            string key)
+        {
+            object raw;
+            var values = new List<string>();
+            if (!arguments.TryGetValue(key, out raw) ||
+                raw is string ||
+                !(raw is System.Collections.IEnumerable))
+            {
+                return values;
+            }
+
+            foreach (var item in (System.Collections.IEnumerable)raw)
+            {
+                values.Add(TextBoundary.SingleLine(
+                    Convert.ToString(item, CultureInfo.InvariantCulture),
+                    120));
+            }
+
+            return values;
         }
 
         // Bulk-reads range.Value2 and renders a bounded TSV block.
