@@ -45,8 +45,12 @@ namespace Scribble.Chat
                 request.tools.Any(t => t.function.name == PresentationToolCatalog.AddDraftSlides || t.function.name == CrossAppToolCatalog.SendToPowerPoint))
             {
                 var count = System.Text.RegularExpressions.Regex.Match(objective ?? "",
-                    @"\b(?<count>\d+|one|two|three|four|five|six|seven|eight|nine|ten|a)\b(?:[\s-]+[A-Za-z][A-Za-z0-9-]*){0,8}[\s-]+slides?\b",
+                    @"\b(?<count>\d+|one|two|three|four|five|six|seven|eight|nine|ten)\b(?:[\s-]+[A-Za-z][A-Za-z0-9-]*){0,8}[\s-]+slides?\b",
                     System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                if (!count.Success)
+                    count = System.Text.RegularExpressions.Regex.Match(objective ?? "",
+                        @"\b(?<count>a)[\s-]+(?:powerpoint[\s-]+)?slide\b",
+                        System.Text.RegularExpressions.RegexOptions.IgnoreCase);
                 if (count.Success)
                 {
                     var word = count.Groups["count"].Value.ToLowerInvariant();
