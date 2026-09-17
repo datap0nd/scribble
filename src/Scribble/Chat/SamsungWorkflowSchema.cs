@@ -28,7 +28,9 @@ namespace Scribble.Chat
             }, "value", "label", "unit", "period", "evidence");
             return List(ToolSchema.Build(new Dictionary<string, object> {
                 { "label", ToolSchema.String("Displayed derived metric.") },
-                { "operation", new { type = "string", @enum = new[] { "sum", "difference", "ratio", "percent", "growth_percent" } } },
+                { "operation", new Dictionary<string, object> { { "type", "string" },
+                    { "enum", new[] { "sum", "difference", "ratio", "percent", "growth_percent", "margin_percent" } },
+                    { "description", "Host arithmetic over ordered operands: sum; difference a-b; ratio a/b; percent a/b*100; growth_percent (a-b)/b*100; margin_percent (a-b)/a*100, e.g. gross margin from revenue then cost." } } },
                 { "operands", List(operand) }, { "result", new { type = "number" } },
                 { "unit", ToolSchema.String("Result unit; percentage operations use %.") },
                 { "decimals", ToolSchema.Integer("Round half away from zero.", 0, 6) }

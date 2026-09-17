@@ -118,6 +118,13 @@ namespace Scribble.Chat
         public static bool IsTaskTool(string name) { return name == ReadEvidenceTool ||
             name == TaskSources.ReadSourcesTool || name == TaskSources.ReadDocumentTool; }
 
+        private bool PresentationDeliverableStarted()
+        {
+            if (!_state.HostData.ContainsKey("samsung_plan") &&
+                !_state.Batches.Any(b => b.CoveredSourceIds.Any(id => id.StartsWith("ppt:", StringComparison.Ordinal)))) return false;
+            return _state.Outstanding().Any(id => id.StartsWith("ppt:", StringComparison.Ordinal));
+        }
+
         private static bool IsPresentationWriteTool(string name)
         {
             return name == PresentationToolCatalog.AddDraftSlides ||
@@ -146,6 +153,21 @@ namespace Scribble.Chat
             if (McpToolHost.IsMcpTool(call?.function?.name)) return null;
             var errors = ToolContractValidator.Validate(call, definition);
             if (errors.Count == 0) {
+                if (PromptHelperTool.IsTool(call.function.name) && PresentationDeliverableStarted())
+                {
+                    // The request, audience, period, units and format were settled
+                    // before the first slide was authorized. A question now would
+                    // strand a half-written deck; derived values and optional facts
+                    // are resolved through the tool contract instead.
+                    var outstanding = _state.Outstanding().Where(id => id.StartsWith("ppt:", StringComparison.Ordinal)).Select(id => id.Substring(4)).ToArray();
+                    Diagnostics.Record("clarification_after_deliverable_rejected", new { call.id, outstanding });
+                    return new MailboxToolResult(call.id, _json.Serialize(new { error_code = "CLARIFICATION_AFTER_DELIVERABLE_STARTED",
+                        permission_consumed = false, outstanding_slide_ids = outstanding,
+                        message = "The deck is already being written from the settled request, so ask_user is closed for this task. Continue the exposed PowerPoint draft tool with the next planned slide IDs" +
+                            (outstanding.Length > 0 ? " (" + string.Join(", ", outstanding) + ")" : "") +
+                            ". A derived value is never a question for the user: declare it in calculations with operands copied verbatim from the cited passage (margin_percent with revenue then cost for a gross margin) so the host recomputes it, or omit an optional fact the source does not state. State any unmet requirement in your final response after the last planned slide is written." }),
+                        "Clarification is closed once the deck is being written");
+                }
                 if (DocumentWriteSpent(call)) {
                     Diagnostics.Record("duplicate_write_rejected", new { call.id, tool = call.function.name });
                     return new MailboxToolResult(call.id, _json.Serialize(new { error_code = "DOCUMENT_WRITE_ALREADY_COMPLETED",

@@ -108,6 +108,23 @@ namespace Scribble.Office
             internal string Image;
         }
 
+        // The complete citation always lands in the speaker notes. The visible
+        // footer is a pointer to it: covers, dividers, agendas and closings carry
+        // no evidence, so their footer stays a single short line rather than a
+        // dense block of file names.
+        internal const int StructuralFooterCharacters = 110;
+        internal const int AnalyticalFooterCharacters = 240;
+        internal static string VisibleFooter(string source, string layout)
+        {
+            var structural = layout == "cover" || layout == "divider" || layout == "closing" || layout == "agenda";
+            var limit = structural ? StructuralFooterCharacters : AnalyticalFooterCharacters;
+            if (source.Length <= limit) return source;
+            if (!structural) return "Source references and evidence: see speaker notes.";
+            var cut = source.LastIndexOf("; ", limit - 40, StringComparison.Ordinal);
+            var visible = source.Substring(0, cut > 20 ? cut : limit - 40).TrimEnd(' ', ';', ',');
+            return visible + "; full source references in speaker notes.";
+        }
+
         private static SamsungElement TextElement(string text, RectangleF box, float size = 18, float minimum = 14,
             string font = "Arial", bool bold = false, string fill = null, string color = "#000000")
         { return new SamsungElement { Text = text ?? "", Box = box, Size = size, Minimum = minimum, Font = font, Bold = bold, Fill = fill, Color = color }; }
@@ -266,7 +283,7 @@ namespace Scribble.Office
                     elements.Add(new SamsungElement { Box = SamsungSlideDesign.Percent(50.8f, 80.2f, 5.3f, 4.5f), Connector = true });
             }
             var source = string.Join("; ", new[] { draft.Footnote, draft.Sources }.Where(s => !string.IsNullOrWhiteSpace(s)));
-            if (source.Length > 0) elements.Add(TextElement(source.Length > 240 ? "Source references and evidence: see speaker notes." : source, SamsungSlideDesign.Footer, 7, 7, "Arial Narrow"));
+            if (source.Length > 0) elements.Add(TextElement(VisibleFooter(source, draft.Layout), SamsungSlideDesign.Footer, 7, 7, "Arial Narrow"));
             var pageNumber = TextElement("- " + index + " -", SamsungSlideDesign.Page, 10.5f, 8, "Calibri"); pageNumber.Alignment = 3; elements.Add(pageNumber); page.PageNumber = pageNumber;
             elements.Add(TextElement(DraftMarker, SamsungSlideDesign.Percent(3.8f, 97, 32, 2.8f), 7, 7, "Arial", false, null, "#7F7F7F"));
             if (draft.Layout == "closing")

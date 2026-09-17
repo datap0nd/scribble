@@ -169,7 +169,10 @@ namespace Scribble.Office
                         case "ratio": RequireTwo(values); result = values[0] / values[1]; break;
                         case "percent": RequireTwo(values); result = values[0] / values[1] * 100; break;
                         case "growth_percent": RequireTwo(values); result = (values[0] - values[1]) / values[1] * 100; break;
-                        default: throw new InvalidOperationException("Unsupported calculation operation.");
+                        // Gross margin, contribution margin and similar
+                        // "share retained" percentages: (base - deduction) / base.
+                        case "margin_percent": RequireTwo(values); result = (values[0] - values[1]) / values[0] * 100; break;
+                        default: throw new InvalidOperationException("Unsupported calculation operation. Use sum, difference, ratio, percent, growth_percent or margin_percent.");
                     }
                 }
                 catch (Exception ex) when (ex is OverflowException || ex is DivideByZeroException)
@@ -179,13 +182,16 @@ namespace Scribble.Office
                 result = Math.Round(result, (int)rounding, MidpointRounding.AwayFromZero);
                 if (result != Number(calc, "result")) throw new InvalidOperationException("SLIDE_CALCULATION_MISMATCH: Result differs from host arithmetic.");
                 var unit = SamsungAuthoringPolicy.Text(calc, "unit");
-                if (string.IsNullOrWhiteSpace(unit) || ((operation == "percent" || operation == "growth_percent") && unit != "%"))
+                var percentage = operation == "percent" || operation == "growth_percent" || operation == "margin_percent";
+                if (string.IsNullOrWhiteSpace(unit) || (percentage && unit != "%"))
                     throw new InvalidOperationException("SLIDE_CALCULATION_UNIT: Specify result units; percentage operations require %.");
-                if ((operation == "ratio" || operation == "percent" || operation == "growth_percent") &&
+                if ((operation == "ratio" || percentage) &&
                     operands.Select(o => SamsungAuthoringPolicy.Text(o, "unit")).Distinct().Count() != 1)
                     throw new InvalidOperationException("SLIDE_CALCULATION_UNIT: Ratio/growth operands must use the same units; convert units explicitly in the source first.");
                 if (operation == "growth_percent" && values[1] <= 0)
                     throw new InvalidOperationException("SLIDE_CALCULATION_BASELINE: Growth percentages require a positive baseline; describe the absolute change otherwise.");
+                if (operation == "margin_percent" && values[0] <= 0)
+                    throw new InvalidOperationException("SLIDE_CALCULATION_BASELINE: Margin percentages require a positive base operand first (for example revenue), then the deduction (for example cost).");
                 if ((operation == "sum" || operation == "difference") && operands.Any(o => SamsungAuthoringPolicy.Text(o, "unit") != unit))
                     throw new InvalidOperationException("SLIDE_CALCULATION_UNIT: Addition and subtraction require matching operand/result units.");
                 yield return ((double)result).ToString("R", CultureInfo.InvariantCulture);

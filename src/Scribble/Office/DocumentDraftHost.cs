@@ -221,6 +221,20 @@ namespace Scribble.Office
                     _serializer,
                     call.function.arguments);
                 RequireAllowedArguments(arguments, name);
+                // Formulas that name the wrong table cells are rejected here,
+                // before the one-shot permission is spent, so the model can
+                // correct them instead of leaving a misleading draft behind.
+                if (string.Equals(
+                        name,
+                        WorkbookToolCatalog.WriteDraftSheet,
+                        StringComparison.Ordinal) ||
+                    string.Equals(
+                        name,
+                        CrossAppToolCatalog.SendToExcel,
+                        StringComparison.Ordinal))
+                {
+                    DraftTableFormulaAudit.Require(ParsedRows(arguments));
+                }
             }
             catch (Exception exception)
             {

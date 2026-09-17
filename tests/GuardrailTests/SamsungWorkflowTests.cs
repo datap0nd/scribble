@@ -82,6 +82,104 @@ namespace GuardrailTests
             SamsungPresentationReview.ValidateEvidence(json.Serialize(new { title = "Definitions", purpose = "explanatory", evidence = "Sales means units shipped.", sources = "Glossary" }), "Sales means units shipped.");
             Reject(() => SamsungPresentationReview.ValidateEvidence(json.Serialize(new { title = "Sales", evidence = source, sources = "Report" }), source));
         }
+        // XA01 regression: a gross margin is derived from two cited operands and
+        // recomputed by the host; it is neither an unsupported number nor a
+        // question for the user.
+        internal static void DerivedMarginCalculations()
+        {
+            var json = new JavaScriptSerializer();
+            const string auditTable = "Metric\tMay\tJune\nRevenue EUR\t85519\t82992\nCost EUR\t36702\t36714";
+            const string revenueRow = "Metric\tMay\tJune\nRevenue EUR\t85519\t82992";
+            var revenue = new Dictionary<string, object> { { "value", 82992 }, { "label", "Revenue EUR" }, { "unit", "EUR" }, { "period", "June" }, { "evidence", revenueRow } };
+            var cost = new Dictionary<string, object> { { "value", 36714 }, { "label", "Cost EUR" }, { "unit", "EUR" }, { "period", "June" }, { "evidence", auditTable } };
+            var margin = new Dictionary<string, object> {
+                { "label", "June gross margin" }, { "operation", "margin_percent" }, { "result", 55.76 }, { "unit", "%" }, { "decimals", 2 },
+                { "operands", new object[] { revenue, cost } }
+            };
+            var slide = new Dictionary<string, object> { { "title", "June margin" }, { "subtitle", "June gross margin was 55.76% on revenue of 82992 EUR" },
+                { "evidence", auditTable }, { "sources", "WB01 Scribble Draft" }, { "calculations", new[] { margin } } };
+            SamsungPresentationReview.ValidateEvidence(json.Serialize(slide), auditTable);
+
+            var definition = PresentationToolCatalog.DraftDefinition();
+            Check(json.Serialize(definition.function.parameters).Contains("margin_percent"), "The slide schema does not expose margin_percent.");
+            Check(SamsungAuthoringPolicy.Instructions.Contains("margin_percent") && SamsungAuthoringPolicy.Instructions.Contains("not a clarification question"),
+                "Authoring policy does not route derived percentages to calculations.");
+
+            margin["operands"] = new object[] { cost, revenue };
+            try { SamsungPresentationReview.ValidateEvidence(json.Serialize(slide), auditTable); throw new Exception("Expected reversed operands to fail host arithmetic."); }
+            catch (InvalidOperationException ex) { Check(ex.Message.Contains("SLIDE_CALCULATION_MISMATCH"), "Reversed margin operands were accepted: " + ex.Message); }
+            margin["operands"] = new object[] { revenue, cost };
+            margin["unit"] = "EUR";
+            Reject(() => SamsungPresentationReview.ValidateEvidence(json.Serialize(slide), auditTable));
+            margin["unit"] = "%";
+            margin["result"] = 55.8;
+            Reject(() => SamsungPresentationReview.ValidateEvidence(json.Serialize(slide), auditTable));
+            margin["result"] = 55.76;
+
+            slide.Remove("calculations");
+            try { SamsungPresentationReview.ValidateEvidence(json.Serialize(slide), auditTable); throw new Exception("Expected an unsupported derived value to be rejected."); }
+            catch (InvalidOperationException ex)
+            {
+                Check(ex.Message.Contains("SLIDE_NUMBERS_UNVERIFIED") && ex.Message.Contains("55.76") &&
+                    ex.Message.Contains("margin_percent") && ex.Message.Contains("never a question for the user"),
+                    "Unsupported derived value did not point to the calculations contract: " + ex.Message);
+            }
+        }
+
+        // XA01 regression: after the cover slide was written, the model paused the
+        // deck to ask how to handle gross margin. The settled request cannot be
+        // reopened mid-deck; the host closes ask_user and names the remaining IDs.
+        internal static void ClarificationClosesAfterDeckWriteStarts()
+        {
+            var json = new JavaScriptSerializer();
+            var root = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "scribble-ask-gate-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var objective = "Use the draft worksheet to produce four new native editable Samsung MD PowerPoint slides: headline, period comparison, June group analysis and data-quality limits.";
+                var request = DocumentChatRequestFactory.Create("model", "excel", "Workbook", new ChatTurn[0], objective, true);
+                var task = new TaskContextManager(request, "excel", objective, new TaskCheckpointStore(root));
+                var ask = new ChatToolCall { id = "ask-1", type = "function", function = new ChatToolCallFunction { name = PromptHelperTool.Name,
+                    arguments = json.Serialize(new { question = "How should I handle the gross margin percentages in the deck?", reason = "The host verifies only source numbers.",
+                        options = new[] { new { label = "Omit them", description = "Leave margins out." }, new { label = "Show them", description = "Display the margins." } } }) } };
+                Check(task.ValidateArguments(ask) == null, "A clarification before any slide was written was rejected.");
+
+                var plan = new[] { "cover", "comparison", "groups", "limits" };
+                task.State.HostData["samsung_plan"] = json.Serialize(plan);
+                foreach (var id in plan) task.State.ExpectedSourceIds.Add("ppt:" + id);
+                task.State.Batches.Add(new TaskBatchResult { Id = "ppt:cover", CoveredSourceIds = new List<string> { "ppt:cover" }, Output = "Source and rendered review passed" });
+                var rejected = task.ValidateArguments(ask);
+                Check(rejected != null, "ask_user interrupted a deck whose first slide was already written.");
+                var payload = json.Deserialize<Dictionary<string, object>>(rejected.Content);
+                var message = Convert.ToString(payload["message"]);
+                Check(Convert.ToString(payload["error_code"]) == "CLARIFICATION_AFTER_DELIVERABLE_STARTED" && !Convert.ToBoolean(payload["permission_consumed"]),
+                    "Mid-deck clarification was not closed with the expected code: " + rejected.Content);
+                Check(message.Contains("comparison, groups, limits") && message.Contains("margin_percent") && message.Contains("final response"),
+                    "Closed clarification did not name the remaining slide IDs and the calculation route: " + message);
+
+                foreach (var id in plan.Skip(1))
+                    task.State.Batches.Add(new TaskBatchResult { Id = "ppt:" + id, CoveredSourceIds = new List<string> { "ppt:" + id }, Output = "Source and rendered review passed" });
+                Check(task.ValidateArguments(ask) == null, "The clarification gate outlived the finished deck.");
+            }
+            finally { if (System.IO.Directory.Exists(root)) System.IO.Directory.Delete(root, true); }
+        }
+
+        // The complete citation stays in the speaker notes; a cover shows one short
+        // pointer instead of a dense footer of file names.
+        internal static void StructuralFootersStayShort()
+        {
+            var json = new JavaScriptSerializer();
+            var sources = string.Join("; ", Enumerable.Range(1, 3).Select(i => "WB01 Ledger sheet rows 2-145 read receipt " + i + " (2026-06 audit)"));
+            Check(sources.Length > 110 && sources.Length <= 240, "Fixture footer length does not exercise the structural limit.");
+            var cover = new { id = "cover", title = "Atlas Components June review", subtitle = "Operations leadership", layout = "cover", sources };
+            var analytical = new { id = "limits", title = "Data-quality limits", subtitle = "One June cost is missing", layout = "bullets", bullets = new[] { "One June cost is missing" }, sources };
+            var rendered = json.Serialize(SamsungPresentationReview.InspectPlan(json.Serialize(new object[] { cover, analytical })));
+            var texts = System.Text.RegularExpressions.Regex.Matches(rendered, "\"text\":\"((?:[^\"\\\\]|\\\\.)*)\"").Cast<System.Text.RegularExpressions.Match>()
+                .Select(m => m.Groups[1].Value).ToArray();
+            Check(texts.Any(t => t.EndsWith("full source references in speaker notes.") && t.Length <= 150), "Cover footer was not shortened to a pointer.");
+            Check(texts.Contains(sources), "Analytical footer under 240 characters lost its complete visible citation.");
+            Check(texts.Count(t => t == sources) == 1, "The cover still rendered the dense footer.");
+        }
+
         internal static void PolicyAndCompletion()
         {
             var definition = PresentationToolCatalog.DraftDefinition();

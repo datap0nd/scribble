@@ -53,7 +53,8 @@ namespace Scribble.Office
             foreach (var value in SamsungEvidence.ValidateCalculations(data, evidence)) allowed.Add(value);
             SamsungEvidence.ValidateClaims(data, evidence);
             var missing = Numbers(content).Where(n => !allowed.Contains(n)).Distinct().ToArray();
-            if (missing.Length > 0) throw new InvalidOperationException("SLIDE_NUMBERS_UNVERIFIED: Values absent from cited evidence: " + string.Join(", ", missing));
+            if (missing.Length > 0) throw new InvalidOperationException("SLIDE_NUMBERS_UNVERIFIED: Values absent from cited evidence: " + string.Join(", ", missing) +
+                ". A derived value (margin, share, growth, difference, total) is never a question for the user: declare it in calculations with every operand copied verbatim from the cited passage, for example operation margin_percent with revenue then cost for a gross margin, so the host recomputes it. Otherwise remove the value and keep writing the remaining planned slides.");
             if (special) return;
             var explanatory = SamsungAuthoringPolicy.Text(data, "purpose") == "explanatory";
             if (!explanatory && (!data.TryGetValue("subtitle", out raw) || string.IsNullOrWhiteSpace(Convert.ToString(raw))))

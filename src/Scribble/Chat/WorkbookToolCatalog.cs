@@ -157,7 +157,15 @@ namespace Scribble.Chat
                                         "its header in row 3 starting at cell A3 " +
                                         "(the title goes in A1), so formulas can " +
                                         "reference the draft table itself: the " +
-                                        "first data row is row 4. A cell starting " +
+                                        "first data row is row 4. Count every row you " +
+                                        "supply, including blank spacer rows and " +
+                                        "section headers, when numbering references: " +
+                                        "a same-row rate uses only that row's own " +
+                                        "metric cells (row 12 margin = (B12-C12)/B12), " +
+                                        "and a total sums only its section's data " +
+                                        "rows in its own column (=SUM(B12:B15)), never " +
+                                        "the header or itself. Mismatched references " +
+                                        "are rejected before writing. A cell starting " +
                                         "with = becomes a live Excel formula and " +
                                         "may reference other sheets of this " +
                                         "workbook (e.g. =SUM(Data!B2:B9)). Use " +

@@ -101,6 +101,10 @@ namespace GuardrailTests
                 Run("Samsung v2 native chart gaps and semantic annotations", SamsungWorkflowTests.ChartGapsAndAnnotations);
                 Run("Samsung v2 shared policy and final completion gate", SamsungWorkflowTests.PolicyAndCompletion);
                 Run("Source reads expose stable Samsung citation spans", SamsungWorkflowTests.ReadReceiptsExposeSourceSpans);
+                Run("Samsung v2 derived margins recompute from cited operands", SamsungWorkflowTests.DerivedMarginCalculations);
+                Run("Samsung v2 clarification closes once the deck is being written", SamsungWorkflowTests.ClarificationClosesAfterDeckWriteStarts);
+                Run("Samsung v2 structural slide footers stay short", SamsungWorkflowTests.StructuralFootersStayShort);
+                Run("Excel draft formulas naming the wrong table rows are rejected before writing", DraftFormulaAuditTests.RowMismatchesAreRejectedBeforeWriting);
                 Run("Samsung layouts preserve content and enforce overflow bounds", SamsungSlideTests.LayoutsAndOverflow);
                 Run("Samsung slide numbers require verified source evidence", SamsungSlideTests.EvidenceAndNumbers);
                 Run("PowerPoint and Outlook slide tool calls reach independent review", SlideToolCallsReachReview);

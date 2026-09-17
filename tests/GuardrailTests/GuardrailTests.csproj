@@ -64,6 +64,7 @@
     <Compile Include="TaskContinuationTests.cs" />
     <Compile Include="SamsungSlideTests.cs" />
     <Compile Include="SamsungWorkflowTests.cs" />
+    <Compile Include="DraftFormulaAuditTests.cs" />
     <Compile Include="SamsungRecoveryTests.cs" />
     <Compile Include="PowerPointRecoveryBoundaryTests.cs" />
     <Compile Include="SamsungNativeAcceptance.cs" />
