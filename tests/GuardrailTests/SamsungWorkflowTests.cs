@@ -256,6 +256,35 @@ namespace GuardrailTests
             finally { if (System.IO.Directory.Exists(root)) System.IO.Directory.Delete(root, true); }
         }
 
+        // After a slide write stops part-way, a revised payload is refused as a
+        // bounded tool error that hands back the original arguments, instead
+        // of ending the task with a fatal uncertain-write exception.
+        internal static void InterruptedWriteRedirectsToOriginalPayload()
+        {
+            var root = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "scribble-write-recovery-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var objective = "Use this workbook to produce four new native editable Samsung MD PowerPoint slides.";
+                var request = DocumentChatRequestFactory.Create("model", "excel", "Workbook", new ChatTurn[0], objective, true);
+                var task = new TaskContextManager(request, "excel", objective, new TaskCheckpointStore(root));
+                var revised = new ChatToolCall { id = "call-2", function = new ChatToolCallFunction { name = CrossAppToolCatalog.SendToPowerPoint, arguments = "{\"slides\":[{\"id\":\"b\"}]}" } };
+                Check(task.RecoverableWriteConflict(revised, true) == null, "A task without an interrupted write was redirected.");
+                task.State.HostData["samsung_pending"] = new JavaScriptSerializer().Serialize(new Dictionary<string, object> {
+                    { "Owner", "o" }, { "Input", "different-input-hash" }, { "ToolCall", "call-1" }, { "Arguments", "{\"slides\":[{\"id\":\"a\"}]}" } });
+                task.State.Writes.Add(new TaskWriteRecord { Id = "tool:call-1", Status = "uncertain" });
+                Check(task.RecoverableWriteConflict(revised, false) == null, "A read-only call was treated as a write conflict.");
+                for (var attempt = 0; attempt < TaskContextManager.MaxWriteRecoveryRedirects; attempt++)
+                {
+                    var redirected = task.RecoverableWriteConflict(revised, true);
+                    Check(redirected != null && redirected.Outcome.Failed && redirected.Outcome.ErrorCode == "SLIDE_RECOVERY_INPUT_CHANGED" &&
+                        redirected.Outcome.PermissionConsumed == false && redirected.Content.Contains("original_arguments") &&
+                        redirected.Content.Contains("\\\"id\\\":\\\"a\\\""), "A revised payload after an interrupted write was not redirected to the original arguments.");
+                }
+                Check(task.RecoverableWriteConflict(revised, true) == null, "Write-recovery redirects must stay bounded.");
+            }
+            finally { if (System.IO.Directory.Exists(root)) System.IO.Directory.Delete(root, true); }
+        }
+
         // XA01 workbook: the model planned one group-table layout and emitted another.
         internal static void DraftFormulaAssociations()
         {

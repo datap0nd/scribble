@@ -238,6 +238,45 @@ namespace Scribble.Chat
             return !continuing && _state.HostData.TryGetValue(key, out spent) && spent == "true" && _state.Writes.All(w => w.Status == "verified");
         }
 
+        public const int MaxWriteRecoveryRedirects = 3;
+
+        // A deck write that failed after its first native mutation can only be
+        // resumed with its original payload. A model that answers the failure
+        // with a revised payload used to end the task with a fatal "uncertain
+        // write". Nothing has been duplicated at that point, so the call is
+        // refused as an ordinary, bounded tool error that returns the original
+        // arguments to resend.
+        public MailboxToolResult RecoverableWriteConflict(ChatToolCall call, bool changesDocument)
+        {
+            string pending;
+            if (!changesDocument || call?.function == null || !_state.HostData.TryGetValue("samsung_pending", out pending)) return null;
+            if (!_state.Writes.Any(w => w.Status != "verified" && w.Id.StartsWith("tool:")) ||
+                Scribble.Office.SamsungGenerationJournal.CanResume(_state, call) ||
+                Scribble.Office.PresentationRevision.CanResume(_state, call)) return null;
+            string prior; int redirects;
+            if (!_state.HostData.TryGetValue("write_recovery_redirects", out prior) || !int.TryParse(prior, out redirects)) redirects = 0;
+            if (redirects >= MaxWriteRecoveryRedirects) return null;
+            _state.HostData["write_recovery_redirects"] = (redirects + 1).ToString();
+            object original = null;
+            try
+            {
+                var journal = _json.Deserialize<Dictionary<string, object>>(pending);
+                if (journal != null) journal.TryGetValue("Arguments", out original);
+            }
+            catch (ArgumentException) { }
+            Diagnostics.Record("write_recovery_redirected", new { call.id, tool = call.function.name, redirects = redirects + 1 });
+            Checkpoint();
+            return new MailboxToolResult(call.id, _json.Serialize(new
+            {
+                error_code = "SLIDE_RECOVERY_INPUT_CHANGED",
+                permission_consumed = false,
+                message = "An earlier slide write for this deck stopped part-way, and this call's arguments differ from it, so nothing ran. " +
+                    "Resend that earlier call with exactly the original_arguments below and change nothing: the host reconciles the slides it already wrote and continues from there. " +
+                    "Edit content only after that call succeeds.",
+                original_arguments = original
+            }), "Resume the interrupted slide write with its original arguments");
+        }
+
         public void BeforeTool(ChatToolCall call, bool changesDocument)
         {
             Diagnostics.Record("tool_start", new { call.id, call.function, changesDocument });

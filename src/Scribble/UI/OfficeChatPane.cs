@@ -2235,7 +2235,10 @@ namespace Scribble.UI
                     MailboxToolResult result;
                     var invalidArguments = taskContext.ValidateArguments(toolCall);
                     if (invalidArguments != null) { results.Add(invalidArguments); continue; }
-                    taskContext.BeforeTool(toolCall, isDraftCall && name != WorkbookToolCatalog.WriteSelectionOutput && name != WorkbookToolCatalog.WriteKoreanTranslations);
+                    var changesDocument = isDraftCall && name != WorkbookToolCatalog.WriteSelectionOutput && name != WorkbookToolCatalog.WriteKoreanTranslations;
+                    var writeConflict = taskContext.RecoverableWriteConflict(toolCall, changesDocument);
+                    if (writeConflict != null) { results.Add(writeConflict); continue; }
+                    taskContext.BeforeTool(toolCall, changesDocument);
                     if (TaskContextManager.IsTaskTool(name))
                     {
                         result = taskContext.ReadEvidence(toolCall);

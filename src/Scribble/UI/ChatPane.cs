@@ -2631,6 +2631,8 @@ namespace Scribble.UI
                         MailboxToolResult result;
                         var invalidArguments = taskContext.ValidateArguments(toolCall);
                         if (invalidArguments != null) { results.Add(invalidArguments); continue; }
+                        var writeConflict = taskContext.RecoverableWriteConflict(toolCall, isDraftCall || isCrossAppCall);
+                        if (writeConflict != null) { results.Add(writeConflict); continue; }
                         taskContext.BeforeTool(toolCall, isDraftCall || isCrossAppCall);
                         if (TaskContextManager.IsTaskTool(toolCall?.function?.name))
                         {

@@ -462,6 +462,16 @@ namespace Scribble.Office
                         for (var edge = 1; edge <= 4; edge++) { cell.Borders(edge).Weight = .5f; cell.Borders(edge).ForeColor.RGB = MetoTheme.Rgb("#A6A6A6"); }
                         ApplySamsungText(cellShape, TextElement(col < rows[row].Count ? rows[row][col] : "", new RectangleF(0, 0, element.ColumnWidths == null ? box.Width / columns : element.ColumnWidths[col], box.Height / rows.Length), element.Size, element.Minimum, "Arial Narrow", row == 0));
                     }
+                    // New rows start at PowerPoint's default height for 18pt
+                    // text, nearly twice the planned box. With the table font
+                    // applied, return each row to its planned share so the
+                    // table cannot run into the block below it; PowerPoint
+                    // still enforces the minimum its text needs.
+                    for (var row = 0; row < rows.Length; row++)
+                    {
+                        try { table.Rows[row + 1].Height = box.Height / rows.Length; }
+                        catch (Exception exception) when (IsUnsupportedFrameSetting(exception)) { }
+                    }
                 }
                 else
                 {
@@ -487,12 +497,25 @@ namespace Scribble.Office
             notes.InsertAfter((existingNotes.Length > 0 ? "\n\n" : "") + page.Source.Sources + "\n" + page.Source.Footnote + "\nEvidence:\n" + page.Source.Evidence);
             return output;
         }
+        private static bool IsUnsupportedFrameSetting(Exception exception)
+        {
+            return exception is System.Runtime.InteropServices.COMException ||
+                   exception is ArgumentException ||
+                   exception is System.Reflection.TargetInvocationException;
+        }
+
         private static void ApplySamsungText(dynamic shape, SamsungElement element)
         {
             dynamic frame = shape.TextFrame;
-            frame.AutoSize = 0; frame.WordWrap = -1;
+            // A native table cell owns its wrapping and sizing: PowerPoint
+            // rejects AutoSize and WordWrap there with "The specified value is
+            // out of range", which used to abort every slide that carried a
+            // table. They only matter for free text boxes, so each is applied
+            // where the shape accepts it.
+            try { frame.AutoSize = 0; } catch (Exception exception) when (IsUnsupportedFrameSetting(exception)) { }
+            try { frame.WordWrap = -1; } catch (Exception exception) when (IsUnsupportedFrameSetting(exception)) { }
             frame.MarginLeft = 2f; frame.MarginRight = 2f; frame.MarginTop = 1f; frame.MarginBottom = 1f;
-            shape.TextFrame2.AutoSize = 0;
+            try { shape.TextFrame2.AutoSize = 0; } catch (Exception exception) when (IsUnsupportedFrameSetting(exception)) { }
             dynamic range = frame.TextRange;
             range.Text = element.Text;
             if (element.Text.Length == 0) return;
