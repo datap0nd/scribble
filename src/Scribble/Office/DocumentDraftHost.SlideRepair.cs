@@ -24,7 +24,7 @@ namespace Scribble.Office
         {
             var response = await ReviewSamsungAsync(client, settings,
                 SamsungAuthoringPolicy.Instructions + " Repair this single slide using the specific visual findings. Return JSON only: {\"slides\":[{...complete corrected slide...}]}. " +
-                "Keep the ID, all required table rows, chart data, source images and evidence unchanged. You may choose a better Samsung layout and remove redundant wording. " +
+                "Keep the ID, all required table rows, chart data, calculations and source images unchanged. Omit evidence and source_spans from your answer: the host carries both over unchanged. You may choose a better Samsung layout and remove redundant wording. " +
                 "Do not invent pixel coordinates or remove evidence to make it fit. Schema: " + _serializer.Serialize(PresentationToolCatalog.DraftDefinition().function.parameters),
                 _serializer.Serialize(new { original, findings, instruction = prompt }), output.Image, token, Math.Min(32768, Math.Max(8192, _serializer.Serialize(original).Length / 2)));
             var wrapper = _serializer.Deserialize<Dictionary<string, object>>(response);
@@ -35,6 +35,16 @@ namespace Scribble.Office
             var errors = ToolContractValidator.Validate(testCall, PresentationToolCatalog.DraftDefinition());
             if (errors.Count > 0) throw new InvalidOperationException("SLIDE_REPAIR_SCHEMA: " + string.Join("; ", errors));
             if (SamsungAuthoringPolicy.Text(replacement, "id") != SamsungAuthoringPolicy.Text(original, "id")) throw new InvalidOperationException("SLIDE_REPAIR_ID_CHANGED");
+            // The resolved evidence text and its span IDs belong to the host. A
+            // visual repair cannot alter them, and must not fail because the
+            // repair model could not retype several thousand characters of
+            // source text byte for byte: they are carried over by construction.
+            foreach (var hostOwned in new[] { "evidence", "source_spans" })
+            {
+                object retained;
+                if (original.TryGetValue(hostOwned, out retained)) replacement[hostOwned] = retained;
+                else replacement.Remove(hostOwned);
+            }
             foreach (var field in new[] { "table", "secondary_table", "chart", "secondary_chart", "image_names", "source_spans", "evidence", "calculations", "content_kind" })
             {
                 object before, after; original.TryGetValue(field, out before); replacement.TryGetValue(field, out after);

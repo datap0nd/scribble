@@ -312,6 +312,22 @@ namespace Scribble.Office
             {
                 foreach (var output in outputs)
                     if (System.Runtime.InteropServices.Marshal.IsComObject(output.Slide)) System.Runtime.InteropServices.Marshal.ReleaseComObject(output.Slide);
+                // Each draft call runs on its own pumped STA thread, and the
+                // runtime detaches every COM wrapper created there when that
+                // thread exits. A destination deck retained for the next batch
+                // or a retry would arrive as a dead wrapper, so the next call
+                // rebinds the deck through its ScribbleTask tag instead.
+                if (call?.function?.name == CrossAppToolCatalog.SendToPowerPoint)
+                {
+                    var retained = _samsungPresentation;
+                    _samsungPresentation = null;
+                    try
+                    {
+                        if (retained != null && System.Runtime.InteropServices.Marshal.IsComObject(retained))
+                            System.Runtime.InteropServices.Marshal.ReleaseComObject(retained);
+                    }
+                    catch (System.Runtime.InteropServices.InvalidComObjectException) { }
+                }
             }
         }
         private string SourceSpanRepairHint(string message)
