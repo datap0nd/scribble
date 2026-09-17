@@ -43,6 +43,7 @@ namespace Scribble.Office
                 {
                     var slide = raw as IDictionary<string, object>;
                     if (modern && slide != null && !slide.ContainsKey("content_kind")) slide["content_kind"] = "fact";
+                    if (slide != null) SamsungPresentationReview.AdoptFootnoteCitation(slide);
                     if (slide != null && SamsungPresentationReview.PrepareSampleEvidence(slide, trustedInstruction)) { sampleSlides.Add(SamsungAuthoringPolicy.Text(slide, "id")); continue; }
                     if (slide != null && SamsungAuthoringPolicy.Text(slide, "content_kind") == "sample")
                         throw new InvalidOperationException("SLIDE_SAMPLE_NOT_AUTHORIZED: Only the user's explicit sample-data instruction can authorize this slide.");

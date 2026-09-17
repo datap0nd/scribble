@@ -120,6 +120,36 @@ namespace GuardrailTests
             ((Dictionary<string, object>)operands[1])["value"] = 36714m;
             SamsungPresentationReview.ValidateEvidence(json.Serialize(slide), audit);
 
+            // A host-computed decrease may be displayed as its size ("fell 2.95%")
+            // or with a typographic minus; both are the recomputed -2.95.
+            var growth = new Dictionary<string, object> {
+                { "label", "Revenue change" }, { "operation", "growth_percent" }, { "result", -2.95m }, { "unit", "%" }, { "decimals", 2 },
+                { "operands", new object[] {
+                    new Dictionary<string, object> { { "value", 82992m }, { "label", "Revenue EUR" }, { "unit", "EUR" }, { "period", "June (2026-06)" }, { "evidence", revenueBlock } },
+                    new Dictionary<string, object> { { "value", 85519m }, { "label", "Revenue EUR" }, { "unit", "EUR" }, { "period", "May (2026-05)" }, { "evidence", revenueBlock } }
+                } }
+            };
+            slide["calculations"] = new[] { may, june, growth };
+            slide["subtitle"] = "Revenue fell 2.95% (−2.95%) while gross margin moved from 57.08% to 55.76%";
+            SamsungPresentationReview.ValidateEvidence(json.Serialize(slide), audit);
+            slide["subtitle"] = "Revenue fell 2.96% while gross margin moved from 57.08% to 55.76%";
+            Reject(() => SamsungPresentationReview.ValidateEvidence(json.Serialize(slide), audit));
+
+            // A footnote that is plainly the source line is the citation.
+            var footnoted = new Dictionary<string, object> { { "footnote", " Source: WB01 Ledger (live SUMIFS)" } };
+            SamsungPresentationReview.AdoptFootnoteCitation(footnoted);
+            Check((string)footnoted["sources"] == "Source: WB01 Ledger (live SUMIFS)" && !footnoted.ContainsKey("footnote"), "A source-line footnote was not adopted as the citation.");
+            var qualified = new Dictionary<string, object> { { "footnote", "Axis starts at 0." } };
+            SamsungPresentationReview.AdoptFootnoteCitation(qualified);
+            Check(!qualified.ContainsKey("sources") && qualified.ContainsKey("footnote"), "A qualifying footnote was mistaken for a citation.");
+            var cited = new Dictionary<string, object> { { "sources", "WB01" }, { "footnote", "Source: other" } };
+            SamsungPresentationReview.AdoptFootnoteCitation(cited);
+            Check((string)cited["sources"] == "WB01" && cited.ContainsKey("footnote"), "An existing citation was replaced.");
+            slide["subtitle"] = "Revenue fell 2.95% while gross margin moved from 57.08% to 55.76%";
+            var uncited = new Dictionary<string, object>(slide); uncited.Remove("sources");
+            try { SamsungPresentationReview.ValidateEvidence(json.Serialize(uncited), audit); throw new Exception("A factual slide without a citation was accepted."); }
+            catch (InvalidOperationException ex) { Check(ex.Message.StartsWith("SLIDE_CITATION_REQUIRED") && ex.Message.Contains("sources string"), "The missing-citation rejection does not name the sources field."); }
+
             Check(SamsungAuthoringPolicy.Instructions.Contains("margin_percent") && SamsungAuthoringPolicy.Instructions.Contains("never through ask_user"), "Authoring policy does not route derived values to calculations.");
             Check(SamsungEvidence.DerivedValueGuidance.Contains("margin_percent") && SamsungEvidence.DerivedValueGuidance.Contains("Do not call ask_user"), "Derived-value recovery guidance is incomplete.");
             var draft = json.Serialize(PresentationToolCatalog.DraftDefinition());

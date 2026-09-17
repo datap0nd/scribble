@@ -28,6 +28,21 @@ namespace Scribble.Office
             return true;
         }
 
+        // Models often write the citation line into footnote ("Source: WB01
+        // Ledger") and leave sources empty. Both render in the same visible
+        // footer and reach the notes, so a footnote that is plainly a source
+        // line is the citation; nothing is invented.
+        public static void AdoptFootnoteCitation(IDictionary<string, object> slide)
+        {
+            object sources, footnote;
+            if (slide.TryGetValue("sources", out sources) && !string.IsNullOrWhiteSpace(Convert.ToString(sources))) return;
+            if (!slide.TryGetValue("footnote", out footnote)) return;
+            var text = Convert.ToString(footnote) ?? "";
+            if (!Regex.IsMatch(text, @"^\s*sources?\s*[:\u2014\u2013-]", RegexOptions.IgnoreCase)) return;
+            slide["sources"] = text.Trim();
+            slide.Remove("footnote");
+        }
+
         public static void ValidateEvidence(string slideJson, string actualSource)
         {
             var json = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
@@ -50,7 +65,12 @@ namespace Scribble.Office
                 if (int.TryParse(range.Groups[1].Value, out from) && int.TryParse(range.Groups[2].Value, out to) && to >= from && to - (long)from <= 100)
                     for (var value = (long)from; value <= to; value++) allowed.Add(value.ToString(System.Globalization.CultureInfo.InvariantCulture));
             }
-            foreach (var value in SamsungEvidence.ValidateCalculations(data, evidence)) allowed.Add(value);
+            foreach (var value in SamsungEvidence.ValidateCalculations(data, evidence))
+            {
+                allowed.Add(value);
+                // "Revenue fell 2.95%" states the size of a host-computed -2.95.
+                if (value.StartsWith("-", StringComparison.Ordinal)) allowed.Add(value.Substring(1));
+            }
             SamsungEvidence.ValidateClaims(data, evidence);
             // A period label (2026-05, June 2026) names a column rather than a
             // quantity; it must occur in the sources this task has read.
@@ -60,9 +80,9 @@ namespace Scribble.Office
             if (special) return;
             var explanatory = SamsungAuthoringPolicy.Text(data, "purpose") == "explanatory";
             if (!explanatory && (!data.TryGetValue("subtitle", out raw) || string.IsNullOrWhiteSpace(Convert.ToString(raw))))
-                throw new InvalidOperationException("SLIDE_ACTION_TITLE_REQUIRED");
+                throw new InvalidOperationException("SLIDE_ACTION_TITLE_REQUIRED: An analytical slide needs a nonempty subtitle stating its evidence-backed finding. Add subtitle, or set purpose to explanatory for a definitions or setup slide.");
             if (!data.TryGetValue("sources", out raw) || string.IsNullOrWhiteSpace(Convert.ToString(raw)))
-                throw new InvalidOperationException("SLIDE_CITATION_REQUIRED");
+                throw new InvalidOperationException("SLIDE_CITATION_REQUIRED: Every factual slide needs a nonempty sources string, the visible citation line such as 'Source: WB01 Ledger; Scribble Draft audit'. A footnote is a separate qualifying note and does not replace sources. Add sources to this slide and to every other factual slide in the batch.");
         }
         private static string NormalizeSource(string value) { return Regex.Replace(value ?? "", @"\s+", " ").Trim(); }
 
@@ -92,7 +112,7 @@ namespace Scribble.Office
         }
         private static IEnumerable<string> Numbers(string text)
         {
-            return Regex.Matches(text ?? "", @"(?<![A-Za-z0-9])[-+]?(?:\d+(?:[,.]\d+)*|\.\d+)(?:[eE][-+]?\d+)?%?").Cast<Match>().Select(m =>
+            return Regex.Matches((text ?? "").Replace('\u2212', '-'), @"(?<![A-Za-z0-9])[-+]?(?:\d+(?:[,.]\d+)*|\.\d+)(?:[eE][-+]?\d+)?%?").Cast<Match>().Select(m =>
             {
                 var raw = m.Value.Replace(",", "").TrimStart('+').TrimEnd('%');
                 double value;

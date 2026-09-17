@@ -320,7 +320,7 @@ namespace Scribble.Office
             }
             if (associationFailures.Count > 0)
                 throw new InvalidOperationException(
-                    "SLIDE_CLAIM_ASSOCIATION: Every claim's one exact cited passage must contain its own value, label, unit and period. Fix all listed citations in one retry by copying a longer contiguous source block (include table headers and the claimed row): " +
+                    "SLIDE_CLAIM_ASSOCIATION: Every claim's one exact cited passage must contain its own value, label, unit and period. A claim is only for a value the source prints; remove any claim whose value is derived (a margin, change, share or total), because its declared calculation already evidences it. Fix all remaining listed citations in one retry by copying a longer contiguous source block (include table headers and the claimed row): " +
                     string.Join(" ", associationFailures.Take(12)));
         }
     }
