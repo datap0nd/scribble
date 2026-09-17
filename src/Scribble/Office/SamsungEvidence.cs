@@ -114,9 +114,41 @@ namespace Scribble.Office
             }
             return result;
         }
-        private static void RequirePassage(string passage, string evidence)
+        // A table citation is often its header line plus one later row of the
+        // same block ("Metric May June" + "Cost EUR 36702 36714"), skipping
+        // the rows between. Every cited line is verbatim, so the host resolves
+        // it to the complete contiguous block rather than rejecting it. A
+        // passage containing anything that is not a whole source line within
+        // that block is still refused.
+        private static string StitchedBlock(string evidence, string passage)
         {
-            if (string.IsNullOrWhiteSpace(passage) || !Normalize(evidence).Contains(Normalize(passage)))
+            var wanted = Normalize(passage);
+            if (wanted.Length == 0) return null;
+            var lines = Regex.Split(evidence ?? "", @"\r\n|\n|\r").Select(Normalize).ToArray();
+            for (var start = 0; start < lines.Length; start++)
+            {
+                if (lines[start].Length == 0 || !wanted.StartsWith(lines[start], StringComparison.Ordinal)) continue;
+                var remaining = wanted.Substring(lines[start].Length).TrimStart();
+                var last = start;
+                for (var index = start + 1; index < lines.Length && index - start < 12 && remaining.Length > 0; index++)
+                {
+                    var line = lines[index];
+                    if (line.Length == 0 || !remaining.StartsWith(line, StringComparison.Ordinal)) continue;
+                    var rest = remaining.Substring(line.Length);
+                    if (rest.Length > 0 && rest[0] != ' ') continue;
+                    remaining = rest.TrimStart(); last = index;
+                }
+                if (remaining.Length == 0 && last > start)
+                    return string.Join("\n", Regex.Split(evidence ?? "", @"\r\n|\n|\r").Skip(start).Take(last - start + 1));
+            }
+            return null;
+        }
+
+        private static string RequirePassage(string passage, string evidence)
+        {
+            if (!string.IsNullOrWhiteSpace(passage) && Normalize(evidence).Contains(Normalize(passage))) return passage;
+            var stitched = StitchedBlock(evidence, passage);
+            if (stitched != null) return stitched;
             {
                 var rejected = Normalize(passage);
                 if (rejected.Length > 180) rejected = rejected.Substring(0, 180) + "...";
@@ -187,7 +219,7 @@ namespace Scribble.Office
                 foreach (var operand in operands)
                 {
                     var passage = SamsungAuthoringPolicy.Text(operand, "evidence");
-                    RequirePassage(passage, evidence);
+                    passage = RequirePassage(passage, evidence);
                     // Like a claim, an exact data row may omit its adjacent header.
                     passage = ExpandClaimPassage(evidence, passage, operand);
                     operand["evidence"] = passage;
@@ -265,7 +297,7 @@ namespace Scribble.Office
                 var claimText = SamsungAuthoringPolicy.Text(claim, "text");
                 if (string.IsNullOrWhiteSpace(claimText)) throw new InvalidOperationException("Claim text is required.");
                 var passage = SamsungAuthoringPolicy.Text(claim, "evidence");
-                RequirePassage(passage, evidence);
+                passage = RequirePassage(passage, evidence);
                 passage = ExpandClaimPassage(evidence, passage, claim);
                 claim["evidence"] = passage;
                 // Semantic association is checked separately by the source reviewer.

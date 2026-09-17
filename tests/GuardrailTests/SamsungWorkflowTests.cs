@@ -152,6 +152,18 @@ namespace GuardrailTests
                 { "evidence", audit }, { "sources", "WB01 audit" } };
             SamsungPresentationReview.ValidateEvidence(json.Serialize(slide), corpus);
 
+            // A header line plus a later whole row of the same block resolves to
+            // the contiguous verified block; a partial or invented row does not.
+            var claims = (object[])slide["claims"];
+            var stitched = (Dictionary<string, object>)claims[0];
+            stitched["text"] = "June cost EUR 36,714"; stitched["label"] = "Cost EUR"; stitched["evidence"] = "Metric\tMay\tJune\nCost EUR\t36702\t36714";
+            SamsungPresentationReview.ValidateEvidence(json.Serialize(slide), corpus);
+            stitched["evidence"] = "Metric\tMay\tJune\nCost EUR\t36702";
+            Reject(() => SamsungPresentationReview.ValidateEvidence(json.Serialize(slide), corpus));
+            stitched["evidence"] = "Metric\tMay\tJune\n2026-06\t82992\t36714";
+            Reject(() => SamsungPresentationReview.ValidateEvidence(json.Serialize(slide), corpus));
+            stitched["text"] = "June revenue EUR 82,992"; stitched["label"] = "Revenue EUR"; stitched["evidence"] = "Revenue EUR\t85519\t82992";
+
             // A label the task never read is still refused, as is a quantity.
             slide["subtitle"] = "Gross margin was 55.76% in 2026-06 against a 2026-07 plan";
             try { SamsungPresentationReview.ValidateEvidence(json.Serialize(slide), corpus); throw new Exception("An unread period label was accepted."); }
