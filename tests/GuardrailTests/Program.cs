@@ -8223,10 +8223,64 @@ namespace GuardrailTests
                 }) == defaultTimeout,
                 "Only the exact OpenRouter Qwen route should receive the five-minute completion window.");
 
+            // The buffered client's deadline bounds generation time, so it
+            // grows with the output a request allows, within a ceiling.
+            var deadlineMethod = typeof(OpenAiCompatibleClient).GetMethod(
+                "CompletionDeadlineFor",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert(deadlineMethod != null,
+                "The output-scaled completion deadline helper is missing.");
+            Func<string, TimeSpan, int?, TimeSpan> deadline = (url, injected, tokens) =>
+                (TimeSpan)deadlineMethod.Invoke(null, new object[]
+                {
+                    new Uri(url), "qwen/qwen3.8-27b", injected, tokens
+                });
+            const string localUrl = "http://127.0.0.1:8000/v1/chat/completions";
+            const string openRouterUrl = "https://openrouter.ai/api/v1/chat/completions";
+            Assert(
+                deadline(localUrl, defaultTimeout, null) == defaultTimeout &&
+                deadline(localUrl, defaultTimeout, 4000) == TimeSpan.FromSeconds(580) &&
+                deadline(localUrl, defaultTimeout, 2048) > defaultTimeout &&
+                deadline(openRouterUrl, defaultTimeout, 32768) == TimeSpan.FromMinutes(15) &&
+                deadline(localUrl, defaultTimeout, 1000000) == TimeSpan.FromMinutes(15) &&
+                deadline(localUrl, TimeSpan.FromSeconds(2), 4000) == TimeSpan.FromSeconds(2),
+                "A slow local model needs an output-scaled, capped deadline for draft-sized tool calls, and injected test timeouts must stay exact.");
+
             var method = typeof(OpenAiCompatibleClient).GetMethod(
                 "SerializablePayload",
                 BindingFlags.Static | BindingFlags.NonPublic);
             Assert(method != null, "The bounded request serializer is missing.");
+            var authoring = (Dictionary<string, object>)method.Invoke(
+                null,
+                new object[]
+                {
+                    new ChatCompletionRequest
+                    {
+                        model = "qwen/qwen3.8-27b",
+                        messages = new List<object>(),
+                        tools = new List<ChatToolDefinition>
+                        {
+                            new ChatToolDefinition
+                            {
+                                function = new ChatToolFunctionDefinition
+                                {
+                                    name = CrossAppToolCatalog.SendToPowerPoint
+                                }
+                            }
+                        },
+                        max_tokens = DocumentChatRequestFactory.DraftResponseTokens
+                    },
+                    new Uri(openRouterUrl),
+                    true
+                });
+            var authoringProvider = authoring["provider"] as Dictionary<string, object>;
+            Assert(
+                (int)authoring["max_tokens"] == 32768 &&
+                authoringProvider != null &&
+                (string)authoringProvider["sort"] == "throughput" &&
+                !authoringProvider.ContainsKey("order") &&
+                ((string[])authoringProvider["only"]).Length == 6,
+                "Long deck-authoring completions must stay on the allow-list but prefer its fastest route.");
             var request = new ChatCompletionRequest
             {
                 model = "qwen/qwen3.8-27b",

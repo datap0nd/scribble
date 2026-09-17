@@ -254,10 +254,13 @@ namespace Scribble.Chat
                 // a provider that stalls before or during the response. Give
                 // every inference attempt its own deadline while preserving
                 // the caller's Stop/cancellation token.
-                var completionRequestTimeout = CompletionRequestTimeoutFor(
+                object requestedTokens;
+                payload.TryGetValue("max_tokens", out requestedTokens);
+                var completionRequestTimeout = CompletionDeadlineFor(
                     endpoint,
                     requestModel.model,
-                    _completionRequestTimeout);
+                    _completionRequestTimeout,
+                    requestedTokens is int ? (int?)requestedTokens : null);
                 requestDeadline.CancelAfter(completionRequestTimeout);
                 request.Headers.Authorization =
                     new AuthenticationHeaderValue("Bearer", settings.ApiKey);
@@ -1171,12 +1174,29 @@ namespace Scribble.Chat
                         "dekallm",
                         "chutes"
                     };
-                    payload["provider"] = new Dictionary<string, object>
-                    {
-                        { "order", reliableToolProviders },
-                        { "only", reliableToolProviders },
-                        { "allow_fallbacks", true }
-                    };
+                    // A long authoring completion is bound by generation
+                    // speed, not first-token latency: an 11 token/s route
+                    // needs eight minutes for a deck payload that an
+                    // 80 token/s route returns in one. Keep the allow-list
+                    // but let OpenRouter choose its fastest member there.
+                    object authoringTokens;
+                    var longAuthoringCall =
+                        payload.TryGetValue("max_tokens", out authoringTokens) &&
+                        authoringTokens is int &&
+                        (int)authoringTokens >= 8192;
+                    payload["provider"] = longAuthoringCall
+                        ? new Dictionary<string, object>
+                        {
+                            { "only", reliableToolProviders },
+                            { "sort", "throughput" },
+                            { "allow_fallbacks", true }
+                        }
+                        : new Dictionary<string, object>
+                        {
+                            { "order", reliableToolProviders },
+                            { "only", reliableToolProviders },
+                            { "allow_fallbacks", true }
+                        };
                 }
             }
 
@@ -1218,6 +1238,39 @@ namespace Scribble.Chat
                 defaultTimeout == CompletionRequestTimeout
                     ? OpenRouterQwenCompletionRequestTimeout
                     : defaultTimeout;
+        }
+
+        internal static readonly TimeSpan MaximumCompletionRequestTimeout =
+            TimeSpan.FromMinutes(15);
+
+        // This client buffers the whole completion, so its deadline bounds
+        // generation time, not idle time. A multi-slide tool call is several
+        // thousand output tokens: a local model at 10-25 tokens per second
+        // cannot finish that inside the chat-sized window. Extend the window
+        // by the output the request itself allows (10 tokens per second),
+        // within a fixed ceiling. An injected test timeout is never widened.
+        private static TimeSpan CompletionDeadlineFor(
+            Uri endpoint,
+            string model,
+            TimeSpan defaultTimeout,
+            int? maxTokens)
+        {
+            var window = CompletionRequestTimeoutFor(
+                endpoint,
+                model,
+                defaultTimeout);
+            if (defaultTimeout != CompletionRequestTimeout ||
+                !maxTokens.HasValue ||
+                maxTokens.Value <= 0)
+            {
+                return window;
+            }
+
+            var scaled = window +
+                TimeSpan.FromSeconds(maxTokens.Value / 10d);
+            return scaled > MaximumCompletionRequestTimeout
+                ? MaximumCompletionRequestTimeout
+                : scaled;
         }
 
         private static string FormatTimeout(TimeSpan timeout)
