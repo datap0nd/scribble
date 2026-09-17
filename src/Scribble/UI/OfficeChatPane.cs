@@ -2129,6 +2129,39 @@ namespace Scribble.UI
                         continue;
                     }
                     taskContext.State.EnumerationComplete = true;
+                    if (!taskContext.State.CanComplete(false))
+                    {
+                        if (++completionAttempts > 3)
+                            throw new InvalidOperationException(
+                                "Task coverage or write recovery is incomplete.");
+                        request.messages.Add(
+                            new ChatCompletionInputMessage
+                            {
+                                role = "assistant",
+                                content = response.content
+                            });
+                        var requiredSlides =
+                            taskContext.State.RequiredPresentationSlides;
+                        var completedSlides = taskContext.State.Batches
+                            .Where(batch => batch.Failures.Count == 0)
+                            .SelectMany(batch => batch.CoveredSourceIds)
+                            .Count(id => id.StartsWith(
+                                "ppt:",
+                                StringComparison.Ordinal));
+                        request.messages.Add(
+                            new ChatCompletionInputMessage
+                            {
+                                role = "user",
+                                content = requiredSlides > completedSlides
+                                    ? "The task is not complete: you described the requested deck, but the host has only " +
+                                      completedSlides + " of " + requiredSlides +
+                                      " verified native slides. Call the exposed PowerPoint draft tool now as the only tool call with a nonempty slides array; continue its retained plan until every slide is written and reviewed. Do not repeat the prose summary or claim the deck exists before the tool receipt confirms it."
+                                    : "The task is not complete because its verified write or review receipt is still missing. Continue with the exposed draft tool as the only tool call and finish the retained work. Do not repeat the prose summary or claim completion before the host receipt confirms it."
+                            });
+                        taskContext.SaveRequest(request);
+                        SetStatus("Finishing the verified draft...", false);
+                        continue;
+                    }
                     taskContext.CompleteTask(request);
                     return response.content;
                 }
