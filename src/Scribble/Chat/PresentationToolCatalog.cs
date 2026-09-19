@@ -172,7 +172,8 @@ namespace Scribble.Chat
                             "Host-owned Samsung layout: " + string.Join(", ", SamsungSlideDesign.Layouts) +
                             ". Use two_pane for commentary plus two tables; annotated_chart for two charts; " +
                             "visual_grid for up to four data/commentary blocks. roadmap and stack use cards. " +
-                            "action_list uses card heading, description points and final timing point. No pixel positions.")
+                            "action_list uses card heading, description points and final timing point. " +
+                            "Cover, divider and closing accept title and subtitle only; omit all other content fields except sources/footnote. No pixel positions.")
                     },
                     {
                         "bullets",

@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -118,6 +119,29 @@ namespace GuardrailTests
                 "The chart must use only primary values for May and June.", primaryOnlySlides), "SLIDE_PRIMARY_SERIES_ONLY");
             Invoke(typeof(DocumentDraftHost), "ValidatePromptChartConstraints", null,
                 "Compare primary and secondary values in the chart.", primaryOnlySlides);
+            var compliantChartSlides = Invoke(Type("PresentationDraftWriter"), "ParseSlides", null, (object)json.Deserialize<object[]>(
+                "[{\"id\":\"trend\",\"title\":\"Trend\",\"layout\":\"chart\",\"chart\":{\"type\":\"column\",\"title\":\"Revenue EUR — May vs June\",\"categories\":[\"2026-05\",\"2026-06\"],\"series\":[{\"name\":\"Revenue EUR\",\"values\":[85519,82992]}]}}]"));
+            Invoke(typeof(DocumentDraftHost), "ValidatePromptChartConstraints", null,
+                "Use YYYY-MM categories and EUR in the title.", compliantChartSlides);
+            var missingTitleUnit = Invoke(Type("PresentationDraftWriter"), "ParseSlides", null, (object)json.Deserialize<object[]>(
+                "[{\"id\":\"trend\",\"title\":\"Trend\",\"layout\":\"chart\",\"chart\":{\"type\":\"column\",\"title\":\"Revenue — May vs June\",\"categories\":[\"2026-05\",\"2026-06\"],\"series\":[{\"name\":\"Revenue EUR\",\"values\":[85519,82992]}]}}]"));
+            Reject(() => Invoke(typeof(DocumentDraftHost), "ValidatePromptChartConstraints", null,
+                "Use YYYY-MM categories and EUR in the title.", missingTitleUnit), "SLIDE_CHART_TITLE_UNIT");
+            var invalidCategories = Invoke(Type("PresentationDraftWriter"), "ParseSlides", null, (object)json.Deserialize<object[]>(
+                "[{\"id\":\"trend\",\"title\":\"Trend\",\"layout\":\"chart\",\"chart\":{\"type\":\"column\",\"title\":\"Revenue EUR\",\"categories\":[\"May\",\"June\"],\"series\":[{\"name\":\"Revenue EUR\",\"values\":[85519,82992]}]}}]"));
+            Reject(() => Invoke(typeof(DocumentDraftHost), "ValidatePromptChartConstraints", null,
+                "Use YYYY-MM categories and EUR in the title.", invalidCategories), "SLIDE_CHART_CATEGORY_FORMAT");
+            var falseTitleFinding = "{\"approved\":false,\"issues\":\"Chart title lacks EUR.\",\"findings\":[{\"slide_id\":\"trend\",\"object_id\":\"chart\",\"severity\":\"blocker\",\"type\":\"facts\",\"correction\":\"Include EUR explicitly in the chart title.\"}]}";
+            Check((bool)Invoke(typeof(DocumentDraftHost), "ReviewApprovedOrSatisfiedPromptConstraint", null,
+                falseTitleFinding, "Use EUR in the title.", ((IEnumerable)compliantChartSlides).Cast<object>().Single()),
+                "A reviewer hallucination contradicted a host-verified literal chart-title token.");
+            Check(!(bool)Invoke(typeof(DocumentDraftHost), "ReviewApprovedOrSatisfiedPromptConstraint", null,
+                falseTitleFinding, "Use EUR in the title.", ((IEnumerable)missingTitleUnit).Cast<object>().Single()),
+                "A genuinely missing chart-title token was ignored.");
+            var mixedFinding = falseTitleFinding.Replace("]}", ",{\"slide_id\":\"trend\",\"object_id\":\"subtitle\",\"severity\":\"blocker\",\"type\":\"facts\",\"correction\":\"Remove the unsupported conclusion.\"}]}");
+            Check(!(bool)Invoke(typeof(DocumentDraftHost), "ReviewApprovedOrSatisfiedPromptConstraint", null,
+                mixedFinding, "Use EUR in the title.", ((IEnumerable)compliantChartSlides).Cast<object>().Single()),
+                "A real factual blocker was hidden beside a satisfied title constraint.");
             var contradictoryBriefs = json.Deserialize<object[]>(
                 "[{\"id\":\"trend\",\"layout\":\"chart\",\"required_content\":[\"Revenue EUR and Cost EUR series\"]}]");
             Reject(() => Invoke(typeof(DocumentDraftHost), "ValidatePromptChartBriefConstraints", null,

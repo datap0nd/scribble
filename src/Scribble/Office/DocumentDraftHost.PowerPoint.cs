@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Web.Script.Serialization;
 using Scribble.Chat;
 using Scribble.Configuration;
 using Scribble.Security;
@@ -180,7 +181,8 @@ namespace Scribble.Office
                         (sampleSlides.Contains(slideId) ? "The user explicitly authorized SAMPLE DATA. The user's specification is valid evidence, including compressed numeric lists and week ranges. Do not require external sources or a second approval. Check the supplied values and associations are preserved; illustrative strategy wording is permitted when labeled sample, but fabricated real-world claims are not. " : "") +
                         SamsungAuthoringPolicy.ReviewContract,
                         "Original task and preserved answers: " + prompt + "\n" + (_taskContext == null ? "" : string.Join("\n", _taskContext.State.OriginalDecisions)) + "\nReviewed slide briefs (verify all required content for this slide): " + briefContext + "\nProposed slide and source evidence: " + text, null, token);
-                    if (!ReviewApproved(review)) throw new InvalidOperationException("SLIDE_SOURCE_REVIEW: " + review);
+                    if (!ReviewApprovedOrSatisfiedPromptConstraint(review, prompt, slides.Single(value => value.Id == slideId)))
+                        throw new InvalidOperationException("SLIDE_SOURCE_REVIEW: " + review);
                     if (_taskContext != null) { _taskContext.State.HostData[reviewKey] = "approved"; _taskContext.Checkpoint(); }
                 }
                 // Layout preflight is before permission consumption and any COM mutation.
@@ -344,14 +346,105 @@ namespace Scribble.Office
             // repeat a useful secondary measure anyway, then describe both
             // series as primary. Enforce the user's scope before any review,
             // permission consumption, or native PowerPoint mutation.
-            if (!RequiresPrimaryOnlyCharts(prompt)) return;
-
-            foreach (var slide in slides ?? Enumerable.Empty<PresentationDraftWriter.DraftSlide>())
-                foreach (var chart in new[] { slide.Chart, slide.SecondaryChart }.Where(value => value != null))
+            var charts = (slides ?? Enumerable.Empty<PresentationDraftWriter.DraftSlide>())
+                .SelectMany(slide => new[] { slide.Chart, slide.SecondaryChart })
+                .Where(value => value != null)
+                .ToArray();
+            if (RequiresPrimaryOnlyCharts(prompt))
+                foreach (var chart in charts)
                     if (chart.Series.Count != 1)
                         throw new InvalidOperationException(
                             "SLIDE_PRIMARY_SERIES_ONLY: The user required primary values only. " +
                             "Each chart must contain exactly one primary series; remove every secondary measure from the chart.");
+
+            var titleToken = RequiredChartTitleToken(prompt);
+            if (titleToken != null)
+                foreach (var chart in charts)
+                    if (!ContainsWord(chart.Title, titleToken))
+                        throw new InvalidOperationException(
+                            "SLIDE_CHART_TITLE_UNIT: The user required " + titleToken +
+                            " in the chart title. Include that exact token in every requested chart title.");
+
+            if (Regex.IsMatch(prompt ?? string.Empty,
+                @"(?is)\bYYYY\s*-\s*MM\b.{0,40}\bcategor(?:y|ies)\b"))
+                foreach (var chart in charts)
+                    if (chart.Categories.Any(category => !Regex.IsMatch(
+                        category ?? string.Empty,
+                        @"^\d{4}-(?:0[1-9]|1[0-2])$")))
+                        throw new InvalidOperationException(
+                            "SLIDE_CHART_CATEGORY_FORMAT: The user required YYYY-MM chart categories. " +
+                            "Use four-digit year and two-digit month labels such as 2026-05.");
+        }
+
+        // A probabilistic fact reviewer must not block a slide by claiming a
+        // literal chart-title requirement is absent after the host has already
+        // parsed and verified that exact field. This is deliberately narrow:
+        // every reported finding must be the same satisfied title-token issue;
+        // any other factual, coverage or layout blocker still fails closed.
+        internal static bool ReviewApprovedOrSatisfiedPromptConstraint(
+            string review,
+            string prompt,
+            PresentationDraftWriter.DraftSlide slide)
+        {
+            if (SamsungAuthoringPolicy.Approved(review)) return true;
+            var token = RequiredChartTitleToken(prompt);
+            var charts = slide == null
+                ? new PresentationDraftWriter.DraftChart[0]
+                : new[] { slide.Chart, slide.SecondaryChart }
+                    .Where(value => value != null)
+                    .ToArray();
+            if (token == null || charts.Length == 0 ||
+                charts.Any(chart => !ContainsWord(chart.Title, token))) return false;
+
+            try
+            {
+                var map = new JavaScriptSerializer()
+                    .Deserialize<Dictionary<string, object>>(review);
+                object rawFindings;
+                var findings = map != null && map.TryGetValue("findings", out rawFindings)
+                    ? rawFindings as IEnumerable
+                    : null;
+                var entries = findings == null || rawFindings is string
+                    ? new Dictionary<string, object>[0]
+                    : findings.Cast<object>()
+                        .Select(value => value as Dictionary<string, object>)
+                        .Where(value => value != null)
+                        .ToArray();
+                if (entries.Length == 0) return false;
+                foreach (var finding in entries)
+                {
+                    var detail = string.Join(" ", new[]
+                    {
+                        SamsungAuthoringPolicy.Text(finding, "object_id"),
+                        SamsungAuthoringPolicy.Text(finding, "type"),
+                        SamsungAuthoringPolicy.Text(finding, "correction")
+                    });
+                    if (!Regex.IsMatch(detail, @"(?i)\bchart\b") ||
+                        !Regex.IsMatch(detail, @"(?i)\btitle\b") ||
+                        !ContainsWord(detail, token) ||
+                        !Regex.IsMatch(detail, @"(?i)\b(?:include|missing|lacks?|explicit)\b"))
+                        return false;
+                }
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static string RequiredChartTitleToken(string prompt)
+        {
+            var match = Regex.Match(prompt ?? string.Empty,
+                @"(?s)\b([A-Z]{3})\b.{0,40}\bin\s+(?:the\s+)?(?:chart\s+)?title\b");
+            return match.Success ? match.Groups[1].Value : null;
+        }
+
+        private static bool ContainsWord(string value, string token)
+        {
+            return !string.IsNullOrWhiteSpace(token) && Regex.IsMatch(
+                value ?? string.Empty,
+                @"(?i)(?<![A-Z0-9])" + Regex.Escape(token) + @"(?![A-Z0-9])");
         }
 
         internal static void ValidatePromptChartBriefConstraints(
