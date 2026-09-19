@@ -287,7 +287,10 @@ namespace Scribble.Testing
                     // Samsung's source/footer/folio bands deliberately use
                     // compact labels; ordinary body copy and native table cells
                     // have different documented minimum sizes.
-                    var footer = shape.y >= native.height * .925 && shape.y + shape.height <= native.height + 1;
+                    // Sparse Samsung cover slides place their compact source
+                    // line immediately above the bottom accent bar (90.8% of
+                    // the canvas). It is still footer metadata, not body copy.
+                    var footer = shape.y >= native.height * .90 && shape.y + shape.height <= native.height + 1;
                     var unitLabel = shape.x >= native.width * .79 && shape.width <= native.width * .18 &&
                         shape.y >= native.height * .20 && shape.y + shape.height <= native.height * .26;
                     var minimumFont = shape.is_table_cell ? 7.5 : footer ? 7 : unitLabel ? 8 : 14;

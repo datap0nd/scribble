@@ -112,6 +112,16 @@ namespace GuardrailTests
             Invoke(typeof(DocumentDraftHost), "ValidateSlideRepairEvidence", null, originalSlide, retitledSlide);
             var changedData = json.Deserialize<Dictionary<string, object>>(json.Serialize(retitledSlide).Replace("82992", "82993"));
             Reject(() => Invoke(typeof(DocumentDraftHost), "ValidateSlideRepairEvidence", null, originalSlide, changedData), "SLIDE_REPAIR_EVIDENCE_CHANGED: chart");
+            var primaryOnlySlides = Invoke(Type("PresentationDraftWriter"), "ParseSlides", null, (object)json.Deserialize<object[]>(
+                "[{\"id\":\"trend\",\"title\":\"Trend\",\"layout\":\"chart\",\"chart\":{\"type\":\"column\",\"categories\":[\"2026-05\",\"2026-06\"],\"series\":[{\"name\":\"Revenue EUR\",\"values\":[85519,82992]},{\"name\":\"Cost EUR\",\"values\":[36702,36714]}]}}]"));
+            Reject(() => Invoke(typeof(DocumentDraftHost), "ValidatePromptChartConstraints", null,
+                "The chart must use only primary values for May and June.", primaryOnlySlides), "SLIDE_PRIMARY_SERIES_ONLY");
+            Invoke(typeof(DocumentDraftHost), "ValidatePromptChartConstraints", null,
+                "Compare primary and secondary values in the chart.", primaryOnlySlides);
+            var contradictoryBriefs = json.Deserialize<object[]>(
+                "[{\"id\":\"trend\",\"layout\":\"chart\",\"required_content\":[\"Revenue EUR and Cost EUR series\"]}]");
+            Reject(() => Invoke(typeof(DocumentDraftHost), "ValidatePromptChartBriefConstraints", null,
+                "The chart must use only primary values for May and June.", contradictoryBriefs), "SLIDE_PRIMARY_SERIES_ONLY");
             var chart = Type("PresentationChartEdit");
             var range = Invoke(chart, "Resolve", null, "=SERIES(Sheet1!$B$1,Sheet1!$A$2:$A$4,Sheet1!$B$2:$B$4,1)", 2);
             Check((string)range.GetType().GetField("Cell", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(range) == "B3", "Chart point mapped to wrong cell.");

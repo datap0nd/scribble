@@ -366,6 +366,8 @@ namespace Scribble.Chat
                     "Include it whenever the user asks for a " +
                     "chart, graph, or visualization of data - " +
                     "e.g. 'do a bar chart with this in a slide'. " +
+                    "When the user says primary values only, include " +
+                    "exactly one primary series and omit every secondary measure. " +
                     "At most " +
                     PresentationDraftWriter.MaxChartCategories +
                     " categories and " +
@@ -416,7 +418,8 @@ namespace Scribble.Chat
                                 {
                                     "description",
                                     "Named series of numbers, one " +
-                                    "value per category."
+                                    "value per category. Primary values only " +
+                                    "means this array has exactly one series."
                                 },
                                 {
                                     "items",

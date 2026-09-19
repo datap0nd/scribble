@@ -63,6 +63,7 @@ namespace Scribble.Office
                     source += "\n" + evidence;
                 }
                 var slides = ParsedSlides(args);
+                ValidatePromptChartConstraints(prompt, slides);
                 var planValue = ParsedArray(args, "plan", false);
                 if (planValue != null && planValue.Any(id => !(id is string)))
                     throw new InvalidOperationException("SLIDE_PLAN_INVALID: Each plan ID must be a string.");
@@ -83,6 +84,7 @@ namespace Scribble.Office
                     _taskContext.State.PresentationReviewRequired = true;
                     _taskContext.State.PresentationReviewReceipt = null;
                     briefs = ParsedArray(args, "briefs", false);
+                    ValidatePromptChartBriefConstraints(prompt, briefs);
                     string existingBriefs;
                     if (_taskContext.State.HostData.TryGetValue("samsung_briefs", out existingBriefs))
                     {
@@ -330,6 +332,54 @@ namespace Scribble.Office
                     catch (System.Runtime.InteropServices.InvalidComObjectException) { }
                 }
             }
+        }
+
+        internal static void ValidatePromptChartConstraints(
+            string prompt,
+            IEnumerable<PresentationDraftWriter.DraftSlide> slides)
+        {
+            // In the stress corpus, as in normal finance work, "primary
+            // values only" is an explicit instruction to keep secondary
+            // measures out of every requested chart. Small models sometimes
+            // repeat a useful secondary measure anyway, then describe both
+            // series as primary. Enforce the user's scope before any review,
+            // permission consumption, or native PowerPoint mutation.
+            if (!RequiresPrimaryOnlyCharts(prompt)) return;
+
+            foreach (var slide in slides ?? Enumerable.Empty<PresentationDraftWriter.DraftSlide>())
+                foreach (var chart in new[] { slide.Chart, slide.SecondaryChart }.Where(value => value != null))
+                    if (chart.Series.Count != 1)
+                        throw new InvalidOperationException(
+                            "SLIDE_PRIMARY_SERIES_ONLY: The user required primary values only. " +
+                            "Each chart must contain exactly one primary series; remove every secondary measure from the chart.");
+        }
+
+        internal static void ValidatePromptChartBriefConstraints(
+            string prompt,
+            IEnumerable<object> briefs)
+        {
+            if (!RequiresPrimaryOnlyCharts(prompt) || briefs == null) return;
+            foreach (var brief in briefs.Select(SamsungAuthoringPolicy.ReadMap)
+                .Where(value => SamsungAuthoringPolicy.Text(value, "layout").IndexOf("chart", StringComparison.OrdinalIgnoreCase) >= 0))
+            {
+                var required = string.Join(" ", SamsungAuthoringPolicy.Array(brief, "required_content").Select(Convert.ToString));
+                if (Regex.IsMatch(required,
+                    @"(?is)\b(?:two|both|multiple)\s+(?:named\s+)?series\b|\bprimary\s+(?:and|&)\s+secondary\b|\b(?:revenue|sales|cost|budget|actual|forecast|headcount|units?|margin|rate)\b.{0,50}\b(?:and|&)\b.{0,50}\bseries\b"))
+                    throw new InvalidOperationException(
+                        "SLIDE_PRIMARY_SERIES_ONLY: The user required primary values only. " +
+                        "The chart brief must request exactly one primary series and must not require a secondary measure.");
+            }
+        }
+
+        private static bool RequiresPrimaryOnlyCharts(string prompt)
+        {
+            var instruction = prompt ?? string.Empty;
+            return Regex.IsMatch(
+                instruction,
+                @"(?is)\bcharts?\b.{0,200}\bonly\s+(?:the\s+)?primary\s+(?:values?|series|measures?)\b") ||
+                Regex.IsMatch(
+                    instruction,
+                    @"(?is)\bonly\s+(?:the\s+)?primary\s+(?:values?|series|measures?)\b.{0,200}\bcharts?\b");
         }
         private string SourceSpanRepairHint(string message)
         {

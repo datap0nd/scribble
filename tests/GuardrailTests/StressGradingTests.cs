@@ -130,6 +130,28 @@ namespace GuardrailTests
             chartRule["host"] = "Excel"; chartRule.Remove("artifact_extension");
             Check(!passes(), "A native chart rule without an artifact extension was accepted.");
         }
+        public static void CoverSourceLineIsFooterMetadata()
+        {
+            var theme = new { width = 960, height = 540, fonts = new[] { "Arial", "Arial Narrow" },
+                palette = new[] { "FFFFFF", "000000", "4F81BD", "7F7F7F" } };
+            var oracle = new { id = "EX01", checks = new object[] { new { kind = "presentation", slide_count = 1,
+                theme_ref = "evaluator-only/theme.json", required_facts = new object[0] } } };
+            var slide = new StressSlide { number = 1, shapes = new[] {
+                new StressShape { name = "Title", text = "Atlas Components", font = "Arial", color = "#000000",
+                    x = 44, y = 152, width = 810, height = 184, bound_width = 500, bound_height = 80,
+                    available_width = 806, available_height = 182, font_size = 65 },
+                new StressShape { name = "Source", text = "Source references and evidence: see speaker notes.", font = "Arial Narrow", color = "#000000",
+                    x = 36, y = 490.32, width = 835, height = 16.2, bound_width = 140, bound_height = 8.4,
+                    available_width = 831, available_height = 14.2, font_size = 7 } } };
+            var capture = new StressReadback { run_id = "test", native_readback = true, run_created_output = true, output_boundary = true,
+                artifact_extension = "pptx", text = "Atlas Components", stress_native = new StressNative { host = "PowerPoint", width = 960, height = 540,
+                    slides = new[] { slide } } };
+            Check(Evaluate(oracle, new[] { capture }, "", new[] { "pptx" }, theme).All(c => c.passed),
+                "The Samsung cover source line was incorrectly graded as undersized body copy.");
+            slide.shapes[1].y = 470;
+            Check(Evaluate(oracle, new[] { capture }, "", new[] { "pptx" }, theme).Any(c => !c.passed),
+                "Undersized body copy outside the footer band passed presentation grading.");
+        }
         public static void IncompleteCellsAndDraftMetricsRemainGrounded()
         {
             var cellOracle = new { id = "EX01", checks = new object[] { new { kind = "cell_text", sheet = "Scribble Draft*", cell = "F4", expected = "incomplete" } } };
@@ -209,7 +231,7 @@ namespace GuardrailTests
             }
             finally { Directory.Delete(root, true); }
         }
-        private static TestLabCheck[] Evaluate(object oracle, StressReadback[] captures, string timeline, string[] artifacts)
+        private static TestLabCheck[] Evaluate(object oracle, StressReadback[] captures, string timeline, string[] artifacts, object theme = null)
         {
             var root = Path.Combine(Path.GetTempPath(), "scribble-stress-grader-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
             try
@@ -219,6 +241,7 @@ namespace GuardrailTests
                     inputs = new string[0], artifacts = artifacts, oracle_ref = "evaluator-only/cases/" + id + ".json" };
                 Action<string, object> write = (path, value) => { var file = Path.Combine(root, path); Directory.CreateDirectory(Path.GetDirectoryName(file)); File.WriteAllText(file, TestLab.Serialize(value)); };
                 write(testCase.oracle_ref, oracle); write("operator/cases.json", new[] { testCase }); write("operator/mail-index.json", new MailFixture[0]);
+                if (theme != null) write("evaluator-only/theme.json", theme);
                 var files = Directory.GetFiles(root, "*", SearchOption.AllDirectories).Select(p => new KitFile { path = p.Substring(root.Length + 1).Replace('\\', '/'), size = new FileInfo(p).Length, sha256 = TestLab.FileHash(p) }).ToArray();
                 write("manifest.json", new KitManifest { schema = 1, suite_id = "scribble-stress-v1", files = files });
                 var run = new LabRun { run_id = "test", case_id = id, suite_id = "scribble-stress-v1", fixture_root = root,

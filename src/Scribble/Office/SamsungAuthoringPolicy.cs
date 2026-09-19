@@ -37,6 +37,7 @@ namespace Scribble.Office
             "strategy 'Channel coverage' distinguishes proposed actions from completed work; roadmaps retain supplied owners and dates, otherwise use [Owner] and [Date]. " +
             "Bilingual slides preserve product names and numeric meaning; translate prose naturally and retain necessary Samsung abbreviations. " +
             "Choose a host-owned Samsung recipe for the evidence. Tables and charts remain native; use attached image_names for artwork. " +
+            "When the user requests primary values only in a chart, include exactly one primary series and omit every secondary measure. " +
             "Use semantic annotations to emphasize supporting evidence. Do not invent tables to fill space. " +
             "The host checks facts, geometry, rendered slides and the complete deck. Resolve blockers before claiming completion. Themes and positions are host-controlled.";
         public const string ReviewContract =
