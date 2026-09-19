@@ -107,6 +107,11 @@ namespace GuardrailTests
             Reject(() => Invoke(policy, "ValidateScope", null, original, parse(json.Serialize(corrected).Replace("125", "120"))), "REVISION_REPAIR_VALUES");
             Reject(() => Invoke(policy, "ValidateScope", null, original, parse(json.Serialize(corrected).Replace("42", "43"))), "REVISION_REPAIR_SCOPE");
             Reject(() => Invoke(policy, "ValidateScope", null, original, new object[0]), "REVISION_REPAIR_SCOPE");
+            var originalSlide = json.Deserialize<Dictionary<string, object>>("{\"id\":\"trend\",\"chart\":{\"type\":\"column\",\"title\":\"Revenue by month\",\"categories\":[\"2026-05\",\"2026-06\"],\"series\":[{\"name\":\"Revenue EUR\",\"values\":[85519,82992]}]}}");
+            var retitledSlide = json.Deserialize<Dictionary<string, object>>("{\"id\":\"trend\",\"chart\":{\"type\":\"column\",\"title\":\"Revenue by month, EUR\",\"categories\":[\"2026-05\",\"2026-06\"],\"series\":[{\"name\":\"Revenue EUR\",\"values\":[85519,82992]}]}}");
+            Invoke(typeof(DocumentDraftHost), "ValidateSlideRepairEvidence", null, originalSlide, retitledSlide);
+            var changedData = json.Deserialize<Dictionary<string, object>>(json.Serialize(retitledSlide).Replace("82992", "82993"));
+            Reject(() => Invoke(typeof(DocumentDraftHost), "ValidateSlideRepairEvidence", null, originalSlide, changedData), "SLIDE_REPAIR_EVIDENCE_CHANGED: chart");
             var chart = Type("PresentationChartEdit");
             var range = Invoke(chart, "Resolve", null, "=SERIES(Sheet1!$B$1,Sheet1!$A$2:$A$4,Sheet1!$B$2:$B$4,1)", 2);
             Check((string)range.GetType().GetField("Cell", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(range) == "B3", "Chart point mapped to wrong cell.");

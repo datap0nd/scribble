@@ -10,13 +10,33 @@ namespace Scribble.Office
 {
     public sealed partial class DocumentDraftHost
     {
-        private static object Canonical(object value)
+        private static object RepairEvidenceValue(string field, object value)
         {
-            var map = value as IDictionary<string, object>;
-            if (map != null) return map.OrderBy(p => p.Key, StringComparer.Ordinal).ToDictionary(p => p.Key, p => Canonical(p.Value));
-            var sequence = value as System.Collections.IEnumerable;
-            if (sequence != null && !(value is string)) return sequence.Cast<object>().Select(Canonical).ToArray();
+            var chart = value as IDictionary<string, object>;
+            if ((field == "chart" || field == "secondary_chart") && chart != null)
+            {
+                // A visual repair may make the chart title clearer (for example,
+                // add the requested currency unit). The native data contract is
+                // still immutable: type, categories, series names and values must
+                // remain byte-for-byte equivalent after canonical serialization.
+                return chart.Where(pair => pair.Key != "title")
+                    .ToDictionary(pair => pair.Key, pair => pair.Value);
+            }
             return value;
+        }
+        internal static void ValidateSlideRepairEvidence(
+            IDictionary<string, object> original,
+            IDictionary<string, object> replacement)
+        {
+            foreach (var field in new[] { "table", "secondary_table", "chart", "secondary_chart", "image_names", "source_spans", "evidence", "calculations", "content_kind" })
+            {
+                object before, after;
+                original.TryGetValue(field, out before);
+                replacement.TryGetValue(field, out after);
+                if (SamsungRepairPolicy.Serialize(RepairEvidenceValue(field, before)) !=
+                    SamsungRepairPolicy.Serialize(RepairEvidenceValue(field, after)))
+                    throw new InvalidOperationException("SLIDE_REPAIR_EVIDENCE_CHANGED: " + field);
+            }
         }
         private async Task<Dictionary<string, object>> RepairSlideContentAsync(PresentationDraftWriter.SamsungOutput output,
             Dictionary<string, object> original, string findings, string source, string prompt,
@@ -24,7 +44,7 @@ namespace Scribble.Office
         {
             var response = await ReviewSamsungAsync(client, settings,
                 SamsungAuthoringPolicy.Instructions + " Repair this single slide using the specific visual findings. Return JSON only: {\"slides\":[{...complete corrected slide...}]}. " +
-                "Keep the ID, all required table rows, chart data, calculations and source images unchanged. Omit evidence and source_spans from your answer: the host carries both over unchanged. You may choose a better Samsung layout and remove redundant wording. " +
+                "Keep the ID, all required table rows, chart type, categories, series names and values, calculations and source images unchanged. You may correct a chart title when the finding requires it. Omit evidence and source_spans from your answer: the host carries both over unchanged. You may choose a better Samsung layout and remove redundant wording. " +
                 "Do not invent pixel coordinates or remove evidence to make it fit. Schema: " + _serializer.Serialize(PresentationToolCatalog.DraftDefinition().function.parameters),
                 _serializer.Serialize(new { original, findings, instruction = prompt }), output.Image, token, Math.Min(32768, Math.Max(8192, _serializer.Serialize(original).Length / 2)));
             var wrapper = _serializer.Deserialize<Dictionary<string, object>>(response);
@@ -45,11 +65,7 @@ namespace Scribble.Office
                 if (original.TryGetValue(hostOwned, out retained)) replacement[hostOwned] = retained;
                 else replacement.Remove(hostOwned);
             }
-            foreach (var field in new[] { "table", "secondary_table", "chart", "secondary_chart", "image_names", "source_spans", "evidence", "calculations", "content_kind" })
-            {
-                object before, after; original.TryGetValue(field, out before); replacement.TryGetValue(field, out after);
-                if (_serializer.Serialize(Canonical(before)) != _serializer.Serialize(Canonical(after))) throw new InvalidOperationException("SLIDE_REPAIR_EVIDENCE_CHANGED: " + field);
-            }
+            ValidateSlideRepairEvidence(original, replacement);
             if (SamsungRepairPolicy.Serialize(original) == SamsungRepairPolicy.Serialize(replacement)) throw new InvalidOperationException("SLIDE_REPAIR_STALLED: No meaningful content or layout change was proposed.");
             SamsungPresentationReview.ValidateEvidence(_serializer.Serialize(replacement), source);
             var review = await ReviewSamsungAsync(client, settings, SamsungAuthoringPolicy.FactReview +
@@ -166,7 +182,7 @@ namespace Scribble.Office
                 var review = await ReviewSamsungAsync(client, settings,
                     "Review this rendered Samsung executive slide. Check every item assigned to this page, readable dense evidence, geometry, table/chart labels, clipping, collisions and emphasis. Logical source content may span continuation pages; do not require other pages' items here. Report the provided logical slide_id in findings." + SamsungAuthoringPolicy.ReviewContract,
                     _serializer.Serialize(new { slide_id = output.Page.Source.Id, native_slide_id = (int)((dynamic)output.Slide).SlideID,
-                        logical_content = content[output.Page.Source.Id], expected_page = output.Page.Elements.Select(e => new { text = e.Text, table = e.Table == null ? null : new { e.Table.Headers, e.Table.Rows }, chart = e.Chart == null ? null : new { e.Chart.Categories, series = e.Chart.Series.Select(v => new { v.Name, v.Values }) } }), evidence = output.Page.Source.Evidence }), output.Image, token);
+                        logical_content = content[output.Page.Source.Id], expected_page = output.Page.Elements.Select(e => new { text = e.Text, table = e.Table == null ? null : new { e.Table.Headers, e.Table.Rows }, chart = e.Chart == null ? null : new { title = e.Chart.Title, type = e.Chart.TypeCode, e.Chart.Categories, series = e.Chart.Series.Select(v => new { v.Name, v.Values }) } }), evidence = output.Page.Source.Evidence }), output.Image, token);
                 if (PresentationInspection.Fingerprint(output.Slide) != before || PresentationDraftWriter.ExportSamsung(output) != output.Image) throw new InvalidOperationException("SLIDE_CHANGED_DURING_REVIEW");
                 if (ReviewApproved(review)) continue;
                 var id = output.Page.Source.Id; int count; attempts.TryGetValue(id, out count);
@@ -190,7 +206,8 @@ namespace Scribble.Office
                     var subset = outputs.Skip(offset).Take(12).ToArray();
                     var visual = await ReviewSamsungAsync(client, settings,
                         "Review consecutive native slides for visual consistency, hierarchy, numbering and Samsung fidelity. Dense evidence is intentional. Report the provided logical slide IDs for affected slides." + SamsungAuthoringPolicy.ReviewContract,
-                        _serializer.Serialize(new { prompt, slides = subset.Select(o => new { slide_id = o.Page.Source.Id, native_id = (int)((dynamic)o.Slide).SlideID }) }), SamsungDeckOverview.Montage(subset.Select(o => o.Image)), token);
+                        _serializer.Serialize(new { prompt, slides = subset.Select(o => new { slide_id = o.Page.Source.Id, native_id = (int)((dynamic)o.Slide).SlideID,
+                            expected_page = o.Page.Elements.Select(e => new { text = e.Text, table = e.Table == null ? null : new { e.Table.Headers, e.Table.Rows }, chart = e.Chart == null ? null : new { title = e.Chart.Title, type = e.Chart.TypeCode, e.Chart.Categories, series = e.Chart.Series.Select(v => new { v.Name, v.Values }) } }) }) }), SamsungDeckOverview.Montage(subset.Select(o => o.Image)), token);
                     if (!ReviewApproved(visual)) { findings = visual; break; }
                 }
                 var deckContent = _serializer.Serialize(new { instruction = prompt, plan,
