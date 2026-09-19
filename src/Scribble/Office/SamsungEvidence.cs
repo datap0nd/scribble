@@ -22,6 +22,18 @@ namespace Scribble.Office
         private static bool AssociationOccurs(string passage, string association, string key)
         {
             if (Normalize(passage).IndexOf(Normalize(association), StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            // Host arithmetic receipts use source-header identifiers such as
+            // RevenueEUR and CostEUR, while authored claims use readable labels
+            // such as "Revenue EUR". Treat punctuation/whitespace-only label
+            // differences as equivalent so an exact row can be expanded to its
+            // adjacent verified header. Values are still checked independently.
+            if (!string.Equals(key, "period", StringComparison.Ordinal))
+            {
+                var compactPassage = Regex.Replace(passage ?? "", @"[^A-Za-z0-9]", "");
+                var compactAssociation = Regex.Replace(association ?? "", @"[^A-Za-z0-9]", "");
+                if (compactAssociation.Length >= 2 && compactPassage.IndexOf(
+                    compactAssociation, StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            }
             if (!string.Equals(key, "period", StringComparison.Ordinal)) return false;
 
             var expected = CanonicalPeriods(association);

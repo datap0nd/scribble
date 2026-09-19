@@ -194,6 +194,22 @@ namespace GuardrailTests
             Reject(() => SamsungPresentationReview.ValidateEvidence(json.Serialize(slide), corpus));
             stitched["text"] = "June revenue EUR 82,992"; stitched["label"] = "Revenue EUR"; stitched["evidence"] = "Revenue EUR\t85519\t82992";
 
+            // XA01 run 2026-09-20: read_grouped_totals emits compact source
+            // headers (RevenueEUR), but slide labels remain human-readable
+            // (Revenue EUR). The host may expand a bare exact row to that
+            // adjacent header; it must not accept a different metric.
+            const string grouped = "Period\tGroup\tRows\tRevenueEUR\tCostEUR\tBlank or non-numeric cells\n2026-06\tNorth\t6\t19219\t8082\t0";
+            var groupedClaim = new Dictionary<string, object> {
+                { "text", "North June revenue 19,219 EUR" }, { "label", "Revenue EUR" }, { "unit", "EUR" },
+                { "period", "2026-06" }, { "evidence", "2026-06\tNorth\t6\t19219\t8082\t0" }
+            };
+            var groupedSlide = new Dictionary<string, object> { { "claims", new object[] { groupedClaim } } };
+            SamsungEvidence.ValidateClaims(groupedSlide, grouped);
+            Check(((string)groupedClaim["evidence"]).Contains("RevenueEUR"),
+                "A compact host header was not attached to its exact grouped-total row.");
+            groupedClaim["label"] = "Profit EUR";
+            Reject(() => SamsungEvidence.ValidateClaims(groupedSlide, grouped));
+
             // A label the task never read is still refused, as is a quantity.
             slide["subtitle"] = "Gross margin was 55.76% in 2026-06 against a 2026-07 plan";
             try { SamsungPresentationReview.ValidateEvidence(json.Serialize(slide), corpus); throw new Exception("An unread period label was accepted."); }
