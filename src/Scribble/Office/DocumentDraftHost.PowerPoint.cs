@@ -400,7 +400,7 @@ namespace Scribble.Office
             {
                 var map = new JavaScriptSerializer()
                     .Deserialize<Dictionary<string, object>>(review);
-                object rawFindings;
+                object rawFindings = null;
                 var findings = map != null && map.TryGetValue("findings", out rawFindings)
                     ? rawFindings as IEnumerable
                     : null;
