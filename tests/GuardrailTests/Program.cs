@@ -7796,6 +7796,8 @@ namespace GuardrailTests
                     ? json.Serialize(new { plan = new[] { "intro" }, slides = new[] { new { id = "intro", layout = "cover", title = "SOURCE CONTENT" } } })
                     : target == "excel" ? "{\"title\":\"Draft\",\"rows\":[[\"SOURCE CONTENT\"]]}"
                     : "{\"title\":\"Draft\",\"body\":\"SOURCE CONTENT\"}";
+                if (target == "word")
+                    args = "{\"title\":\"Draft\",\"body\":\"# Draft\\nSOURCE CONTENT\"}";
                 if (target == "outlook") args = "{\"subject\":\"Draft\",\"body\":\"SOURCE CONTENT\"}";
                 if (target == "chrome") args = "{\"url\":\"https://example.com/\"}";
                 const string approved = "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"approved\\\":true}\"}}]}";
@@ -7831,6 +7833,9 @@ namespace GuardrailTests
                             Assert(events.Any(e => e.Contains(".Interior.Color=7949855")) &&
                                 events.Any(e => e.Contains(".Font.Color=16777215")),
                                 source + " -> Excel lost the professional draft-table header styling.");
+                        if (target == "word")
+                            Assert(!events.Any(e => e.EndsWith(".Text=Draft\r", StringComparison.Ordinal)),
+                                source + " -> Word repeated the supplied title as an adjacent body heading.");
                     }
                     matrix.Add(new { source, target, tool, passed = true, verification = "production writer with simulated application API", launches });
                 }

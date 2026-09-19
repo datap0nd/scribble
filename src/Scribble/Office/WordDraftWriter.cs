@@ -124,8 +124,20 @@ namespace Scribble.Office
             }
 
             var tables = 0;
-            foreach (var block in blocks)
+            for (var blockIndex = 0; blockIndex < blocks.Count; blockIndex++)
             {
+                var block = blocks[blockIndex];
+                // The new-document surface already writes the supplied title
+                // into its marked Heading 1. Small models often repeat the
+                // same text as the body's first Markdown H1, producing two
+                // adjacent report titles. Drop only that exact structural
+                // duplicate; in-place and selection writes remain untouched.
+                var leading = block as DraftTextLayout.Paragraph;
+                if (mode == 2 && blockIndex == 0 && leading != null &&
+                    leading.Kind == DraftTextLayout.KindHeading1 &&
+                    string.Equals(leading.Text.Trim(), boundedTitle.Trim(),
+                        StringComparison.OrdinalIgnoreCase))
+                    continue;
                 var table = block as DraftTextLayout.Table;
                 if (table != null)
                 {
