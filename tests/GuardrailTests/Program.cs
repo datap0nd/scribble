@@ -7827,6 +7827,10 @@ namespace GuardrailTests
                         Assert(events.Any(e => e.Contains("SOURCE CONTENT")), target + " lost the source content.");
                         var collection = target == "powerpoint" ? "Presentations" : target == "excel" ? "Workbooks" : "Documents";
                         Assert(events.Count(e => e.StartsWith(target + "." + collection + ".Add(")) == 1, "Handoff must create exactly one new destination.");
+                        if (target == "excel")
+                            Assert(events.Any(e => e.Contains(".Interior.Color=7949855")) &&
+                                events.Any(e => e.Contains(".Font.Color=16777215")),
+                                source + " -> Excel lost the professional draft-table header styling.");
                     }
                     matrix.Add(new { source, target, tool, passed = true, verification = "production writer with simulated application API", launches });
                 }

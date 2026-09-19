@@ -304,6 +304,7 @@ namespace Scribble.Office
                 boundedTitle,
                 startRow,
                 rowCount,
+                columnCount,
                 target);
             var chartAdded =
                 chart != null &&
@@ -812,14 +813,16 @@ namespace Scribble.Office
                 out number);
         }
 
-        // Cosmetic polish for the draft sheet: bold title, bold
-        // header row with a divider, and autofitted columns. Any
-        // failure here must never fail the draft itself.
+        // Cosmetic polish for the draft sheet. Formatting is deliberately
+        // applied after values and formulas, so it can improve readability
+        // without changing the model's data, formula text, or source links.
+        // Any failure here must never fail the draft itself.
         private static void ApplyDraftFormatting(
             dynamic sheet,
             string boundedTitle,
             int startRow,
             int rowCount,
+            int columnCount,
             dynamic target)
         {
             try
@@ -828,18 +831,76 @@ namespace Scribble.Office
                 {
                     dynamic titleCell = sheet.Cells[1, 1];
                     titleCell.Font.Bold = true;
-                    titleCell.Font.Size = 12;
+                    titleCell.Font.Size = 16;
+                    titleCell.Font.Name = "Aptos Display";
+                    // RGB(31, 78, 121), Excel's OLE/BGR integer.
+                    titleCell.Font.Color = 0x794E1F;
                 }
 
-                if (rowCount > 1)
-                {
-                    dynamic header = target.Rows[1];
-                    header.Font.Bold = true;
-                    // 9 = xlEdgeBottom, 1 = xlContinuous.
-                    header.Borders[9].LineStyle = 1;
-                }
+                dynamic header = target.Rows[1];
+                header.Font.Bold = true;
+                header.Font.Color = 0xFFFFFF;
+                header.Font.Name = "Aptos";
+                header.Interior.Color = 0x794E1F;
+                header.HorizontalAlignment = -4108; // xlCenter.
+                header.VerticalAlignment = -4108;
+                header.RowHeight = 22;
+                // 9 = xlEdgeBottom, 1 = xlContinuous.
+                header.Borders[9].LineStyle = 1;
+                header.Borders[9].Color = 0x794E1F;
 
                 target.EntireColumn.AutoFit();
+            }
+            catch
+            {
+            }
+
+            if (rowCount > 1)
+            {
+                try
+                {
+                    dynamic body = sheet.Range(
+                        sheet.Cells[startRow + 1, 1],
+                        sheet.Cells[startRow + rowCount - 1, columnCount]);
+                    body.Font.Name = "Aptos";
+                    // Add separators while preserving up to five displayed
+                    // decimals. Formula precision remains unchanged.
+                    body.NumberFormat = "#,##0.#####";
+                    body.Borders.LineStyle = 1; // xlContinuous.
+                    body.Borders.Color = 0xD9D9D9;
+                    body.VerticalAlignment = -4108;
+                    for (var offset = 1; offset < rowCount; offset += 2)
+                    {
+                        dynamic band = target.Rows[offset + 1];
+                        band.Interior.Color = 0xF7EBDD;
+                    }
+                }
+                catch
+                {
+                }
+
+                try
+                {
+                    target.AutoFilter();
+                }
+                catch
+                {
+                }
+            }
+
+            try
+            {
+                // AutoFit can make a prose/disclosure column hundreds of
+                // characters wide. Cap it and wrap only when necessary.
+                for (var column = 1; column <= columnCount; column++)
+                {
+                    dynamic draftColumn = sheet.Columns[column];
+                    if (Convert.ToDouble(draftColumn.ColumnWidth) <= 36d)
+                        continue;
+                    draftColumn.ColumnWidth = 36d;
+                    draftColumn.WrapText = true;
+                }
+                target.EntireRow.AutoFit();
             }
             catch
             {
