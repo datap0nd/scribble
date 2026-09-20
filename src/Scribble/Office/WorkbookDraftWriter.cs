@@ -891,7 +891,10 @@ namespace Scribble.Office
             try
             {
                 // AutoFit can make a prose/disclosure column hundreds of
-                // characters wide. Cap it and wrap only when necessary.
+                // characters wide. Refit after applying the displayed number
+                // format so numeric columns reserve room for separators and
+                // decimals, then cap prose columns and wrap only when needed.
+                target.EntireColumn.AutoFit();
                 for (var column = 1; column <= columnCount; column++)
                 {
                     dynamic draftColumn = sheet.Columns[column];

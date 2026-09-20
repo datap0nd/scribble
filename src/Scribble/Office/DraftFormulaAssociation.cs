@@ -73,6 +73,39 @@ namespace Scribble.Office
                 string.Join(" ", issues ?? new string[0]);
         }
 
+        public static IReadOnlyList<string> ValidatePromptRequirements(
+            string prompt,
+            IReadOnlyList<IReadOnlyList<string>> rows)
+        {
+            var issues = new List<string>();
+            var instruction = prompt ?? "";
+            if (!Regex.IsMatch(instruction, @"(?is)\b(?:live\s+(?:Excel\s+)?|linked\s+)formulas?\b"))
+                return issues;
+
+            var required = Regex.Matches(instruction,
+                    @"(?is)\b(?:live\s+(?:Excel\s+)?|linked\s+)formulas?\s+(?:for|in)\s+([A-Z]{1,3}[1-9][0-9]*)(?::([A-Z]{1,3}[1-9][0-9]*))?")
+                .Cast<Match>().ToArray();
+            foreach (var match in required)
+            {
+                var first = ParseAddress(match.Groups[1].Value);
+                var last = match.Groups[2].Success ? ParseAddress(match.Groups[2].Value) : first;
+                for (var row = Math.Min(first.Item1, last.Item1); row <= Math.Max(first.Item1, last.Item1); row++)
+                    for (var column = Math.Min(first.Item2, last.Item2); column <= Math.Max(first.Item2, last.Item2); column++)
+                    {
+                        var value = CellText(rows, row, column);
+                        if (!value.StartsWith("=", StringComparison.Ordinal))
+                            issues.Add(Address(row, column) + " must be a live formula, not the pasted value '" + Shorten(value) + "'.");
+                        else if (value.IndexOf('!') < 0)
+                            issues.Add(Address(row, column) + " must link to a source worksheet as requested.");
+                    }
+            }
+            if (required.Length == 0 && !(rows ?? new IReadOnlyList<string>[0])
+                .Where(row => row != null).SelectMany(row => row)
+                .Any(value => (value ?? "").TrimStart().StartsWith("=", StringComparison.Ordinal)))
+                issues.Add("The requested live formulas are missing from the draft table.");
+            return issues.Take(MaxReportedIssues).ToArray();
+        }
+
         private static ParsedFormula Parse(string cell, int row, int column)
         {
             var text = (cell ?? "").Trim();
@@ -220,6 +253,11 @@ namespace Scribble.Office
             var index = 0;
             foreach (var letter in letters.ToUpperInvariant()) index = index * 26 + (letter - 'A' + 1);
             return index;
+        }
+        private static Tuple<int, int> ParseAddress(string address)
+        {
+            var match = Regex.Match(address ?? "", @"^([A-Z]{1,3})([1-9][0-9]*)$", RegexOptions.IgnoreCase);
+            return Tuple.Create(int.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture), ColumnIndex(match.Groups[1].Value));
         }
         private static string ColumnName(int column)
         {

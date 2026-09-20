@@ -261,17 +261,34 @@ namespace Scribble.Office
                 name == CrossAppToolCatalog.SendToExcel)
             {
                 IReadOnlyList<string> formulaIssues;
+                IReadOnlyList<string> requiredFormulaIssues;
                 try
                 {
-                    formulaIssues = DraftFormulaAssociation.Validate(
-                        ParsedRows(arguments));
+                    var draftRows = ParsedRows(arguments);
+                    requiredFormulaIssues = DraftFormulaAssociation.ValidatePromptRequirements(
+                        _latestUserPrompt,
+                        draftRows);
+                    formulaIssues = DraftFormulaAssociation.Validate(draftRows);
                 }
                 catch (Exception exception) when (
                     exception is InvalidOperationException ||
                     exception is ArgumentException)
                 {
                     // Malformed rows are reported by the write path.
+                    requiredFormulaIssues = new string[0];
                     formulaIssues = new string[0];
+                }
+
+                if (requiredFormulaIssues.Count > 0)
+                {
+                    return Error(
+                        call.id,
+                        authorization,
+                        "DRAFT_LIVE_FORMULAS_REQUIRED",
+                        "No sheet was written and no draft permission was consumed. " +
+                        "The user required live formulas linked to source worksheets. " +
+                        "Replace pasted constants in every named cell and resend the complete table. " +
+                        string.Join(" ", requiredFormulaIssues));
                 }
 
                 if (formulaIssues.Count > 0)

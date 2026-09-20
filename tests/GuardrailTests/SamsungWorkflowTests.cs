@@ -304,6 +304,16 @@ namespace GuardrailTests
         // XA01 workbook: the model planned one group-table layout and emitted another.
         internal static void DraftFormulaAssociations()
         {
+            var requiredPrompt = "Use live Excel formulas linked to the source observations, not pasted constants. Use linked formulas for B4:C5.";
+            var pasted = new[] { new[] { "Metric", "May", "June" }, new[] { "Revenue EUR", "0", "0" }, new[] { "Cost EUR", "0", "0" } };
+            var requiredIssues = DraftFormulaAssociation.ValidatePromptRequirements(requiredPrompt, pasted);
+            Check(requiredIssues.Count == 4 && requiredIssues.All(issue => issue.Contains("live formula")),
+                "Pasted answer constants were accepted where the prompt named required live-formula cells.");
+            var linked = new[] { new[] { "Metric", "May", "June" },
+                new[] { "Revenue EUR", "=SUMIF(Ledger!A:A,\"2026-05\",Ledger!I:I)", "=SUMIF(Ledger!A:A,\"2026-06\",Ledger!I:I)" },
+                new[] { "Cost EUR", "=SUMIF(Ledger!A:A,\"2026-05\",Ledger!J:J)", "=SUMIF(Ledger!A:A,\"2026-06\",Ledger!J:J)" } };
+            Check(DraftFormulaAssociation.ValidatePromptRequirements(requiredPrompt, linked).Count == 0,
+                "Correct source-linked formulas were rejected.");
             const string may = "=SUMIF(Ledger!$B$2:$B$145,\"2026-05\",Ledger!$I$2:$I$145)";
             const string june = "=SUMIF(Ledger!$B$2:$B$145,\"2026-06\",Ledger!$I$2:$I$145)";
             Func<string, string, string> group = (column, name) => "=SUMIFS(Ledger!$" + column + "$2:$" + column + "$145,Ledger!$B$2:$B$145,\"2026-06\",Ledger!$D$2:$D$145,\"" + name + "\")";

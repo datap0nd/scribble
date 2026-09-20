@@ -7794,7 +7794,7 @@ namespace GuardrailTests
                 };
                 var args = target == "powerpoint"
                     ? json.Serialize(new { plan = new[] { "intro" }, slides = new[] { new { id = "intro", layout = "cover", title = "SOURCE CONTENT" } } })
-                    : target == "excel" ? "{\"title\":\"Draft\",\"rows\":[[\"SOURCE CONTENT\"]]}"
+                    : target == "excel" ? "{\"title\":\"Draft\",\"rows\":[[\"Metric\",\"May\",\"June\"],[\"SOURCE CONTENT\",\"85519\",\"82992\"]]}"
                     : "{\"title\":\"Draft\",\"body\":\"SOURCE CONTENT\"}";
                 if (target == "word")
                     args = "{\"title\":\"Draft\",\"body\":\"# Draft\\nSOURCE CONTENT\"}";
@@ -7830,9 +7830,15 @@ namespace GuardrailTests
                         var collection = target == "powerpoint" ? "Presentations" : target == "excel" ? "Workbooks" : "Documents";
                         Assert(events.Count(e => e.StartsWith(target + "." + collection + ".Add(")) == 1, "Handoff must create exactly one new destination.");
                         if (target == "excel")
+                        {
                             Assert(events.Any(e => e.Contains(".Interior.Color=7949855")) &&
                                 events.Any(e => e.Contains(".Font.Color=16777215")),
                                 source + " -> Excel lost the professional draft-table header styling.");
+                            var numberFormat = events.FindIndex(e => e.Contains(".NumberFormat=#,##0.#####"));
+                            var finalAutoFit = events.FindLastIndex(e => e.EndsWith(".AutoFit()", StringComparison.Ordinal));
+                            Assert(numberFormat >= 0 && finalAutoFit > numberFormat,
+                                source + " -> Excel did not size columns against the final displayed number format.");
+                        }
                         if (target == "word")
                             Assert(!events.Any(e => e.EndsWith(".Text=Draft\r", StringComparison.Ordinal)),
                                 source + " -> Word repeated the supplied title as an adjacent body heading.");
