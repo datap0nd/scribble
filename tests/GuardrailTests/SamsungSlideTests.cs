@@ -39,9 +39,10 @@ namespace GuardrailTests
             if (!paneJson.Contains("#4F81BD") || !paneJson.Contains("#F2F2F2")) throw new Exception("The two-pane recipe lost its heading and container.");
             previews.Add(twoPane);
             const string captionText = "June 2026 records only. Margin uses aggregate revenue and cost, never an average of row rates.";
-            var captioned = (IEnumerable)json.DeserializeObject(json.Serialize(SamsungPresentationReview.InspectPlan(json.Serialize(new[] {
+            var captionPlan = SamsungPresentationReview.InspectPlan(json.Serialize(new[] {
                 new { title = "June results", subtitle = "Revenue held firm", layout = "table", caption = captionText, unit = "(EUR; % where shown)",
-                    table = new { headers = new[] { "Group", "Revenue EUR" }, rows = new[] { new[] { "North", "19,219" } } } } })));
+                    table = new { headers = new[] { "Group", "Revenue EUR" }, rows = new[] { new[] { "North", "19,219" } } } } }));
+            var captioned = (IEnumerable)json.DeserializeObject(json.Serialize(captionPlan));
             var captionPage = (Dictionary<string, object>)captioned.Cast<object>().Single();
             var caption = ((IEnumerable)captionPage["elements"]).Cast<Dictionary<string, object>>()
                 .Single(element => Convert.ToString(element["text"]) == captionText);
