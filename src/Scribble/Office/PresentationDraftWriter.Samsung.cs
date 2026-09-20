@@ -223,8 +223,18 @@ namespace Scribble.Office
                             elements.Add(TextElement(draft.Cards[0].Heading, headingBox, 14, 11, "Arial", true, SamsungSlideDesign.Blue, "#FFFFFF"));
                             element.Box = new RectangleF(element.Box.X, element.Box.Y + 32.4f, element.Box.Width, element.Box.Height - 32.4f);
                         }
-                        if (element.Table != null && element.Table.Rows.SelectMany(r => r).Concat(element.Table.Headers).All(t => t.Length <= 30))
-                            element.Box = new RectangleF(element.Box.X, element.Box.Y, element.Box.Width, Math.Min(element.Box.Height, (element.Table.Rows.Count + 1) * 16f));
+                        if (element.Table != null &&
+                            (draft.Layout == "table" || draft.Layout == "matrix") &&
+                            element.Table.Rows.SelectMany(r => r).Concat(element.Table.Headers).All(t => t.Length <= 30))
+                        {
+                            // A short executive table should read as the visual, not
+                            // collapse into a spreadsheet strip surrounded by empty canvas.
+                            var desiredHeight = Math.Min(element.Box.Height,
+                                Math.Max(144f, (element.Table.Rows.Count + 1) * 36f));
+                            element.Box = new RectangleF(element.Box.X,
+                                element.Box.Y + (element.Box.Height - desiredHeight) / 2f,
+                                element.Box.Width, desiredHeight);
+                        }
                         elements.Add(element);
                     }
                 }
@@ -293,14 +303,15 @@ namespace Scribble.Office
                     var metricBox = new RectangleF(region.X + i * (metricWidth + metricGap), region.Y, metricWidth, region.Height);
                     var value = card.Points.FirstOrDefault() ?? "";
                     var detail = string.Join("\n", card.Points.Skip(1));
+                    elements.Add(TextElement("", metricBox, fill: "#F4F7FB"));
+                    elements.Add(TextElement("", new RectangleF(metricBox.X, metricBox.Y, metricBox.Width, 6f), fill: SamsungSlideDesign.Blue));
                     elements.Add(TextElement(card.Heading.ToUpperInvariant(),
-                        new RectangleF(metricBox.X, metricBox.Y, metricBox.Width, 24f), 11, 10, "Arial", true, null, "#596674"));
+                        new RectangleF(metricBox.X + 14f, metricBox.Y + 20f, metricBox.Width - 28f, 24f), 11, 10, "Arial", true, null, "#596674"));
                     elements.Add(TextElement(value,
-                        new RectangleF(metricBox.X, metricBox.Y + 31f, metricBox.Width, 65f), 34, 24, MetoTheme.TitleFont, true, null, SamsungSlideDesign.Blue));
+                        new RectangleF(metricBox.X + 14f, metricBox.Y + 53f, metricBox.Width - 28f, 65f), 34, 24, MetoTheme.TitleFont, true, null, SamsungSlideDesign.Blue));
                     if (detail.Length > 0)
                         elements.Add(TextElement(detail,
-                            new RectangleF(metricBox.X, metricBox.Y + 105f, metricBox.Width, Math.Max(32f, metricBox.Height - 115f)), 15, 13, "Arial"));
-                    elements.Add(TextElement("", new RectangleF(metricBox.X, metricBox.Bottom - 4f, metricBox.Width, 4f), fill: SamsungSlideDesign.Blue));
+                            new RectangleF(metricBox.X + 14f, metricBox.Y + 126f, metricBox.Width - 28f, Math.Max(32f, metricBox.Height - 142f)), 15, 13, "Arial", false, null, "#344454"));
                     continue;
                 }
                 if (draft.Layout == "action_list")
@@ -498,9 +509,9 @@ namespace Scribble.Office
                     {
                         dynamic cell = table.Cell(row + 1, col + 1);
                         dynamic cellShape = cell.Shape;
-                        cellShape.Fill.Solid(); cellShape.Fill.ForeColor.RGB = MetoTheme.Rgb(row == 0 ? SamsungSlideDesign.Gray : "#FFFFFF");
+                        cellShape.Fill.Solid(); cellShape.Fill.ForeColor.RGB = MetoTheme.Rgb(row == 0 ? SamsungSlideDesign.Blue : row % 2 == 0 ? "#F4F7FB" : "#FFFFFF");
                         for (var edge = 1; edge <= 4; edge++) { cell.Borders(edge).Weight = .5f; cell.Borders(edge).ForeColor.RGB = MetoTheme.Rgb("#A6A6A6"); }
-                        ApplySamsungText(cellShape, TextElement(col < rows[row].Count ? rows[row][col] : "", new RectangleF(0, 0, element.ColumnWidths == null ? box.Width / columns : element.ColumnWidths[col], box.Height / rows.Length), element.Size, element.Minimum, "Arial Narrow", row == 0));
+                        ApplySamsungText(cellShape, TextElement(col < rows[row].Count ? rows[row][col] : "", new RectangleF(0, 0, element.ColumnWidths == null ? box.Width / columns : element.ColumnWidths[col], box.Height / rows.Length), element.Size, element.Minimum, "Arial Narrow", row == 0, null, row == 0 ? "#FFFFFF" : "#1F2933"));
                     }
                     // New rows start at PowerPoint's default height for 18pt
                     // text, nearly twice the planned box. With the table font
