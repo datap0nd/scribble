@@ -1517,7 +1517,7 @@ namespace Scribble.Office
             dynamic slideChart,
             DraftChart chart)
         {
-            if (ShouldUseZeroBasedValueAxis(
+            if (DraftChartTypes.ShouldUseZeroBasedValueAxis(
                 chart.TypeCode,
                 chart.Series.SelectMany(series => series.Values)))
             {
@@ -1640,16 +1640,6 @@ namespace Scribble.Office
                 {
                 }
             }
-        }
-
-        internal static bool ShouldUseZeroBasedValueAxis(
-            int typeCode,
-            IEnumerable<double?> values)
-        {
-            if (typeCode == DraftChartTypes.Pie || typeCode == DraftChartTypes.Scatter)
-                return false;
-            var points = (values ?? new double?[0]).Where(value => value.HasValue).Select(value => value.Value).ToArray();
-            return points.Length > 0 && points.All(value => value >= 0d);
         }
 
         // --- Shape helpers ----------------------------------------
