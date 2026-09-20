@@ -99,10 +99,26 @@ namespace Scribble.Office
                             issues.Add(Address(row, column) + " must link to a source worksheet as requested.");
                     }
             }
-            if (required.Length == 0 && !(rows ?? new IReadOnlyList<string>[0])
-                .Where(row => row != null).SelectMany(row => row)
-                .Any(value => (value ?? "").TrimStart().StartsWith("=", StringComparison.Ordinal)))
-                issues.Add("The requested live formulas are missing from the draft table.");
+            if (required.Length == 0)
+            {
+                var formulaCells = (rows ?? new IReadOnlyList<string>[0])
+                    .Where(row => row != null).SelectMany(row => row)
+                    .Select(value => (value ?? "").Trim()).Where(value => value.StartsWith("=", StringComparison.Ordinal)).ToArray();
+                if (Regex.IsMatch(instruction, @"(?is)\bnot\s+pasted\b.{0,40}\b(?:answer\s+)?constants?\b"))
+                    for (var row = 1; rows != null && row < rows.Count; row++)
+                        for (var column = 1; rows[row] != null && column < rows[row].Count; column++)
+                        {
+                            var value = (rows[row][column] ?? "").Trim();
+                            if (!value.StartsWith("=", StringComparison.Ordinal) && IsNumericOrFormula(value))
+                                issues.Add(Address(DraftFirstRow + row, column + 1) +
+                                    " is a pasted numeric constant; use the requested live formula.");
+                        }
+                if (formulaCells.Length == 0 && issues.Count == 0)
+                    issues.Add("The requested live formulas are missing from the draft table.");
+                else if (Regex.IsMatch(instruction, @"(?is)\blinked\s+to\s+(?:the\s+)?source\b") &&
+                    !formulaCells.Any(value => value.IndexOf('!') >= 0))
+                    issues.Add("At least one live formula must link to the source worksheet.");
+            }
             return issues.Take(MaxReportedIssues).ToArray();
         }
 
