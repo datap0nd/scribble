@@ -12,7 +12,7 @@ namespace Scribble.Office
     {
         public const string Version = "Samsung MD 2.0";
         public const float TitleSize = 30, BodySize = 18, BodyMinimum = 16, ActionSize = 16;
-        public const float TableSize = 14, TableMinimum = 9f;
+        public const float TableSize = 14, TableMinimum = 7.5f;
         public static string RecipePurpose(string layout)
         {
             switch (layout)
