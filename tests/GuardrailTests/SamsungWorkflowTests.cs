@@ -400,6 +400,7 @@ namespace GuardrailTests
             Check(!SamsungAuthoringPolicy.WellFormedReview("{\"approved\":true,\"issues\":\"Instruction says \"four slides\"\",\"findings\":[]}"), "Malformed quoted review was treated as valid JSON.");
             Check(SamsungAuthoringPolicy.WellFormedReview("{\"approved\":true,\"issues\":\"\",\"findings\":[]}"), "A strict empty approved review was rejected.");
             Check(SamsungAuthoringPolicy.OutlineReview.Contains("internal stable identifiers") && SamsungAuthoringPolicy.ReviewContract.Contains("keep issues under 240"), "Outline review contract must prevent verbose invalid approval loops.");
+            Check(SamsungAuthoringPolicy.ReviewContract.Contains("opaque PowerPoint identity") && SamsungAuthoringPolicy.ReviewContract.Contains("expected_page text"), "Deck review can mistake a native slide ID for its sequence number.");
             var state = new DurableTaskState { EnumerationComplete = true, PresentationReviewRequired = true };
             Check(!state.CanComplete(false), "Deck completed without a final review receipt.");
             state.PresentationReviewReceipt = "reviewed"; Check(state.CanComplete(false), "Valid final receipt rejected.");

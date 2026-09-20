@@ -42,12 +42,13 @@ namespace Scribble.Office
             Dictionary<string, object> original, string findings, string source, string prompt,
             OpenAiCompatibleClient client, AppSettings settings, CancellationToken token, IReadOnlyList<PresentationDraftWriter.SamsungOutput> related = null)
         {
+            var repairTokens = Math.Min(32768, Math.Max(8192, _serializer.Serialize(original).Length / 2));
             var response = await ReviewSamsungAsync(client, settings,
                 SamsungAuthoringPolicy.Instructions + " Repair this single slide using the specific visual findings. Return JSON only: {\"slides\":[{...complete corrected slide...}]}. " +
                 "Keep the ID, all required table rows, chart type, categories, series names and values, calculations and source images unchanged. You may correct a chart title when the finding requires it. Omit evidence and source_spans from your answer: the host carries both over unchanged. You may choose a better Samsung layout and remove redundant wording. " +
                 "Do not invent pixel coordinates or remove evidence to make it fit. Schema: " + _serializer.Serialize(PresentationToolCatalog.DraftDefinition().function.parameters),
-                _serializer.Serialize(new { original, findings, instruction = prompt }), output.Image, token, Math.Min(32768, Math.Max(8192, _serializer.Serialize(original).Length / 2)));
-            var wrapper = _serializer.Deserialize<Dictionary<string, object>>(response);
+                _serializer.Serialize(new { original, findings, instruction = prompt }), output.Image, token, repairTokens);
+            var wrapper = await ReadSlideRepairJsonAsync(client, settings, response, token, repairTokens);
             var replacements = SamsungAuthoringPolicy.Array(wrapper, "slides");
             if (replacements.Length != 1) throw new InvalidOperationException("SLIDE_REPAIR_COUNT: Repair exactly one slide.");
             var replacement = SamsungAuthoringPolicy.ReadMap(replacements[0]);
@@ -85,6 +86,47 @@ namespace Scribble.Office
                 if (PresentationDraftWriter.ExportSamsung(target) != target.Image) throw new InvalidOperationException("SLIDE_CHANGED_DURING_REPAIR");
             for (var i = 0; i < pages.Count; i++) PresentationDraftWriter.ReplaceOwnedSamsung(targets[i], pages[i]);
             return replacement;
+        }
+
+        private async Task<Dictionary<string, object>> ReadSlideRepairJsonAsync(
+            OpenAiCompatibleClient client,
+            AppSettings settings,
+            string response,
+            CancellationToken token,
+            int maxTokens)
+        {
+            Exception lastError = null;
+            var candidate = response;
+            for (var attempt = 0; attempt < 3; attempt++)
+            {
+                try
+                {
+                    var parsed = _serializer.Deserialize<Dictionary<string, object>>(candidate);
+                    if (parsed == null) throw new InvalidOperationException("The slide repair JSON was null.");
+                    return parsed;
+                }
+                catch (Exception exception) when (exception is ArgumentException || exception is InvalidOperationException)
+                {
+                    lastError = exception;
+                    if (attempt == 2) break;
+                }
+
+                // A malformed JSON repair response is not a new Office action.
+                // Correct its transport syntax inside this host call so the chat
+                // loop does not replay the already-written slide or spend one of
+                // its repeated-action recovery attempts. Schema, immutable data,
+                // source evidence and native fingerprints are all checked below
+                // before any repaired content can replace the owned slide.
+                candidate = await ReviewSamsungAsync(client, settings,
+                    "Repair JSON syntax only. Return exactly one valid JSON object with a top-level slides array containing the same one complete slide. Preserve every value, array item and object field from the attempted JSON. Do not summarize, explain, add facts or remove content. Escape quotes inside strings and output JSON only. Expected schema: " +
+                    _serializer.Serialize(PresentationToolCatalog.DraftDefinition().function.parameters),
+                    _serializer.Serialize(new
+                    {
+                        parsing_error = TextBoundary.SingleLine(lastError.Message, 400),
+                        attempted_json = candidate
+                    }), null, token, maxTokens);
+            }
+            throw new InvalidOperationException("SLIDE_REPAIR_JSON_INVALID: The reviewer returned malformed slide JSON after two syntax-only retries.", lastError);
         }
 
         public sealed class OwnedPageReceipt
@@ -133,6 +175,13 @@ namespace Scribble.Office
                 dynamic presentation = deck; var scale = (float)presentation.PageSetup.SlideWidth / SamsungSlideDesign.Width;
                 var page = pages[receipt.PageOrdinal];
                 if (Math.Abs(scale - 1) > .001) PresentationDraftWriter.ScaleSamsungPage(page, scale);
+                // Each logical slide is composed independently, so its design
+                // model initially says "- 1 -" even when the owned native slide
+                // is later in the deck. Keep the review model aligned with the
+                // number already written to PowerPoint; otherwise the deck
+                // reviewer invents a numbering defect and needlessly rewrites
+                // an otherwise approved slide.
+                page.PageNumber.Text = "- " + (int)((dynamic)slide).SlideIndex + " -";
                 var output = new PresentationDraftWriter.SamsungOutput { Slide = slide, Page = page, Owner = receipt.Owner };
                 dynamic native = slide;
                 for (var i = 1; i <= (int)native.Shapes.Count; i++) output.ShapeIds.Add((int)native.Shapes[i].Id);
