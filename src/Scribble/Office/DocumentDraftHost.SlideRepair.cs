@@ -122,7 +122,7 @@ namespace Scribble.Office
                     _serializer.Serialize(PresentationToolCatalog.DraftDefinition().function.parameters),
                     _serializer.Serialize(new
                     {
-                        parsing_error = TextBoundary.SingleLine(lastError.Message, 400),
+                        parsing_error = Scribble.Security.TextBoundary.SingleLine(lastError.Message, 400),
                         attempted_json = candidate
                     }), null, token, maxTokens);
             }
