@@ -305,7 +305,8 @@ namespace Scribble.Office
                 startRow,
                 rowCount,
                 columnCount,
-                target);
+                target,
+                rows);
             var chartAdded =
                 chart != null &&
                 AddDraftChart(
@@ -823,7 +824,8 @@ namespace Scribble.Office
             int startRow,
             int rowCount,
             int columnCount,
-            dynamic target)
+            dynamic target,
+            IReadOnlyList<IReadOnlyList<string>> rows)
         {
             try
             {
@@ -874,6 +876,18 @@ namespace Scribble.Office
                         dynamic band = target.Rows[offset + 1];
                         band.Interior.Color = 0xF7EBDD;
                     }
+                    if (columnCount > 1)
+                        for (var offset = 1; offset < rowCount; offset++)
+                        {
+                            var label = rows != null && offset < rows.Count && rows[offset] != null && rows[offset].Count > 0
+                                ? rows[offset][0] ?? "" : "";
+                            if (!Regex.IsMatch(label, @"(?i)(?:\bmargin\b|\brate\b|\bpercent(?:age)?\b|\bshare\b|%)"))
+                                continue;
+                            dynamic percentageRow = sheet.Range(
+                                sheet.Cells[startRow + offset, 2],
+                                sheet.Cells[startRow + offset, columnCount]);
+                            percentageRow.NumberFormat = "0.00%";
+                        }
                 }
                 catch
                 {

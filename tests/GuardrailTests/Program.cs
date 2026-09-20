@@ -7794,7 +7794,7 @@ namespace GuardrailTests
                 };
                 var args = target == "powerpoint"
                     ? json.Serialize(new { plan = new[] { "intro" }, slides = new[] { new { id = "intro", layout = "cover", title = "SOURCE CONTENT" } } })
-                    : target == "excel" ? "{\"title\":\"Draft\",\"rows\":[[\"Metric\",\"May\",\"June\"],[\"SOURCE CONTENT\",\"85519\",\"82992\"]]}"
+                    : target == "excel" ? "{\"title\":\"Draft\",\"rows\":[[\"Metric\",\"May\",\"June\"],[\"SOURCE CONTENT\",\"85519\",\"82992\"],[\"Gross margin\",\"0.5708\",\"0.5576\"]]}"
                     : "{\"title\":\"Draft\",\"body\":\"SOURCE CONTENT\"}";
                 if (target == "word")
                     args = "{\"title\":\"Draft\",\"body\":\"# Draft\\nSOURCE CONTENT\"}";
@@ -7835,6 +7835,8 @@ namespace GuardrailTests
                                 events.Any(e => e.Contains(".Font.Color=16777215")),
                                 source + " -> Excel lost the professional draft-table header styling.");
                             var numberFormat = events.FindIndex(e => e.Contains(".NumberFormat=#,##0.#####"));
+                            Assert(events.Any(e => e.Contains(".NumberFormat=0.00%")),
+                                source + " -> Excel did not format a clearly labeled percentage row as a percentage.");
                             var finalAutoFit = events.FindLastIndex(e => e.EndsWith(".AutoFit()", StringComparison.Ordinal));
                             Assert(numberFormat >= 0 && finalAutoFit > numberFormat,
                                 source + " -> Excel did not size columns against the final displayed number format.");
