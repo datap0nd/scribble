@@ -1517,6 +1517,26 @@ namespace Scribble.Office
             dynamic slideChart,
             DraftChart chart)
         {
+            if (ShouldUseZeroBasedValueAxis(
+                chart.TypeCode,
+                chart.Series.SelectMany(series => series.Values)))
+            {
+                try
+                {
+                    dynamic valueAxis = slideChart.Axes(2);
+                    valueAxis.MinimumScaleIsAuto = false;
+                    valueAxis.MinimumScale = 0d;
+                    if (Convert.ToDouble(valueAxis.MinimumScale) != 0d)
+                        throw new InvalidOperationException("PowerPoint did not retain a zero chart baseline.");
+                }
+                catch (Exception exception)
+                {
+                    throw new InvalidOperationException(
+                        "The native chart value axis could not be fixed at zero.",
+                        exception);
+                }
+            }
+
             try
             {
                 slideChart.ChartArea.Format.Line.Visible = MsoFalse;
@@ -1620,6 +1640,16 @@ namespace Scribble.Office
                 {
                 }
             }
+        }
+
+        internal static bool ShouldUseZeroBasedValueAxis(
+            int typeCode,
+            IEnumerable<double?> values)
+        {
+            if (typeCode == DraftChartTypes.Pie || typeCode == DraftChartTypes.Scatter)
+                return false;
+            var points = (values ?? new double?[0]).Where(value => value.HasValue).Select(value => value.Value).ToArray();
+            return points.Length > 0 && points.All(value => value >= 0d);
         }
 
         // --- Shape helpers ----------------------------------------

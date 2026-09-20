@@ -304,6 +304,15 @@ namespace GuardrailTests
         // XA01 workbook: the model planned one group-table layout and emitted another.
         internal static void DraftFormulaAssociations()
         {
+            Check(PresentationDraftWriter.ShouldUseZeroBasedValueAxis(
+                    DraftChartTypes.ColumnClustered, new double?[] { 85519, 82992 }),
+                "A nonnegative native column chart was not assigned a zero value-axis baseline.");
+            Check(!PresentationDraftWriter.ShouldUseZeroBasedValueAxis(
+                    DraftChartTypes.ColumnClustered, new double?[] { -2, 3 }),
+                "A chart containing negative values would be clipped by a forced zero minimum.");
+            Check(!PresentationDraftWriter.ShouldUseZeroBasedValueAxis(
+                    DraftChartTypes.Pie, new double?[] { 1, 2 }),
+                "A pie chart was treated as though it had a value axis.");
             var requiredPrompt = "Use live Excel formulas linked to the source observations, not pasted constants. Use linked formulas for B4:C5.";
             var pasted = new[] { new[] { "Metric", "May", "June" }, new[] { "Revenue EUR", "0", "0" }, new[] { "Cost EUR", "0", "0" } };
             var requiredIssues = DraftFormulaAssociation.ValidatePromptRequirements(requiredPrompt, pasted);
