@@ -115,7 +115,8 @@ namespace Scribble.Office
                         }
                 if (formulaCells.Length == 0 && issues.Count == 0)
                     issues.Add("The requested live formulas are missing from the draft table.");
-                else if (Regex.IsMatch(instruction, @"(?is)\blinked\s+to\s+(?:the\s+)?source\b") &&
+                else if (formulaCells.Length > 0 &&
+                    Regex.IsMatch(instruction, @"(?is)\blinked\s+to\s+(?:the\s+)?source\b") &&
                     !formulaCells.Any(value => value.IndexOf('!') >= 0))
                     issues.Add("At least one live formula must link to the source worksheet.");
             }
