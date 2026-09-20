@@ -38,6 +38,15 @@ namespace GuardrailTests
             var paneJson = json.Serialize(twoPane);
             if (!paneJson.Contains("#4F81BD") || !paneJson.Contains("#F2F2F2")) throw new Exception("The two-pane recipe lost its heading and container.");
             previews.Add(twoPane);
+            const string captionText = "June 2026 records only. Margin uses aggregate revenue and cost, never an average of row rates.";
+            var captioned = (IEnumerable)json.DeserializeObject(json.Serialize(SamsungPresentationReview.InspectPlan(json.Serialize(new[] {
+                new { title = "June results", subtitle = "Revenue held firm", layout = "table", caption = captionText, unit = "(EUR; % where shown)",
+                    table = new { headers = new[] { "Group", "Revenue EUR" }, rows = new[] { new[] { "North", "19,219" } } } } })));
+            var captionPage = (Dictionary<string, object>)captioned.Cast<object>().Single();
+            var caption = ((IEnumerable)captionPage["elements"]).Cast<Dictionary<string, object>>()
+                .Single(element => Convert.ToString(element["text"]) == captionText);
+            if (Convert.ToDouble(caption["size"]) < 14 || Convert.ToDouble(caption["minimum"]) < 14 || Convert.ToDouble(caption["width"]) < 610)
+                throw new Exception("Samsung analytical captions must remain readable at the native presentation minimum.");
             var pages = (IEnumerable)SamsungPresentationReview.InspectPlan(json.Serialize(new[] { new { title = "Data", layout = "matrix", subtitle = "Review every row", table = new { headers = new[] { "Item", "Value" }, rows } } }));
             previews.Add(pages);
             File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "SamsungPlans.json"), json.Serialize(previews));

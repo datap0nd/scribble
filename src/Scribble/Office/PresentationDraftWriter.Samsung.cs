@@ -228,7 +228,7 @@ namespace Scribble.Office
                         elements.Add(element);
                     }
                 }
-                if (draft.Caption.Length > 0) elements.Add(TextElement(draft.Caption, SamsungSlideDesign.Percent(15.6f, 21f, 57, 3.5f), 14, 11, "Arial Narrow", true));
+                if (draft.Caption.Length > 0) elements.Add(TextElement(draft.Caption, SamsungSlideDesign.Percent(15.6f, 21f, 64.2f, 3.5f), 14, 14, "Arial Narrow"));
                 if (draft.Unit.Length > 0) { var unit = TextElement(draft.Unit, SamsungSlideDesign.Percent(80, 21.5f, 16.2f, 3.1f), 8, 8, "Calibri"); unit.Alignment = 3; elements.Add(unit); }
                 if (draft.Takeaway.Length > 0) elements.Add(TextElement(draft.Takeaway, SamsungSlideDesign.Takeaway, 14, 11, "Arial Narrow", true, SamsungSlideDesign.Blue, "#FFFFFF"));
                 AddSamsungAnnotations(elements, draft, table, secondaryTable, part, perPage);
