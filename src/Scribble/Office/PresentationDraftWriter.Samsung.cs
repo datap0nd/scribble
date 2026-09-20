@@ -288,19 +288,19 @@ namespace Scribble.Office
                 var card = draft.Cards[i];
                 if (draft.Layout == "scorecard")
                 {
-                    var gap = 18f;
-                    var width = (region.Width - gap * (count - 1)) / count;
-                    var box = new RectangleF(region.X + i * (width + gap), region.Y, width, region.Height);
+                    var metricGap = 18f;
+                    var metricWidth = (region.Width - metricGap * (count - 1)) / count;
+                    var metricBox = new RectangleF(region.X + i * (metricWidth + metricGap), region.Y, metricWidth, region.Height);
                     var value = card.Points.FirstOrDefault() ?? "";
                     var detail = string.Join("\n", card.Points.Skip(1));
                     elements.Add(TextElement(card.Heading.ToUpperInvariant(),
-                        new RectangleF(box.X, box.Y, box.Width, 24f), 11, 10, "Arial", true, null, "#596674"));
+                        new RectangleF(metricBox.X, metricBox.Y, metricBox.Width, 24f), 11, 10, "Arial", true, null, "#596674"));
                     elements.Add(TextElement(value,
-                        new RectangleF(box.X, box.Y + 31f, box.Width, 65f), 34, 24, MetoTheme.TitleFont, true, null, SamsungSlideDesign.Blue));
+                        new RectangleF(metricBox.X, metricBox.Y + 31f, metricBox.Width, 65f), 34, 24, MetoTheme.TitleFont, true, null, SamsungSlideDesign.Blue));
                     if (detail.Length > 0)
                         elements.Add(TextElement(detail,
-                            new RectangleF(box.X, box.Y + 105f, box.Width, Math.Max(32f, box.Height - 115f)), 15, 13, "Arial"));
-                    elements.Add(TextElement("", new RectangleF(box.X, box.Bottom - 4f, box.Width, 4f), fill: SamsungSlideDesign.Blue));
+                            new RectangleF(metricBox.X, metricBox.Y + 105f, metricBox.Width, Math.Max(32f, metricBox.Height - 115f)), 15, 13, "Arial"));
+                    elements.Add(TextElement("", new RectangleF(metricBox.X, metricBox.Bottom - 4f, metricBox.Width, 4f), fill: SamsungSlideDesign.Blue));
                     continue;
                 }
                 if (draft.Layout == "action_list")
