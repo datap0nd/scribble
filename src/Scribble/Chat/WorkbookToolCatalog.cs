@@ -246,9 +246,14 @@ namespace Scribble.Chat
                                         "exact sheet names as returned by " +
                                         "list_worksheets, in single quotes when " +
                                         "they contain spaces ('My Data'!B2), and " +
-                                        "English function names with comma " +
-                                        "separators; " +
-                                        "functions that reach the network or other " +
+                                         "English function names with comma " +
+                                         "separators. When the user requires " +
+                                         "live or linked formulas, every named " +
+                                         "output cell must start with = and use " +
+                                         "the requested source link; never put 0, " +
+                                         "a blank placeholder, or a pasted answer " +
+                                         "constant in those cells. " +
+                                         "functions that reach the network or other " +
                                         "files are rejected and land as text. Plain " +
                                         "numbers and dates are typed automatically."
                                     },

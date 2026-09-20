@@ -320,6 +320,9 @@ namespace GuardrailTests
                 "Correct source-linked formulas were rejected.");
             Check(DraftFormulaAssociation.ValidatePromptRequirements(generalPrompt, linked).Count == 0,
                 "Correct source-linked formulas were rejected under the general requirement.");
+            var draftSchema = new JavaScriptSerializer().Serialize(WorkbookToolCatalog.DraftDefinition());
+            Check(draftSchema.Contains("never put 0") && draftSchema.Contains("pasted answer constant"),
+                "The Excel draft schema does not warn the model against formula placeholders.");
             const string may = "=SUMIF(Ledger!$B$2:$B$145,\"2026-05\",Ledger!$I$2:$I$145)";
             const string june = "=SUMIF(Ledger!$B$2:$B$145,\"2026-06\",Ledger!$I$2:$I$145)";
             Func<string, string, string> group = (column, name) => "=SUMIFS(Ledger!$" + column + "$2:$" + column + "$145,Ledger!$B$2:$B$145,\"2026-06\",Ledger!$D$2:$D$145,\"" + name + "\")";
