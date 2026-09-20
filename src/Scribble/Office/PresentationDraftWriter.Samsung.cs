@@ -187,7 +187,7 @@ namespace Scribble.Office
                 if (draft.SecondaryChart != null) queue.Enqueue(new SamsungElement { Chart = draft.SecondaryChart });
                 foreach (var image in draft.ImageData) queue.Enqueue(new SamsungElement { ImageData = image });
                 if (draft.ImageNames.Count != draft.ImageData.Count) throw new InvalidOperationException("SLIDE_IMAGE_UNRESOLVED: Attach the named source images before drafting.");
-                if (draft.Cards.Count > 0 && (draft.Layout == "roadmap" || draft.Layout == "stack" || draft.Layout == "cards" || draft.Layout == "action_list"))
+                if (draft.Cards.Count > 0 && (draft.Layout == "roadmap" || draft.Layout == "stack" || draft.Layout == "cards" || draft.Layout == "scorecard" || draft.Layout == "action_list"))
                 {
                     if (queue.Count > 0) throw new InvalidOperationException("Use two_pane or visual_grid to combine card commentary with data.");
                     AddStructuredCards(elements, draft, regions[0]);
@@ -286,6 +286,23 @@ namespace Scribble.Office
             for (var i = 0; i < count; i++)
             {
                 var card = draft.Cards[i];
+                if (draft.Layout == "scorecard")
+                {
+                    var gap = 18f;
+                    var width = (region.Width - gap * (count - 1)) / count;
+                    var box = new RectangleF(region.X + i * (width + gap), region.Y, width, region.Height);
+                    var value = card.Points.FirstOrDefault() ?? "";
+                    var detail = string.Join("\n", card.Points.Skip(1));
+                    elements.Add(TextElement(card.Heading.ToUpperInvariant(),
+                        new RectangleF(box.X, box.Y, box.Width, 24f), 11, 10, "Arial", true, null, "#596674"));
+                    elements.Add(TextElement(value,
+                        new RectangleF(box.X, box.Y + 31f, box.Width, 65f), 34, 24, MetoTheme.TitleFont, true, null, SamsungSlideDesign.Blue));
+                    if (detail.Length > 0)
+                        elements.Add(TextElement(detail,
+                            new RectangleF(box.X, box.Y + 105f, box.Width, Math.Max(32f, box.Height - 115f)), 15, 13, "Arial"));
+                    elements.Add(TextElement("", new RectangleF(box.X, box.Bottom - 4f, box.Width, 4f), fill: SamsungSlideDesign.Blue));
+                    continue;
+                }
                 if (draft.Layout == "action_list")
                 {
                     var y = 26.4f + i * 14f;

@@ -301,6 +301,7 @@ namespace Scribble.Testing
                 foreach (var series in slide.charts.SelectMany(c => c.series))
                     foreach (var color in new[] { series.fill_color, series.line_color }.Where(c => !string.IsNullOrEmpty(c)))
                         if (!palette.Any(c => string.Equals(c.TrimStart('#'), color.TrimStart('#'), StringComparison.OrdinalIgnoreCase))) return false;
+                if (!HasPresentationVisualHierarchy(slide, native.height)) return false;
                 for (int a = 0; a < textShapes.Length; a++) for (int b = a + 1; b < textShapes.Length; b++)
                 {
                     var left = textShapes[a]; var right = textShapes[b];
@@ -309,6 +310,18 @@ namespace Scribble.Testing
                 }
             }
             return true;
+        }
+        private static bool HasPresentationVisualHierarchy(StressSlide slide, double slideHeight)
+        {
+            if (slide.charts.Length > 0 || slide.shapes.Any(shape => shape.is_table_cell)) return true;
+            var body = slide.shapes.Where(shape => !string.IsNullOrWhiteSpace(shape.text) &&
+                shape.y >= slideHeight * .18 && shape.y < slideHeight * .90).ToArray();
+            var numericTokens = Regex.Matches(string.Join(" ", body.Select(shape => shape.text)),
+                @"(?<![A-Za-z])[-+\u2212]?\d[\d,.]*(?:%|\b)").Count;
+            if (numericTokens < 3) return true;
+            var prominentMetrics = body.Count(shape => shape.font_size >= 26 &&
+                Regex.IsMatch(shape.text ?? "", @"[-+\u2212]?\d"));
+            return prominentMetrics >= 2;
         }
         private static bool Headers(string value, string[] expected)
         {

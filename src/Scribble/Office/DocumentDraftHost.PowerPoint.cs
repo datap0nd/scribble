@@ -63,6 +63,8 @@ namespace Scribble.Office
                     slide["evidence"] = evidence;
                     source += "\n" + evidence;
                 }
+                var rawSlides = ((IEnumerable)args["slides"]).Cast<object>().ToArray();
+                SamsungAuthoringPolicy.ValidateVisualDesign(rawSlides.Select(SamsungAuthoringPolicy.ReadMap));
                 var slides = ParsedSlides(args);
                 ValidatePromptChartConstraints(prompt, slides);
                 var planValue = ParsedArray(args, "plan", false);
@@ -103,6 +105,17 @@ namespace Scribble.Office
                             if (SamsungAuthoringPolicy.Array(brief, "source_spans").Length > 0)
                                 _taskContext.Sources.Resolve(SamsungAuthoringPolicy.Array(brief, "source_spans").Select(Convert.ToString));
                     }
+                    var proposedDeck = new Dictionary<string, IDictionary<string, object>>(StringComparer.Ordinal);
+                    foreach (var id in completed)
+                    {
+                        string prior;
+                        if (_taskContext.State.HostData.TryGetValue("samsung_content:" + id, out prior))
+                            proposedDeck[id] = _serializer.Deserialize<Dictionary<string, object>>(prior);
+                    }
+                    foreach (var raw in rawSlides.Select(SamsungAuthoringPolicy.ReadMap))
+                        proposedDeck[SamsungAuthoringPolicy.Text(raw, "id")] = raw;
+                    if (plan.All(proposedDeck.ContainsKey))
+                        SamsungAuthoringPolicy.ValidateDeckVisualDesign(plan.Select(id => proposedDeck[id]));
                     // This is a proposal, not a finished deck. Include the actual
                     // batch and allow a rejected proposal to change before writing.
                     var batchIds = new HashSet<string>(
@@ -161,7 +174,6 @@ namespace Scribble.Office
                     }
                 }
                 if (slides.Count == 0) throw new InvalidOperationException("At least one slide is required.");
-                var rawSlides = ((IEnumerable)args["slides"]).Cast<object>().ToArray();
                 stage = "SOURCE_REVIEW";
                 foreach (var raw in rawSlides)
                 {

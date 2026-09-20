@@ -229,7 +229,7 @@ namespace Scribble.Office
                 progress?.Invoke(i + 1, outputs.Count);
                 var before = PresentationInspection.Fingerprint(output.Slide);
                 var review = await ReviewSamsungAsync(client, settings,
-                    "Review this rendered Samsung executive slide. Check every item assigned to this page, readable dense evidence, geometry, table/chart labels, clipping, collisions and emphasis. Logical source content may span continuation pages; do not require other pages' items here. Report the provided logical slide_id in findings." + SamsungAuthoringPolicy.ReviewContract,
+                    "Review this rendered Samsung executive slide as an audience would see it at thumbnail size. Check every item assigned to this page, geometry, table/chart labels, clipping, collisions, focal hierarchy, balanced canvas use and meaningful visual storytelling. Reject a plain multiline data dump, a Word-page composition, repeated conclusions, weak emphasis or large accidental empty regions even when the text technically fits. Logical source content may span continuation pages; do not require other pages' items here. Report the provided logical slide_id in findings." + SamsungAuthoringPolicy.ReviewContract,
                     _serializer.Serialize(new { slide_id = output.Page.Source.Id, native_slide_id = (int)((dynamic)output.Slide).SlideID,
                         logical_content = content[output.Page.Source.Id], expected_page = output.Page.Elements.Select(e => new { text = e.Text, table = e.Table == null ? null : new { e.Table.Headers, e.Table.Rows }, chart = e.Chart == null ? null : new { title = e.Chart.Title, type = e.Chart.TypeCode, e.Chart.Categories, series = e.Chart.Series.Select(v => new { v.Name, v.Values }) } }), evidence = output.Page.Source.Evidence }), output.Image, token);
                 if (PresentationInspection.Fingerprint(output.Slide) != before || PresentationDraftWriter.ExportSamsung(output) != output.Image) throw new InvalidOperationException("SLIDE_CHANGED_DURING_REVIEW");
@@ -247,6 +247,7 @@ namespace Scribble.Office
         {
             var outputs = LoadOwnedPages(deck);
             var content = plan.ToDictionary(id => id, id => _serializer.Deserialize<Dictionary<string, object>>(_taskContext.State.HostData["samsung_content:" + id]));
+            SamsungAuthoringPolicy.ValidateDeckVisualDesign(content.Values);
             for (var cycle = 0; cycle <= 3; cycle++)
             {
                 string findings = null;
@@ -254,7 +255,7 @@ namespace Scribble.Office
                 {
                     var subset = outputs.Skip(offset).Take(12).ToArray();
                     var visual = await ReviewSamsungAsync(client, settings,
-                        "Review consecutive native slides for visual consistency, hierarchy, numbering and Samsung fidelity. Dense evidence is intentional. Report the provided logical slide IDs for affected slides." + SamsungAuthoringPolicy.ReviewContract,
+                        "Review consecutive native slides as an executive audience would see them at thumbnail size. Check visual consistency, focal hierarchy, balanced use of the canvas, meaningful visual storytelling, numbering and Samsung fidelity. Reject slides that resemble a Word page pasted onto a canvas, rely on a plain multiline data dump, repeat the same conclusion, or leave large accidental empty regions. Report the provided logical slide IDs for affected slides." + SamsungAuthoringPolicy.ReviewContract,
                         _serializer.Serialize(new { prompt, slides = subset.Select(o => new { slide_id = o.Page.Source.Id, native_id = (int)((dynamic)o.Slide).SlideID,
                             expected_page = o.Page.Elements.Select(e => new { text = e.Text, table = e.Table == null ? null : new { e.Table.Headers, e.Table.Rows }, chart = e.Chart == null ? null : new { title = e.Chart.Title, type = e.Chart.TypeCode, e.Chart.Categories, series = e.Chart.Series.Select(v => new { v.Name, v.Values }) } }) }) }), SamsungDeckOverview.Montage(subset.Select(o => o.Image)), token);
                     if (!ReviewApproved(visual)) { findings = visual; break; }

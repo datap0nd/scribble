@@ -20,7 +20,7 @@ namespace GuardrailTests
                 foreach (var region in SamsungSlideDesign.Regions(layout))
                     if (!SamsungSlideDesign.InBounds(region)) throw new Exception("Out-of-bounds recipe " + layout);
                 var slide = new Dictionary<string, object> { { "layout", layout }, { "title", "Performance review" }, { "subtitle", "Demand supports the plan" } };
-                if (new[] { "cards", "roadmap", "stack", "action_list" }.Contains(layout))
+                if (new[] { "cards", "scorecard", "roadmap", "stack", "action_list" }.Contains(layout))
                     slide["cards"] = new[] { new { heading = "Prepare", points = new[] { "Review evidence", "This week" } }, new { heading = "Execute", points = new[] { "Apply changes", "Next week" } } };
                 else if (!new[] { "cover", "divider", "closing" }.Contains(layout))
                     slide["bullets"] = new[] { "Review the evidence", "Confirm the next action" };
@@ -38,6 +38,20 @@ namespace GuardrailTests
             var paneJson = json.Serialize(twoPane);
             if (!paneJson.Contains("#4F81BD") || !paneJson.Contains("#F2F2F2")) throw new Exception("The two-pane recipe lost its heading and container.");
             previews.Add(twoPane);
+            var scorecard = SamsungPresentationReview.InspectPlan(json.Serialize(new[] { new { title = "June performance", layout = "scorecard", subtitle = "Revenue softened while cost held flat", cards = new[] {
+                new { heading = "June revenue", points = new[] { "EUR 82,992", "2.95% below May" } },
+                new { heading = "June cost", points = new[] { "EUR 36,714", "Flat versus May" } },
+                new { heading = "Gross margin", points = new[] { "55.76%", "1.32 points below May" } } } } }));
+            var scorecardJson = json.Serialize(scorecard);
+            if (!scorecardJson.Contains("EUR 82,992") || !scorecardJson.Contains("\"size\":34") || !scorecardJson.Contains("#596674"))
+                throw new Exception("The scorecard recipe lost its prominent KPI hierarchy.");
+            SamsungAuthoringPolicy.ValidateVisualDesign(new[] { new Dictionary<string, object> { { "title", "June performance" }, { "layout", "scorecard" }, { "cards", new object[] { new { heading = "Revenue", points = new[] { "82,992" } }, new { heading = "Margin", points = new[] { "55.76%" } } } } } });
+            ExpectFailure(() => SamsungAuthoringPolicy.ValidateVisualDesign(new[] { new Dictionary<string, object> { { "title", "June performance" }, { "layout", "bullets" }, { "purpose", "analytical" }, { "bullets", new[] { "Revenue 82,992", "Cost 36,714", "Margin 55.76%" } } } }));
+            ExpectFailure(() => SamsungAuthoringPolicy.ValidateDeckVisualDesign(new[] {
+                new Dictionary<string, object> { { "title", "One" }, { "layout", "bullets" }, { "purpose", "explanatory" }, { "bullets", new[] { "Context" } } },
+                new Dictionary<string, object> { { "title", "Two" }, { "layout", "bullets" }, { "purpose", "explanatory" }, { "bullets", new[] { "Context" } } },
+                new Dictionary<string, object> { { "title", "Three" }, { "layout", "table" }, { "table", new Dictionary<string, object> { { "rows", new[] { new[] { "A", "1" } } } } } }
+            }));
             const string captionText = "June 2026 records only. Margin uses aggregate revenue and cost, never an average of row rates.";
             var captionPlan = SamsungPresentationReview.InspectPlan(json.Serialize(new[] {
                 new { title = "June results", subtitle = "Revenue held firm", layout = "table", caption = captionText, unit = "(EUR; % where shown)",

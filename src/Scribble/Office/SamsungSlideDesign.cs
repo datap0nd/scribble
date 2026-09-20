@@ -11,7 +11,7 @@ namespace Scribble.Office
     public static class SamsungSlideDesign
     {
         public const string Version = "Samsung MD 2.0";
-        public const float TitleSize = 24, BodySize = 18, BodyMinimum = 14, ActionSize = 14;
+        public const float TitleSize = 30, BodySize = 18, BodyMinimum = 16, ActionSize = 16;
         public const float TableSize = 10, TableMinimum = 7.5f;
         public static string RecipePurpose(string layout)
         {
@@ -19,6 +19,7 @@ namespace Scribble.Office
             {
                 case "matrix": case "table": return "Dense specification or performance comparison with complete rows.";
                 case "two_pane": return "Executive commentary beside two evidence tables.";
+                case "scorecard": return "Two to four large KPI values with short labels and source-backed context.";
                 case "annotated_chart": return "Two related charts with semantic evidence highlights.";
                 case "roadmap": return "Proposed or confirmed actions with explicitly sourced dates and owners.";
                 case "stack": return "Layered strategy or operating model.";
@@ -29,7 +30,7 @@ namespace Scribble.Office
         public const float Width = 960f, Height = 540f;
         public const string Blue = "#4F81BD", SoftBlue = "#5B9BD5", Border = "#41719C";
         public const string Gray = "#F2F2F2", Red = "#C00000", Green = "#00B050";
-        public static readonly string[] Layouts = { "cover", "divider", "agenda", "bullets", "cards", "action_list",
+        public static readonly string[] Layouts = { "cover", "divider", "agenda", "bullets", "cards", "scorecard", "action_list",
             "two_pane", "table", "matrix", "chart", "annotated_chart", "visual_grid", "dual_visual",
             "large_visual", "landscape", "centered_visual", "visual_comments", "roadmap", "stack", "closing" };
         public static RectangleF Percent(float x, float y, float w, float h)
@@ -47,6 +48,7 @@ namespace Scribble.Office
                 case "divider": return new[] { Percent(24.1f, 36.8f, 71.9f, 48f) };
                 case "closing": return new[] { Percent(7.8f, 18.6f, 63.8f, 68.7f) };
                 case "two_pane": return new[] { Percent(3.8f, 25.1f, 59f, 58f), Percent(67f, 28.7f, 29.2f, 24f), Percent(67f, 60f, 29.2f, 23f) };
+                case "scorecard": return new[] { Percent(5.2f, 28f, 89.6f, 48f) };
                 case "table": case "matrix": return new[] { Percent(16.5f, 32.1f, 60.7f, 52.1f) };
                 case "annotated_chart": return new[] { Percent(11.8f, 34f, 41.9f, 46f), Percent(55.8f, 38f, 36.6f, 42f) };
                 case "dual_visual": return new[] { Percent(3.8f, 25f, 43f, 56f), Percent(51.1f, 25f, 45.1f, 56f) };

@@ -170,7 +170,7 @@ namespace Scribble.Chat
                         "layout",
                         ToolSchema.String(
                             "Host-owned Samsung layout: " + string.Join(", ", SamsungSlideDesign.Layouts) +
-                            ". Use two_pane for commentary plus two tables; annotated_chart for two charts; " +
+                            ". Use scorecard for a numeric headline with two to four KPI cards; two_pane for commentary plus two tables; annotated_chart for two charts; " +
                             "visual_grid for up to four data/commentary blocks. roadmap and stack use cards. " +
                             "action_list uses card heading, description points and final timing point. " +
                             "Cover, divider and closing accept title and subtitle only; omit all other content fields except sources/footnote. No pixel positions.")
@@ -182,11 +182,10 @@ namespace Scribble.Chat
                             { "type", "array" },
                             {
                                 "description",
-                                "Body bullet lines, at most " +
+                                "Explanatory body lines only, at most " +
                                 PresentationDraftWriter
                                     .MaxBulletsPerSlide +
-                                ". Keep them short and " +
-                                "action-oriented. Indent " +
+                                ". Never use bullets for a numeric analytical summary; use scorecard, chart, table or structured cards instead. Keep permitted bullets short and action-oriented. Indent " +
                                 "sub-bullets with two leading " +
                                 "spaces per level. On an 'agenda' " +
                                 "slide these are the agenda items."
@@ -245,9 +244,7 @@ namespace Scribble.Chat
                     "description",
                     "Optional strategy grid: at most " +
                     PresentationDraftWriter.MaxCards +
-                    " side-by-side numbered cards. Use it for " +
-                    "objectives, pillars, or initiatives - e.g. " +
-                    "'3 strategy objectives to drive in 2025'."
+                    " structured cards. With layout scorecard, use two to four cards, put the metric label in heading, the large display value in the first point, and short comparison context in later points. With cards, roadmap or stack, use the cards for objectives, pillars, initiatives or evidence boundaries."
                 },
                 {
                     "items",
@@ -269,7 +266,7 @@ namespace Scribble.Chat
                                         "At most " +
                                         PresentationDraftWriter
                                             .MaxCardPoints +
-                                        " short sub-points."
+                                        " short sub-points. For scorecard, the first point is the prominent KPI value."
                                     },
                                     {
                                         "items",

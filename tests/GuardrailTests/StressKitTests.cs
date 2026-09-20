@@ -132,11 +132,12 @@ namespace GuardrailTests
                 var run = new LabRun { run_id = "measurement", case_id = "PP01", suite_id = "scribble-stress-v1", fixture_root = root,
                     manifest_sha256 = TestLab.FileHash(Path.Combine(root, "manifest.json")), input_paths = new string[0] };
                 var chart = new StressChart { series = new[] { new StressSeries { name = "Revenue", fill_color = "#000000" } } };
+                var slideCharts = new[] { chart };
                 var outputText = "Profit EUR 46,000";
                 Func<StressShape[], string[], TestLabCheck[]> evaluate = (shapes, warnings) => {
                     var capture = new StressReadback { run_id = run.run_id, native_readback = true, run_created_output = true, output_boundary = true,
                         artifact_extension = "pptx", text = outputText, stress_native = new StressNative { host = "PowerPoint", width = 960, height = 540,
-                            measurement_warnings = warnings, slides = new[] { new StressSlide { number = 1, shapes = shapes, charts = new[] { chart } } } } };
+                            measurement_warnings = warnings, slides = new[] { new StressSlide { number = 1, shapes = shapes, charts = slideCharts } } } };
                     using (var buffer = new MemoryStream())
                     {
                         using (var archive = new ZipArchive(buffer, ZipArchiveMode.Create, true))
@@ -150,6 +151,17 @@ namespace GuardrailTests
                 var cell = new StressShape { name = "Table R1C1", text = "Profit", font = "Arial Narrow", color = "#000000", font_size = 9,
                     x = 40, y = 240, width = 90, height = 30, available_width = 86, available_height = 28, bound_width = 30, bound_height = 12, is_table_cell = true };
                 Check(evaluate(new[] { body, cell }, new string[0]).All(c => c.passed), "A readable9pt native table cell was treated as undersized body text.");
+                slideCharts = new StressChart[0];
+                body.text = outputText = "Revenue EUR 46,000; cost EUR 28,000; margin 39.13%.";
+                Check(evaluate(new[] { body }, new string[0]).Any(c => c.hard && !c.passed),
+                    "A numeric body-text dump with no visual hierarchy passed presentation grading.");
+                var secondMetric = new StressShape { name = "Metric 2", text = "EUR 28,000 / 39.13%", font = "Arial", color = "#000000", font_size = 32,
+                    x = 280, y = 140, width = 200, height = 60, available_width = 196, available_height = 58, bound_width = 150, bound_height = 36 };
+                body.text = "EUR 46,000"; body.font_size = 32; body.width = 200; body.available_width = 196; body.bound_width = 150; body.bound_height = 36;
+                Check(evaluate(new[] { body, secondMetric }, new string[0]).All(c => c.passed),
+                    "Two prominent KPI values did not satisfy the visual-hierarchy guardrail.");
+                body.text = outputText = "Profit EUR 46,000"; body.font_size = 18; body.width = 400; body.available_width = 396; body.bound_width = 200; body.bound_height = 22;
+                slideCharts = new[] { chart };
                 cell.fill_color = "#E91E63";
                 Check(evaluate(new[] { body, cell }, new string[0]).Any(c => c.hard && !c.passed), "An incorrect pink table fill passed the Samsung palette check.");
                 cell.fill_color = "#000000"; chart.series[0].fill_color = "#E91E63";
