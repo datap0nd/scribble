@@ -1377,8 +1377,21 @@ namespace Scribble.Office
                 }
 
                 step = "ChartData.Workbook";
-                dynamic dataWorkbook =
-                    slideChart.ChartData.Workbook;
+                dynamic dataWorkbook = null;
+                Exception workbookFailure = null;
+                for (var attempt = 0; attempt < 3 && dataWorkbook == null; attempt++)
+                {
+                    try { dataWorkbook = slideChart.ChartData.Workbook; }
+                    catch (System.Runtime.InteropServices.COMException exception)
+                    {
+                        workbookFailure = exception;
+                        if (attempt == 2) break;
+                        System.Threading.Thread.Sleep(350);
+                        try { slideChart.ChartData.Activate(); } catch { }
+                    }
+                }
+                if (dataWorkbook == null)
+                    throw new InvalidOperationException("Embedded chart workbook did not become available after three attempts.", workbookFailure);
                 dynamic dataSheet =
                     dataWorkbook.Worksheets[1];
                 step = "write chart data";
@@ -1639,6 +1652,26 @@ namespace Scribble.Office
                 catch
                 {
                 }
+            }
+
+            // Two-period executive comparisons need the exact figures on the
+            // marks, not only a distant axis; distinguish prior and current
+            // period while keeping the chart's native data and zero baseline.
+            if (chart.TypeCode == 51 && chart.Series.Count == 1 && chart.Categories.Count == 2)
+            {
+                try
+                {
+                    dynamic single = slideChart.SeriesCollection(1);
+                    single.ApplyDataLabels();
+                    single.DataLabels().ShowValue = true;
+                    single.DataLabels().NumberFormat = "#,##0";
+                    single.DataLabels().Format.TextFrame2.TextRange.Font.Size = 16f;
+                    single.Points(1).Format.Fill.Solid();
+                    single.Points(1).Format.Fill.ForeColor.RGB = MetoTheme.Rgb(SamsungSlideDesign.SoftBlue);
+                    single.Points(2).Format.Fill.Solid();
+                    single.Points(2).Format.Fill.ForeColor.RGB = MetoTheme.Rgb(SamsungSlideDesign.Blue);
+                }
+                catch { }
             }
         }
 

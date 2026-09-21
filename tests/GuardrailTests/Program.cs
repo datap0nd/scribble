@@ -5584,15 +5584,20 @@ namespace GuardrailTests
 
         private static void DraftFormulasStayInsideTheWorkbook()
         {
+            var writer = typeof(DraftFormulaPolicy).Assembly.GetType("Scribble.Office.WorkbookDraftWriter");
+            var normalize = writer.GetMethod("NormalizeSheetReferences",
+                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+            Func<string, string[], string> repair = (formula, sheets) =>
+                (string)normalize.Invoke(null, new object[] { formula, sheets });
             Assert(
-                WorkbookDraftWriter.NormalizeSheetReferences(
+                repair(
                     "=SUMIFS(Ledger$B$2:$B$145,Ledger$C$2:$C$145,\"Ledger$B$2\")",
                     new[] { "Ledger", "Other" }) ==
                 "=SUMIFS(Ledger!$B$2:$B$145,Ledger!$C$2:$C$145,\"Ledger$B$2\")" &&
-                WorkbookDraftWriter.NormalizeSheetReferences(
+                repair(
                     "=SUM(Ledger!$B$2,Ledger$B$3)", new[] { "Ledger" }) ==
                 "=SUM(Ledger!$B$2,Ledger!$B$3)" &&
-                WorkbookDraftWriter.NormalizeSheetReferences(
+                repair(
                     "=Ledger$B$2", new[] { "Other" }) == "=Ledger$B$2",
                 "Only unambiguous references to an existing sheet should be repaired.");
             Assert(

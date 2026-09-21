@@ -421,6 +421,9 @@ namespace Scribble.Office
                 throw new InvalidOperationException(
                     "No worksheet is active.");
             }
+            var existingNames = new List<string>();
+            foreach (dynamic candidate in sheet.Parent.Worksheets)
+                existingNames.Add(Convert.ToString(candidate.Name) ?? string.Empty);
 
             dynamic anchor = sheet.Range(anchorName);
             int startRow = anchor.Row;
@@ -429,6 +432,7 @@ namespace Scribble.Office
             var written = 0;
             var formulaCount = 0;
             var brokenFormulas = 0;
+            var rejectedFormulas = new List<string>();
             var liveFormulas =
                 new List<KeyValuePair<int[], string>>();
             for (var row = 0; row < rowCount; row++)
@@ -474,6 +478,7 @@ namespace Scribble.Office
                             written++;
                             continue;
                         }
+                        cell = NormalizeSheetReferences(cell, existingNames);
 
                         try
                         {
@@ -512,6 +517,8 @@ namespace Scribble.Office
                                 catch
                                 {
                                 }
+                                rejectedFormulas.Add("R" + (startRow + row) +
+                                    "C" + (startColumn + column));
                             }
                         }
 
@@ -523,6 +530,13 @@ namespace Scribble.Office
                     written++;
                 }
             }
+
+            if (rejectedFormulas.Count > 0)
+                throw new InvalidOperationException(
+                    "DRAFT_FORMULA_INVALID: Excel rejected " +
+                    rejectedFormulas.Count + " formula(s) at " +
+                    string.Join(", ", rejectedFormulas.Take(8)) +
+                    ". The affected cells remain visible as text, but this is not a valid analytical output. Correct the syntax before continuing or claiming completion.");
 
             if (liveFormulas.Count > 0)
             {
