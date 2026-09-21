@@ -230,7 +230,7 @@ namespace Scribble.Office
                             // A short executive table should read as the visual, not
                             // collapse into a spreadsheet strip surrounded by empty canvas.
                             var desiredHeight = Math.Min(element.Box.Height,
-                                Math.Max(144f, (element.Table.Rows.Count + 1) * 36f));
+                                Math.Max(168f, (element.Table.Rows.Count + 1) * 45f));
                             element.Box = new RectangleF(element.Box.X,
                                 element.Box.Y + (element.Box.Height - desiredHeight) / 2f,
                                 element.Box.Width, desiredHeight);
@@ -318,12 +318,12 @@ namespace Scribble.Office
                     elements.Add(TextElement("", metricBox, fill: "#F4F7FB"));
                     elements.Add(TextElement("", new RectangleF(metricBox.X, metricBox.Y, metricBox.Width, 6f), fill: SamsungSlideDesign.Blue));
                     elements.Add(TextElement(card.Heading.ToUpperInvariant(),
-                        new RectangleF(metricBox.X + 14f, metricBox.Y + 20f, metricBox.Width - 28f, 24f), 11, 10, "Arial", true, null, "#596674"));
+                        new RectangleF(metricBox.X + 14f, metricBox.Y + 16f, metricBox.Width - 28f, 42f), 14, 14, "Arial", true, null, "#596674"));
                     elements.Add(TextElement(value,
-                        new RectangleF(metricBox.X + 14f, metricBox.Y + 53f, metricBox.Width - 28f, 65f), 34, 24, MetoTheme.TitleFont, true, null, SamsungSlideDesign.Blue));
+                        new RectangleF(metricBox.X + 14f, metricBox.Y + 61f, metricBox.Width - 28f, 65f), 34, 24, MetoTheme.TitleFont, true, null, SamsungSlideDesign.Blue));
                     if (detail.Length > 0)
                         elements.Add(TextElement(detail,
-                            new RectangleF(metricBox.X + 14f, metricBox.Y + 126f, metricBox.Width - 28f, Math.Max(32f, metricBox.Height - 142f)), 15, 13, "Arial", false, null, "#344454"));
+                            new RectangleF(metricBox.X + 14f, metricBox.Y + 134f, metricBox.Width - 28f, Math.Max(32f, metricBox.Height - 150f)), 15, 14, "Arial", false, null, "#344454"));
                     continue;
                 }
                 if (draft.Layout == "action_list")

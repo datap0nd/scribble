@@ -45,6 +45,22 @@ namespace GuardrailTests
             var scorecardJson = json.Serialize(scorecard);
             if (!scorecardJson.Contains("EUR 82,992") || !scorecardJson.Contains("\"size\":34") || !scorecardJson.Contains("#596674"))
                 throw new Exception("The scorecard recipe lost its prominent KPI hierarchy.");
+            var scorecardPage = ((IEnumerable)json.DeserializeObject(scorecardJson)).Cast<Dictionary<string, object>>().Single();
+            var scorecardElements = ((IEnumerable)scorecardPage["elements"]).Cast<Dictionary<string, object>>().ToArray();
+            if (scorecardElements.Where(e => new[] { "JUNE REVENUE", "JUNE COST", "GROSS MARGIN" }.Contains(Convert.ToString(e["text"])))
+                    .Any(e => Convert.ToDouble(e["size"]) < 14))
+                throw new Exception("Scorecard KPI labels must meet the native 14-point body minimum.");
+            var executiveTable = SamsungPresentationReview.InspectPlan(json.Serialize(new[] { new {
+                title = "June results", layout = "table", subtitle = "West leads on margin",
+                table = new { headers = new[] { "Group", "Revenue", "Margin" }, rows = new[] {
+                    new[] { "North", "19,219", "57.95%" }, new[] { "South", "22,675", "52.43%" },
+                    new[] { "East", "19,054", "49.05%" }, new[] { "West", "22,044", "63.09%" },
+                    new[] { "All groups", "82,992", "55.76%" } } } } }));
+            var executivePage = ((IEnumerable)json.DeserializeObject(json.Serialize(executiveTable))).Cast<Dictionary<string, object>>().Single();
+            var executiveGrid = ((IEnumerable)executivePage["elements"]).Cast<Dictionary<string, object>>()
+                .Single(e => Convert.ToInt32(e["tableRows"]) == 5);
+            if (Convert.ToDouble(executiveGrid["height"]) < 260)
+                throw new Exception("A short executive table must occupy enough vertical space to avoid a small floating spreadsheet strip.");
             var evidenceCards = SamsungPresentationReview.InspectPlan(json.Serialize(new[] { new {
                 title = "Data quality", layout = "cards", subtitle = "Source coverage is complete",
                 cards = new[] {
