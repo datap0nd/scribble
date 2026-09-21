@@ -23,6 +23,31 @@ namespace Scribble.Office
         internal const int MaxDraftColumns = 30;
         internal const int MaxCellCharacters = 500;
 
+        // A model occasionally omits the separator in an otherwise
+        // unambiguous existing-sheet reference (Ledger$B$2). Repair only
+        // that narrow form; never guess at a bare name or at quoted text.
+        internal static string NormalizeSheetReferences(
+            string formula,
+            IEnumerable<string> worksheetNames)
+        {
+            if (string.IsNullOrEmpty(formula) || worksheetNames == null)
+                return formula;
+            var names = worksheetNames.Where(name =>
+                    !string.IsNullOrWhiteSpace(name) &&
+                    Regex.IsMatch(name, @"^[A-Za-z_][A-Za-z0-9_]*$"))
+                .OrderByDescending(name => name.Length).ToArray();
+            var parts = formula.Split('"');
+            for (var part = 0; part < parts.Length; part += 2)
+                foreach (var name in names)
+                    parts[part] = Regex.Replace(
+                        parts[part],
+                        @"(?<![A-Za-z0-9_.!'])" + Regex.Escape(name) +
+                        @"(?=\$[A-Z]{1,3}\$?\d+\b)",
+                        match => match.Value + "!",
+                        RegexOptions.IgnoreCase);
+            return string.Join("\"", parts);
+        }
+
         internal static string WriteDraftSheet(
             object excelApplication,
             string title,
@@ -193,7 +218,7 @@ namespace Scribble.Office
                             formulas.Add(
                                 new KeyValuePair<int[], string>(
                                     new[] { row, column },
-                                    cell));
+                                    NormalizeSheetReferences(cell, existingNames)));
                             continue;
                         }
 
@@ -219,6 +244,7 @@ namespace Scribble.Office
             target.Rows[1].NumberFormat = "@";
             target.Value2 = grid;
             var formulaCount = 0;
+            var rejectedFormulas = new List<string>();
             var liveFormulas =
                 new List<KeyValuePair<int[], string>>();
             foreach (var formula in formulas)
@@ -253,9 +279,18 @@ namespace Scribble.Office
                         catch
                         {
                         }
+                        rejectedFormulas.Add("R" + (startRow + formula.Key[0]) +
+                            "C" + (formula.Key[1] + 1));
                     }
                 }
             }
+
+            if (rejectedFormulas.Count > 0)
+                throw new InvalidOperationException(
+                    "DRAFT_FORMULA_INVALID: Excel rejected " +
+                    rejectedFormulas.Count + " formula(s) at " +
+                    string.Join(", ", rejectedFormulas.Take(8)) +
+                    ". They remain visible as text on the new draft sheet, but this is not a valid analytical output. Correct the syntax and create a fresh draft before continuing to PowerPoint or claiming completion.");
 
             // A formula that parses but evaluates to an Excel error is
             // definitely wrong: repair a one-row header offset when safe,

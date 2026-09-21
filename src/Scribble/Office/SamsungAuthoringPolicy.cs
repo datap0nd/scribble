@@ -39,7 +39,7 @@ namespace Scribble.Office
             "strategy 'Channel coverage' distinguishes proposed actions from completed work; roadmaps retain supplied owners and dates, otherwise use [Owner] and [Date]. " +
             "Bilingual slides preserve product names and numeric meaning; translate prose naturally and retain necessary Samsung abbreviations. " +
             "Choose a host-owned Samsung recipe for the evidence. A presentation is not a report page pasted onto a canvas: use the full slide intentionally, establish one dominant visual idea, and make the hierarchy obvious at thumbnail size. Tables and charts remain native; use attached image_names for artwork. " +
-            "For a numeric headline or KPI summary, use scorecard with two to four cards: each card heading is the metric label, its first point is the large display value, and later points are short comparison context. Do not use bullets for an analytical slide containing several numbers. Use bullets only for genuinely explanatory prose that has no more appropriate chart, table, image, scorecard or structured-card treatment. Across a deck of three or more content slides, at least two thirds must contain a chart, table, source image or structured cards, and use more than one composition family. " +
+            "For a numeric headline or KPI summary, use scorecard with two to four cards: each card heading is the metric label, its first point is the large display value, and later points are short comparison context. For data quality or methodology, group coverage, integrity and calculation rules into two or three concise evidence cards; do not paste a six-line audit report into a bullet slide. A content slide with four or more factual lines or three or more numeric tokens must have a structured visual even when its purpose is explanatory. Use bullets only for genuinely short prose with no better chart, table, image, scorecard or structured-card treatment. Across a deck of three or more content slides, at least two thirds must contain a chart, table, source image or structured cards, and use more than one composition family. " +
             "Avoid repeated title/subtitle/body/takeaway wording, tiny decorative copy, and large accidental empty regions. A rendered slide that resembles a Word page, contains a plain multiline data dump, or lacks a clear focal point is incomplete even when every fact fits. " +
             "When the user requests primary values only in a chart, include exactly one primary series and omit every secondary measure. " +
             "Use semantic annotations to emphasize supporting evidence. Do not invent tables to fill space. " +
@@ -119,16 +119,13 @@ namespace Scribble.Office
                 var layout = Text(slide, "layout").ToLowerInvariant();
                 if (new[] { "cover", "divider", "closing", "agenda" }.Contains(layout)) continue;
                 var cards = Array(slide, "cards");
-                var hasStructuredVisual = cards.Length >= 2 || Array(slide, "image_names").Length > 0 ||
-                    HasObject(slide, "table") || HasObject(slide, "secondary_table") ||
-                    HasObject(slide, "chart") || HasObject(slide, "secondary_chart");
+                var hasStructuredVisual = HasStructuredVisual(slide);
                 if (layout == "scorecard" && (cards.Length < 2 || cards.Length > 4))
                     throw new InvalidOperationException("SLIDE_SCORECARD_REQUIRED: A scorecard needs two to four metric cards. Put the metric label in heading, the large value in the first point, and short comparison context after it.");
-                var purpose = Text(slide, "purpose");
-                var analytical = string.IsNullOrWhiteSpace(purpose) || purpose.StartsWith("analyt", StringComparison.OrdinalIgnoreCase) || purpose.StartsWith("analysis", StringComparison.OrdinalIgnoreCase);
                 var numericTokens = Regex.Matches(string.Join(" ", VisibleStrings(slide)), @"(?<![A-Za-z])[-+\u2212]?\d[\d,.]*(?:%|\b)").Count;
-                if (layout == "bullets" && analytical && numericTokens >= 3 && !hasStructuredVisual)
-                    throw new InvalidOperationException("SLIDE_DESIGN_FLAT: Analytical slides with several numbers cannot use a plain bullets layout. Use scorecard for KPIs, a native chart or table for comparisons, or structured cards for evidence boundaries.");
+                var bulletCount = Array(slide, "bullets").Length;
+                if (!hasStructuredVisual && (numericTokens >= 3 || bulletCount >= 4))
+                    throw new InvalidOperationException("SLIDE_DESIGN_FLAT: A dense factual slide cannot be a single text panel, regardless of its purpose label. Use a native chart or table for comparisons, a scorecard for KPIs, or a structured evidence composition for methodology and data quality.");
             }
         }
         public static void ValidateDeckVisualDesign(IEnumerable<IDictionary<string, object>> slides)
@@ -137,8 +134,7 @@ namespace Scribble.Office
                 !new[] { "cover", "divider", "closing", "agenda" }.Contains(Text(slide, "layout"), StringComparer.OrdinalIgnoreCase)).ToArray();
             ValidateVisualDesign(content);
             if (content.Length < 3) return;
-            var visual = content.Count(slide => Array(slide, "cards").Length >= 2 || Array(slide, "image_names").Length > 0 ||
-                HasObject(slide, "table") || HasObject(slide, "secondary_table") || HasObject(slide, "chart") || HasObject(slide, "secondary_chart"));
+            var visual = content.Count(HasStructuredVisual);
             if (visual * 3 < content.Length * 2)
                 throw new InvalidOperationException("SLIDE_DECK_UNDERDESIGNED: At least two thirds of a multi-slide executive deck must use a meaningful chart, table, source image, scorecard or structured-card composition. Redesign the text-only analytical slides.");
             if (content.Select(slide => Text(slide, "layout")).Distinct(StringComparer.OrdinalIgnoreCase).Count() < 2)
@@ -146,6 +142,15 @@ namespace Scribble.Office
         }
         private static bool HasObject(IDictionary<string, object> slide, string key)
         { object value; return slide.TryGetValue(key, out value) && value != null; }
+        private static bool HasStructuredVisual(IDictionary<string, object> slide)
+        {
+            var layout = Text(slide, "layout").ToLowerInvariant();
+            return (Array(slide, "cards").Length >= 2 &&
+                    new[] { "cards", "scorecard", "roadmap", "stack", "action_list" }.Contains(layout)) ||
+                   Array(slide, "image_names").Length > 0 ||
+                   HasObject(slide, "table") || HasObject(slide, "secondary_table") ||
+                   HasObject(slide, "chart") || HasObject(slide, "secondary_chart");
+        }
         private static IEnumerable<string> VisibleStrings(IDictionary<string, object> slide)
         {
             foreach (var key in new[] { "title", "subtitle", "takeaway", "caption", "bullets", "cards", "table", "secondary_table", "chart", "secondary_chart" })

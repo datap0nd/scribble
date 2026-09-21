@@ -171,7 +171,7 @@ namespace Scribble.Chat
                         ToolSchema.String(
                             "Host-owned Samsung layout: " + string.Join(", ", SamsungSlideDesign.Layouts) +
                             ". Use scorecard for a numeric headline with two to four KPI cards; two_pane for commentary plus two tables; annotated_chart for two charts; " +
-                            "visual_grid for up to four data/commentary blocks. roadmap and stack use cards. " +
+                            "visual_grid for up to four data/commentary blocks. Use cards for two to four concise evidence boundaries such as coverage, integrity and methodology; never put a long audit report into one bullet panel. roadmap and stack use cards. " +
                             "action_list uses card heading, description points and final timing point. " +
                             "Cover, divider and closing accept title and subtitle only; omit all other content fields except sources/footnote. No pixel positions.")
                     },
@@ -185,7 +185,7 @@ namespace Scribble.Chat
                                 "Explanatory body lines only, at most " +
                                 PresentationDraftWriter
                                     .MaxBulletsPerSlide +
-                                ". Never use bullets for a numeric analytical summary; use scorecard, chart, table or structured cards instead. Keep permitted bullets short and action-oriented. Indent " +
+                                ". Never use bullets for a numeric analytical summary or a four-plus-line methodology report; use scorecard, chart, table or structured cards instead. Keep permitted bullets short and action-oriented. Indent " +
                                 "sub-bullets with two leading " +
                                 "spaces per level. On an 'agenda' " +
                                 "slide these are the agenda items."

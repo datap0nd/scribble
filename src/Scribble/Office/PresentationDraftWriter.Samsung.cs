@@ -280,9 +280,15 @@ namespace Scribble.Office
             // divider keeps only a short visible reference, placed clear of the
             // cover's accent bar instead of across it.
             var sparse = draft.Layout == "cover" || draft.Layout == "divider" || draft.Layout == "closing";
-            var visibleSource = source.Length > (sparse ? 90 : 240) ? "Source references and evidence: see speaker notes." : source;
+            var visibleSource = source;
+            if (source.Length > (sparse ? 90 : 120))
+            {
+                var shortReference = source.Split(';')[0].Trim();
+                if (shortReference.Length > 90) shortReference = shortReference.Substring(0, 90).TrimEnd() + "…";
+                visibleSource = shortReference + " • full evidence in speaker notes";
+            }
             if (source.Length > 0) elements.Add(TextElement(visibleSource,
-                draft.Layout == "cover" ? SamsungSlideDesign.Percent(3.8f, 90.8f, 87f, 3f) : SamsungSlideDesign.Footer, 7, 7, "Arial Narrow"));
+                draft.Layout == "cover" ? SamsungSlideDesign.Percent(3.8f, 90.8f, 87f, 3f) : SamsungSlideDesign.Footer, 10, 9, "Arial Narrow"));
             var pageNumber = TextElement("- " + index + " -", SamsungSlideDesign.Page, 10.5f, 8, "Calibri"); pageNumber.Alignment = 3; elements.Add(pageNumber); page.PageNumber = pageNumber;
             elements.Add(TextElement(DraftMarker, SamsungSlideDesign.Percent(3.8f, 97, 32, 2.8f), 7, 7, "Arial", false, null, "#7F7F7F"));
             if (draft.Layout == "closing")
@@ -320,6 +326,29 @@ namespace Scribble.Office
                     elements.Add(TextElement(card.Heading, SamsungSlideDesign.Percent(4.7f, y, 16.9f, 12.8f), 18, 14, "Arial", true));
                     elements.Add(TextElement(string.Join("\n", card.Points.Take(Math.Max(0, card.Points.Count - 1))), SamsungSlideDesign.Percent(23.1f, y, 54.8f, 12.8f)));
                     elements.Add(TextElement(card.Points.LastOrDefault() ?? "", SamsungSlideDesign.Percent(79.3f, y, 12.3f, 12.8f), 18, 14));
+                    continue;
+                }
+                if (draft.Layout == "cards")
+                {
+                    var columns = count == 4 ? 2 : count;
+                    var rows = count == 4 ? 2 : 1;
+                    const float columnGap = 26f, rowGap = 18f;
+                    var width = (region.Width - columnGap * (columns - 1)) / columns;
+                    var height = (region.Height - rowGap * (rows - 1)) / rows;
+                    var box = new RectangleF(
+                        region.X + (i % columns) * (width + columnGap),
+                        region.Y + (i / columns) * (height + rowGap),
+                        width, height);
+                    elements.Add(TextElement("", new RectangleF(box.X, box.Y, box.Width, 4f),
+                        fill: SamsungSlideDesign.Blue));
+                    elements.Add(TextElement(card.Heading,
+                        new RectangleF(box.X, box.Y + 16f, box.Width, 38f),
+                        20, 16, MetoTheme.TitleFont, true, null, SamsungSlideDesign.Blue));
+                    var body = string.Join("\n", card.Points);
+                    if (body.Length > 0)
+                        elements.Add(TextElement(body,
+                            new RectangleF(box.X, box.Y + 64f, box.Width, box.Height - 67f),
+                            16, 14, "Arial", false, null, "#263746"));
                     continue;
                 }
                 var vertical = draft.Layout == "stack";

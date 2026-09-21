@@ -5585,6 +5585,17 @@ namespace GuardrailTests
         private static void DraftFormulasStayInsideTheWorkbook()
         {
             Assert(
+                WorkbookDraftWriter.NormalizeSheetReferences(
+                    "=SUMIFS(Ledger$B$2:$B$145,Ledger$C$2:$C$145,\"Ledger$B$2\")",
+                    new[] { "Ledger", "Other" }) ==
+                "=SUMIFS(Ledger!$B$2:$B$145,Ledger!$C$2:$C$145,\"Ledger$B$2\")" &&
+                WorkbookDraftWriter.NormalizeSheetReferences(
+                    "=SUM(Ledger!$B$2,Ledger$B$3)", new[] { "Ledger" }) ==
+                "=SUM(Ledger!$B$2,Ledger!$B$3)" &&
+                WorkbookDraftWriter.NormalizeSheetReferences(
+                    "=Ledger$B$2", new[] { "Other" }) == "=Ledger$B$2",
+                "Only unambiguous references to an existing sheet should be repaired.");
+            Assert(
                 DraftFormulaPolicy.IsAllowedFormula(
                     "=SUM(A1:A5)") &&
                 DraftFormulaPolicy.IsAllowedFormula(

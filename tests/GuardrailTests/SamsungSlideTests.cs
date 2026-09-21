@@ -45,8 +45,22 @@ namespace GuardrailTests
             var scorecardJson = json.Serialize(scorecard);
             if (!scorecardJson.Contains("EUR 82,992") || !scorecardJson.Contains("\"size\":34") || !scorecardJson.Contains("#596674"))
                 throw new Exception("The scorecard recipe lost its prominent KPI hierarchy.");
+            var evidenceCards = SamsungPresentationReview.InspectPlan(json.Serialize(new[] { new {
+                title = "Data quality", layout = "cards", subtitle = "Source coverage is complete",
+                cards = new[] {
+                    new { heading = "Coverage", points = new[] { "144 rows across six months", "24 rows in June" } },
+                    new { heading = "Integrity", points = new[] { "No blank revenue or cost cells", "Each ID counted once" } },
+                    new { heading = "Method", points = new[] { "Margin uses aggregate totals" } }
+                } } }));
+            var evidenceJson = json.Serialize(evidenceCards);
+            if (!evidenceJson.Contains("Coverage") || !evidenceJson.Contains("Integrity") ||
+                !evidenceJson.Contains("Method") || !evidenceJson.Contains("#263746"))
+                throw new Exception("Evidence cards must render as distinct readable typographic columns.");
             SamsungAuthoringPolicy.ValidateVisualDesign(new[] { new Dictionary<string, object> { { "title", "June performance" }, { "layout", "scorecard" }, { "cards", new object[] { new { heading = "Revenue", points = new[] { "82,992" } }, new { heading = "Margin", points = new[] { "55.76%" } } } } } });
             ExpectFailure(() => SamsungAuthoringPolicy.ValidateVisualDesign(new[] { new Dictionary<string, object> { { "title", "June performance" }, { "layout", "bullets" }, { "purpose", "analytical" }, { "bullets", new[] { "Revenue 82,992", "Cost 36,714", "Margin 55.76%" } } } }));
+            ExpectFailure(() => SamsungAuthoringPolicy.ValidateVisualDesign(new[] { new Dictionary<string, object> { { "title", "Data Quality and Methodology" }, { "layout", "bullets" }, { "purpose", "methodology" }, { "bullets", new[] { "144 source rows", "0 missing inputs", "24 rows per period", "Each ID counted once", "Rates use aggregate totals", "No imputation" } } } }));
+            ExpectFailure(() => SamsungAuthoringPolicy.ValidateVisualDesign(new[] { new Dictionary<string, object> { { "title", "Data Quality and Methodology" }, { "layout", "action_list" }, { "purpose", "explanatory" }, { "bullets", new[] { "144 source rows", "0 missing inputs", "24 rows per period", "No duplicates" } } } }));
+            ExpectFailure(() => SamsungAuthoringPolicy.ValidateVisualDesign(new[] { new Dictionary<string, object> { { "title", "Data Quality and Methodology" }, { "layout", "bullets" }, { "bullets", new[] { "144 source rows", "0 missing inputs", "24 rows per period", "No duplicates" } }, { "cards", new object[] { new { heading = "Coverage" }, new { heading = "Integrity" } } } } }));
             ExpectFailure(() => SamsungAuthoringPolicy.ValidateDeckVisualDesign(new[] {
                 new Dictionary<string, object> { { "title", "One" }, { "layout", "bullets" }, { "purpose", "explanatory" }, { "bullets", new[] { "Context" } } },
                 new Dictionary<string, object> { { "title", "Two" }, { "layout", "bullets" }, { "purpose", "explanatory" }, { "bullets", new[] { "Context" } } },
