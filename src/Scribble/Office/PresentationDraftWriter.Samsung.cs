@@ -315,7 +315,7 @@ namespace Scribble.Office
                         metricWidth, metricHeight);
                     var value = card.Points.FirstOrDefault() ?? "";
                     var detail = string.Join("\n", card.Points.Skip(1));
-                    elements.Add(TextElement("", metricBox, fill: "#F4F7FB"));
+                    elements.Add(TextElement("", metricBox, fill: SamsungSlideDesign.Gray));
                     elements.Add(TextElement("", new RectangleF(metricBox.X, metricBox.Y, metricBox.Width, 6f), fill: SamsungSlideDesign.Blue));
                     elements.Add(TextElement(card.Heading.ToUpperInvariant(),
                         new RectangleF(metricBox.X + 14f, metricBox.Y + 16f, metricBox.Width - 28f, 42f), 14, 14, "Arial", true, null, "#596674"));
@@ -323,7 +323,7 @@ namespace Scribble.Office
                         new RectangleF(metricBox.X + 14f, metricBox.Y + 61f, metricBox.Width - 28f, 65f), 34, 24, MetoTheme.TitleFont, true, null, SamsungSlideDesign.Blue));
                     if (detail.Length > 0)
                         elements.Add(TextElement(detail,
-                            new RectangleF(metricBox.X + 14f, metricBox.Y + 134f, metricBox.Width - 28f, Math.Max(32f, metricBox.Height - 150f)), 15, 14, "Arial", false, null, "#344454"));
+                            new RectangleF(metricBox.X + 14f, metricBox.Y + 134f, metricBox.Width - 28f, Math.Max(32f, metricBox.Height - 150f)), 15, 14, "Arial", false, null, "#202A35"));
                     continue;
                 }
                 if (draft.Layout == "action_list")
@@ -345,16 +345,17 @@ namespace Scribble.Office
                         region.X + (i % columns) * (evidenceWidth + columnGap),
                         region.Y + (i / columns) * (evidenceHeight + rowGap),
                         evidenceWidth, evidenceHeight);
+                    elements.Add(TextElement("", evidenceBox, fill: SamsungSlideDesign.Gray));
                     elements.Add(TextElement("", new RectangleF(evidenceBox.X, evidenceBox.Y, evidenceBox.Width, 4f),
                         fill: SamsungSlideDesign.Blue));
                     elements.Add(TextElement(card.Heading,
-                        new RectangleF(evidenceBox.X, evidenceBox.Y + 16f, evidenceBox.Width, 38f),
+                        new RectangleF(evidenceBox.X + 14f, evidenceBox.Y + 16f, evidenceBox.Width - 28f, 38f),
                         20, 16, MetoTheme.TitleFont, true, null, SamsungSlideDesign.Blue));
                     var body = string.Join("\n", card.Points);
                     if (body.Length > 0)
                         elements.Add(TextElement(body,
-                            new RectangleF(evidenceBox.X, evidenceBox.Y + 64f, evidenceBox.Width, evidenceBox.Height - 67f),
-                            16, 14, "Arial", false, null, "#263746"));
+                            new RectangleF(evidenceBox.X + 14f, evidenceBox.Y + 64f, evidenceBox.Width - 28f, evidenceBox.Height - 78f),
+                            16, 14, "Arial", false, null, "#202A35"));
                     continue;
                 }
                 var vertical = draft.Layout == "stack";
@@ -544,9 +545,9 @@ namespace Scribble.Office
                     {
                         dynamic cell = table.Cell(row + 1, col + 1);
                         dynamic cellShape = cell.Shape;
-                        cellShape.Fill.Solid(); cellShape.Fill.ForeColor.RGB = MetoTheme.Rgb(row == 0 ? SamsungSlideDesign.Blue : row % 2 == 0 ? "#F4F7FB" : "#FFFFFF");
+                        cellShape.Fill.Solid(); cellShape.Fill.ForeColor.RGB = MetoTheme.Rgb(row == 0 ? SamsungSlideDesign.Blue : row % 2 == 0 ? SamsungSlideDesign.Gray : "#FFFFFF");
                         for (var edge = 1; edge <= 4; edge++) { cell.Borders(edge).Weight = .5f; cell.Borders(edge).ForeColor.RGB = MetoTheme.Rgb("#A6A6A6"); }
-                        ApplySamsungText(cellShape, TextElement(col < rows[row].Count ? rows[row][col] : "", new RectangleF(0, 0, element.ColumnWidths == null ? box.Width / columns : element.ColumnWidths[col], box.Height / rows.Length), element.Size, element.Minimum, "Arial Narrow", row == 0, null, row == 0 ? "#FFFFFF" : "#1F2933"));
+                        ApplySamsungText(cellShape, TextElement(col < rows[row].Count ? rows[row][col] : "", new RectangleF(0, 0, element.ColumnWidths == null ? box.Width / columns : element.ColumnWidths[col], box.Height / rows.Length), element.Size, element.Minimum, "Arial Narrow", row == 0, null, row == 0 ? "#FFFFFF" : "#202A35"));
                     }
                     // New rows start at PowerPoint's default height for 18pt
                     // text, nearly twice the planned box. With the table font

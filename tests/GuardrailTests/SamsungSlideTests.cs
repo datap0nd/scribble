@@ -50,6 +50,11 @@ namespace GuardrailTests
             if (scorecardElements.Where(e => new[] { "JUNE REVENUE", "JUNE COST", "GROSS MARGIN" }.Contains(Convert.ToString(e["text"])))
                     .Any(e => Convert.ToDouble(e["size"]) < 14))
                 throw new Exception("Scorecard KPI labels must meet the native 14-point body minimum.");
+            var palette = new HashSet<string>(new[] { "#4F81BD", "#5B9BD5", "#41719C", "#F2F2F2", "#C00000", "#00B050",
+                "#FFFFFF", "#000000", "#7F7F7F", "#A6A6A6", "#202A35", "#596674", "#D7DDE3", "#D4D4D4" }, StringComparer.OrdinalIgnoreCase);
+            if (scorecardElements.Any(e => new[] { Convert.ToString(e["fill"]), Convert.ToString(e["color"]) }
+                    .Any(color => !string.IsNullOrEmpty(color) && !palette.Contains(color))))
+                throw new Exception("Scorecard colors must stay inside the supplied Samsung palette.");
             var executiveTable = SamsungPresentationReview.InspectPlan(json.Serialize(new[] { new {
                 title = "June results", layout = "table", subtitle = "West leads on margin",
                 table = new { headers = new[] { "Group", "Revenue", "Margin" }, rows = new[] {
@@ -70,8 +75,13 @@ namespace GuardrailTests
                 } } }));
             var evidenceJson = json.Serialize(evidenceCards);
             if (!evidenceJson.Contains("Coverage") || !evidenceJson.Contains("Integrity") ||
-                !evidenceJson.Contains("Method") || !evidenceJson.Contains("#263746"))
+                !evidenceJson.Contains("Method") || !evidenceJson.Contains("#202A35"))
                 throw new Exception("Evidence cards must render as distinct readable typographic columns.");
+            var evidencePage = ((IEnumerable)json.DeserializeObject(evidenceJson)).Cast<Dictionary<string, object>>().Single();
+            if (((IEnumerable)evidencePage["elements"]).Cast<Dictionary<string, object>>()
+                .Any(e => new[] { Convert.ToString(e["fill"]), Convert.ToString(e["color"]) }
+                    .Any(color => !string.IsNullOrEmpty(color) && !palette.Contains(color))))
+                throw new Exception("Evidence-card colors must stay inside the supplied Samsung palette.");
             SamsungAuthoringPolicy.ValidateVisualDesign(new[] { new Dictionary<string, object> { { "title", "June performance" }, { "layout", "scorecard" }, { "cards", new object[] { new { heading = "Revenue", points = new[] { "82,992" } }, new { heading = "Margin", points = new[] { "55.76%" } } } } } });
             ExpectFailure(() => SamsungAuthoringPolicy.ValidateVisualDesign(new[] { new Dictionary<string, object> { { "title", "June performance" }, { "layout", "bullets" }, { "purpose", "analytical" }, { "bullets", new[] { "Revenue 82,992", "Cost 36,714", "Margin 55.76%" } } } }));
             ExpectFailure(() => SamsungAuthoringPolicy.ValidateVisualDesign(new[] { new Dictionary<string, object> { { "title", "Data Quality and Methodology" }, { "layout", "bullets" }, { "purpose", "methodology" }, { "bullets", new[] { "144 source rows", "0 missing inputs", "24 rows per period", "Each ID counted once", "Rates use aggregate totals", "No imputation" } } } }));
