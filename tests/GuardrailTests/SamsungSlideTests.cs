@@ -61,6 +61,16 @@ namespace GuardrailTests
             ExpectFailure(() => SamsungAuthoringPolicy.ValidateVisualDesign(new[] { new Dictionary<string, object> { { "title", "Data Quality and Methodology" }, { "layout", "bullets" }, { "purpose", "methodology" }, { "bullets", new[] { "144 source rows", "0 missing inputs", "24 rows per period", "Each ID counted once", "Rates use aggregate totals", "No imputation" } } } }));
             ExpectFailure(() => SamsungAuthoringPolicy.ValidateVisualDesign(new[] { new Dictionary<string, object> { { "title", "Data Quality and Methodology" }, { "layout", "action_list" }, { "purpose", "explanatory" }, { "bullets", new[] { "144 source rows", "0 missing inputs", "24 rows per period", "No duplicates" } } } }));
             ExpectFailure(() => SamsungAuthoringPolicy.ValidateVisualDesign(new[] { new Dictionary<string, object> { { "title", "Data Quality and Methodology" }, { "layout", "bullets" }, { "bullets", new[] { "144 source rows", "0 missing inputs", "24 rows per period", "No duplicates" } }, { "cards", new object[] { new { heading = "Coverage" }, new { heading = "Integrity" } } } } }));
+            var otherSlideVerdict = "{\"approved\":false,\"issues\":\"Slide 2 is missing.\",\"findings\":[{\"slide_id\":\"slide-2\",\"severity\":\"blocker\",\"type\":\"coverage\",\"correction\":\"Add the period comparison slide.\"}]}";
+            if (!SamsungAuthoringPolicy.OnlyOtherSlideCoverageBlockers(otherSlideVerdict, "headline") ||
+                SamsungAuthoringPolicy.OnlyOtherSlideCoverageBlockers(otherSlideVerdict, "slide-2"))
+                throw new Exception("A single-slide reviewer must not block on an unrelated planned slide.");
+            var revisionType = typeof(SamsungAuthoringPolicy).Assembly.GetType("Scribble.Office.PresentationRevision", true);
+            var overflow = revisionType.GetMethod("NativeTextOverflows",
+                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+            if ((bool)overflow.Invoke(null, new object[] { "", 18f, 20f, 4f, 100f }) ||
+                !(bool)overflow.Invoke(null, new object[] { "Visible", 18f, 20f, 4f, 100f }))
+                throw new Exception("Empty accent shapes must not fail native text-fit validation.");
             ExpectFailure(() => SamsungAuthoringPolicy.ValidateDeckVisualDesign(new[] {
                 new Dictionary<string, object> { { "title", "One" }, { "layout", "bullets" }, { "purpose", "explanatory" }, { "bullets", new[] { "Context" } } },
                 new Dictionary<string, object> { { "title", "Two" }, { "layout", "bullets" }, { "purpose", "explanatory" }, { "bullets", new[] { "Context" } } },

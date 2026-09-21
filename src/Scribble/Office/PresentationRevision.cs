@@ -337,10 +337,21 @@ namespace Scribble.Office
                 if ((int)shape.HasTextFrame != 0 && (int)shape.HasTable == 0 && (int)shape.HasChart == 0)
                 {
                     dynamic range = shape.TextFrame.TextRange;
-                    if ((float)range.BoundHeight > (float)shape.Height + 1 || (float)range.BoundWidth > (float)shape.Width + 1)
+                    // Filled accent rules and card backgrounds have a text
+                    // frame but no text. PowerPoint reports default font
+                    // bounds for that empty frame, even on a 4–6pt rule.
+                    if (NativeTextOverflows(Convert.ToString(range.Text),
+                        (float)range.BoundHeight, (float)range.BoundWidth,
+                        (float)shape.Height, (float)shape.Width))
                         throw new InvalidOperationException("SLIDE_NATIVE_OVERFLOW: Text does not fit.");
                 }
             }
+        }
+        internal static bool NativeTextOverflows(string text, float boundHeight,
+            float boundWidth, float height, float width)
+        {
+            return !string.IsNullOrWhiteSpace(text) &&
+                (boundHeight > height + 1 || boundWidth > width + 1);
         }
         private static void CheckChartLabel(object value, float width, float height)
         {

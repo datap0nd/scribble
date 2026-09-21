@@ -70,9 +70,12 @@ namespace Scribble.Office
             if (SamsungRepairPolicy.Serialize(original) == SamsungRepairPolicy.Serialize(replacement)) throw new InvalidOperationException("SLIDE_REPAIR_STALLED: No meaningful content or layout change was proposed.");
             SamsungPresentationReview.ValidateEvidence(_serializer.Serialize(replacement), source);
             var review = await ReviewSamsungAsync(client, settings, SamsungAuthoringPolicy.FactReview +
-                " Verify that every required point from the original remains represented. Reject omitted commitments, qualifications, owners or dates." + SamsungAuthoringPolicy.ReviewContract,
+                " Verify that every required point from the original ONE slide remains represented. Reject omitted commitments, qualifications, owners or dates on that slide. Do not assess whether another planned slide has been added yet; this is a single-slide repair, not a deck review. Report only the original slide ID in findings." + SamsungAuthoringPolicy.ReviewContract,
                 _serializer.Serialize(new { original, replacement, source, instruction = prompt }), null, token);
-            if (!ReviewApproved(review)) throw new InvalidOperationException("SLIDE_REPAIR_FACTS: " + review);
+            if (!ReviewApproved(review) &&
+                !SamsungAuthoringPolicy.OnlyOtherSlideCoverageBlockers(review,
+                    SamsungAuthoringPolicy.Text(original, "id")))
+                throw new InvalidOperationException("SLIDE_REPAIR_FACTS: " + review);
             var parsed = PresentationDraftWriter.ParseSlides(replacements);
             foreach (var image in output.Page.Source.ImageData) parsed[0].ImageData.Add(image);
             var pages = PresentationDraftWriter.ComposeSamsung(parsed);
@@ -229,11 +232,13 @@ namespace Scribble.Office
                 progress?.Invoke(i + 1, outputs.Count);
                 var before = PresentationInspection.Fingerprint(output.Slide);
                 var review = await ReviewSamsungAsync(client, settings,
-                    "Review this rendered Samsung executive slide as an audience would see it at thumbnail size. Check every item assigned to this page, geometry, table/chart labels, clipping, collisions, focal hierarchy, balanced canvas use and meaningful visual storytelling. Reject a plain multiline data dump, a Word-page composition, repeated conclusions, weak emphasis or large accidental empty regions even when the text technically fits. Logical source content may span continuation pages; do not require other pages' items here. Report the provided logical slide_id in findings." + SamsungAuthoringPolicy.ReviewContract,
+                    "Review this rendered Samsung executive slide as an audience would see it at thumbnail size. Check every item assigned to this page, geometry, table/chart labels, clipping, collisions, focal hierarchy, balanced canvas use and meaningful visual storytelling. Reject a plain multiline data dump, a Word-page composition, repeated conclusions, weak emphasis or large accidental empty regions even when the text technically fits. Logical source content may span continuation pages; do not require other pages' items or any other planned slide here. Report the provided logical slide_id in findings; a chart planned for another slide is not missing from this one." + SamsungAuthoringPolicy.ReviewContract,
                     _serializer.Serialize(new { slide_id = output.Page.Source.Id, native_slide_id = (int)((dynamic)output.Slide).SlideID,
                         logical_content = content[output.Page.Source.Id], expected_page = output.Page.Elements.Select(e => new { text = e.Text, table = e.Table == null ? null : new { e.Table.Headers, e.Table.Rows }, chart = e.Chart == null ? null : new { title = e.Chart.Title, type = e.Chart.TypeCode, e.Chart.Categories, series = e.Chart.Series.Select(v => new { v.Name, v.Values }) } }), evidence = output.Page.Source.Evidence }), output.Image, token);
                 if (PresentationInspection.Fingerprint(output.Slide) != before || PresentationDraftWriter.ExportSamsung(output) != output.Image) throw new InvalidOperationException("SLIDE_CHANGED_DURING_REVIEW");
-                if (ReviewApproved(review)) continue;
+                if (ReviewApproved(review) ||
+                    SamsungAuthoringPolicy.OnlyOtherSlideCoverageBlockers(review, output.Page.Source.Id))
+                    continue;
                 var id = output.Page.Source.Id; int count; attempts.TryGetValue(id, out count);
                 if (count >= 3) throw new InvalidOperationException("SLIDE_REVIEW_INCOMPLETE: " + review);
                 attempts[id] = count + 1;

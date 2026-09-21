@@ -202,5 +202,18 @@ namespace Scribble.Office
                 (bool)map["approved"] &&
                 !Array(map, "findings").Select(ReadMap).Any(f => Text(f, "severity") == "blocker");
         }
+        public static bool OnlyOtherSlideCoverageBlockers(string text, string currentSlideId)
+        {
+            Dictionary<string, object> map;
+            if (!TryReadReview(text, out map)) return false;
+            var blockers = Array(map, "findings").Select(ReadMap)
+                .Where(f => Text(f, "severity") == "blocker").ToArray();
+            return blockers.Length > 0 && blockers.All(f =>
+                Text(f, "type") == "coverage" &&
+                !string.IsNullOrWhiteSpace(Text(f, "slide_id")) &&
+                !string.Equals(Text(f, "slide_id"), currentSlideId, StringComparison.Ordinal) &&
+                Regex.IsMatch(Text(f, "correction") + " " + Text(map, "issues"),
+                    @"\b(slide|page)\b", RegexOptions.IgnoreCase));
+        }
     }
 }

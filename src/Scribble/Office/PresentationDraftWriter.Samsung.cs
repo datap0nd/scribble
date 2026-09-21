@@ -306,7 +306,13 @@ namespace Scribble.Office
                 {
                     var metricGap = 18f;
                     var metricWidth = (region.Width - metricGap * (count - 1)) / count;
-                    var metricBox = new RectangleF(region.X + i * (metricWidth + metricGap), region.Y, metricWidth, region.Height);
+                    var detailLines = draft.Cards.Max(c => Math.Max(0, c.Points.Count - 1));
+                    var metricHeight = Math.Min(region.Height,
+                        Math.Max(196f, 164f + 24f * Math.Min(3, detailLines)));
+                    var metricBox = new RectangleF(
+                        region.X + i * (metricWidth + metricGap),
+                        region.Y + (region.Height - metricHeight) / 2f,
+                        metricWidth, metricHeight);
                     var value = card.Points.FirstOrDefault() ?? "";
                     var detail = string.Join("\n", card.Points.Skip(1));
                     elements.Add(TextElement("", metricBox, fill: "#F4F7FB"));
