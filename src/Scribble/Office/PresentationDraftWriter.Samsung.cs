@@ -333,21 +333,21 @@ namespace Scribble.Office
                     var columns = count == 4 ? 2 : count;
                     var rows = count == 4 ? 2 : 1;
                     const float columnGap = 26f, rowGap = 18f;
-                    var width = (region.Width - columnGap * (columns - 1)) / columns;
-                    var height = (region.Height - rowGap * (rows - 1)) / rows;
-                    var box = new RectangleF(
-                        region.X + (i % columns) * (width + columnGap),
-                        region.Y + (i / columns) * (height + rowGap),
-                        width, height);
-                    elements.Add(TextElement("", new RectangleF(box.X, box.Y, box.Width, 4f),
+                    var evidenceWidth = (region.Width - columnGap * (columns - 1)) / columns;
+                    var evidenceHeight = (region.Height - rowGap * (rows - 1)) / rows;
+                    var evidenceBox = new RectangleF(
+                        region.X + (i % columns) * (evidenceWidth + columnGap),
+                        region.Y + (i / columns) * (evidenceHeight + rowGap),
+                        evidenceWidth, evidenceHeight);
+                    elements.Add(TextElement("", new RectangleF(evidenceBox.X, evidenceBox.Y, evidenceBox.Width, 4f),
                         fill: SamsungSlideDesign.Blue));
                     elements.Add(TextElement(card.Heading,
-                        new RectangleF(box.X, box.Y + 16f, box.Width, 38f),
+                        new RectangleF(evidenceBox.X, evidenceBox.Y + 16f, evidenceBox.Width, 38f),
                         20, 16, MetoTheme.TitleFont, true, null, SamsungSlideDesign.Blue));
                     var body = string.Join("\n", card.Points);
                     if (body.Length > 0)
                         elements.Add(TextElement(body,
-                            new RectangleF(box.X, box.Y + 64f, box.Width, box.Height - 67f),
+                            new RectangleF(evidenceBox.X, evidenceBox.Y + 64f, evidenceBox.Width, evidenceBox.Height - 67f),
                             16, 14, "Arial", false, null, "#263746"));
                     continue;
                 }
