@@ -424,6 +424,38 @@ namespace GuardrailTests
                 falseCostFinding, "Compare revenue and cost in the chart.",
                 ((IEnumerable)compliantChartSlides).Cast<object>().Single()),
                 "A genuinely requested second series was ignored.");
+            var cleanCoverSlides = Invoke(Type("PresentationDraftWriter"), "ParseSlides", null,
+                (object)json.Deserialize<object[]>("[{\"id\":\"cover\",\"title\":\"Atlas Components: sales review\",\"subtitle\":\"January-June 2026, repaired June facts\",\"layout\":\"cover\",\"sources\":\"WB01\",\"footnote\":\"Fictional source\"}]"));
+            var cleanCover = ((IEnumerable)cleanCoverSlides).Cast<object>().Single();
+            var hallucinatedCoverCallouts = "{\"approved\":false,\"issues\":\"Cover has forbidden KPI callouts.\",\"findings\":[" +
+                "{\"slide_id\":\"cover\",\"object_id\":\"Rectangle 4\",\"severity\":\"blocker\",\"type\":\"coverage\",\"correction\":\"Remove Revenue EUR 82,992, Cost EUR 36,714, and Gross margin 55.76% data callouts from the cover.\"}]}";
+            Check((bool)Invoke(typeof(DocumentDraftHost), "ReviewApprovedOrSatisfiedPromptConstraint", null,
+                hallucinatedCoverCallouts, "Repair all six slides.", cleanCover),
+                "A reviewer hallucination about absent cover KPI callouts restarted the whole deck.");
+            var demandedCoverMetrics = "{\"approved\":false,\"issues\":\"Headline figures are missing.\",\"findings\":[" +
+                "{\"slide_id\":\"cover\",\"object_id\":\"subtitle\",\"severity\":\"blocker\",\"type\":\"coverage\",\"correction\":\"Add a scorecard to display Revenue, Cost, and Margin headline figures.\"}]}";
+            Check((bool)Invoke(typeof(DocumentDraftHost), "OutlineReviewApprovedOrDeterministicallySatisfied", null,
+                demandedCoverMetrics, "Repair all six slides.", cleanCoverSlides),
+                "An outline reviewer invented a cover KPI requirement that the user never requested.");
+            Check(!(bool)Invoke(typeof(DocumentDraftHost), "OutlineReviewApprovedOrDeterministicallySatisfied", null,
+                demandedCoverMetrics, "The cover slide must include a scorecard showing revenue, cost, and margin.", cleanCoverSlides),
+                "An explicit user requirement for cover metrics was incorrectly ignored.");
+            var mixedCoverFinding = hallucinatedCoverCallouts.Replace("]}",
+                ",{\"slide_id\":\"cover\",\"object_id\":\"subtitle\",\"severity\":\"blocker\",\"type\":\"facts\",\"correction\":\"Correct the unsupported period statement.\"}]}");
+            Check(!(bool)Invoke(typeof(DocumentDraftHost), "ReviewApprovedOrSatisfiedPromptConstraint", null,
+                mixedCoverFinding, "Repair all six slides.", cleanCover),
+                "A real cover fact blocker was hidden beside a refuted KPI-callout hallucination.");
+            var actualMetricCoverSlides = Invoke(Type("PresentationDraftWriter"), "ParseSlides", null,
+                (object)json.Deserialize<object[]>("[{\"id\":\"cover\",\"title\":\"Atlas Components\",\"subtitle\":\"Revenue EUR 82,992\",\"layout\":\"cover\"}]"));
+            Check(!(bool)Invoke(typeof(DocumentDraftHost), "ReviewApprovedOrSatisfiedPromptConstraint", null,
+                hallucinatedCoverCallouts, "No data callouts on the cover.",
+                ((IEnumerable)actualMetricCoverSlides).Cast<object>().Single()),
+                "A real cover metric callout bypassed the reviewer.");
+            var warningOnly = "{\"approved\":false,\"issues\":\"Use consistent casing.\",\"findings\":[" +
+                "{\"slide_id\":\"period-trend\",\"object_id\":\"label\",\"severity\":\"warning\",\"type\":\"labels\",\"correction\":\"Use EUR instead of eur.\"}]}";
+            Check((bool)Invoke(typeof(DocumentDraftHost), "ReviewApprovedOrSatisfiedPromptConstraint", null,
+                warningOnly, "Use EUR.", ((IEnumerable)compliantChartSlides).Cast<object>().Single()),
+                "A warning-only source review forced a full-deck retry.");
             var contradictoryBriefs = json.Deserialize<object[]>(
                 "[{\"id\":\"trend\",\"layout\":\"chart\",\"required_content\":[\"Revenue EUR and Cost EUR series\"]}]");
             Reject(() => Invoke(typeof(DocumentDraftHost), "ValidatePromptChartBriefConstraints", null,

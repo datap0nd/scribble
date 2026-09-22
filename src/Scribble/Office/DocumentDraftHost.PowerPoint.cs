@@ -475,6 +475,13 @@ namespace Scribble.Office
             PresentationDraftWriter.DraftSlide slide)
         {
             if (SamsungAuthoringPolicy.Approved(review)) return true;
+            // The independent reviewer occasionally returns approved=false for
+            // advisory wording or casing notes. Those may inform a later visual
+            // pass, but they must not restart an otherwise valid native draft.
+            // Missing/unknown severities continue to fail closed.
+            if (ReviewContainsOnlyWarnings(review)) return true;
+            if (CoverMetricReviewFalsePositive(review, prompt,
+                slide == null ? null : new[] { slide })) return true;
             if (PrimaryOnlySecondarySeriesFalsePositive(review, prompt, slide)) return true;
             var token = RequiredChartTitleToken(prompt);
             var charts = slide == null
@@ -531,6 +538,8 @@ namespace Scribble.Office
             string review, string prompt, IEnumerable<PresentationDraftWriter.DraftSlide> slides)
         {
             if (SamsungAuthoringPolicy.Approved(review)) return true;
+            if (ReviewContainsOnlyWarnings(review)) return true;
+            if (CoverMetricReviewFalsePositive(review, prompt, slides)) return true;
             try
             {
                 var map = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(review);
@@ -571,6 +580,71 @@ namespace Scribble.Office
                 return true;
             }
             catch { return false; }
+        }
+
+        private static bool ReviewContainsOnlyWarnings(string review)
+        {
+            try
+            {
+                var map = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(review);
+                object raw;
+                if (map == null || !map.TryGetValue("findings", out raw) || raw is string) return false;
+                var findings = (raw as IEnumerable)?.Cast<object>()
+                    .Select(value => value as Dictionary<string, object>).ToArray();
+                return findings != null && findings.Length > 0 && findings.All(finding => finding != null &&
+                    string.Equals(SamsungAuthoringPolicy.Text(finding, "severity"), "warning",
+                        StringComparison.OrdinalIgnoreCase));
+            }
+            catch { return false; }
+        }
+
+        private static bool CoverMetricReviewFalsePositive(string review, string prompt,
+            IEnumerable<PresentationDraftWriter.DraftSlide> slides)
+        {
+            try
+            {
+                var byId = (slides ?? Enumerable.Empty<PresentationDraftWriter.DraftSlide>())
+                    .ToDictionary(value => value.Id, StringComparer.Ordinal);
+                var map = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(review);
+                object raw;
+                if (map == null || !map.TryGetValue("findings", out raw) || raw is string) return false;
+                var findings = (raw as IEnumerable)?.Cast<object>()
+                    .Select(value => value as Dictionary<string, object>).ToArray();
+                if (findings == null || findings.Length == 0 || findings.Any(value => value == null)) return false;
+                var promptRequiresCoverMetrics = Regex.IsMatch(prompt ?? "",
+                    @"(?is)\b(?:cover|title)\s+slide\b.{0,160}\b(?:show|include|display|callout|scorecard)\b.{0,100}\b(?:revenue|cost|margin|profit|budget|KPI|metric)\b|" +
+                    @"\b(?:show|include|display)\b.{0,100}\b(?:revenue|cost|margin|profit|budget|KPI|metric)\b.{0,160}\b(?:cover|title)\s+slide\b");
+                foreach (var finding in findings)
+                {
+                    PresentationDraftWriter.DraftSlide slide;
+                    if (!byId.TryGetValue(SamsungAuthoringPolicy.Text(finding, "slide_id"), out slide) ||
+                        !new[] { "cover", "divider", "agenda", "closing" }.Contains(slide.Layout) ||
+                        CoverHasMetricCallout(slide)) return false;
+                    var detail = string.Join(" ", new[] {
+                        SamsungAuthoringPolicy.Text(finding, "object_id"),
+                        SamsungAuthoringPolicy.Text(finding, "type"),
+                        SamsungAuthoringPolicy.Text(finding, "correction") });
+                    if (!Regex.IsMatch(detail, @"(?i)\b(?:revenue|cost|margin|profit|budget|KPI|metric|data\s+callouts?|headline\s+figures?)\b"))
+                        return false;
+                    var asksToAdd = Regex.IsMatch(detail, @"(?i)\b(?:add|display|include|show|missing|omits?|scorecard)\b");
+                    var asksToRemove = Regex.IsMatch(detail, @"(?i)\b(?:remove|delete|blank|forbid|must\s+not|no\s+data)\b");
+                    if (!asksToRemove && (!asksToAdd || promptRequiresCoverMetrics)) return false;
+                }
+                return true;
+            }
+            catch { return false; }
+        }
+
+        private static bool CoverHasMetricCallout(PresentationDraftWriter.DraftSlide slide)
+        {
+            if (slide == null) return true;
+            if (slide.Chart != null || slide.SecondaryChart != null || slide.Table != null ||
+                slide.SecondaryTable != null || slide.Cards.Count > 0 || slide.Bullets.Count > 0) return true;
+            var displayed = string.Join(" ", new[] { slide.Title, slide.Subtitle, slide.Takeaway, slide.Caption });
+            const string metric = @"(?:revenue|cost|margin|profit|budget)";
+            const string value = @"(?<!\d)(?!20\d{2}\b)\d[\d,.]*%?";
+            return Regex.IsMatch(displayed, @"(?i)\b" + metric + @"\b.{0,40}" + value) ||
+                Regex.IsMatch(displayed, @"(?i)" + value + @".{0,40}\b" + metric + @"\b");
         }
 
         private static bool PrimaryOnlySecondarySeriesFalsePositive(
