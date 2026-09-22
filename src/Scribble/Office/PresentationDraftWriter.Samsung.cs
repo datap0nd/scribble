@@ -717,12 +717,17 @@ namespace Scribble.Office
                     {
                         dynamic cell = table.Cell(row + 1, col + 1);
                         dynamic cellShape = cell.Shape;
-                        cellShape.Fill.Solid(); cellShape.Fill.ForeColor.RGB = MetoTheme.Rgb(row == 0 ? SamsungSlideDesign.Blue : row % 2 == 0 ? SamsungSlideDesign.Gray : "#FFFFFF");
+                        var aggregateRow = row > 0 && rows[row].Count > 0 &&
+                            Regex.IsMatch(rows[row][0] ?? "",
+                                @"(?i)^\s*(?:all groups|grand total|total)\s*$");
+                        cellShape.Fill.Solid(); cellShape.Fill.ForeColor.RGB = MetoTheme.Rgb(
+                            row == 0 ? SamsungSlideDesign.Blue : aggregateRow ? "#D7DDE3" :
+                            row % 2 == 0 ? SamsungSlideDesign.Gray : "#FFFFFF");
                         for (var edge = 1; edge <= 4; edge++) { cell.Borders(edge).Weight = .5f; cell.Borders(edge).ForeColor.RGB = MetoTheme.Rgb("#A6A6A6"); }
                         var cellText = TextElement(col < rows[row].Count ? rows[row][col] : "",
                             new RectangleF(0, 0, element.ColumnWidths == null ? box.Width / columns : element.ColumnWidths[col], box.Height / rows.Length),
                             element.Size, element.Minimum, columns <= 4 ? "Arial" : "Arial Narrow",
-                            row == 0, null, row == 0 ? "#FFFFFF" : "#202A35");
+                            row == 0 || aggregateRow, null, row == 0 ? "#FFFFFF" : "#202A35");
                         if (row > 0 && col > 0 && Regex.IsMatch(cellText.Text,
                             @"^\s*(?:[-+\u2212]?\d|(?:EUR|€)\s*[-+\u2212]?\d)"))
                             cellText.Alignment = 3;
