@@ -32,7 +32,9 @@ namespace GuardrailTests
                 totals.Contains("Period 2026-06; Group North; Rows 3; RevenueEUR 270 EUR; CostEUR 54 EUR") &&
                 totals.Contains("Period 2026-06; Group All groups; Rows 6; RevenueEUR 570 EUR; CostEUR 114 EUR"),
                 "A complete attached workbook did not yield exact grouped decimal sums.");
-            var juneReceipt = totals.Split('\n').Single(line => line.StartsWith("Period 2026-06; Group All groups;", StringComparison.Ordinal));
+            var juneReceipt = totals.Split('\n').Single(line =>
+                line.StartsWith("Period 2026-06; Group All groups;", StringComparison.Ordinal) &&
+                line.Contains("; RevenueEUR ") && line.Contains("; CostEUR "));
             var margin = new { label = "Gross margin", operation = "margin_percent", result = 80m, unit = "%", decimals = 2,
                 operands = new[] {
                     new { value = 570m, label = "Revenue EUR", unit = "EUR", period = "2026-06", evidence = juneReceipt },
