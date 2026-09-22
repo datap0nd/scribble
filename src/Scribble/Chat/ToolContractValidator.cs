@@ -57,7 +57,7 @@ namespace Scribble.Chat
                             {
                                 IList decodedPrefix;
                                 if (key == "slides" &&
-                                    (TryCloseOneTableRowsArray((string)raw, json, out decodedPrefix) ||
+                                    (TrySwapOneTableRowsCloser((string)raw, json, out decodedPrefix) ||
                                      TryDecodeCompleteObjectArrayPrefix((string)raw, json, out decodedPrefix)))
                                 {
                                     map[key] = decodedPrefix;
@@ -76,11 +76,11 @@ namespace Scribble.Chat
             return errors;
         }
 
-        // Qwen sometimes quotes the whole slides array and omits exactly the
-        // closing bracket of a table's rows, while every row and cell is intact.
-        // Repair this one structural typo only; schema, source and visual gates
-        // still run on the complete decoded slide. Never synthesize content.
-        private static bool TryCloseOneTableRowsArray(string raw, JavaScriptSerializer json, out IList decoded)
+        // Qwen sometimes quotes the whole slides array and transposes the
+        // closing ]} of a table's rows/object to }], while every cell and
+        // subsequent slide field is intact. Swap those two bytes only; schema,
+        // source and visual gates still run. Never synthesize content.
+        private static bool TrySwapOneTableRowsCloser(string raw, JavaScriptSerializer json, out IList decoded)
         {
             decoded = null;
             if (string.IsNullOrWhiteSpace(raw) ||
@@ -106,10 +106,11 @@ namespace Scribble.Chat
                 if (c == '"') { inString = true; continue; }
                 if (c == '[') { depth++; continue; }
                 if (c == ']') { if (--depth == 0) return false; continue; }
-                if (c != '}' || depth != 1 || i == 0 || raw[i - 1] != ']') continue;
+                if (c != '}' || depth != 1 || i == 0 || raw[i - 1] != ']' ||
+                    i + 1 >= raw.Length || raw[i + 1] != ']') continue;
                 try
                 {
-                    var fixedArray = json.DeserializeObject(raw.Insert(i, "]")) as IList;
+                    var fixedArray = json.DeserializeObject(raw.Substring(0, i) + "]}" + raw.Substring(i + 2)) as IList;
                     if (fixedArray == null || fixedArray.Count == 0 ||
                         fixedArray.Cast<object>().Any(item => !(item is IDictionary<string, object>))) return false;
                     decoded = fixedArray;

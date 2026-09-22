@@ -202,7 +202,7 @@ namespace GuardrailTests
                 "Excel-to-PowerPoint continuation again asks for source numbers already in the draft sheet.");
         }
 
-        public static void EncodedSlideWithOneMissingTableRowsBracketKeepsContent()
+        public static void EncodedSlideWithOneTransposedTableRowsBracketKeepsContent()
         {
             var json = new System.Web.Script.Serialization.JavaScriptSerializer();
             var slide = new Dictionary<string, object> {
@@ -213,17 +213,21 @@ namespace GuardrailTests
                 { "table", new Dictionary<string, object> {
                     { "headers", new[] { "Group", "Revenue", "Cost" } },
                     { "rows", new[] { new[] { "South", "22,675", "10,787" } } }
-                } }
+                } },
+                { "claims", new[] { new Dictionary<string, object> {
+                    { "text", "South revenue 22,675 EUR" }, { "evidence", "South 22675 10787" },
+                    { "label", "RevenueEUR" }, { "unit", "EUR" }, { "period", "2026-06" }
+                } } }
             };
             var encoded = json.Serialize(new[] { slide });
-            var malformed = encoded.Replace("\"10,787\"]]}", "\"10,787\"]}");
-            Check(malformed != encoded, "The regression fixture did not omit the rows bracket.");
+            var malformed = encoded.Replace("\"10,787\"]]}", "\"10,787\"]}]");
+            Check(malformed != encoded, "The regression fixture did not transpose the rows bracket.");
             var call = new ChatToolCall { id = "table", type = "function", function = new ChatToolCallFunction {
                 name = PresentationToolCatalog.AddDraftSlides,
                 arguments = json.Serialize(new Dictionary<string, object> { { "slides", malformed } })
             } };
             Check(ToolContractValidator.Validate(call, PresentationToolCatalog.DraftDefinition()).Count == 0,
-                "A single missing table rows bracket stalled a complete encoded slide.");
+                "A transposed table rows bracket stalled a complete encoded slide.");
             var accepted = json.DeserializeObject(call.function.arguments) as Dictionary<string, object>;
             var slides = accepted["slides"] as object[];
             var acceptedSlide = slides[0] as Dictionary<string, object>;
