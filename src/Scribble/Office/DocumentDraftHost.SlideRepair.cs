@@ -307,7 +307,7 @@ namespace Scribble.Office
                 {
                     dynamic shape = slide.Shapes[index];
                     if ((int)shape.HasTextFrame != 0 &&
-                        string.Equals(Convert.ToString(shape.TextFrame.TextRange.Text).Trim(), expected,
+                        string.Equals((Convert.ToString(shape.TextFrame.TextRange.Text) ?? "").Trim(), expected,
                             StringComparison.Ordinal)) return true;
                 }
             }
@@ -377,7 +377,7 @@ namespace Scribble.Office
                 {
                     dynamic shape = slide.Shapes[index];
                     if ((int)shape.HasTextFrame == 0) continue;
-                    if (string.Equals(Convert.ToString(shape.TextFrame.TextRange.Text).Trim(), wanted.Trim(),
+                    if (string.Equals((Convert.ToString(shape.TextFrame.TextRange.Text) ?? "").Trim(), wanted.Trim(),
                         StringComparison.OrdinalIgnoreCase)) return true;
                 }
             }
@@ -419,7 +419,7 @@ namespace Scribble.Office
                     dynamic shape = slide.Shapes[index];
                     if ((int)shape.HasTextFrame == 0 || (double)shape.Top < height * .90) continue;
                     dynamic range = shape.TextFrame.TextRange;
-                    var text = Convert.ToString(range.Text).Trim();
+                    var text = (Convert.ToString(range.Text) ?? "").Trim();
                     if (text.Length < 20 || text == PresentationDraftWriter.DraftMarker) continue;
                     found = true;
                     if ((double)shape.Left < -1 || (double)shape.Left + (double)shape.Width > width + 1 ||

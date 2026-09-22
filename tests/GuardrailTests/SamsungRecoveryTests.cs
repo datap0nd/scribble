@@ -284,6 +284,25 @@ namespace GuardrailTests
                 visualReport, new Func<IDictionary<string, object>, bool>(finding => true));
             Check(Convert.ToBoolean(json.Deserialize<Dictionary<string, object>>(allRefuted)["approved"]),
                 "Fully native-refuted findings still blocked an unchanged slide.");
+            var writerType = Type("PresentationDraftWriter");
+            var outputType = writerType.GetNestedType("SamsungOutput", BindingFlags.NonPublic);
+            var pageType = writerType.GetNestedType("SamsungPage", BindingFlags.NonPublic);
+            var elementType = writerType.GetNestedType("SamsungElement", BindingFlags.NonPublic);
+            var output = Activator.CreateInstance(outputType, true);
+            var page = Activator.CreateInstance(pageType, true);
+            var folio = Activator.CreateInstance(elementType, true);
+            elementType.GetField("Text", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(folio, "- 6 -");
+            pageType.GetField("PageNumber", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(page, folio);
+            dynamic nativeSlide = new CrossAppFixture("native-slide", new List<string>());
+            nativeSlide.SlideIndex = 6;
+            dynamic blankShape = nativeSlide.Shapes.AddShape();
+            blankShape.TextFrame.TextRange.Text = null;
+            dynamic folioShape = nativeSlide.Shapes.AddShape();
+            folioShape.TextFrame.TextRange.Text = "- 6 -";
+            outputType.GetField("Slide", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(output, nativeSlide);
+            outputType.GetField("Page", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(output, page);
+            Check((bool)Invoke(typeof(DocumentDraftHost), "NativePageNumberMatches", null, output),
+                "An empty native textbox before the correct folio hid the host-owned page number.");
             Check((bool)Invoke(typeof(DocumentDraftHost), "CanRetrySlideRepairShape", null,
                 new InvalidOperationException("SLIDE_REPAIR_COUNT: ambiguous target"), 0) &&
                 (bool)Invoke(typeof(DocumentDraftHost), "CanRetrySlideRepairShape", null,
