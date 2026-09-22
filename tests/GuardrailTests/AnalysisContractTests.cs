@@ -251,9 +251,33 @@ namespace GuardrailTests
                 period.DisplayText == "2025-05" &&
                 formula.Formula == "=SUM(Source!C2:C10)" &&
                 formula.RawValue == "82992" &&
+                formula.Status == AnalysisContract.Unresolved &&
                 approved.ValueType == AnalysisContract.BooleanValue &&
                 approved.Value == "true",
                 "Typed workbook capture lost raw values, display text, formulas, formats, or booleans.");
+
+            var aggregateValues = new object[3, 3]
+            {
+                { "Group", "Period", "RevenueEUR" },
+                { "A", "2026-06", 10d },
+                { "A", "2026-06", 20d }
+            };
+            var aggregateFormulas = new object[3, 3]
+            {
+                { null, null, null },
+                { null, null, null },
+                { null, null, "=SUM(Source!C2:C10)" }
+            };
+            var aggregate = WorkbookTypedCapture.Capture(
+                "typed-groups", "Ledger", aggregateValues,
+                aggregateFormulas, "General", null, 3, 3, 1, 1);
+            var totals = WorkbookGroupedTotals.Compute(aggregate,
+                new[] { "Group" }, new[] { "RevenueEUR" },
+                "Period", "2026-06");
+            Check(totals.SourceRows == 2 && totals.MatchedRows == 2 &&
+                totals.Groups == 1 && totals.SkippedCells == 1 &&
+                totals.Table.Contains("2026-06\tA\t2\t10\t1"),
+                "Typed grouped totals trusted an unresolved formula cache or lost its skipped-cell disclosure.");
         }
 
         public static void OpenXmlCaptureRetainsTypedCells()

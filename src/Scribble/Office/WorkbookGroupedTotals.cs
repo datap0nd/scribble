@@ -16,6 +16,8 @@ namespace Scribble.Office
         public const int MaxGroupColumns = 3;
         public const int MaxSumColumns = 6;
         public const int MaxGroups = 200;
+        public const int MaxTypedRows = 20000;
+        public const int MaxTypedColumns = 256;
 
         public sealed class Result
         {
@@ -24,6 +26,40 @@ namespace Scribble.Office
             public int MatchedRows { get; set; }
             public int Groups { get; set; }
             public int SkippedCells { get; set; }
+        }
+
+        public static Result Compute(
+            TableDataset table,
+            IReadOnlyList<string> groupBy,
+            IReadOnlyList<string> sumColumns,
+            string filterColumn,
+            string filterEquals)
+        {
+            if (table == null || table.Rows < 2 || table.Columns < 1 ||
+                table.Rows > MaxTypedRows ||
+                table.Columns > MaxTypedColumns || table.Cells == null)
+                throw new InvalidOperationException(
+                    "ANALYSIS_GROUPED_RANGE_INVALID: Typed grouped totals need a bounded table with a header and data rows.");
+            var rows = Enumerable.Range(0, table.Rows).Select(row =>
+                (IReadOnlyList<string>)new string[table.Columns]).ToArray();
+            var positions = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var cell in table.Cells)
+            {
+                if (cell == null || cell.Row < 0 || cell.Row >= table.Rows ||
+                    cell.Column < 0 || cell.Column >= table.Columns ||
+                    (cell.Status == AnalysisContract.Verified &&
+                     !string.IsNullOrWhiteSpace(cell.Formula)) ||
+                    !positions.Add(cell.Row.ToString(CultureInfo.InvariantCulture) +
+                        ":" + cell.Column.ToString(CultureInfo.InvariantCulture)))
+                    throw new InvalidOperationException(
+                        "ANALYSIS_GROUPED_CELL_INVALID: Typed grouped totals found a duplicate or out-of-range cell.");
+                var values = (string[])rows[cell.Row];
+                values[cell.Column] = cell.Status == AnalysisContract.Verified
+                    ? cell.Value ?? string.Empty
+                    : string.Empty;
+            }
+            return Compute(rows, groupBy, sumColumns, filterColumn,
+                filterEquals);
         }
 
         // table[0] holds the header row; every cell is invariant text.

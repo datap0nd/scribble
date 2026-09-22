@@ -327,6 +327,8 @@ namespace Scribble.Office
                     if (cell == null || cell.Row < 0 || cell.Column < 0 ||
                         cell.Row >= table.Rows || cell.Column >= table.Columns ||
                         string.IsNullOrWhiteSpace(cell.RawCellType) ||
+                        (!string.IsNullOrWhiteSpace(cell.Formula) &&
+                         cell.Status == Verified) ||
                         !positions.Add(cell.Row.ToString(CultureInfo.InvariantCulture) +
                             ":" + cell.Column.ToString(CultureInfo.InvariantCulture)))
                         throw new InvalidOperationException(
@@ -711,6 +713,8 @@ namespace Scribble.Office
                 result.Value = Convert.ToString(raw,
                     CultureInfo.InvariantCulture) ?? string.Empty;
             }
+            if (!string.IsNullOrEmpty(formula))
+                result.Status = AnalysisContract.Unresolved;
             if (result.DisplayText.Length == 0) result.DisplayText = result.Value;
             return result;
         }
