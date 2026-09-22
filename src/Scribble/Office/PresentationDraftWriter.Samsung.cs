@@ -405,11 +405,15 @@ namespace Scribble.Office
                     // not leave three tall, half-empty panels behind short facts.
                     // Preserve equal panel heights and center the whole row in
                     // its assigned region so the whitespace is intentional.
-                    if (rows == 1 && !heroMode)
+                    if (rows == 1 && (!heroMode || dualHeroIndex >= 0))
                     {
                         var bodyWidth = evidenceWidth - 28f;
                         var longestBody = draft.Cards.Max(c => EvidenceCardContentHeight(c, bodyWidth));
-                        evidenceHeight = Math.Min(region.Height, Math.Max(218f, 64f + longestBody + 30f));
+                        // A dual metric needs a lower badge rail, but short
+                        // evidence still should not become a full-height gray
+                        // panel merely because two facts share one card.
+                        evidenceHeight = Math.Min(region.Height, Math.Max(218f,
+                            (heroMode ? 160f : 64f) + longestBody + (heroMode ? 14f : 30f)));
                     }
                     var rowInset = rows == 1 ? (region.Height - evidenceHeight) / 2f : 0f;
                     var evidenceBox = new RectangleF(
