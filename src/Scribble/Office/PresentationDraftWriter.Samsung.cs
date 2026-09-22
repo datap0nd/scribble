@@ -318,6 +318,8 @@ namespace Scribble.Office
             // creates hierarchy without asking the model to invent artwork or
             // weakening the exact evidence/citation checks.
             var evidenceHeroes = new string[count];
+            var secondaryHero = new string[count];
+            var heroLabels = new string[count, 2];
             if (draft.Layout == "cards" && count > 1 && count <= 4)
             {
                 var used = new HashSet<string>(StringComparer.Ordinal);
@@ -327,20 +329,34 @@ namespace Scribble.Office
                 {
                     var body = string.Join("\n", draft.Cards[cardIndex].Points);
                     if (MeasureEvidenceBody(body, width) > region.Height - 160f) continue;
-                    var token = Regex.Matches(body,
+                    var tokens = Regex.Matches(body,
                             @"(?<![A-Za-z0-9])(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?%?(?![A-Za-z0-9,])")
-                        .Cast<Match>().Select(match => match.Value)
-                        .Where(value =>
+                        .Cast<Match>().Where(match =>
                         {
                             int year;
+                            var value = match.Value;
                             return !Regex.IsMatch(value, @"^0\d{2,}$") &&
                                 (!int.TryParse(value, out year) || year < 1900 || year > 2100);
                         })
-                        .FirstOrDefault(value => used.Add(value));
-                    evidenceHeroes[cardIndex] = token;
+                        .Where(match => used.Add(match.Value)).Take(2).ToArray();
+                    for (var tokenIndex = 0; tokenIndex < tokens.Length; tokenIndex++)
+                    {
+                        if (tokenIndex == 0) evidenceHeroes[cardIndex] = tokens[tokenIndex].Value;
+                        else secondaryHero[cardIndex] = tokens[tokenIndex].Value;
+                        var following = body.Substring(tokens[tokenIndex].Index + tokens[tokenIndex].Length);
+                        var label = Regex.Match(following, @"^\s+(?<word>[A-Za-z]+)");
+                        heroLabels[cardIndex, tokenIndex] = label.Success ? label.Groups["word"].Value : "";
+                    }
                 }
             }
-            var heroMode = evidenceHeroes.Count(value => !string.IsNullOrEmpty(value)) >= 2;
+            var primaryHeroCount = evidenceHeroes.Count(value => !string.IsNullOrEmpty(value));
+            // A qualitative card set can put every quantified fact in one
+            // panel. Keep two distinct, explicitly written metrics together
+            // there instead of allowing a text-only grid to masquerade as a
+            // visual scorecard. Never promote a year or cell-range fragment.
+            var dualHeroIndex = primaryHeroCount < 2
+                ? Array.FindIndex(secondaryHero, value => !string.IsNullOrEmpty(value)) : -1;
+            var heroMode = primaryHeroCount >= 2 || dualHeroIndex >= 0;
             for (var i = 0; i < count; i++)
             {
                 var card = draft.Cards[i];
@@ -427,7 +443,22 @@ namespace Scribble.Office
                                 new RectangleF(evidenceBox.X + 14f, evidenceBox.Y + bodyStart,
                                     bodyWidth, evidenceBox.Height - 160f),
                                 16, 14, "Arial", false, null, "#202A35"));
-                            elements.Add(TextElement(evidenceHeroes[i],
+                            if (i == dualHeroIndex)
+                            {
+                                var metricWidth = (bodyWidth - 8f) / 2f;
+                                for (var metric = 0; metric < 2; metric++)
+                                {
+                                    var metricX = evidenceBox.X + 14f + metric * (metricWidth + 8f);
+                                    elements.Add(TextElement(metric == 0 ? evidenceHeroes[i] : secondaryHero[i],
+                                        new RectangleF(metricX, evidenceBox.Bottom - 82f, metricWidth, 43f),
+                                        30, 26, MetoTheme.TitleFont, true, null, SamsungSlideDesign.Blue));
+                                    if (!string.IsNullOrEmpty(heroLabels[i, metric]))
+                                        elements.Add(TextElement(heroLabels[i, metric],
+                                            new RectangleF(metricX, evidenceBox.Bottom - 39f, metricWidth, 24f),
+                                            14, 14, "Arial", false, null, "#596674"));
+                                }
+                            }
+                            else elements.Add(TextElement(evidenceHeroes[i],
                                 new RectangleF(evidenceBox.X + 14f, evidenceBox.Bottom - 78f,
                                     bodyWidth, 60f), 32, 26, MetoTheme.TitleFont, true,
                                 null, SamsungSlideDesign.Blue));
