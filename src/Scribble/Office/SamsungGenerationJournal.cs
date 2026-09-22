@@ -139,6 +139,35 @@ namespace Scribble.Office
             foreach (var write in _task.State.Writes.Where(w => Data.AttemptCalls.Any(id => w.Id == "tool:" + id) || w.Id == "tool:" + Data.ToolCall || w.BeforeFingerprint == Data.FunctionFingerprint)) { write.Status = "verified"; write.AfterFingerprint = "native_generation_reconciled"; }
             _task.State.HostData.Remove("samsung_pending"); _task.Checkpoint();
         }
+        internal bool ReleaseRolledBackWrite()
+        {
+            // DrawNewSamsungSlide deletes its own newly created slide when
+            // native text/layout drawing fails. Only if the deck is still
+            // exactly at the pre-write slide IDs, owned by this task, and no
+            // slide was receipted may a corrected payload replace the failed
+            // attempt. Anything partial or user-edited retains the journal.
+            if (_deck == null || Data.OriginalIds == null || Data.LastOrder == null ||
+                Data.Receipts == null || Data.Receipts.Count != 0) return false;
+            try
+            {
+                var currentIds = Ids(_deck);
+                if (!SamsungSlideDesign.SameOwner(Convert.ToString(((dynamic)_deck).Tags["ScribbleTask"]), _task.State.Id) ||
+                    !currentIds.SequenceEqual(Data.OriginalIds) || !currentIds.SequenceEqual(Data.LastOrder)) return false;
+            }
+            catch (Exception)
+            {
+                // A closed or inaccessible host cannot prove a complete
+                // rollback. Keep the journal and its uncertain-write fence.
+                return false;
+            }
+            foreach (var write in _task.State.Writes.Where(w => Data.AttemptCalls.Any(id => w.Id == "tool:" + id) ||
+                w.Id == "tool:" + Data.ToolCall || w.BeforeFingerprint == Data.FunctionFingerprint))
+            { write.Status = "verified"; write.AfterFingerprint = "native_slide_rolled_back_no_receipt"; }
+            _task.State.HostData.Remove("samsung_pending");
+            _task.State.HostData.Remove("samsung_recovery_payload");
+            _task.Checkpoint();
+            return true;
+        }
         private void Persist() { _task.State.HostData["samsung_pending"] = _json.Serialize(Data); _task.Checkpoint(); }
     }
 }

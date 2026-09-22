@@ -95,6 +95,7 @@ namespace GuardrailTests
                 Run("QA sample slide evidence accepts user values without external quotes", QaSampleEvidence);
                 Run("QA draft grounding rejects invented facts and stale future dates", QaDraftGrounding);
                 Run("Samsung v2 interrupted native generation reconciles without duplication", SamsungRecoveryTests.GenerationRecovery);
+                Run("Samsung v2 permits correction only after complete native slide rollback", SamsungRecoveryTests.FullyRolledBackWriteCanBeCorrected);
                 Run("Samsung v2 revision snapshots reconcile and preserve user edits", SamsungRecoveryTests.RevisionRecovery);
                 Run("Samsung v2 repair scope and chart source bindings", SamsungRecoveryTests.RepairScopeAndChartBindings);
                 Run("Samsung legacy renderer remains version pinned", SamsungRecoveryTests.LegacyRenderer);

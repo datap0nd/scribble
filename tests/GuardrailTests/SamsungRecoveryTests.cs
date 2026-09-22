@@ -69,6 +69,36 @@ namespace GuardrailTests
                 if (mode != "resume") Reject(() => resumed.BeforeTool(changed, true), "uncertain");
             }
         }
+        internal static void FullyRolledBackWriteCanBeCorrected()
+        {
+            foreach (var mode in new[] { "rolled_back", "surviving_slide", "wrong_owner" })
+            {
+                var root = Path.Combine(Path.GetTempPath(), "scribble-ppt-rollback-" + Guid.NewGuid().ToString("N"));
+                try
+                {
+                    var task = new TaskContextManager(new ChatCompletionRequest { messages = new List<object>(),
+                        tools = new List<ChatToolDefinition> { PresentationToolCatalog.DraftDefinition() } },
+                        "powerpoint", "Create a deck", new TaskCheckpointStore(root));
+                    var call = new ChatToolCall { id = "first", function = new ChatToolCallFunction {
+                        name = PresentationToolCatalog.AddDraftSlides, arguments = "{\"slides\":[{\"id\":\"a\",\"title\":\"First\"}]}" } };
+                    task.BeforeTool(call, true);
+                    var journalType = Type("SamsungGenerationJournal");
+                    var journal = Activator.CreateInstance(journalType, BindingFlags.Instance | BindingFlags.NonPublic,
+                        null, new object[] { task, call }, null);
+                    dynamic app = new CrossAppFixture("powerpoint", new List<string>());
+                    dynamic deck = app.Presentations.Add(0);
+                    Invoke(journalType, "Bind", journal, (object)deck, 1, null);
+                    Check(task.State.HostData.ContainsKey("samsung_pending"), "The write was not journaled before the native boundary.");
+                    if (mode == "surviving_slide") deck.Slides.Add(1, 12);
+                    if (mode == "wrong_owner") deck.Tags.Add("ScribbleTask", "another-task");
+                    var released = (bool)Invoke(journalType, "ReleaseRolledBackWrite", journal);
+                    Check(released == (mode == "rolled_back"), "An uncertain native write was incorrectly released or retained.");
+                    Check(task.State.HostData.ContainsKey("samsung_pending") == !released,
+                        "The write fence was not retained exactly when native state is uncertain.");
+                }
+                finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+            }
+        }
         internal static void RevisionRecovery()
         {
             var events = new List<string>(); dynamic app = new CrossAppFixture("powerpoint", events);

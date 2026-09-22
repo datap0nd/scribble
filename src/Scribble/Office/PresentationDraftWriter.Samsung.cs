@@ -6,6 +6,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Web.Script.Serialization;
+using Scribble.Security;
 
 namespace Scribble.Office
 {
@@ -821,7 +822,10 @@ namespace Scribble.Office
             while (((double)range.BoundHeight > element.Box.Height - 2 || (double)range.BoundWidth > element.Box.Width - 3) && (float)range.Font.Size > element.Minimum)
                 range.Font.Size = Math.Max(element.Minimum, (float)range.Font.Size - .5f);
             if ((double)range.BoundHeight > element.Box.Height || (double)range.BoundWidth > element.Box.Width)
-                throw new InvalidOperationException("SLIDE_OVERFLOW: PowerPoint text metrics require splitting this content.");
+                throw new InvalidOperationException("SLIDE_OVERFLOW: PowerPoint text metrics require splitting this content: " +
+                    TextBoundary.SingleLine(element.Text, 80) + " (box " +
+                    Math.Round(element.Box.Width) + " x " + Math.Round(element.Box.Height) +
+                    ", minimum " + element.Minimum + " pt).");
         }
         internal static void SetSamsungPageNumber(SamsungOutput output, int index)
         {

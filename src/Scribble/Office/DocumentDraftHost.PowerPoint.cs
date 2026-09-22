@@ -325,6 +325,12 @@ namespace Scribble.Office
             }
             catch (Exception exception)
             {
+                // A deterministic native text-fit failure can happen after
+                // authorization was consumed but before any slide survived.
+                // Reopen the edit boundary only after the journal verifies
+                // the host rolled that slide back completely.
+                if (stage == "WRITE" && exception.Message.StartsWith("SLIDE_OVERFLOW:", StringComparison.Ordinal) &&
+                    journal != null && journal.ReleaseRolledBackWrite()) written = false;
                 // Metadata only: diagnostic exports identify the failing host
                 // and stage without recording slide or mailbox content.
                 Log.Error("SamsungDraft_" + _hostKind,
