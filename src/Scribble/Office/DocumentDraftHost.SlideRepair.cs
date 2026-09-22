@@ -38,6 +38,21 @@ namespace Scribble.Office
                     throw new InvalidOperationException("SLIDE_REPAIR_EVIDENCE_CHANGED: " + field);
             }
         }
+        internal static object[] SelectSlideRepair(IDictionary<string, object> wrapper, string expectedId)
+        {
+            var slides = SamsungAuthoringPolicy.Array(wrapper, "slides");
+            if (slides.Length == 1) return slides;
+            // Some models return the next planned slide alongside the requested
+            // repair. Never apply it here: only the uniquely identified target
+            // can pass the schema, evidence and native-fingerprint checks below.
+            var matching = slides.Where(value =>
+            {
+                var map = value as IDictionary<string, object>;
+                return map != null && SamsungAuthoringPolicy.Text(map, "id") == expectedId;
+            }).ToArray();
+            if (matching.Length == 1) return matching;
+            throw new InvalidOperationException("SLIDE_REPAIR_COUNT: Repair exactly one identifiable slide.");
+        }
         private async Task<Dictionary<string, object>> RepairSlideContentAsync(PresentationDraftWriter.SamsungOutput output,
             Dictionary<string, object> original, string findings, string source, string prompt,
             OpenAiCompatibleClient client, AppSettings settings, CancellationToken token, IReadOnlyList<PresentationDraftWriter.SamsungOutput> related = null)
@@ -45,12 +60,12 @@ namespace Scribble.Office
             var repairTokens = Math.Min(32768, Math.Max(8192, _serializer.Serialize(original).Length / 2));
             var response = await ReviewSamsungAsync(client, settings,
                 SamsungAuthoringPolicy.Instructions + " Repair this single slide using the specific visual findings. Return JSON only: {\"slides\":[{...complete corrected slide...}]}. " +
+                "Return only the slide whose id is '" + SamsungAuthoringPolicy.Text(original, "id") + "'; do not return any other planned slide. " +
                 "Keep the ID, all required table rows, chart type, categories, series names and values, calculations and source images unchanged. Do not add or remove a primary or secondary chart or table: this is a visual repair, not new evidence. For a sparse table slide, enlarge the existing table and use semantic highlight_rows and a coherent subtitle/takeaway; do not invent a chart. You may correct an existing chart title when the finding requires it. Omit evidence and source_spans from your answer: the host carries both over unchanged. You may choose a better Samsung layout and remove redundant wording. " +
                 "Do not invent pixel coordinates or remove evidence to make it fit. Schema: " + _serializer.Serialize(PresentationToolCatalog.DraftDefinition().function.parameters),
                 _serializer.Serialize(new { original, findings, instruction = prompt }), output.Image, token, repairTokens);
             var wrapper = await ReadSlideRepairJsonAsync(client, settings, response, token, repairTokens);
-            var replacements = SamsungAuthoringPolicy.Array(wrapper, "slides");
-            if (replacements.Length != 1) throw new InvalidOperationException("SLIDE_REPAIR_COUNT: Repair exactly one slide.");
+            var replacements = SelectSlideRepair(wrapper, SamsungAuthoringPolicy.Text(original, "id"));
             var replacement = SamsungAuthoringPolicy.ReadMap(replacements[0]);
             var testCall = new ChatToolCall { id = "repair", function = new ChatToolCallFunction { name = PresentationToolCatalog.AddDraftSlides, arguments = _serializer.Serialize(new { slides = replacements }) } };
             var errors = ToolContractValidator.Validate(testCall, PresentationToolCatalog.DraftDefinition());

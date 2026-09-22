@@ -113,6 +113,18 @@ namespace GuardrailTests
             Invoke(typeof(DocumentDraftHost), "ValidateSlideRepairEvidence", null, originalSlide, retitledSlide);
             var changedData = json.Deserialize<Dictionary<string, object>>(json.Serialize(retitledSlide).Replace("82992", "82993"));
             Reject(() => Invoke(typeof(DocumentDraftHost), "ValidateSlideRepairEvidence", null, originalSlide, changedData), "SLIDE_REPAIR_EVIDENCE_CHANGED: chart");
+            var repairWithExtra = json.Deserialize<Dictionary<string, object>>(
+                "{\"slides\":[{\"id\":\"headline\",\"layout\":\"scorecard\"},{\"id\":\"period-comparison\",\"layout\":\"chart\"}]}");
+            var selectedRepair = (object[])Invoke(typeof(DocumentDraftHost), "SelectSlideRepair", null,
+                repairWithExtra, "headline");
+            Check(selectedRepair.Length == 1 && SamsungAuthoringPolicy.Text((Dictionary<string, object>)selectedRepair[0], "id") == "headline",
+                "A model-supplied extra planned slide was not excluded from single-slide repair.");
+            Reject(() => Invoke(typeof(DocumentDraftHost), "SelectSlideRepair", null, repairWithExtra, "missing"),
+                "SLIDE_REPAIR_COUNT");
+            var ambiguousRepair = json.Deserialize<Dictionary<string, object>>(
+                "{\"slides\":[{\"id\":\"headline\"},{\"id\":\"headline\"}]}");
+            Reject(() => Invoke(typeof(DocumentDraftHost), "SelectSlideRepair", null, ambiguousRepair, "headline"),
+                "SLIDE_REPAIR_COUNT");
             var primaryOnlySlides = Invoke(Type("PresentationDraftWriter"), "ParseSlides", null, (object)json.Deserialize<object[]>(
                 "[{\"id\":\"trend\",\"title\":\"Trend\",\"layout\":\"chart\",\"chart\":{\"type\":\"column\",\"categories\":[\"2026-05\",\"2026-06\"],\"series\":[{\"name\":\"Revenue EUR\",\"values\":[85519,82992]},{\"name\":\"Cost EUR\",\"values\":[36702,36714]}]}}]"));
             Reject(() => Invoke(typeof(DocumentDraftHost), "ValidatePromptChartConstraints", null,
