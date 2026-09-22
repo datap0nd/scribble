@@ -226,6 +226,8 @@ namespace Scribble.Office
                 var captured = WorkbookTypedCapture.Capture("cell", name,
                     value, formula, format, display, 1, 1, row, column)
                     .Cells[0];
+                captured.Row = row - 1;
+                captured.Column = column - 1;
                 captured.Reference = reference;
                 captured.RawCellType = type.Length == 0 ? "n" : type;
                 captured.RawValue = type == "inlineStr"
