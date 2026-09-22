@@ -13,6 +13,30 @@ namespace GuardrailTests
         private static void Check(bool value, string message) { if (!value) throw new Exception(message); }
         private static void Reject(Action action)
         { try { action(); } catch (InvalidOperationException) { return; } throw new Exception("Expected rejection."); }
+        internal static void CompleteAttachedWorkbookTotalsAreAuditable()
+        {
+            var method = typeof(TaskSources).GetMethod("CompleteWorkbookTotals",
+                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+            Check(method != null, "Attached-workbook total extraction is missing.");
+            Func<string, string> summarize = value => (string)method.Invoke(null, new object[] { value });
+            var ledger = "[Sheet 1]\nRowID\tPeriod\tGroup\tRevenueEUR\tCostEUR\n" +
+                string.Join("\n", Enumerable.Range(1, 12).Select(i =>
+                    "R" + i + "\t2026-" + (i <= 6 ? "05" : "06") + "\t" +
+                    (i % 2 == 0 ? "South" : "North") + "\t" + (i * 10) + "\t" + (i * 2))) +
+                "\n[Sheet 2]\nPeriod\tRevenue EUR\n2026-05\t210";
+            var totals = summarize(ledger);
+            Check(totals != null && totals.Contains("12 unique RowIDs") &&
+                totals.Contains("2026-05\tAll groups\t6\t210\t42") &&
+                totals.Contains("2026-06\tNorth\t3\t270\t54") &&
+                totals.Contains("2026-06\tAll groups\t6\t570\t114"),
+                "A complete attached workbook did not yield exact grouped decimal sums.");
+            Check(summarize(ledger.Replace("R12\t", "R11\t")) == null,
+                "Duplicate RowIDs were included in a host-calculated source receipt.");
+            Check(summarize(ledger.Replace("R12\t2026-06\tSouth\t120", "R12\t2026-06\tSouth\tunknown")) == null,
+                "A nonnumeric source cell was silently excluded from the total.");
+            Check(summarize(ledger.Replace("[Sheet 1]", "Unverified preview")) == null,
+                "A source without an extracted worksheet boundary was summarized.");
+        }
         internal static void Evidence()
         {
             var json = new JavaScriptSerializer();

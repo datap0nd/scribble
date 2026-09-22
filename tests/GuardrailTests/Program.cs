@@ -99,6 +99,7 @@ namespace GuardrailTests
                 Run("Samsung v2 repair scope and chart source bindings", SamsungRecoveryTests.RepairScopeAndChartBindings);
                 Run("Samsung legacy renderer remains version pinned", SamsungRecoveryTests.LegacyRenderer);
                 Run("Samsung v2 evidence calculations and sample isolation", SamsungWorkflowTests.Evidence);
+                Run("Complete attached workbook totals are auditable", SamsungWorkflowTests.CompleteAttachedWorkbookTotalsAreAuditable);
                 Run("Samsung v2 native chart gaps and semantic annotations", SamsungWorkflowTests.ChartGapsAndAnnotations);
                 Run("Samsung v2 shared policy and final completion gate", SamsungWorkflowTests.PolicyAndCompletion);
                 Run("Source reads expose stable Samsung citation spans", SamsungWorkflowTests.ReadReceiptsExposeSourceSpans);

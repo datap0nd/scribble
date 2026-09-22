@@ -1,8 +1,11 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Web.Script.Serialization;
 using Scribble.Outlook;
@@ -70,7 +73,17 @@ namespace Scribble.Chat
             try
             {
                 var input = TaskRecoveryInput.Read(_task.State);
-                foreach (var document in input.Documents) Add("Attached document", document.Content);
+                foreach (var document in input.Documents)
+                {
+                    Add("Attached document", document.Content);
+                    // An inline preview may omit later ledger rows. Only a
+                    // complete extracted workbook table can supply totals.
+                    if (!document.HasMoreContent)
+                    {
+                        var totals = CompleteWorkbookTotals(document.Content);
+                        if (totals != null) Add("Host-calculated attached workbook totals", totals);
+                    }
+                }
                 foreach (var mail in input.Working.Concat(input.Selected == null ? new SavedMessage[0] : new[] { input.Selected }))
                     Add("Captured email: " + mail.Subject, "Subject: " + mail.Subject + "\nSender: " + mail.Sender +
                         "\nReceived: " + mail.ReceivedAt?.ToString("O") + "\n" + mail.Body);
@@ -158,6 +171,87 @@ namespace Scribble.Chat
                     label = s.Label, offset = s.Offset, length = s.Length,
                     text = _task.Store.ReadEvidence(_task.State.Id, s.SourceId).Substring(s.Offset, s.Length) }),
                 next_offset = offset + 20 < all.Count ? (int?)(offset + 20) : null }), "Read retained source passages");
+        }
+
+        // Derived source receipt, never an oracle: parse all rows of one
+        // complete extracted worksheet, reject malformed/duplicate rows, and
+        // sum the literal RevenueEUR and CostEUR cells with decimal arithmetic.
+        // The returned passage is short enough for claims to cite the period,
+        // group, metric labels and values together.
+        internal static string CompleteWorkbookTotals(string content)
+        {
+            if (string.IsNullOrWhiteSpace(content) || content.IndexOf("[Sheet ", StringComparison.OrdinalIgnoreCase) < 0)
+                return null;
+            var lines = content.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+            for (var start = 0; start + 2 < lines.Length; start++)
+            {
+                if (!Regex.IsMatch(lines[start].Trim(), @"^\[Sheet\s+\d+\]$", RegexOptions.IgnoreCase)) continue;
+                var headers = lines[start + 1].Split('\t');
+                var id = Array.FindIndex(headers, h => h == "RowID");
+                var period = Array.FindIndex(headers, h => h == "Period");
+                var group = Array.FindIndex(headers, h => h == "Group");
+                var revenue = Array.FindIndex(headers, h => h == "RevenueEUR");
+                var cost = Array.FindIndex(headers, h => h == "CostEUR");
+                if (new[] { id, period, group, revenue, cost }.Any(index => index < 0) ||
+                    new[] { id, period, group, revenue, cost }.Distinct().Count() != 5) continue;
+                var ids = new HashSet<string>(StringComparer.Ordinal);
+                var sums = new Dictionary<string, Tuple<int, decimal, decimal>>(StringComparer.Ordinal);
+                var groups = new Dictionary<string, Tuple<int, decimal, decimal>>(StringComparer.Ordinal);
+                var rows = 0;
+                var invalid = false;
+                for (var line = start + 2; line < lines.Length; line++)
+                {
+                    var value = lines[line].TrimEnd();
+                    if (Regex.IsMatch(value, @"^\[Sheet\s+\d+\]$", RegexOptions.IgnoreCase)) break;
+                    if (value.Length == 0) { invalid = rows > 0; break; }
+                    var cells = value.Split('\t');
+                    decimal revenueValue, costValue;
+                    if (cells.Length != headers.Length || string.IsNullOrWhiteSpace(cells[id]) ||
+                        !ids.Add(cells[id]) || !Regex.IsMatch(cells[period], @"^\d{4}-(0[1-9]|1[0-2])$") ||
+                        string.IsNullOrWhiteSpace(cells[group]) ||
+                        !decimal.TryParse(cells[revenue], NumberStyles.Number, CultureInfo.InvariantCulture, out revenueValue) ||
+                        !decimal.TryParse(cells[cost], NumberStyles.Number, CultureInfo.InvariantCulture, out costValue))
+                    { invalid = true; break; }
+                    try
+                    {
+                        Tuple<int, decimal, decimal> prior;
+                        sums.TryGetValue(cells[period], out prior);
+                        sums[cells[period]] = Tuple.Create(checked((prior?.Item1 ?? 0) + 1),
+                            checked((prior?.Item2 ?? 0m) + revenueValue), checked((prior?.Item3 ?? 0m) + costValue));
+                        var key = cells[period] + "\t" + cells[group];
+                        groups.TryGetValue(key, out prior);
+                        groups[key] = Tuple.Create(checked((prior?.Item1 ?? 0) + 1),
+                            checked((prior?.Item2 ?? 0m) + revenueValue), checked((prior?.Item3 ?? 0m) + costValue));
+                    }
+                    catch (OverflowException) { invalid = true; break; }
+                    rows++;
+                    if (rows > 10000 || sums.Count > 24 || groups.Count > 240) { invalid = true; break; }
+                }
+                if (invalid || rows < 12 || sums.Count < 2) return null;
+                var result = new StringBuilder();
+                result.Append("Host decimal sums from complete extracted ").Append(lines[start].Trim())
+                    .Append("; ").Append(rows.ToString(CultureInfo.InvariantCulture))
+                    .Append(" unique RowIDs; RevenueEUR and CostEUR source cells, no rows excluded.\n")
+                    .Append("Period\tGroup\tRows\tRevenueEUR\tCostEUR\n");
+                foreach (var item in sums.OrderBy(pair => pair.Key, StringComparer.Ordinal))
+                {
+                    foreach (var member in groups.Where(pair => pair.Key.StartsWith(item.Key + "\t", StringComparison.Ordinal))
+                        .OrderBy(pair => pair.Key, StringComparer.Ordinal))
+                        AppendWorkbookTotal(result, item.Key, member.Key.Substring(item.Key.Length + 1), member.Value);
+                    AppendWorkbookTotal(result, item.Key, "All groups", item.Value);
+                }
+                return result.ToString();
+            }
+            return null;
+        }
+
+        private static void AppendWorkbookTotal(StringBuilder result, string period, string group,
+            Tuple<int, decimal, decimal> values)
+        {
+            result.Append(period).Append('\t').Append(group).Append('\t')
+                .Append(values.Item1.ToString(CultureInfo.InvariantCulture)).Append('\t')
+                .Append(values.Item2.ToString(CultureInfo.InvariantCulture)).Append('\t')
+                .Append(values.Item3.ToString(CultureInfo.InvariantCulture)).Append('\n');
         }
 
         public MailboxToolResult ReadDocument(ChatToolCall call)
