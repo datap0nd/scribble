@@ -86,6 +86,32 @@ namespace GuardrailTests
             } finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
         }
 
+        public static void RejectedDraftFormulaAllowsFreshMarkedSheet()
+        {
+            var root = Path.Combine(Path.GetTempPath(), "scribble-formula-recovery-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var request = Request(); request.tools = new List<ChatToolDefinition> { WorkbookToolCatalog.DraftDefinition() };
+                var task = new TaskContextManager(request, "excel", "Create a draft analysis", new TaskCheckpointStore(root));
+                var first = Call(WorkbookToolCatalog.WriteDraftSheet, "{\"rows\":[[\"Metric\",\"Value\"],[\"Revenue\",\"=BAD(\"]]}");
+                Check(task.ValidateArguments(first) == null, "The formula-rejection fixture failed schema validation.");
+                task.BeforeTool(first, true);
+                task.AfterTool(first, new MailboxToolResult(first.id,
+                    "{\"ok\":false,\"error_code\":\"DRAFT_FORMULA_INVALID\",\"permission_consumed\":true}",
+                    "Formula rejected after marked sheet creation"));
+                Check(task.State.Writes.Single().Status == "verified" &&
+                    !task.State.HostData.ContainsKey("generic_write_spent"),
+                    "A known, incomplete draft formula was treated as an unknown write or completed deliverable.");
+                var corrected = Call(WorkbookToolCatalog.WriteDraftSheet,
+                    "{\"rows\":[[\"Metric\",\"Value\"],[\"Revenue\",\"=SUM(A1:A2)\"]]}");
+                Check(task.ValidateArguments(corrected) == null, "A corrected fresh draft was blocked after a known formula rejection.");
+                task.BeforeTool(corrected, true);
+                Check(task.State.Writes.Count == 2 && task.State.Writes[0].Status == "verified" &&
+                    task.State.Writes[1].Status == "pending", "The corrected draft did not preserve the first write receipt.");
+            }
+            finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+        }
+
         public static void PowerPointArgumentsGiveRepair()
         {
             var root = Path.Combine(Path.GetTempPath(), "scribble-slide-contract-" + Guid.NewGuid().ToString("N"));

@@ -331,9 +331,12 @@ namespace Scribble.Chat
             if (write != null)
             {
                 // An error may have occurred after the side effect. Never presume that it did not execute.
-                write.Status = result.Outcome.Failed && result.Outcome.PermissionConsumed != false ? "uncertain" : "verified";
+                var knownIncompleteDraft = result.Outcome.Failed && result.Outcome.ErrorCode == "DRAFT_FORMULA_INVALID" &&
+                    (call.function.name == WorkbookToolCatalog.WriteDraftSheet || call.function.name == CrossAppToolCatalog.SendToExcel);
+                write.Status = knownIncompleteDraft || !result.Outcome.Failed || result.Outcome.PermissionConsumed == false ? "verified" : "uncertain";
                 write.AfterFingerprint = TaskCheckpointStore.Fingerprint(result.Content);
-                if (result.Outcome.PermissionConsumed != false) _state.HostData[_state.Host == "chrome" ? "generic_write_spent:" + call.function.name : "generic_write_spent"] = "true";
+                if (result.Outcome.PermissionConsumed != false && !knownIncompleteDraft)
+                    _state.HostData[_state.Host == "chrome" ? "generic_write_spent:" + call.function.name : "generic_write_spent"] = "true";
             }
             Checkpoint();
         }

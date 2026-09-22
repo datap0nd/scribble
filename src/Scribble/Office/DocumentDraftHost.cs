@@ -498,6 +498,18 @@ namespace Scribble.Office
             catch (Exception exception)
             {
                 Log.Error("DocumentDraft." + name, exception);
+                if ((name == WorkbookToolCatalog.WriteDraftSheet || name == CrossAppToolCatalog.SendToExcel) &&
+                    exception is InvalidOperationException &&
+                    exception.Message.StartsWith("DRAFT_FORMULA_INVALID:", StringComparison.Ordinal))
+                {
+                    // The writer reached its explicit post-write formula check:
+                    // the rejected formula is visible as text on a uniquely
+                    // numbered draft sheet, while originals are untouched.
+                    // Report that known incomplete side effect separately from
+                    // a crash or unknown write so another fresh draft can be
+                    // attempted without overwriting this one.
+                    return Error(call.id, authorization, "DRAFT_FORMULA_INVALID", exception.Message);
+                }
                 return Error(
                     call.id,
                     authorization,

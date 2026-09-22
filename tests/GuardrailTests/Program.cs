@@ -74,6 +74,7 @@ namespace GuardrailTests
                 if (args.Length == 2 && args[0] == "--filter") _filter = args[1];
                 Run("Native report readback retains scalar cell formulas", HardeningTests.NativeReportReadback);
                 Run("Duplicate document writes return a recoverable result", HardeningTests.DuplicateDraftIsRecoverable);
+                Run("Known invalid Excel draft formulas permit a fresh marked sheet", HardeningTests.RejectedDraftFormulaAllowsFreshMarkedSheet);
                 Run("PowerPoint outline-only calls get a concrete repair before any write", HardeningTests.PowerPointArgumentsGiveRepair);
                 Run("Test Bench extracts the actual operations PDF filters", TestBenchRegressionTests.OperationsPdf);
                 Run("Test Bench detects work-PC Excel error representations", TestBenchRegressionTests.ExcelErrors);
