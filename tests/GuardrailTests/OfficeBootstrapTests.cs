@@ -132,7 +132,7 @@ namespace GuardrailTests
         {
             var type = typeof(TestLab).Assembly.GetType("Scribble.Testing.TestLabOfficeEnvironment", true);
             var wait = type.GetMethod("WaitForAddInAsync", BindingFlags.Instance | BindingFlags.NonPublic);
-            var normal = type.GetMethod("WaitForNormallyLaunchedOutlookAsync", BindingFlags.Static | BindingFlags.NonPublic);
+            var normal = type.GetMethod("WaitForNormallyLaunchedOfficeAsync", BindingFlags.Static | BindingFlags.NonPublic);
             var display = type.GetMethod("DisplayOutlookExplorer", BindingFlags.Static | BindingFlags.NonPublic);
             Check(wait != null && normal != null && display != null,
                 "The Outlook -Embedding startup path does not wait for normal launch, display an Explorer and wait for COM add-in discovery.");
@@ -140,8 +140,8 @@ namespace GuardrailTests
             Check(parameters.Length == 4 && parameters[3].ParameterType == typeof(CancellationToken),
                 "The Outlook add-in discovery wait is not cancellation-bound.");
             parameters = normal.GetParameters();
-            Check(parameters.Length == 3 && parameters[1].ParameterType == typeof(CancellationToken),
-                "The normal Outlook startup grace period is not cancellation-bound.");
+            Check(parameters.Length == 4 && parameters[0].ParameterType == typeof(string) && parameters[2].ParameterType == typeof(CancellationToken),
+                "The normal Word/Outlook startup grace period is not host-specific and cancellation-bound.");
             var cleanup = typeof(TestLabMailbox).GetMethod("Cleanup", BindingFlags.Static | BindingFlags.NonPublic);
             Check(cleanup != null && cleanup.GetParameters().Length == 3,
                 "Synthetic Outlook stores are not detached at suite cleanup.");

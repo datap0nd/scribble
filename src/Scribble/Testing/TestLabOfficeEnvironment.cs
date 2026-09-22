@@ -60,16 +60,17 @@ namespace Scribble.Testing
                 catch (COMException)
                 {
                     value = null;
-                    if (host == "Outlook")
+                    if (host == "Outlook" || host == "Word")
                     {
-                        // Classic Outlook's singleton automation class attaches
-                        // to its normally launched explorer even without ROT.
-                        // Give that normal UI launch time to win the singleton
-                        // race before Activator can create an -Embedding server
-                        // whose COMAddIns collection is still incomplete.
+                        // A bare COM activation can start Office in -Embedding
+                        // mode before its COM add-ins are loaded. Launch the
+                        // normal UI first, then attach to its ROT entry. Word's
+                        // /w switch opens a blank document rather than leaving
+                        // it at the start screen, which reliably publishes its
+                        // automation object and loads the Scribble ribbon.
                         using (var launched = System.Diagnostics.Process.Start(
-                            new System.Diagnostics.ProcessStartInfo("outlook.exe") { UseShellExecute = true }))
-                            value = await WaitForNormallyLaunchedOutlookAsync(launched, cancel, log);
+                            new System.Diagnostics.ProcessStartInfo(host == "Word" ? "winword.exe" : "outlook.exe", host == "Word" ? "/w" : "") { UseShellExecute = true }))
+                            value = await WaitForNormallyLaunchedOfficeAsync(host, launched, cancel, log);
                     }
                     if (value == null)
                     {
@@ -187,20 +188,20 @@ namespace Scribble.Testing
             throw new InvalidOperationException("Scribble is not present in " + host + "'s COM add-in collection after startup. Repair the selected Scribble component or check Office Disabled Items.");
         }
 
-        private static async Task<object> WaitForNormallyLaunchedOutlookAsync(
-            System.Diagnostics.Process launched, CancellationToken cancel, Action<string> log)
+        private static async Task<object> WaitForNormallyLaunchedOfficeAsync(
+            string host, System.Diagnostics.Process launched, CancellationToken cancel, Action<string> log)
         {
-            var deadline = DateTime.UtcNow.AddSeconds(5);
+            var deadline = DateTime.UtcNow.AddSeconds(host == "Word" ? 10 : 5);
             var announced = false;
             while (DateTime.UtcNow < deadline)
             {
                 cancel.ThrowIfCancellationRequested();
-                try { return Marshal.GetActiveObject("Outlook.Application"); }
+                try { return Marshal.GetActiveObject(host + ".Application"); }
                 catch (COMException)
                 {
                     if (!announced)
                     {
-                        (log ?? delegate { })("Outlook: waiting for the normally launched Explorer before automation attachment.");
+                        (log ?? delegate { })(host + ": waiting for the normally launched UI before automation attachment.");
                         announced = true;
                     }
                 }
