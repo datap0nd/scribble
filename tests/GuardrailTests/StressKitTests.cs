@@ -217,5 +217,26 @@ namespace GuardrailTests
             }
             finally { Directory.Delete(root, true); }
         }
+        public static void NativeTableOracleKeepsOwnerDueDatePairs()
+        {
+            var method = typeof(TestLabStressEvaluator).GetMethod("RequiredNativeTables",
+                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+            Check(method != null, "Native table oracle is missing.");
+            var serializer = new JavaScriptSerializer();
+            var rule = serializer.Deserialize<Dictionary<string, object>>(serializer.Serialize(new {
+                required_tables = new[] { new { slide = 1, headers = new[] { "Owner", "Due date" },
+                    rows = new[] { new[] { "Mira Cole", "2026-07-10" }, new[] { "Leon Park", "2026-07-12" } } } }
+            }));
+            var cells = new[] { "Owner", "Due date", "Mira Cole", "2026-07-10", "Leon Park", "2026-07-12" }
+                .Select((value, index) => new StressShape { name = "Table 1 R" + (index / 2 + 1) + "C" + (index % 2 + 1),
+                    text = value, is_table_cell = true }).ToArray();
+            var native = new StressNative { slides = new[] { new StressSlide { number = 1, shapes = cells } } };
+            Func<bool> accepts = () => (bool)method.Invoke(null, new object[] { native, rule });
+            Check(accepts(), "Exact owner and due-date pairs were rejected.");
+            cells[3].text = "";
+            Check(!accepts(), "A missing due-date column value passed native grading.");
+            cells[3].text = "2026-07-12"; cells[5].text = "2026-07-10";
+            Check(!accepts(), "Swapped owner and due-date pairs passed native grading.");
+        }
     }
 }

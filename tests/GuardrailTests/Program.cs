@@ -417,6 +417,7 @@ namespace GuardrailTests
                 Run("Stress external options retain exact requested scope", StressKitTests.ExternalOptionsAndExactScope);
                 Run("Stress kit snapshots isolate only selected case inputs", StressKitTests.ExternalSnapshotAndProjection);
                 Run("Stress presentation grading checks table fills and native text roles", StressKitTests.PresentationMeasurementsDistinguishBodyAndTables);
+                Run("Stress native tables retain exact owner and due-date pairs", StressKitTests.NativeTableOracleKeepsOwnerDueDatePairs);
                 Run("Stress API budget requires a finite total cap", StressGradingTests.BudgetRequiresFiniteTotal);
                 Run("Stress numeric outputs require native recalculation", StressGradingTests.NativeCellsRequireRecalculation);
                 Run("Stress charts stay in their requested Office host", StressGradingTests.NativeChartsStayInRequestedHost);

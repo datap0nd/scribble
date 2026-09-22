@@ -111,7 +111,7 @@ namespace Scribble.Office
                 foreach (var row in rows)
                 {
                     decimal value;
-                    if (!decimal.TryParse(row[column], System.Globalization.NumberStyles.Number,
+                    if (!decimal.TryParse((row[column] ?? "").Trim().TrimEnd('%'), System.Globalization.NumberStyles.Number,
                         System.Globalization.CultureInfo.InvariantCulture, out value)) { values.Clear(); break; }
                     values.Add(Tuple.Create(row[0], value));
                 }
@@ -119,15 +119,15 @@ namespace Scribble.Office
                 foreach (var item in values)
                 {
                     var ranking = Regex.Match(clause,
-                        @"\b" + Regex.Escape(item.Item1) + @"\b.{0,80}?\b(?<rank>highest|largest|lowest|smallest)\s+(?:\w+\s+){0,3}?" +
+                        @"\b" + Regex.Escape(item.Item1) + @"\b.{0,80}?\b(?<rank>highest|largest|lowest|smallest|leads|led)\b\s+(?:(?:on|in|for)\s+)?(?:\w+\s+){0,3}?" +
                         Regex.Escape(metric.Value) + @"\b", RegexOptions.IgnoreCase);
                     if (!ranking.Success) continue;
-                    var highest = Regex.IsMatch(ranking.Groups["rank"].Value, @"^(?:highest|largest)$", RegexOptions.IgnoreCase);
+                    var highest = Regex.IsMatch(ranking.Groups["rank"].Value, @"^(?:highest|largest|leads|led)$", RegexOptions.IgnoreCase);
                     var extreme = highest ? values.Max(value => value.Item2) : values.Min(value => value.Item2);
                     if (item.Item2 != extreme)
                         throw new InvalidOperationException("SLIDE_TABLE_RANKING_FALSE: '" + item.Item1 + "' is not the " +
                             ranking.Groups["rank"].Value.ToLowerInvariant() + " " + metric.Value.ToLowerInvariant() +
-                            " row in the supplied table. Correct the takeaway or the table; no slides were written.");
+                            " row in the supplied table. Correct the takeaway or the table.");
                 }
             }
         }

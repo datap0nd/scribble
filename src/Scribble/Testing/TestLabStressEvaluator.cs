@@ -267,6 +267,7 @@ namespace Scribble.Testing
             if (native.slides.Any(s => s.shapes.Length < (int)Number(rule, "minimum_shapes_per_slide", 1))) return false;
             if (native.slides.SelectMany(s => s.charts).Count() < (int)Number(rule, "minimum_native_charts", 0)) return false;
             if (native.slides.SelectMany(s => s.shapes).Count(s => s.is_table_cell) < (int)Number(rule, "minimum_table_cells", 0)) return false;
+            if (!RequiredNativeTables(native, rule)) return false;
             var themePath = Text(rule, "theme_ref");
             if (string.IsNullOrEmpty(themePath) || !themePath.StartsWith("evaluator-only/", StringComparison.Ordinal)) return false;
             var manifest = TestLabSuite.Read<KitManifest>(Path.Combine(run.fixture_root, "manifest.json"));
@@ -308,6 +309,32 @@ namespace Scribble.Testing
                     if (Math.Min(left.x + left.width, right.x + right.width) - Math.Max(left.x, right.x) > 2 &&
                         Math.Min(left.y + left.height, right.y + right.height) - Math.Max(left.y, right.y) > 2) return false;
                 }
+            }
+            return true;
+        }
+        private static bool RequiredNativeTables(StressNative native, Dictionary<string, object> rule)
+        {
+            foreach (var item in Items(Value(rule, "required_tables")))
+            {
+                var required = item as Dictionary<string, object>;
+                if (required == null) return false;
+                var slide = native.slides.FirstOrDefault(value => value.number == (int)Number(required, "slide", -1));
+                var expected = new[] { Strings(Value(required, "headers")) }
+                    .Concat(Items(Value(required, "rows")).Select(Strings)).ToArray();
+                if (slide == null || expected.Length < 2 || expected.Any(row => row.Length == 0 || row.Length != expected[0].Length)) return false;
+                var groups = slide.shapes.Where(shape => shape.is_table_cell).Select(shape => new {
+                    Shape = shape, Match = Regex.Match(shape.name ?? "", @"^(?<table>.+)\sR(?<row>\d+)C(?<col>\d+)$")
+                }).Where(entry => entry.Match.Success).GroupBy(entry => entry.Match.Groups["table"].Value);
+                if (!groups.Any(group =>
+                {
+                    var cells = group.ToDictionary(entry => entry.Match.Groups["row"].Value + ":" + entry.Match.Groups["col"].Value,
+                        entry => (entry.Shape.text ?? "").Trim());
+                    return expected.SelectMany((row, rowIndex) => row.Select((value, columnIndex) => new {
+                        Key = (rowIndex + 1).ToString(CultureInfo.InvariantCulture) + ":" + (columnIndex + 1).ToString(CultureInfo.InvariantCulture),
+                        Value = value.Trim()
+                    })).All(cell => cells.TryGetValue(cell.Key, out var actual) &&
+                        string.Equals(actual, cell.Value, StringComparison.OrdinalIgnoreCase));
+                })) return false;
             }
             return true;
         }

@@ -166,14 +166,25 @@ def excel_cases(cases, oracles, workbooks):
             "isolated_what_if_recalculation")
 
 
-def presentation_check(deck, count, wb):
+def presentation_check(deck, count, wb, repair_source=False):
     current = wb["facts"]["current"]
-    return {"kind": "presentation", "slide_count": count, "theme_ref": "evaluator-only/SamsungMD2.theme.json",
+    rule = {"kind": "presentation", "slide_count": count, "theme_ref": "evaluator-only/SamsungMD2.theme.json",
         "reference_pptx": deck["reference_path"],
         "geometry": {"width_points": 960, "height_points": 540, "minimum_body_font_pt": 14,
                      "no_overflow": True, "no_unintended_overlap": True},
         "required_facts": [current["primary"], current["secondary"]],
         "theme": deck["theme"]}
+    if repair_source and deck["id"] == "PPT01" and count == deck["slide_count"]:
+        # This source slide has four distinct owner/date commitments. A deck
+        # that drops the Due date column is incomplete even if its chart and
+        # headline totals are correct.
+        rule["required_tables"] = [{"slide": 5,
+            "headers": ["Owner", "Proposed follow-up", "Due date"],
+            "rows": [["Mira Cole", "Reconcile North source records", "2026-07-10"],
+                     ["Leon Park", "Review South exceptions", "2026-07-12"],
+                     ["Nadia Shah", "Confirm East operating assumptions", "2026-07-14"],
+                     ["Evan Reed", "Review West source completeness", "2026-07-16"]]}]
+    return rule
 
 
 def powerpoint_cases(cases, oracles, presentations, workbook_by_id):
@@ -191,7 +202,7 @@ def powerpoint_cases(cases, oracles, presentations, workbook_by_id):
             "retain useful tables and speaker-note citations, fix stale chart categories, undersized text, overflow and unintended overlaps. "
             "Use the correct period and units, and disclose incomplete figures. Keep all text readable on the existing 16:9 canvas. "
             f"The current primary measure is {wb['primary_label']}; the secondary measure is {wb['secondary_label']}.")
-        checks = [presentation_check(deck, deck["slide_count"], wb),
+        checks = [presentation_check(deck, deck["slide_count"], wb, repair_source=True),
                   native_chart([m["period"] for m in monthly], series, chart_units(wb), host="PowerPoint")]
         if not wb["facts"]["current"]["complete"]:
             checks.append({"kind": "required_text", "values": ["incomplete"]})

@@ -89,7 +89,22 @@ namespace Scribble.Office
                 if (SamsungAuthoringPolicy.Text(replacement, "id") != SamsungAuthoringPolicy.Text(original, "id")) throw new InvalidOperationException("SLIDE_REPAIR_ID_CHANGED");
                 // Evidence, span IDs and the visible citation belong to the host.
                 RetainSlideRepairSources(original, replacement);
-                ValidateSlideRepairEvidence(original, replacement);
+                try { ValidateSlideRepairEvidence(original, replacement); }
+                catch (InvalidOperationException ex) when (ex.Message.StartsWith("SLIDE_REPAIR_EVIDENCE_CHANGED:", StringComparison.Ordinal) && proposal == 0)
+                {
+                    // The candidate has not touched the native slide. Give the
+                    // reviewer one bounded correction inside this same write
+                    // receipt instead of stranding a generated deck when it
+                    // invents a chart for a methodology card, for example.
+                    response = await ReviewSamsungAsync(client, settings,
+                        SamsungAuthoringPolicy.Instructions + " Your visual repair changed immutable source evidence (" + ex.Message + "). " +
+                        "Return exactly one corrected slide with the original ID. Preserve table, secondary_table, chart, secondary_chart, image_names, calculations and content_kind exactly as in original; if a field is absent there, omit it here. " +
+                        "Change only layout or explanatory wording to address the visual findings. Omit evidence, source_spans and sources; the host retains them. Return JSON only. Schema: " +
+                        _serializer.Serialize(PresentationToolCatalog.DraftDefinition().function.parameters),
+                        _serializer.Serialize(new { original, findings, previous_invalid = replacement, instruction = prompt }),
+                        output.Image, token, repairTokens);
+                    continue;
+                }
                 if (SamsungRepairPolicy.Serialize(original) != SamsungRepairPolicy.Serialize(replacement)) break;
                 if (proposal == 1) throw new InvalidOperationException("SLIDE_REPAIR_STALLED: Two proposals made no meaningful content or layout change.");
                 // An unchanged proposal has not touched PowerPoint. Give the

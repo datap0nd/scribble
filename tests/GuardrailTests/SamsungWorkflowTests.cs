@@ -88,6 +88,8 @@ namespace GuardrailTests
             };
             SamsungPresentationReview.ValidateEvidence(json.Serialize(groupSlide("South had the highest June revenue at 22,675 EUR; South had the highest cost at 10,787 EUR.")), grouped);
             Reject(() => SamsungPresentationReview.ValidateEvidence(json.Serialize(groupSlide("South had the highest June revenue at 22,675 EUR; East had the highest cost at 9,708 EUR.")), grouped));
+            SamsungPresentationReview.ValidateEvidence(json.Serialize(groupSlide("South leads on revenue at 22,675 EUR.")), grouped);
+            Reject(() => SamsungPresentationReview.ValidateEvidence(json.Serialize(groupSlide("West leads on revenue at 22,044 EUR.")), grouped));
         }
         internal static void Evidence()
         {
