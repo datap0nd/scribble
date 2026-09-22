@@ -810,17 +810,20 @@ namespace Scribble.Office
             {
                 formatsComplete = false;
             }
+            var worksheetName = Convert.ToString(range.Worksheet.Name);
+            var startRow = (int)range.Row;
+            var startColumn = (int)range.Column;
             var table = WorkbookTypedCapture.Capture(
                 "live_page",
-                Convert.ToString(range.Worksheet.Name),
+                worksheetName,
                 values,
                 formulas,
                 numberFormats,
                 null,
                 rows,
                 columns,
-                (int)range.Row,
-                (int)range.Column);
+                startRow,
+                startColumn);
             var types = new StringBuilder();
             var metadata = table.Cells.Where(cell =>
                 !string.IsNullOrEmpty(cell.Formula) ||
