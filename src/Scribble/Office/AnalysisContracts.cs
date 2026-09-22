@@ -375,7 +375,8 @@ namespace Scribble.Office
                             cell.Row.ToString(CultureInfo.InvariantCulture) + "," +
                             cell.Column.ToString(CultureInfo.InvariantCulture) + "," +
                             cell.Reference + "," + cell.ValueType + "," +
-                            cell.Value + "," + cell.DisplayText + "," +
+                            cell.RawValue + "," + cell.Value + "," +
+                            cell.DisplayText + "," +
                             cell.Formula + "," + cell.NumberFormat + "," +
                             cell.Status))));
         }
@@ -574,6 +575,221 @@ namespace Scribble.Office
         }
     }
 
+    public static class WorkbookTypedCapture
+    {
+        public static TableDataset Capture(
+            string tableId,
+            string name,
+            object values,
+            object formulas,
+            object numberFormats,
+            object displayText,
+            int rows,
+            int columns,
+            int firstRow,
+            int firstColumn)
+        {
+            if (rows < 1 || columns < 1 || rows > 20000 || columns > 16384 ||
+                firstRow < 1 || firstColumn < 1)
+                throw new InvalidOperationException(
+                    "ANALYSIS_RANGE_INVALID: Typed workbook capture needs a bounded positive range.");
+            var table = new TableDataset
+            {
+                TableId = tableId,
+                Name = name ?? string.Empty,
+                Rows = rows,
+                Columns = columns
+            };
+            for (var row = 0; row < rows; row++)
+            {
+                for (var column = 0; column < columns; column++)
+                {
+                    var raw = Matrix(values, row, column, rows, columns, false);
+                    var formulaRaw = Matrix(formulas, row, column, rows, columns, false);
+                    var formatRaw = Matrix(numberFormats, row, column, rows, columns, true);
+                    var shown = Matrix(displayText, row, column, rows, columns, false);
+                    var format = Convert.ToString(formatRaw,
+                        CultureInfo.InvariantCulture) ?? string.Empty;
+                    var formula = Convert.ToString(formulaRaw,
+                        CultureInfo.InvariantCulture) ?? string.Empty;
+                    if (!formula.StartsWith("=", StringComparison.Ordinal))
+                        formula = string.Empty;
+                    var cell = Cell(raw, format, formula, shown);
+                    cell.Row = row;
+                    cell.Column = column;
+                    cell.Reference = Address(firstRow + row,
+                        firstColumn + column);
+                    table.Cells.Add(cell);
+                }
+            }
+            return table;
+        }
+
+        private static DatasetCell Cell(
+            object raw,
+            string format,
+            string formula,
+            object shown)
+        {
+            var result = new DatasetCell
+            {
+                Formula = formula,
+                NumberFormat = format,
+                RawValue = Raw(raw),
+                DisplayText = shown == null
+                    ? string.Empty
+                    : Convert.ToString(shown,
+                        CultureInfo.InvariantCulture) ?? string.Empty,
+                Status = AnalysisContract.Verified
+            };
+            var error = ExcelErrorValue.Text(raw);
+            if (error != null)
+            {
+                result.ValueType = AnalysisContract.ErrorValue;
+                result.RawValue = error;
+                result.Value = string.Empty;
+                result.DisplayText = result.DisplayText.Length == 0
+                    ? error
+                    : result.DisplayText;
+                result.Status = AnalysisContract.Unresolved;
+                return result;
+            }
+            if (raw == null)
+            {
+                result.ValueType = AnalysisContract.MissingValue;
+                result.Value = string.Empty;
+                result.Status = AnalysisContract.Unresolved;
+                return result;
+            }
+            if (raw is bool)
+            {
+                result.ValueType = AnalysisContract.BooleanValue;
+                result.Value = (bool)raw ? "true" : "false";
+            }
+            else if (raw is DateTime)
+            {
+                result.ValueType = AnalysisContract.DateValue;
+                result.Value = ((DateTime)raw).ToString("O",
+                    CultureInfo.InvariantCulture);
+            }
+            else if (IsNumber(raw))
+            {
+                var number = Convert.ToDouble(raw,
+                    CultureInfo.InvariantCulture);
+                if (LooksLikeDateFormat(format))
+                {
+                    result.ValueType = AnalysisContract.DateValue;
+                    try
+                    {
+                        result.Value = DateTime.FromOADate(number).ToString(
+                            "O", CultureInfo.InvariantCulture);
+                    }
+                    catch (ArgumentException)
+                    {
+                        result.ValueType = AnalysisContract.ErrorValue;
+                        result.Value = string.Empty;
+                        result.Status = AnalysisContract.Unresolved;
+                    }
+                }
+                else
+                {
+                    result.ValueType = raw is byte || raw is sbyte ||
+                        raw is short || raw is ushort || raw is int ||
+                        raw is uint || raw is long || raw is ulong
+                            ? AnalysisContract.IntegerValue
+                            : AnalysisContract.DecimalValue;
+                    result.Value = Raw(raw);
+                }
+            }
+            else
+            {
+                result.ValueType = AnalysisContract.TextValue;
+                result.Value = Convert.ToString(raw,
+                    CultureInfo.InvariantCulture) ?? string.Empty;
+            }
+            if (result.DisplayText.Length == 0) result.DisplayText = result.Value;
+            return result;
+        }
+
+        private static object Matrix(
+            object value,
+            int row,
+            int column,
+            int rows,
+            int columns,
+            bool repeatScalar)
+        {
+            var grid = value as object[,];
+            if (grid != null)
+            {
+                if (grid.GetLength(0) != rows || grid.GetLength(1) != columns)
+                    throw new InvalidOperationException(
+                        "ANALYSIS_MATRIX_SIZE_MISMATCH: Workbook value, formula, format, and display matrices must align.");
+                return grid[grid.GetLowerBound(0) + row,
+                    grid.GetLowerBound(1) + column];
+            }
+            return rows == 1 && columns == 1 || repeatScalar ? value : null;
+        }
+
+        private static bool IsNumber(object value)
+        {
+            return value is byte || value is sbyte || value is short ||
+                value is ushort || value is int || value is uint ||
+                value is long || value is ulong || value is float ||
+                value is double || value is decimal;
+        }
+
+        private static string Raw(object value)
+        {
+            if (value == null) return string.Empty;
+            if (value is double) return ((double)value).ToString(
+                "R", CultureInfo.InvariantCulture);
+            if (value is float) return ((float)value).ToString(
+                "R", CultureInfo.InvariantCulture);
+            if (value is decimal) return ((decimal)value).ToString(
+                CultureInfo.InvariantCulture);
+            if (value is DateTime) return ((DateTime)value).ToString(
+                "O", CultureInfo.InvariantCulture);
+            return Convert.ToString(value,
+                CultureInfo.InvariantCulture) ?? string.Empty;
+        }
+
+        private static bool LooksLikeDateFormat(string format)
+        {
+            if (string.IsNullOrWhiteSpace(format)) return false;
+            var normalized = format.ToLowerInvariant();
+            var quoted = false;
+            var escaped = false;
+            var bracketed = false;
+            var tokens = new StringBuilder();
+            foreach (var character in normalized)
+            {
+                if (escaped) { escaped = false; continue; }
+                if (character == '\\') { escaped = true; continue; }
+                if (character == '"') { quoted = !quoted; continue; }
+                if (!quoted && character == '[') { bracketed = true; continue; }
+                if (!quoted && character == ']') { bracketed = false; continue; }
+                if (!quoted && !bracketed &&
+                    "ymdhis".IndexOf(character) >= 0)
+                    tokens.Append(character);
+            }
+            return tokens.Length > 0;
+        }
+
+        private static string Address(int row, int column)
+        {
+            var letters = string.Empty;
+            var value = column;
+            while (value > 0)
+            {
+                value--;
+                letters = (char)('A' + value % 26) + letters;
+                value /= 26;
+            }
+            return letters + row.ToString(CultureInfo.InvariantCulture);
+        }
+    }
+
     public sealed class SourceSnapshot
     {
         public int ContractVersion { get; set; }
@@ -619,6 +835,7 @@ namespace Scribble.Office
         public int Column { get; set; }
         public string Reference { get; set; }
         public string ValueType { get; set; }
+        public string RawValue { get; set; }
         public string Value { get; set; }
         public string DisplayText { get; set; }
         public string Formula { get; set; }

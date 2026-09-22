@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 using Scribble.Configuration;
+using Scribble.Office;
 
 namespace Scribble.Chat
 {
@@ -222,6 +223,26 @@ namespace Scribble.Chat
             _state.EvidenceIds = _evidence.ToList();
             Checkpoint();
             return id;
+        }
+
+        public string PersistAnalysis(AnalysisArtifact artifact)
+        {
+            var serialized = AnalysisContract.Serialize(artifact);
+            var id = RegisterEvidence(serialized);
+            _state.AnalysisContractVersion = AnalysisContract.Version;
+            _state.AnalysisArtifactEvidenceId = id;
+            Checkpoint();
+            return id;
+        }
+
+        public AnalysisArtifact LoadAnalysis()
+        {
+            if (_state.AnalysisContractVersion != AnalysisContract.Version ||
+                string.IsNullOrWhiteSpace(_state.AnalysisArtifactEvidenceId))
+                return null;
+            return AnalysisContract.Deserialize(_store.ReadEvidence(
+                _state.Id,
+                _state.AnalysisArtifactEvidenceId));
         }
 
         public void PrepareExchange(ChatCompletionResponseMessage response, ChatCompletionRequest request)

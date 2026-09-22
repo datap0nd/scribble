@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using Scribble.Chat;
 using Scribble.Office;
 
 namespace GuardrailTests
@@ -86,6 +88,37 @@ namespace GuardrailTests
                     .Value.StartsWith("0.557", StringComparison.Ordinal) &&
                 restored.Snapshots[0].Tables[0].Cells.Count == 8,
                 "The typed analysis did not survive persistence without value loss.");
+
+            var root = Path.Combine(Path.GetTempPath(),
+                "scribble-analysis-contract-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var request = new ChatCompletionRequest
+                {
+                    model = "offline-test",
+                    messages = new List<object>
+                    {
+                        new ChatCompletionInputMessage
+                        {
+                            role = "user",
+                            content = "Persist a typed analysis"
+                        }
+                    }
+                };
+                var task = new TaskContextManager(request, "excel",
+                    "Persist a typed analysis", new TaskCheckpointStore(root));
+                var evidenceId = task.PersistAnalysis(artifact);
+                var loaded = task.LoadAnalysis();
+                Check(task.State.AnalysisContractVersion ==
+                        AnalysisContract.Version &&
+                    task.State.AnalysisArtifactEvidenceId == evidenceId &&
+                    loaded != null && loaded.AnalysisId == artifact.AnalysisId,
+                    "Task persistence did not bind the typed analysis version and protected evidence.");
+            }
+            finally
+            {
+                if (Directory.Exists(root)) Directory.Delete(root, true);
+            }
 
             restored.Facts.Single(fact => fact.Metric == "RevenueEUR").Value =
                 "99999";
@@ -184,6 +217,40 @@ namespace GuardrailTests
             }
             Check(missingRejected,
                 "A missing source value was silently treated as zero.");
+
+            var values = new object[2, 4]
+            {
+                { "RowID", "Period", "Revenue", "Approved" },
+                { "R1", 45808d, 82992d, true }
+            };
+            var formulas = new object[2, 4]
+            {
+                { "RowID", "Period", "Revenue", "Approved" },
+                { "R1", 45808d, "=SUM(Source!C2:C10)", true }
+            };
+            var formats = new object[2, 4]
+            {
+                { "General", "General", "General", "General" },
+                { "General", "yyyy-mm", "#,##0", "General" }
+            };
+            var displayed = new object[2, 4]
+            {
+                { "RowID", "Period", "Revenue", "Approved" },
+                { "R1", "2025-05", "82,992", "TRUE" }
+            };
+            var typed = WorkbookTypedCapture.Capture("live", "Ledger",
+                values, formulas, formats, displayed, 2, 4, 1, 1);
+            var period = typed.Cells.Single(cell => cell.Reference == "B2");
+            var formula = typed.Cells.Single(cell => cell.Reference == "C2");
+            var approved = typed.Cells.Single(cell => cell.Reference == "D2");
+            Check(period.ValueType == AnalysisContract.DateValue &&
+                period.RawValue == "45808" &&
+                period.DisplayText == "2025-05" &&
+                formula.Formula == "=SUM(Source!C2:C10)" &&
+                formula.RawValue == "82992" &&
+                approved.ValueType == AnalysisContract.BooleanValue &&
+                approved.Value == "true",
+                "Typed workbook capture lost raw values, display text, formulas, formats, or booleans.");
         }
 
         private static TableDataset Table()
@@ -221,6 +288,7 @@ namespace GuardrailTests
                 Column = column,
                 Reference = reference,
                 ValueType = valueType,
+                RawValue = value,
                 Value = value,
                 DisplayText = value,
                 Formula = string.Empty,

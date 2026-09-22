@@ -745,6 +745,7 @@ namespace Scribble.Office
                 nextRowOffset = rowOffset + rows;
             }
             var complete = nextRowOffset >= totalRows;
+            var typed = CaptureTypedPage(page, rows, columns);
             return Success(
                 callId,
                 new Dictionary<string, object>
@@ -772,7 +773,12 @@ namespace Scribble.Office
                     { "complete", complete },
                     { "next_row_offset", complete ? 0 : nextRowOffset },
                     { "next_column_offset", complete ? 0 : nextColumnOffset },
-                    { "cells_tsv", text }
+                    { "cells_tsv", text },
+                    { "cell_types_tsv", typed.TypesTsv },
+                    { "typed_cells", typed.Cells },
+                    { "typed_capture_complete", typed.Complete },
+                    { "number_formats_complete", typed.NumberFormatsComplete },
+                    { "calculation_state", typed.CalculationState }
                 },
                 "Read cells from " +
                 TextBoundary.SingleLine(
@@ -782,6 +788,121 @@ namespace Scribble.Office
         }
 
         public const int MaxGroupedTotalRows = 20000;
+        public const int MaxTypedMetadataCells = 24;
+
+        private static WorkbookTypedRead CaptureTypedPage(
+            dynamic range,
+            int rows,
+            int columns)
+        {
+            object values = range.Value2;
+            object formulas = null;
+            try { formulas = range.Formula; }
+            catch { }
+            object numberFormats = null;
+            var formatsComplete = true;
+            try
+            {
+                numberFormats = range.NumberFormat;
+                if (numberFormats == null) formatsComplete = false;
+            }
+            catch
+            {
+                formatsComplete = false;
+            }
+            var table = WorkbookTypedCapture.Capture(
+                "live_page",
+                Convert.ToString(range.Worksheet.Name),
+                values,
+                formulas,
+                numberFormats,
+                null,
+                rows,
+                columns,
+                (int)range.Row,
+                (int)range.Column);
+            var types = new StringBuilder();
+            var metadata = table.Cells.Where(cell =>
+                !string.IsNullOrEmpty(cell.Formula) ||
+                (!string.IsNullOrEmpty(cell.NumberFormat) &&
+                 !string.Equals(cell.NumberFormat, "General",
+                     StringComparison.OrdinalIgnoreCase)) ||
+                cell.ValueType == AnalysisContract.DateValue ||
+                cell.ValueType == AnalysisContract.BooleanValue ||
+                cell.ValueType == AnalysisContract.ErrorValue).ToList();
+            foreach (var formulaCell in table.Cells.Where(cell =>
+                !string.IsNullOrEmpty(cell.Formula)))
+                formulaCell.Status = AnalysisContract.Unresolved;
+            for (var row = 0; row < rows; row++)
+            {
+                if (row > 0) types.Append('\n');
+                for (var column = 0; column < columns; column++)
+                {
+                    if (column > 0) types.Append('\t');
+                    types.Append(TypeCode(table.Cells[row * columns + column]
+                        .ValueType));
+                }
+            }
+            var complete = metadata.Count <= MaxTypedMetadataCells;
+            if (complete)
+            {
+                foreach (var cell in metadata)
+                {
+                    try
+                    {
+                        cell.DisplayText = Convert.ToString(
+                            range.Cells[cell.Row + 1, cell.Column + 1].Text,
+                            CultureInfo.InvariantCulture) ?? cell.DisplayText;
+                    }
+                    catch
+                    {
+                        complete = false;
+                    }
+                }
+            }
+            var selected = metadata.Take(MaxTypedMetadataCells).Select(cell =>
+                new Dictionary<string, object>
+                {
+                    { "address", cell.Reference },
+                    { "value_type", cell.ValueType },
+                    { "raw_value", cell.RawValue },
+                    { "display_text", cell.DisplayText },
+                    { "formula", cell.Formula },
+                    { "number_format", cell.NumberFormat },
+                    { "status", cell.Status }
+                }).ToArray();
+            return new WorkbookTypedRead
+            {
+                TypesTsv = types.ToString(),
+                Cells = selected,
+                Complete = complete,
+                NumberFormatsComplete = formatsComplete,
+                CalculationState = table.Cells.Any(cell =>
+                    !string.IsNullOrEmpty(cell.Formula))
+                        ? "cached_formula_values_unverified"
+                        : "literal_values"
+            };
+        }
+
+        private static string TypeCode(string valueType)
+        {
+            if (valueType == AnalysisContract.DecimalValue ||
+                valueType == AnalysisContract.IntegerValue) return "n";
+            if (valueType == AnalysisContract.DateValue) return "d";
+            if (valueType == AnalysisContract.BooleanValue) return "b";
+            if (valueType == AnalysisContract.MissingValue) return "m";
+            if (valueType == AnalysisContract.ErrorValue) return "e";
+            return "t";
+        }
+
+        private sealed class WorkbookTypedRead
+        {
+            public string TypesTsv { get; set; }
+            public object[] Cells { get; set; }
+            public bool Complete { get; set; }
+            public bool NumberFormatsComplete { get; set; }
+            public string CalculationState { get; set; }
+        }
 
         // Read-only pivot over one worksheet table. The sums are host decimal
         // arithmetic, so the receipt can evidence totals no cell states.
