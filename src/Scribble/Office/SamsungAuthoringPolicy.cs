@@ -269,5 +269,17 @@ namespace Scribble.Office
                 Regex.IsMatch(Text(f, "correction") + " " + Text(map, "issues"),
                     @"\b(slide|page)\b", RegexOptions.IgnoreCase));
         }
+        public static bool OnlyHostOwnedPageNumberBlockers(string text)
+        {
+            Dictionary<string, object> map;
+            if (!TryReadReview(text, out map)) return false;
+            var findings = Array(map, "findings").Select(ReadMap).ToArray();
+            return findings.Length > 0 && findings.All(f =>
+                Text(f, "severity") == "blocker" &&
+                Text(f, "type") == "layout" &&
+                Regex.IsMatch(Text(f, "correction"),
+                    @"\b(?:page|slide)\s*(?:number|numbering)\b",
+                    RegexOptions.IgnoreCase));
+        }
     }
 }

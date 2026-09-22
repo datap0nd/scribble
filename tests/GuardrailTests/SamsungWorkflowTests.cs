@@ -410,6 +410,12 @@ namespace GuardrailTests
             Check(SamsungAuthoringPolicy.WellFormedReview("{\"approved\":true,\"issues\":\"\",\"findings\":[]}"), "A strict empty approved review was rejected.");
             Check(SamsungAuthoringPolicy.OutlineReview.Contains("internal stable identifiers") && SamsungAuthoringPolicy.ReviewContract.Contains("keep issues under 240"), "Outline review contract must prevent verbose invalid approval loops.");
             Check(SamsungAuthoringPolicy.ReviewContract.Contains("opaque PowerPoint identity") && SamsungAuthoringPolicy.ReviewContract.Contains("expected_page text"), "Deck review can mistake a native slide ID for its sequence number.");
+            var numberOnly = "{\"approved\":false,\"issues\":\"Page number shows 7 but cover position is 1.\",\"findings\":[{\"severity\":\"blocker\",\"type\":\"layout\",\"correction\":\"Change the footer page number from - 7 - to 1.\"}]}";
+            Check(SamsungAuthoringPolicy.OnlyHostOwnedPageNumberBlockers(numberOnly), "A native-index-only page-number objection was not recognized.");
+            Check(!SamsungAuthoringPolicy.OnlyHostOwnedPageNumberBlockers(numberOnly.Replace("\"layout\"", "\"content\"")),
+                "A content defect bypassed review as a page-number false positive.");
+            Check(!SamsungAuthoringPolicy.OnlyHostOwnedPageNumberBlockers(numberOnly.Replace("Change the footer page number from - 7 - to 1.", "Fix clipped chart labels.")),
+                "A visual defect bypassed review as a page-number false positive.");
             var state = new DurableTaskState { EnumerationComplete = true, PresentationReviewRequired = true };
             Check(!state.CanComplete(false), "Deck completed without a final review receipt.");
             state.PresentationReviewReceipt = "reviewed"; Check(state.CanComplete(false), "Valid final receipt rejected.");

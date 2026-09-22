@@ -243,6 +243,24 @@ namespace Scribble.Office
             }
             ArchiveOwnedPages(group);
         }
+        private static bool NativePageNumberMatches(PresentationDraftWriter.SamsungOutput output)
+        {
+            try
+            {
+                dynamic slide = output.Slide;
+                var expected = "- " + (int)slide.SlideIndex + " -";
+                if (output.Page.PageNumber.Text != expected) return false;
+                for (var index = 1; index <= (int)slide.Shapes.Count; index++)
+                {
+                    dynamic shape = slide.Shapes[index];
+                    if ((int)shape.HasTextFrame != 0 &&
+                        string.Equals(Convert.ToString(shape.TextFrame.TextRange.Text).Trim(), expected,
+                            StringComparison.Ordinal)) return true;
+                }
+            }
+            catch { /* An unreadable native footer cannot bypass visual review. */ }
+            return false;
+        }
         private async Task ReviewOwnedPagesAsync(IReadOnlyList<PresentationDraftWriter.SamsungOutput> outputs,
             Dictionary<string, Dictionary<string, object>> content, string source, string prompt, OpenAiCompatibleClient client,
             AppSettings settings, CancellationToken token, SamsungGenerationJournal journal, Action<int, int> progress)
@@ -259,6 +277,7 @@ namespace Scribble.Office
                         logical_content = content[output.Page.Source.Id], expected_page = output.Page.Elements.Select(e => new { text = e.Text, table = e.Table == null ? null : new { e.Table.Headers, e.Table.Rows }, chart = e.Chart == null ? null : new { title = e.Chart.Title, type = e.Chart.TypeCode, e.Chart.Categories, series = e.Chart.Series.Select(v => new { v.Name, v.Values }) } }), evidence = output.Page.Source.Evidence }), output.Image, token);
                 if (PresentationInspection.Fingerprint(output.Slide) != before || PresentationDraftWriter.ExportSamsung(output) != output.Image) throw new InvalidOperationException("SLIDE_CHANGED_DURING_REVIEW");
                 if (ReviewApproved(review) ||
+                    (NativePageNumberMatches(output) && SamsungAuthoringPolicy.OnlyHostOwnedPageNumberBlockers(review)) ||
                     SamsungAuthoringPolicy.OnlyOtherSlideCoverageBlockers(review, output.Page.Source.Id))
                     continue;
                 var id = output.Page.Source.Id; int count; attempts.TryGetValue(id, out count);
@@ -285,7 +304,9 @@ namespace Scribble.Office
                         "Review consecutive native slides as an executive audience would see them at thumbnail size. Check visual consistency, focal hierarchy, balanced use of the canvas, meaningful visual storytelling and Samsung fidelity. Reject slides that resemble a Word page pasted onto a canvas or rely on a plain multiline data dump. A takeaway that adds a distinct sourced fact is not a repeated-conclusion defect. White space framing a substantial native chart or table is intentional. The page number is host-owned and follows actual native slide order; flag it only when the visible number differs from its supplied expected_page element. Report the provided logical slide IDs for affected slides." + SamsungAuthoringPolicy.ReviewContract,
                         _serializer.Serialize(new { prompt, slides = subset.Select(o => new { slide_id = o.Page.Source.Id, native_id = (int)((dynamic)o.Slide).SlideID,
                             expected_page = o.Page.Elements.Select(e => new { text = e.Text, table = e.Table == null ? null : new { e.Table.Headers, e.Table.Rows }, chart = e.Chart == null ? null : new { title = e.Chart.Title, type = e.Chart.TypeCode, e.Chart.Categories, series = e.Chart.Series.Select(v => new { v.Name, v.Values }) } }) }) }), SamsungDeckOverview.Montage(subset.Select(o => o.Image)), token);
-                    if (!ReviewApproved(visual)) { findings = visual; break; }
+                    if (!ReviewApproved(visual) &&
+                        !(subset.All(NativePageNumberMatches) && SamsungAuthoringPolicy.OnlyHostOwnedPageNumberBlockers(visual)))
+                    { findings = visual; break; }
                 }
                 var deckContent = _serializer.Serialize(new { instruction = prompt, plan,
                     briefs = _taskContext.State.HostData.ContainsKey("samsung_briefs") ? _taskContext.State.HostData["samsung_briefs"] : null,
@@ -293,7 +314,9 @@ namespace Scribble.Office
                 if (findings == null)
                 {
                     var verdict = await ReviewSamsungAsync(client, settings, SamsungAuthoringPolicy.DeckReview + SamsungAuthoringPolicy.ReviewContract, deckContent, null, token);
-                    if (!ReviewApproved(verdict)) findings = verdict;
+                    if (!ReviewApproved(verdict) &&
+                        !(outputs.All(NativePageNumberMatches) && SamsungAuthoringPolicy.OnlyHostOwnedPageNumberBlockers(verdict)))
+                        findings = verdict;
                 }
                 // Prevent a late user edit from inheriting the finished-deck receipt.
                 foreach (var output in outputs)
