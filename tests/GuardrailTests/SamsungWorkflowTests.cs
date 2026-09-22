@@ -500,6 +500,36 @@ namespace GuardrailTests
             Check(ToolContractValidator.Validate(call, PresentationToolCatalog.DraftDefinition()).Count > 0, "A string chart value bypassed nullable number validation.");
             var nullable = (Dictionary<string, object>)GeminiCodeAssistGateway.SanitizeSchema(new Dictionary<string, object> { { "type", new[] { "number", "null" } } });
             Check((string)nullable["type"] == "NUMBER" && (bool)nullable["nullable"], "Gemini lost the nullable numeric contract.");
+            var writer = typeof(DocumentDraftHost).Assembly.GetType("Scribble.Office.PresentationDraftWriter", true);
+            var cellValue = writer.GetMethod("ChartCellValue", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+            var gapValues = new double?[] { 100, null, 120 };
+            Check(Convert.ToDouble(cellValue.Invoke(null, new object[] { gapValues, 0 })) == 100d &&
+                cellValue.Invoke(null, new object[] { gapValues, 1 }) == null &&
+                cellValue.Invoke(null, new object[] { gapValues, 3 }) == null,
+                "A missing chart point was boxed as zero or an empty nullable value for COM.");
+            var missingJune = new[] { new { id = "trend", title = "Six-month trend", layout = "chart",
+                chart = new { type = "column", title = "Revenue and Cost EUR", categories = new[] { "2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06" },
+                    series = new[] { new { name = "Revenue EUR", values = new double?[] { 1, 2, 3, 4, 5, null } },
+                        new { name = "Cost EUR", values = new double?[] { 1, 2, 3, 4, 5, null } } } } } };
+            var parsed = writer.GetMethod("ParseSlides", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)
+                .Invoke(null, new object[] { json.Deserialize<object[]>(json.Serialize(missingJune)) });
+            var validate = typeof(DocumentDraftHost).GetMethod("ValidatePromptChartConstraints",
+                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+            validate.Invoke(null, new[] { (object)"Plot the reported periods and disclose a missing value.", parsed });
+            var authorityRejected = false;
+            try
+            {
+                validate.Invoke(null, new[] { (object)"Use the attached workbook as the authority for June facts. Include all six YYYY-MM categories and exactly two series.", parsed });
+            }
+            catch (System.Reflection.TargetInvocationException error)
+            { authorityRejected = error.InnerException.Message.Contains("SLIDE_CHART_AUTHORITY_GAP"); }
+            Check(authorityRejected, "A stale blank June chart point passed despite the user's workbook authority instruction.");
+            var placeholder = new Dictionary<string, object> { { "title", "Sales repair" },
+                { "subtitle", "June headline values: recalc pending" },
+                { "evidence", "The old source says stale - recalc from WB01" } };
+            Reject(() => SamsungAuthoringPolicy.ValidateRepairCompleteness("Create a repaired deck", new[] { placeholder }));
+            placeholder["subtitle"] = "June headline values verified from WB01";
+            SamsungAuthoringPolicy.ValidateRepairCompleteness("Create a repaired deck", new[] { placeholder });
             var annotated = new { title = "Comparison", subtitle = "Review the supporting row", layout = "dual_visual",
                 table = new { headers = new[] { "Item", "Units" }, rows = new[] { new[] { "A", "100" } } },
                 secondary_table = new { headers = new[] { "Item", "Units" }, rows = new[] { new[] { "B", "120" } } },

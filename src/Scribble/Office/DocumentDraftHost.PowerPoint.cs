@@ -67,6 +67,7 @@ namespace Scribble.Office
                 SamsungAuthoringPolicy.ValidateRequestedHeadlineLayout(prompt,
                     rawSlides.Select(SamsungAuthoringPolicy.ReadMap));
                 SamsungAuthoringPolicy.ValidateVisualDesign(rawSlides.Select(SamsungAuthoringPolicy.ReadMap));
+                SamsungAuthoringPolicy.ValidateRepairCompleteness(prompt, rawSlides.Select(SamsungAuthoringPolicy.ReadMap));
                 var slides = ParsedSlides(args);
                 ValidatePromptChartConstraints(prompt, slides);
                 var planValue = ParsedArray(args, "plan", false);
@@ -424,6 +425,12 @@ namespace Scribble.Office
                         chart.Series.Count != 2)
                         throw new InvalidOperationException(
                             "SLIDE_CHART_SERIES_COUNT: The requested six-month chart requires exactly two source-backed series in the requested order.");
+                    if (Regex.IsMatch(prompt ?? string.Empty,
+                            @"(?is)\battached\s+workbook\b.{0,60}\bauthority\b.{0,40}\bJune\s+facts\b") &&
+                        chart.Series.Any(series => series.Values.Count < 6 || !series.Values[5].HasValue))
+                        throw new InvalidOperationException(
+                            "SLIDE_CHART_AUTHORITY_GAP: The user designated the attached workbook as the authority for June facts. " +
+                            "Do not copy a stale blank June point from the old presentation. Read and cite the workbook's June records or explain why they cannot support a numeric point before writing this chart.");
                 }
         }
 

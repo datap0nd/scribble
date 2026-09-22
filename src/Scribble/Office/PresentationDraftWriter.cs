@@ -1340,6 +1340,16 @@ namespace Scribble.Office
         [ThreadStatic]
         internal static string LastChartFailure;
 
+        // COM's dynamic binder cannot assign an empty Nullable<double> to a
+        // chart-data cell ("Nullable object must have a value"). Box only a
+        // real number; a missing point is a blank cell, never numeric zero.
+        internal static object ChartCellValue(IReadOnlyList<double?> values, int category)
+        {
+            if (values == null || category < 0 || category >= values.Count || !values[category].HasValue)
+                return null;
+            return values[category].Value;
+        }
+
         private static bool AddChartToSlide(
             dynamic slide,
             DraftChart chart,
@@ -1422,12 +1432,10 @@ namespace Scribble.Office
                     {
                         var values =
                             chart.Series[series].Values;
-                        dataSheet.Cells[
-                            category + 2,
-                            series + 2].Value2 =
-                            category < values.Count
-                                ? values[category]
-                                : (double?)null;
+                        dynamic pointCell = dataSheet.Cells[category + 2, series + 2];
+                        var pointValue = ChartCellValue(values, category);
+                        if (pointValue == null) pointCell.ClearContents();
+                        else pointCell.Value2 = pointValue;
                     }
                 }
 
@@ -1478,14 +1486,15 @@ namespace Scribble.Office
                 if ((int)slideChart.SeriesCollection().Count != chart.Series.Count) throw new InvalidOperationException("Chart source series were not applied.");
                 for (var s = 0; s < chart.Series.Count; s++)
                 {
-                    var actual = ComArrayItems((object)slideChart.SeriesCollection(s + 1), "Values").Select(Convert.ToDouble).ToArray();
+                    var actual = ComArrayItems((object)slideChart.SeriesCollection(s + 1), "Values").ToArray();
                     for (var point = 0; point < chart.Series[s].Values.Count; point++)
                     {
                         var expected = chart.Series[s].Values[point];
                         // Native series may expose a blank as zero; verify the
                         // embedded cell itself so a missing value is never written as zero.
                         object cellValue = dataSheet.Cells[point + 2, s + 2].Value2;
-                        if (!expected.HasValue ? cellValue != null : point >= actual.Length || actual[point] != expected.Value)
+                        if (!expected.HasValue ? cellValue != null :
+                            point >= actual.Length || Convert.ToDouble(actual[point]) != expected.Value)
                             throw new InvalidOperationException("Chart data readback failed.");
                     }
                     var labels = ComArrayItems((object)slideChart.SeriesCollection(s + 1), "XValues").Select(Convert.ToString).ToArray();
