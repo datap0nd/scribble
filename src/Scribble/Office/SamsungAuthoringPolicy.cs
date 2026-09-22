@@ -27,7 +27,7 @@ namespace Scribble.Office
             "Finish every planned ID across batches. Exact slide counts include covers and appendices. " +
             "title names the subject; subtitle is the evidence-backed action title on analytical slides; takeaway is optional and adds an implication rather than repeating subtitle. " +
             "Use purpose explanatory for definitions and setup; covers, dividers, agendas and explanatory slides do not need forced conclusions. " +
-            "A cover, divider or closing slide accepts title and subtitle only: omit unit, takeaway, caption, bullets, cards, tables, charts, images, claims and calculations. Source references may remain in sources or footnote. " +
+            "A cover, divider or closing slide accepts title and subtitle only: omit unit, takeaway, caption, bullets, cards, tables, charts, images, claims and calculations. Keep its visible sources and footnote to a short source name; move completeness caveats into the relevant evidence slide, not the tiny cover footer. The full citation remains in speaker notes. " +
             "Keep required data, labels and rows visible. Remove repetition before removing detail; do not move required content into notes or appendices without authorization. " +
             "If mandatory content cannot fit the exact count, explain the conflict and ask which constraint may change. " +
             "Preserve units, periods, baselines, missing values and qualifications. Never invent facts, commitments, quotes or causal claims. " +
@@ -159,7 +159,12 @@ namespace Scribble.Office
             foreach (var slide in slides ?? new IDictionary<string, object>[0])
             {
                 var layout = Text(slide, "layout").ToLowerInvariant();
-                if (new[] { "cover", "divider", "closing", "agenda" }.Contains(layout)) continue;
+                if (new[] { "cover", "divider", "closing", "agenda" }.Contains(layout))
+                {
+                    if (Text(slide, "sources").Length > 90 || Text(slide, "footnote").Length > 90)
+                        throw new InvalidOperationException("SLIDE_COVER_FOOTER_TOO_LONG: Keep a cover's visible source line under 90 characters. Put data-quality caveats on the relevant evidence slide; full source detail remains in speaker notes.");
+                    continue;
+                }
                 var cards = Array(slide, "cards");
                 var hasStructuredVisual = HasStructuredVisual(slide);
                 if (layout == "scorecard" && (cards.Length < 2 || cards.Length > 4))

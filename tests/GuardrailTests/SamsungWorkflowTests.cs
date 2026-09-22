@@ -416,6 +416,10 @@ namespace GuardrailTests
                 "A content defect bypassed review as a page-number false positive.");
             Check(!SamsungAuthoringPolicy.OnlyHostOwnedPageNumberBlockers(numberOnly.Replace("Change the footer page number from - 7 - to 1.", "Fix clipped chart labels.")),
                 "A visual defect bypassed review as a page-number false positive.");
+            Reject(() => SamsungAuthoringPolicy.ValidateVisualDesign(new[] {
+                new Dictionary<string, object> { { "layout", "cover" }, { "sources", new string('S', 91) } } }));
+            SamsungAuthoringPolicy.ValidateVisualDesign(new[] {
+                new Dictionary<string, object> { { "layout", "cover" }, { "sources", "Atlas Components | WB01" } } });
             var state = new DurableTaskState { EnumerationComplete = true, PresentationReviewRequired = true };
             Check(!state.CanComplete(false), "Deck completed without a final review receipt.");
             state.PresentationReviewReceipt = "reviewed"; Check(state.CanComplete(false), "Valid final receipt rejected.");
