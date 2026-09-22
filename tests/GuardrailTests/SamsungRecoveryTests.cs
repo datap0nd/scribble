@@ -132,6 +132,12 @@ namespace GuardrailTests
                 .ToArray();
             Check(largeText.Contains("144") && largeText.Contains("24") && !largeText.Contains("2026"),
                 "A reporting year was promoted as a hero metric instead of the record count.");
+            Check((bool)Invoke(Type("PresentationDraftWriter"), "RetryableSamsungChartFailure", null,
+                "write chart data: COMException 0x800A01A8 Exception from HRESULT: 0x800A01A8"),
+                "A transient embedded Excel chart-grid failure should be retried inside the host call.");
+            Check(!(bool)Invoke(Type("PresentationDraftWriter"), "RetryableSamsungChartFailure", null,
+                "series readback: InvalidOperationException Chart values differ"),
+                "A factual native chart mismatch must not be retried as a transient COM failure.");
             Func<string, object[]> parse = value => json.Deserialize<object[]>(value);
             var original = parse("[{\"kind\":\"replace_text\",\"slide_id\":42,\"shape_id\":9,\"fingerprint\":\"fixed\",\"before\":\"Sales 100 units\",\"text\":\"Sales increased to 125 units\"}]");
             var corrected = parse(json.Serialize(original).Replace("Sales increased to 125 units", "Sales: 125 units"));

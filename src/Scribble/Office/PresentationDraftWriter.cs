@@ -1350,6 +1350,7 @@ namespace Scribble.Office
         {
             var step = "AddChart2";
             LastChartFailure = null;
+            dynamic dataWorkbook = null;
             try
             {
                 dynamic shape = slide.Shapes.AddChart2(
@@ -1377,7 +1378,6 @@ namespace Scribble.Office
                 }
 
                 step = "ChartData.Workbook";
-                dynamic dataWorkbook = null;
                 Exception workbookFailure = null;
                 for (var attempt = 0; attempt < 3 && dataWorkbook == null; attempt++)
                 {
@@ -1514,6 +1514,9 @@ namespace Scribble.Office
             }
             catch (Exception exception)
             {
+                // A failed embedded-grid write must not leave its Excel
+                // workbook open before the owning slide retries the chart.
+                try { if (dataWorkbook != null) dataWorkbook.Close(false); } catch { }
                 var com = exception as System.Runtime.InteropServices.COMException;
                 LastChartFailure = step + ": " + exception.GetType().Name +
                     (com != null ? " 0x" + com.ErrorCode.ToString("X8") : string.Empty) + " " +

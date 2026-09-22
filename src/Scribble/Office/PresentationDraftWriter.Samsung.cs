@@ -113,6 +113,9 @@ namespace Scribble.Office
             string font = "Arial", bool bold = false, string fill = null, string color = "#000000")
         { return new SamsungElement { Text = text ?? "", Box = box, Size = size, Minimum = minimum, Font = font, Bold = bold, Fill = fill, Color = color }; }
 
+        internal static bool RetryableSamsungChartFailure(string failure)
+        { return (failure ?? "").IndexOf("write chart data: COMException 0x800A01A8", StringComparison.OrdinalIgnoreCase) >= 0; }
+
         internal static List<SamsungPage> ComposeSamsung(IReadOnlyList<DraftSlide> drafts)
         {
             var pages = new List<SamsungPage>();
@@ -628,7 +631,21 @@ namespace Scribble.Office
                 }
                 else if (element.Chart != null)
                 {
-                    if (!AddChartToSlide(slide, element.Chart, box.X, box.Y, box.Width, box.Height))
+                    var beforeChartShapes = (int)slide.Shapes.Count;
+                    var chartCreated = false;
+                    for (var attempt = 0; attempt < 3; attempt++)
+                    {
+                        if (AddChartToSlide(slide, element.Chart, box.X, box.Y, box.Width, box.Height))
+                        { chartCreated = true; break; }
+                        if (attempt == 2 || !RetryableSamsungChartFailure(LastChartFailure)) break;
+                        // AddChart2 may have left a partial native shape. Only
+                        // remove shapes added by this failed attempt, never a
+                        // pre-existing slide shape or another user's content.
+                        while ((int)slide.Shapes.Count > beforeChartShapes)
+                            slide.Shapes[(int)slide.Shapes.Count].Delete();
+                        System.Threading.Thread.Sleep(350 * (attempt + 1));
+                    }
+                    if (!chartCreated)
                         throw new InvalidOperationException("SLIDE_CHART_FAILED: Native chart could not be created; the draft remains incomplete. Host step " +
                             (LastChartFailure ?? "unknown") + ".");
                     shape = slide.Shapes[slide.Shapes.Count];
