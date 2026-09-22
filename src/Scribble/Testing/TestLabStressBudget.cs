@@ -14,8 +14,9 @@ namespace Scribble.Testing
     public static class TestLabStressBudget
     {
         // Final native validation uses the remaining balance on the same
-        // no-reset key. Keep a $0.25 reserve below its $20 hard cap;
-        // stop starting requests before the final checkpoint.
+        // no-reset key. A final targeted validation may use the remaining
+        // balance while retaining $0.05 below the $20 hard cap. Every model
+        // request rechecks the live key before dispatch.
         public const decimal MaximumTotalUsd = 20m;
         public const decimal MaximumCheckpointUsageUsd = 20m;
         public static async Task GuardRequestAsync(AppSettings actual, string requestedModel, CancellationToken cancel)
@@ -132,9 +133,10 @@ namespace Scribble.Testing
                 key.limit_remaining < 0 || key.limit_remaining > key.limit || key.usage < 0 ||
                 key.is_management_key || key.is_provisioning_key)
                 throw new InvalidOperationException("The API key must be an inference key with a positive total limit of at most $20 and no periodic reset. Unverified limits cannot start stress tests.");
-            if (key.limit_remaining <= .25m)
+            var reserve = key.limit == MaximumTotalUsd ? .05m : .25m;
+            if (key.limit_remaining <= reserve)
                 throw new InvalidOperationException("API budget nearly exhausted: $" + key.limit_remaining.Value.ToString("0.000", CultureInfo.InvariantCulture) + " remains. Remaining tests were not submitted.");
-            if (key.usage >= MaximumCheckpointUsageUsd - .25m)
+            if (key.usage >= MaximumCheckpointUsageUsd - reserve)
                 throw new InvalidOperationException("Golden Showcase checkpoint budget nearly exhausted: total key usage is $" + key.usage.Value.ToString("0.000", CultureInfo.InvariantCulture) + ". The checkpoint stops before $" + MaximumCheckpointUsageUsd.ToString("0.00", CultureInfo.InvariantCulture) + " total usage; remaining tests were not submitted.");
             return key;
         }

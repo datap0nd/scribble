@@ -329,21 +329,25 @@ namespace Scribble.Office
                 {
                     var body = string.Join("\n", draft.Cards[cardIndex].Points);
                     if (MeasureEvidenceBody(body, width) > region.Height - 160f) continue;
-                    var tokens = Regex.Matches(body,
-                            @"(?<![A-Za-z0-9])(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?%?(?![A-Za-z0-9,])")
-                        .Cast<Match>().Where(match =>
+                    var tokens = draft.Cards[cardIndex].Points.SelectMany(point =>
+                            Regex.Matches(point,
+                                @"(?<![A-Za-z0-9])(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?%?(?![A-Za-z0-9,])")
+                                .Cast<Match>().Select(match => new { point, match }))
+                        .Where(candidate =>
                         {
                             int year;
-                            var value = match.Value;
+                            var value = candidate.match.Value;
                             return !Regex.IsMatch(value, @"^0\d{2,}$") &&
-                                (!int.TryParse(value, out year) || year < 1900 || year > 2100);
+                                (!int.TryParse(value, out year) || year < 1900 || year > 2100) &&
+                                IsExplicitCardMetric(candidate.point, candidate.match);
                         })
-                        .Where(match => used.Add(match.Value)).Take(2).ToArray();
+                        .Where(candidate => used.Add(candidate.match.Value)).Take(2).ToArray();
                     for (var tokenIndex = 0; tokenIndex < tokens.Length; tokenIndex++)
                     {
-                        if (tokenIndex == 0) evidenceHeroes[cardIndex] = tokens[tokenIndex].Value;
-                        else secondaryHero[cardIndex] = tokens[tokenIndex].Value;
-                        var following = body.Substring(tokens[tokenIndex].Index + tokens[tokenIndex].Length);
+                        if (tokenIndex == 0) evidenceHeroes[cardIndex] = tokens[tokenIndex].match.Value;
+                        else secondaryHero[cardIndex] = tokens[tokenIndex].match.Value;
+                        var following = tokens[tokenIndex].point.Substring(
+                            tokens[tokenIndex].match.Index + tokens[tokenIndex].match.Length);
                         var label = Regex.Match(following, @"^\s+(?<word>[A-Za-z]+)");
                         heroLabels[cardIndex, tokenIndex] = label.Success ? label.Groups["word"].Value : "";
                     }
@@ -503,6 +507,21 @@ namespace Scribble.Office
                 if (draft.Layout == "roadmap" && i < count - 1)
                     elements.Add(new SamsungElement { Box = new RectangleF(box.Right, box.Top + box.Height / 2, gap, 1), Connector = true });
             }
+        }
+
+        private static bool IsExplicitCardMetric(string point, Match token)
+        {
+            var before = point.Substring(0, token.Index).Trim();
+            var after = point.Substring(token.Index + token.Length);
+            // A number in a row identifier or in parenthetical row detail is
+            // evidence, not the KPI of the card. Require a metric noun next to
+            // the number or an explicit metric label before it.
+            return Regex.IsMatch(after,
+                       @"^\s+(?:(?:unique|distinct|complete|valid)\s+)?(?:rows?|records?|rowids?|observations?|obs|groups?|units?|blanks?|duplicates?|points?|percent|EUR|USD)\b",
+                       RegexOptions.IgnoreCase) ||
+                   Regex.IsMatch(before,
+                       @"\b(?:revenue|cost|margin|sales|budget|profit|headcount|rate|total)\s*(?:EUR|USD|%)?\s*[:=]?\s*$",
+                       RegexOptions.IgnoreCase);
         }
 
         private static float EvidenceCardContentHeight(DraftCard card, float width)

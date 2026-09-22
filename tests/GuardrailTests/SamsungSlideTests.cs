@@ -96,6 +96,19 @@ namespace GuardrailTests
             if (qualityElements.Count(e => Convert.ToDouble(e["size"]) >= 26 &&
                     System.Text.RegularExpressions.Regex.IsMatch(Convert.ToString(e["text"]), @"\d")) < 2)
                 throw new Exception("Numeric evidence cards need at least two prominent source-backed metrics.");
+            var incidentalNumber = SamsungPresentationReview.InspectPlan(json.Serialize(new[] { new {
+                title = "Data-quality limits", layout = "cards", subtitle = "Ledger is complete",
+                cards = new[] {
+                    new { heading = "Coverage", points = new[] { "24 rows in June", "Four groups" } },
+                    new { heading = "Data integrity", points = new[] { "Revenue and Cost complete", "WB01-0104 Units/UnitCost row full (33 / 50)" } },
+                    new { heading = "Method", points = new[] { "Rates use aggregates" } },
+                    new { heading = "Limits", points = new[] { "Planned follow-ups are not results" } }
+                } } }));
+            var incidentalElements = ((IEnumerable)((IEnumerable)json.DeserializeObject(json.Serialize(incidentalNumber)))
+                .Cast<Dictionary<string, object>>().Single()["elements"]).Cast<Dictionary<string, object>>();
+            if (incidentalElements.Any(e => Convert.ToDouble(e["size"]) >= 26 &&
+                    new[] { "33", "50", "0104" }.Contains(Convert.ToString(e["text"]))))
+                throw new Exception("An incidental source-row value was promoted as the Data integrity KPI.");
             if (((IEnumerable)evidencePage["elements"]).Cast<Dictionary<string, object>>()
                 .Any(e => new[] { Convert.ToString(e["fill"]), Convert.ToString(e["color"]) }
                     .Any(color => !string.IsNullOrEmpty(color) && !palette.Contains(color))))
