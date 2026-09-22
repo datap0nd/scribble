@@ -1995,7 +1995,13 @@ namespace Scribble.Office
                     Takeaway = SamsungString(map, "takeaway", 400),
                     Caption = SamsungString(map, "caption", 180),
                     Sources = SamsungString(map, "sources", 2000),
-                    Evidence = SamsungString(map, "evidence", 12000),
+                    // A source-backed slide can legitimately cite several
+                    // 3,000-character retained passages (for example six
+                    // monthly chart observations). The old 12k ceiling
+                    // rejected valid slide batches after authorization was
+                    // already underway and sent the model into repeated
+                    // source reads instead of finishing the deck.
+                    Evidence = SamsungString(map, "evidence", 32000),
                     Id = SamsungString(map, "id", 80),
                     Annotations = SamsungAuthoringPolicy.Array(map, "annotations"),
                     ImageNames = ValidateArray(SamsungValue(map, "image_names"), 4, 250).Select(Convert.ToString).ToArray(),

@@ -172,6 +172,10 @@ namespace GuardrailTests
             if (count < 2 || covered != 40) throw new Exception("Table pagination dropped or duplicated rows.");
             ExpectFailure(() => SamsungSlideDesign.Fit(new string('X', 5000), "Arial", new RectangleF(0, 0, 100, 20), 18, 14));
             ExpectFailure(() => SamsungPresentationReview.InspectPlan("[{\"title\":\"Bad chart\",\"chart\":{\"categories\":[\"A\",\"B\"],\"series\":[{\"name\":\"Sales\",\"values\":[1]}]}}]"));
+            // Six source passages can exceed the old 12k evidence limit even
+            // though the native slide itself remains compact and well formed.
+            SamsungPresentationReview.InspectPlan(json.Serialize(new[] { new {
+                title = "Monthly comparison", layout = "cover", evidence = new string('E', 18000) } }));
             if (SamsungSlideDesign.FontFor("한글", "Arial") != "Malgun Gothic") throw new Exception("Korean font mapping lost.");
             if (!SamsungSlideDesign.SameOwner("ABCDEF", "abcdef") || SamsungSlideDesign.SameOwner("", "")) throw new Exception("PowerPoint tag normalization broke ownership checks.");
         }
