@@ -74,6 +74,13 @@ namespace Scribble.Testing
                 }
                 catch (Exception error) when (RetryTransientBudgetCheck(error, cancel.IsCancellationRequested, attempt))
                 { await Task.Delay(TimeSpan.FromMilliseconds(500 * (attempt + 1)), cancel).ConfigureAwait(true); }
+                catch (Exception error) when (!cancel.IsCancellationRequested &&
+                    (error is TaskCanceledException || error is HttpRequestException))
+                {
+                    throw new InvalidOperationException(
+                        "Cannot verify the API spending cap after three transient network attempts. No next model request was submitted.",
+                        error);
+                }
             }
             if (text == null)
                 throw new InvalidOperationException("Cannot verify the API spending cap after three transient network attempts. No next model request was submitted.");
@@ -86,7 +93,7 @@ namespace Scribble.Testing
                 checkpoint_stop_usage_usd = MaximumCheckpointUsageUsd
             }) + Environment.NewLine, new UTF8Encoding(false));
         }
-        internal static bool RetryTransientBudgetCheck(Exception error, bool userCancelled, int attempt)
+        public static bool RetryTransientBudgetCheck(Exception error, bool userCancelled, int attempt)
         { return !userCancelled && attempt < 2 && (error is TaskCanceledException || error is HttpRequestException); }
         public static void RecordProviderResponse(int httpStatus)
         {
