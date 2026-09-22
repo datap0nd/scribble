@@ -8251,7 +8251,7 @@ namespace GuardrailTests
             Assert(retryAfterMethod != null,
                 "The OpenRouter rate-limit backoff helper is missing.");
             using (var rateLimited = new System.Net.Http.HttpResponseMessage(
-                HttpStatusCode.TooManyRequests))
+                (HttpStatusCode)429))
             {
                 var body = "{\"error\":{\"metadata\":{\"headers\":{\"Retry-After\":\"10\"}}}}";
                 Assert((TimeSpan)retryAfterMethod.Invoke(null,
