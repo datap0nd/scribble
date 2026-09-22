@@ -122,7 +122,7 @@ namespace GuardrailTests
                 var testCase = new LabCase { id = "PP01", host = "PowerPoint", prompt = "Create one editable synthetic review slide.",
                     inputs = new string[0], artifacts = new[] { "pptx" }, oracle_ref = "evaluator-only/cases/PP01.json" };
                 Write(root, "operator/cases.json", new[] { testCase }); Write(root, "operator/mail-index.json", new MailFixture[0]);
-                Write(root, "evaluator-only/theme.json", new { width = 960, height = 540, fonts = new[] { "Arial", "Arial Narrow" }, palette = new[] { "000000" } });
+                Write(root, "evaluator-only/theme.json", new { width = 960, height = 540, fonts = new[] { "Arial", "Arial Narrow" }, palette = new[] { "000000", "F2F2F2" } });
                 Write(root, testCase.oracle_ref, new { id = "PP01", checks = new[] { new { kind = "presentation", slide_count = 1,
                     theme_ref = "evaluator-only/theme.json", required_facts = new[] { "46000" } } } });
                 var files = Directory.GetFiles(root, "*", SearchOption.AllDirectories).Select(path => new KitFile {
@@ -155,6 +155,19 @@ namespace GuardrailTests
                 body.text = outputText = "Revenue EUR 46,000; cost EUR 28,000; margin 39.13%.";
                 Check(evaluate(new[] { body }, new string[0]).Any(c => c.hard && !c.passed),
                     "A numeric body-text dump with no visual hierarchy passed presentation grading.");
+                var panels = new[] { 40d, 340d, 640d }.Select(x => new StressShape { name = "Card panel", fill_color = "#F2F2F2",
+                    x = x, y = 215, width = 250, height = 195 }).ToArray();
+                var cardLeads = new[] {
+                    new StressShape { name = "Coverage lead", text = "144 source rows", font = "Arial", color = "#000000", font_size = 18,
+                        x = 50, y = 275, width = 220, height = 45, available_width = 216, available_height = 43, bound_width = 170, bound_height = 24 },
+                    new StressShape { name = "Integrity lead", text = "0 duplicate RowIDs", font = "Arial", color = "#000000", font_size = 18,
+                        x = 350, y = 275, width = 220, height = 45, available_width = 216, available_height = 43, bound_width = 180, bound_height = 24 } };
+                body.text = "Data quality 2026"; outputText = "Profit EUR 46,000";
+                Check(evaluate(new[] { body }.Concat(panels).Concat(cardLeads).ToArray(), new string[0]).All(c => c.passed),
+                    "Verified counts in distinct, readable cards were incorrectly forced into oversized KPI numerals.");
+                cardLeads[1].text = "WB01-0033 / 50";
+                Check(evaluate(new[] { body }.Concat(panels).Concat(cardLeads).ToArray(), new string[0]).Any(c => c.hard && !c.passed),
+                    "An incidental source-row identifier satisfied the structured-card metric guardrail.");
                 var secondMetric = new StressShape { name = "Metric 2", text = "EUR 28,000 / 39.13%", font = "Arial", color = "#000000", font_size = 32,
                     x = 280, y = 140, width = 200, height = 60, available_width = 196, available_height = 58, bound_width = 150, bound_height = 36 };
                 body.text = "EUR 46,000"; body.font_size = 32; body.width = 200; body.available_width = 196; body.bound_width = 150; body.bound_height = 36;

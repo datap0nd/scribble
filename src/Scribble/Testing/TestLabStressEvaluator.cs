@@ -321,7 +321,19 @@ namespace Scribble.Testing
             if (numericTokens < 3) return true;
             var prominentMetrics = body.Count(shape => shape.font_size >= 26 &&
                 Regex.IsMatch(shape.text ?? "", @"[-+\u2212]?\d"));
-            return prominentMetrics >= 2;
+            if (prominentMetrics >= 2) return true;
+            // A data-quality slide can give its verified counts readable,
+            // bold leads inside distinct cards without turning an incidental
+            // row number into a giant KPI. A flat numeric text dump still fails.
+            var panels = slide.shapes.Where(shape => string.IsNullOrWhiteSpace(shape.text) &&
+                !string.IsNullOrEmpty(shape.fill_color) && shape.width >= slideHeight * .30 &&
+                shape.height >= slideHeight * .25).ToArray();
+            return panels.Count(panel => body.Any(shape => shape.font_size >= 17 &&
+                shape.x >= panel.x + 4 && shape.x + shape.width <= panel.x + panel.width + 2 &&
+                shape.y >= panel.y + panel.height * .15 && shape.y < panel.y + panel.height * .75 &&
+                Regex.IsMatch(shape.text ?? "",
+                    @"^\s*\d[\d,]*(?:\.\d+)?\s+(?:(?:source|unique|distinct)\s+)?(?:rows?|records?|duplicates?|duplicate\s+RowIDs?|blanks?|observations?)\b",
+                    RegexOptions.IgnoreCase))) >= 2;
         }
         private static bool Headers(string value, string[] expected)
         {
