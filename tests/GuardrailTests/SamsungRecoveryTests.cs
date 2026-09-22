@@ -215,6 +215,26 @@ namespace GuardrailTests
                 "[{\"id\":\"trend\",\"title\":\"Trend\",\"layout\":\"chart\",\"chart\":{\"type\":\"column\",\"title\":\"Revenue EUR\",\"categories\":[\"May\",\"2026-06\"],\"series\":[{\"name\":\"Revenue EUR\",\"values\":[85519,82992]}]}}]"));
             Reject(() => Invoke(typeof(DocumentDraftHost), "ValidatePromptChartConstraints", null,
                 "Use YYYY-MM categories and EUR in the title.", mixedCategories), "SLIDE_CHART_CATEGORY_FORMAT");
+            var calculationFinding = json.Serialize(new { approved = false, findings = new[] {
+                new { slide_id = "headline", object_id = "calculation:Gross margin % (May)", type = "facts",
+                    correction = "Correct May margin from 57.08% to 57.26%." } } });
+            Check((bool)Invoke(typeof(DocumentDraftHost), "OutlineReviewApprovedOrDeterministicallySatisfied", null,
+                calculationFinding, "June headline", visualDraft),
+                "A probabilistic outline arithmetic claim blocked a value that the exact source reviewer will calculate.");
+            var satisfiedOutlineSlides = Invoke(Type("PresentationDraftWriter"), "ParseSlides", null,
+                (object)json.Deserialize<object[]>("[{\"id\":\"period-trend\",\"title\":\"Revenue trend\",\"layout\":\"chart\",\"chart\":{\"type\":\"column\",\"title\":\"Revenue EUR — May vs June (zero-based)\",\"categories\":[\"2026-05\",\"2026-06\"],\"series\":[{\"name\":\"Revenue EUR\",\"values\":[85519,82992]}]}},{\"id\":\"june-groups\",\"title\":\"Groups\",\"layout\":\"table\",\"table\":{\"headers\":[\"Group\",\"Revenue\",\"Cost\"],\"rows\":[[\"North\",\"19,219\",\"8,082\"],[\"All groups\",\"82,992\",\"36,714\"]]}}]"));
+            var satisfiedOutlineReview = json.Serialize(new { approved = false, findings = new object[] {
+                new { slide_id = "period-trend", object_id = "chart.title", type = "facts",
+                    correction = "Update chart title to 'Revenue EUR (May vs June 2026, zero-based)'." },
+                new { slide_id = "june-groups", object_id = "table.rows", type = "coverage",
+                    correction = "Add the 'All groups' row with values 82,992 and 36,714." } } });
+            Check((bool)Invoke(typeof(DocumentDraftHost), "OutlineReviewApprovedOrDeterministicallySatisfied", null,
+                satisfiedOutlineReview, "Use EUR in the chart title.", satisfiedOutlineSlides),
+                "A reviewer missed an already-present chart title or source total row.");
+            var falseRowReview = satisfiedOutlineReview.Replace("82,992", "82,993");
+            Check(!(bool)Invoke(typeof(DocumentDraftHost), "OutlineReviewApprovedOrDeterministicallySatisfied", null,
+                falseRowReview, "Use EUR in the chart title.", satisfiedOutlineSlides),
+                "An incorrect source-total value was silently treated as a satisfied outline finding.");
             var falseTitleFinding = "{\"approved\":false,\"issues\":\"Chart title lacks EUR.\",\"findings\":[{\"slide_id\":\"trend\",\"object_id\":\"chart\",\"severity\":\"blocker\",\"type\":\"facts\",\"correction\":\"Include EUR explicitly in the chart title.\"}]}";
             Check((bool)Invoke(typeof(DocumentDraftHost), "ReviewApprovedOrSatisfiedPromptConstraint", null,
                 falseTitleFinding, "Use EUR in the title.", ((IEnumerable)compliantChartSlides).Cast<object>().Single()),

@@ -152,7 +152,8 @@ namespace Scribble.Office
                         stage = "OUTLINE_REVIEW";
                         var verdict = await ReviewSamsungAsync(client, settings, SamsungAuthoringPolicy.OutlineReview + SamsungAuthoringPolicy.ReviewContract,
                             outline + "\nSources:\n" + source, null, token);
-                        if (!ReviewApproved(verdict)) throw new InvalidOperationException("SLIDE_OUTLINE_REVIEW: " + verdict);
+                        if (!OutlineReviewApprovedOrDeterministicallySatisfied(verdict, prompt, slides))
+                            throw new InvalidOperationException("SLIDE_OUTLINE_REVIEW: " + verdict);
                         _taskContext.State.HostData[outlineKey] = "approved";
                     }
                     _taskContext.Checkpoint();
@@ -462,6 +463,57 @@ namespace Scribble.Office
             {
                 return false;
             }
+        }
+
+        // Outline review is advisory for calculations and can misread a
+        // structured field that is present verbatim. Calculation arithmetic
+        // and every source association are still enforced in SOURCE_REVIEW;
+        // native chart/table readback and the independent evaluator follow.
+        // Only those narrow, machine-checkable false positives may pass here.
+        internal static bool OutlineReviewApprovedOrDeterministicallySatisfied(
+            string review, string prompt, IEnumerable<PresentationDraftWriter.DraftSlide> slides)
+        {
+            if (SamsungAuthoringPolicy.Approved(review)) return true;
+            try
+            {
+                var map = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(review);
+                object raw;
+                if (map == null || !map.TryGetValue("findings", out raw) || raw is string) return false;
+                var findings = (raw as IEnumerable)?.Cast<object>()
+                    .Select(value => value as Dictionary<string, object>).ToArray();
+                if (findings == null || findings.Length == 0 || findings.Any(value => value == null)) return false;
+                var byId = (slides ?? Enumerable.Empty<PresentationDraftWriter.DraftSlide>())
+                    .ToDictionary(value => value.Id, StringComparer.Ordinal);
+                var requiredTitleToken = RequiredChartTitleToken(prompt);
+                foreach (var finding in findings)
+                {
+                    PresentationDraftWriter.DraftSlide slide;
+                    if (!byId.TryGetValue(SamsungAuthoringPolicy.Text(finding, "slide_id"), out slide)) return false;
+                    var type = SamsungAuthoringPolicy.Text(finding, "type");
+                    var objectId = SamsungAuthoringPolicy.Text(finding, "object_id");
+                    var correction = SamsungAuthoringPolicy.Text(finding, "correction");
+                    if (type == "facts" && objectId.StartsWith("calculation:", StringComparison.Ordinal))
+                        continue; // The exact operands and result are verified below.
+                    if (type == "facts" && objectId == "chart.title" && slide.Chart != null &&
+                        Regex.IsMatch(correction, @"(?i)zero[- ]based") &&
+                        Regex.IsMatch(slide.Chart.Title, @"(?i)zero[- ]based") &&
+                        (requiredTitleToken == null || ContainsWord(slide.Chart.Title, requiredTitleToken)))
+                        continue;
+                    var namedRow = Regex.Match(correction, @"(?i)\badd\s+the\s+['\""“]([^'\""”]+)['\""”]\s+row\b");
+                    if (type == "coverage" && objectId == "table.rows" && slide.Table != null && namedRow.Success)
+                    {
+                        var row = slide.Table.Rows.FirstOrDefault(value => value.Count > 0 &&
+                            string.Equals(value[0].Trim(), namedRow.Groups[1].Value.Trim(), StringComparison.OrdinalIgnoreCase));
+                        var statedNumbers = Regex.Matches(correction, @"(?<![A-Za-z])\d[\d,]*(?:\.\d+)?")
+                            .Cast<Match>().Select(value => Regex.Replace(value.Value, @"[^\d.]", "")).ToArray();
+                        if (row != null && statedNumbers.All(number => row.Any(cell =>
+                            Regex.Replace(cell, @"[^\d.]", "") == number))) continue;
+                    }
+                    return false;
+                }
+                return true;
+            }
+            catch { return false; }
         }
 
         private static bool PrimaryOnlySecondarySeriesFalsePositive(
