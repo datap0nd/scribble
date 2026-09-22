@@ -4,6 +4,7 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
 using System.Web.Script.Serialization;
 
 namespace Scribble.Office
@@ -547,7 +548,16 @@ namespace Scribble.Office
                         dynamic cellShape = cell.Shape;
                         cellShape.Fill.Solid(); cellShape.Fill.ForeColor.RGB = MetoTheme.Rgb(row == 0 ? SamsungSlideDesign.Blue : row % 2 == 0 ? SamsungSlideDesign.Gray : "#FFFFFF");
                         for (var edge = 1; edge <= 4; edge++) { cell.Borders(edge).Weight = .5f; cell.Borders(edge).ForeColor.RGB = MetoTheme.Rgb("#A6A6A6"); }
-                        ApplySamsungText(cellShape, TextElement(col < rows[row].Count ? rows[row][col] : "", new RectangleF(0, 0, element.ColumnWidths == null ? box.Width / columns : element.ColumnWidths[col], box.Height / rows.Length), element.Size, element.Minimum, "Arial Narrow", row == 0, null, row == 0 ? "#FFFFFF" : "#202A35"));
+                        var cellText = TextElement(col < rows[row].Count ? rows[row][col] : "",
+                            new RectangleF(0, 0, element.ColumnWidths == null ? box.Width / columns : element.ColumnWidths[col], box.Height / rows.Length),
+                            element.Size, element.Minimum, columns <= 4 ? "Arial" : "Arial Narrow",
+                            row == 0, null, row == 0 ? "#FFFFFF" : "#202A35");
+                        if (row > 0 && col > 0 && Regex.IsMatch(cellText.Text,
+                            @"^\s*(?:[-+\u2212]?\d|(?:EUR|€)\s*[-+\u2212]?\d)"))
+                            cellText.Alignment = 3;
+                        ApplySamsungText(cellShape, cellText);
+                        try { cellShape.TextFrame.VerticalAnchor = 3; }
+                        catch (Exception exception) when (IsUnsupportedFrameSetting(exception)) { }
                     }
                     // New rows start at PowerPoint's default height for 18pt
                     // text, nearly twice the planned box. With the table font
