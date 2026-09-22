@@ -78,6 +78,24 @@ namespace GuardrailTests
                 !evidenceJson.Contains("Method") || !evidenceJson.Contains("#202A35"))
                 throw new Exception("Evidence cards must render as distinct readable typographic columns.");
             var evidencePage = ((IEnumerable)json.DeserializeObject(evidenceJson)).Cast<Dictionary<string, object>>().Single();
+            var evidenceElements = ((IEnumerable)evidencePage["elements"]).Cast<Dictionary<string, object>>().ToArray();
+            var cardPanels = evidenceElements.Where(e => Convert.ToString(e["fill"]) == SamsungSlideDesign.Gray &&
+                Convert.ToDouble(e["height"]) > 100).ToArray();
+            if (cardPanels.Length != 3 || cardPanels.Any(e => Convert.ToDouble(e["height"]) > 260))
+                throw new Exception("Short evidence cards must not leave a half-empty full-height gray panel.");
+            var qualityPlan = SamsungPresentationReview.InspectPlan(json.Serialize(new[] { new {
+                title = "Data quality and evidence limits", layout = "cards", subtitle = "Each ID counted once",
+                cards = new[] {
+                    new { heading = "Coverage", points = new[] { "Ledger: 144 records, 2026-01 to 2026-06", "History through May", "Four groups", "Revenue and cost in EUR" } },
+                    new { heading = "Integrity", points = new[] { "144 distinct RowIDs", "0 duplicates", "0 blank revenue cells", "0 blank cost cells" } },
+                    new { heading = "Limits", points = new[] { "May reconciles: 85,519 / 36,702", "June missing from History", "June uses Ledger", "Never set blanks to zero" } }
+                } } }));
+            var qualityPage = ((IEnumerable)json.DeserializeObject(json.Serialize(qualityPlan)))
+                .Cast<Dictionary<string, object>>().Single();
+            var qualityElements = ((IEnumerable)qualityPage["elements"]).Cast<Dictionary<string, object>>().ToArray();
+            if (qualityElements.Count(e => Convert.ToDouble(e["size"]) >= 26 &&
+                    System.Text.RegularExpressions.Regex.IsMatch(Convert.ToString(e["text"]), @"\d")) < 2)
+                throw new Exception("Numeric evidence cards need at least two prominent source-backed metrics.");
             if (((IEnumerable)evidencePage["elements"]).Cast<Dictionary<string, object>>()
                 .Any(e => new[] { Convert.ToString(e["fill"]), Convert.ToString(e["color"]) }
                     .Any(color => !string.IsNullOrEmpty(color) && !palette.Contains(color))))

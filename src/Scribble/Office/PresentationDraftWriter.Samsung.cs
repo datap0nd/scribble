@@ -301,6 +301,25 @@ namespace Scribble.Office
         private static void AddStructuredCards(List<SamsungElement> elements, DraftSlide draft, RectangleF region)
         {
             var count = draft.Cards.Count;
+            // When a factual card grid carries several numbers, reserve the
+            // lower part of its panels for source-backed metric anchors. This
+            // creates hierarchy without asking the model to invent artwork or
+            // weakening the exact evidence/citation checks.
+            var evidenceHeroes = new string[count];
+            if (draft.Layout == "cards" && count > 1 && count <= 3)
+            {
+                var used = new HashSet<string>(StringComparer.Ordinal);
+                var width = (region.Width - 26f * (count - 1)) / count - 28f;
+                for (var cardIndex = 0; cardIndex < count; cardIndex++)
+                {
+                    var body = string.Join("\n", draft.Cards[cardIndex].Points);
+                    if (MeasureEvidenceBody(body, width) > region.Height - 160f) continue;
+                    var token = Regex.Matches(body, @"(?<![A-Za-z])\d[\d,]*(?:\.\d+)?%?")
+                        .Cast<Match>().Select(match => match.Value).FirstOrDefault(value => used.Add(value));
+                    evidenceHeroes[cardIndex] = token;
+                }
+            }
+            var heroMode = evidenceHeroes.Count(value => !string.IsNullOrEmpty(value)) >= 2;
             for (var i = 0; i < count; i++)
             {
                 var card = draft.Cards[i];
@@ -343,9 +362,20 @@ namespace Scribble.Office
                     const float columnGap = 26f, rowGap = 18f;
                     var evidenceWidth = (region.Width - columnGap * (columns - 1)) / columns;
                     var evidenceHeight = (region.Height - rowGap * (rows - 1)) / rows;
+                    // A one-row evidence grid should frame its actual content,
+                    // not leave three tall, half-empty panels behind short facts.
+                    // Preserve equal panel heights and center the whole row in
+                    // its assigned region so the whitespace is intentional.
+                    if (rows == 1 && !heroMode)
+                    {
+                        var bodyWidth = evidenceWidth - 28f;
+                        var longestBody = draft.Cards.Max(c => EvidenceCardContentHeight(c, bodyWidth));
+                        evidenceHeight = Math.Min(region.Height, Math.Max(218f, 64f + longestBody + 30f));
+                    }
+                    var rowInset = rows == 1 ? (region.Height - evidenceHeight) / 2f : 0f;
                     var evidenceBox = new RectangleF(
                         region.X + (i % columns) * (evidenceWidth + columnGap),
-                        region.Y + (i / columns) * (evidenceHeight + rowGap),
+                        region.Y + rowInset + (i / columns) * (evidenceHeight + rowGap),
                         evidenceWidth, evidenceHeight);
                     elements.Add(TextElement("", evidenceBox, fill: SamsungSlideDesign.Gray));
                     elements.Add(TextElement("", new RectangleF(evidenceBox.X, evidenceBox.Y, evidenceBox.Width, 4f),
@@ -355,9 +385,44 @@ namespace Scribble.Office
                         20, 16, MetoTheme.TitleFont, true, null, SamsungSlideDesign.Blue));
                     var body = string.Join("\n", card.Points);
                     if (body.Length > 0)
-                        elements.Add(TextElement(body,
-                            new RectangleF(evidenceBox.X + 14f, evidenceBox.Y + 64f, evidenceBox.Width - 28f, evidenceBox.Height - 78f),
-                            16, 14, "Arial", false, null, "#202A35"));
+                    {
+                        var bodySpace = evidenceBox.Height - 78f;
+                        var bodyWidth = evidenceBox.Width - 28f;
+                        if (heroMode && !string.IsNullOrEmpty(evidenceHeroes[i]))
+                        {
+                            elements.Add(TextElement(body,
+                                new RectangleF(evidenceBox.X + 14f, evidenceBox.Y + 64f,
+                                    bodyWidth, evidenceBox.Height - 160f),
+                                16, 14, "Arial", false, null, "#202A35"));
+                            elements.Add(TextElement(evidenceHeroes[i],
+                                new RectangleF(evidenceBox.X + 14f, evidenceBox.Bottom - 78f,
+                                    bodyWidth, 60f), 32, 26, MetoTheme.TitleFont, true,
+                                null, SamsungSlideDesign.Blue));
+                            continue;
+                        }
+                        var lead = card.Points.FirstOrDefault() ?? "";
+                        var supporting = string.Join("\n", card.Points.Skip(1));
+                        var leadHeight = MeasureEvidenceBody(lead, bodyWidth, 18f, true) + 5f;
+                        var supportingHeight = supporting.Length == 0 ? 0f :
+                            MeasureEvidenceBody(supporting, bodyWidth) + 5f;
+                        var contentHeight = leadHeight + (supporting.Length == 0 ? 0f : 10f + supportingHeight);
+                        if (contentHeight <= bodySpace)
+                        {
+                            var inset = (bodySpace - contentHeight) / 2f;
+                            elements.Add(TextElement(lead,
+                                new RectangleF(evidenceBox.X + 14f, evidenceBox.Y + 64f + inset,
+                                    bodyWidth, leadHeight), 18, 16, "Arial", true, null, "#202A35"));
+                            if (supporting.Length > 0)
+                                elements.Add(TextElement(supporting,
+                                    new RectangleF(evidenceBox.X + 14f,
+                                        evidenceBox.Y + 64f + inset + leadHeight + 10f,
+                                        bodyWidth, supportingHeight), 16, 14, "Arial", false, null, "#202A35"));
+                        }
+                        else
+                            elements.Add(TextElement(body,
+                                new RectangleF(evidenceBox.X + 14f, evidenceBox.Y + 64f,
+                                    bodyWidth, bodySpace), 16, 14, "Arial", false, null, "#202A35"));
+                    }
                     continue;
                 }
                 var vertical = draft.Layout == "stack";
@@ -369,6 +434,29 @@ namespace Scribble.Office
                 elements.Add(TextElement(text, box, 18, 14, "Arial", false, SamsungSlideDesign.Gray));
                 if (draft.Layout == "roadmap" && i < count - 1)
                     elements.Add(new SamsungElement { Box = new RectangleF(box.Right, box.Top + box.Height / 2, gap, 1), Connector = true });
+            }
+        }
+
+        private static float EvidenceCardContentHeight(DraftCard card, float width)
+        {
+            var lead = card.Points.FirstOrDefault() ?? "";
+            var supporting = string.Join("\n", card.Points.Skip(1));
+            return MeasureEvidenceBody(lead, width, 18f, true) + 5f +
+                (supporting.Length == 0 ? 0f : 10f + MeasureEvidenceBody(supporting, width) + 5f);
+        }
+
+        private static float MeasureEvidenceBody(string body, float width, float size = 16f, bool bold = false)
+        {
+            if (string.IsNullOrEmpty(body)) return 0f;
+            using (var bitmap = new Bitmap(1, 1))
+            using (var graphics = Graphics.FromImage(bitmap))
+            using (var font = new Font(SamsungSlideDesign.FontFor(body, "Arial"), size,
+                bold ? FontStyle.Bold : FontStyle.Regular, GraphicsUnit.Point))
+            using (var format = new StringFormat(StringFormat.GenericTypographic))
+            {
+                graphics.PageUnit = GraphicsUnit.Point;
+                return graphics.MeasureString(body, font,
+                    new SizeF(Math.Max(20f, width - 4f), 2000f), format).Height;
             }
         }
 
