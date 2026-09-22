@@ -76,19 +76,31 @@ namespace Scribble.Office
                 "Keep the ID, all required table rows, chart type, categories, series names and values, calculations and source images unchanged. Do not add or remove a primary or secondary chart or table: this is a visual repair, not new evidence. For a sparse table slide, enlarge the existing table and use semantic highlight_rows and a coherent subtitle/takeaway; do not invent a chart. You may correct an existing chart title when the finding requires it. Omit evidence, source_spans and sources from your answer: the host carries them over unchanged. You may choose a better Samsung layout and remove redundant wording. " +
                 "Do not invent pixel coordinates or remove evidence to make it fit. Schema: " + _serializer.Serialize(PresentationToolCatalog.DraftDefinition().function.parameters),
                 _serializer.Serialize(new { original, findings, instruction = prompt }), output.Image, token, repairTokens);
-            var wrapper = await ReadSlideRepairJsonAsync(client, settings, response, token, repairTokens);
-            var replacements = SelectSlideRepair(wrapper, SamsungAuthoringPolicy.Text(original, "id"));
-            var replacement = SamsungAuthoringPolicy.ReadMap(replacements[0]);
-            var testCall = new ChatToolCall { id = "repair", function = new ChatToolCallFunction { name = PresentationToolCatalog.AddDraftSlides, arguments = _serializer.Serialize(new { slides = replacements }) } };
-            var errors = ToolContractValidator.Validate(testCall, PresentationToolCatalog.DraftDefinition());
-            if (errors.Count > 0) throw new InvalidOperationException("SLIDE_REPAIR_SCHEMA: " + string.Join("; ", errors));
-            if (SamsungAuthoringPolicy.Text(replacement, "id") != SamsungAuthoringPolicy.Text(original, "id")) throw new InvalidOperationException("SLIDE_REPAIR_ID_CHANGED");
-            // Evidence, span IDs and the visible citation belong to the host.
-            // A visual repair must never lose them because the repair model
-            // omitted a field or failed to retype source text byte for byte.
-            RetainSlideRepairSources(original, replacement);
-            ValidateSlideRepairEvidence(original, replacement);
-            if (SamsungRepairPolicy.Serialize(original) == SamsungRepairPolicy.Serialize(replacement)) throw new InvalidOperationException("SLIDE_REPAIR_STALLED: No meaningful content or layout change was proposed.");
+            object[] replacements = null;
+            Dictionary<string, object> replacement = null;
+            for (var proposal = 0; proposal < 2; proposal++)
+            {
+                var wrapper = await ReadSlideRepairJsonAsync(client, settings, response, token, repairTokens);
+                replacements = SelectSlideRepair(wrapper, SamsungAuthoringPolicy.Text(original, "id"));
+                replacement = SamsungAuthoringPolicy.ReadMap(replacements[0]);
+                var testCall = new ChatToolCall { id = "repair", function = new ChatToolCallFunction { name = PresentationToolCatalog.AddDraftSlides, arguments = _serializer.Serialize(new { slides = replacements }) } };
+                var errors = ToolContractValidator.Validate(testCall, PresentationToolCatalog.DraftDefinition());
+                if (errors.Count > 0) throw new InvalidOperationException("SLIDE_REPAIR_SCHEMA: " + string.Join("; ", errors));
+                if (SamsungAuthoringPolicy.Text(replacement, "id") != SamsungAuthoringPolicy.Text(original, "id")) throw new InvalidOperationException("SLIDE_REPAIR_ID_CHANGED");
+                // Evidence, span IDs and the visible citation belong to the host.
+                RetainSlideRepairSources(original, replacement);
+                ValidateSlideRepairEvidence(original, replacement);
+                if (SamsungRepairPolicy.Serialize(original) != SamsungRepairPolicy.Serialize(replacement)) break;
+                if (proposal == 1) throw new InvalidOperationException("SLIDE_REPAIR_STALLED: Two proposals made no meaningful content or layout change.");
+                // An unchanged proposal has not touched PowerPoint. Give the
+                // reviewer one precise opportunity to fix its own no-op inside
+                // this receipted host call, rather than stranding the written
+                // slide and relying on the chat model to replay a write.
+                response = await ReviewSamsungAsync(client, settings,
+                    SamsungAuthoringPolicy.Instructions + " The previous visual repair returned the original slide unchanged. Make one concrete content or Samsung-layout change that addresses the findings, while preserving its ID, source evidence, required facts, table/chart data and image names. Return JSON only with exactly this one complete slide. Omit evidence, source_spans and sources because the host retains them. Schema: " + _serializer.Serialize(PresentationToolCatalog.DraftDefinition().function.parameters),
+                    _serializer.Serialize(new { original, findings, previous_no_op = replacement, instruction = prompt }),
+                    output.Image, token, repairTokens);
+            }
             SamsungPresentationReview.ValidateEvidence(_serializer.Serialize(replacement), source);
             var review = await ReviewSamsungAsync(client, settings, SamsungAuthoringPolicy.FactReview +
                 " Verify that every required point from the original ONE slide remains represented. Reject omitted commitments, qualifications, owners or dates on that slide. Do not assess whether another planned slide has been added yet; this is a single-slide repair, not a deck review. Report only the original slide ID in findings." + SamsungAuthoringPolicy.ReviewContract,

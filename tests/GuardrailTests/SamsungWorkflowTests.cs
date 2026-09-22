@@ -281,9 +281,8 @@ namespace GuardrailTests
             finally { if (System.IO.Directory.Exists(root)) System.IO.Directory.Delete(root, true); }
         }
 
-        // After a slide write stops part-way, a revised payload is refused as a
-        // bounded tool error that hands back the original arguments, instead
-        // of ending the task with a fatal uncertain-write exception.
+        // A same-tool continuation resumes only with the exact journaled
+        // payload, while unrelated writes remain blocked and bounded.
         internal static void InterruptedWriteRedirectsToOriginalPayload()
         {
             var root = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "scribble-write-recovery-" + Guid.NewGuid().ToString("N"));
@@ -294,18 +293,23 @@ namespace GuardrailTests
                 var task = new TaskContextManager(request, "excel", objective, new TaskCheckpointStore(root));
                 var revised = new ChatToolCall { id = "call-2", function = new ChatToolCallFunction { name = CrossAppToolCatalog.SendToPowerPoint, arguments = "{\"slides\":[{\"id\":\"b\"}]}" } };
                 Check(task.RecoverableWriteConflict(revised, true) == null, "A task without an interrupted write was redirected.");
+                var original = new ChatToolCall { id = "call-1", function = new ChatToolCallFunction { name = CrossAppToolCatalog.SendToPowerPoint, arguments = "{\"slides\":[{\"id\":\"a\"}]}" } };
                 task.State.HostData["samsung_pending"] = new JavaScriptSerializer().Serialize(new Dictionary<string, object> {
-                    { "Owner", "o" }, { "Input", "different-input-hash" }, { "ToolCall", "call-1" }, { "Arguments", "{\"slides\":[{\"id\":\"a\"}]}" } });
+                    { "Owner", "o" }, { "Input", SamsungGenerationJournal.InputHash(original) }, { "ToolCall", "call-1" },
+                    { "ToolName", original.function.name }, { "Arguments", original.function.arguments }, { "AttemptCalls", new[] { "call-1" } } });
                 task.State.Writes.Add(new TaskWriteRecord { Id = "tool:call-1", Status = "uncertain" });
                 Check(task.RecoverableWriteConflict(revised, false) == null, "A read-only call was treated as a write conflict.");
+                Check(task.RecoverableWriteConflict(revised, true) == null && revised.function.arguments == original.function.arguments &&
+                    SamsungGenerationJournal.CanResume(task.State, revised), "The same slide tool did not safely recover its original payload.");
+                var unrelated = new ChatToolCall { id = "call-3", function = new ChatToolCallFunction { name = WorkbookToolCatalog.WriteDraftSheet, arguments = "{\"rows\":[[\"new\"]]}" } };
                 for (var attempt = 0; attempt < TaskContextManager.MaxWriteRecoveryRedirects; attempt++)
                 {
-                    var redirected = task.RecoverableWriteConflict(revised, true);
+                    var redirected = task.RecoverableWriteConflict(unrelated, true);
                     Check(redirected != null && redirected.Outcome.Failed && redirected.Outcome.ErrorCode == "SLIDE_RECOVERY_INPUT_CHANGED" &&
                         redirected.Outcome.PermissionConsumed == false && redirected.Content.Contains("original_arguments") &&
-                        redirected.Content.Contains("\\\"id\\\":\\\"a\\\""), "A revised payload after an interrupted write was not redirected to the original arguments.");
+                        redirected.Content.Contains("\\\"id\\\":\\\"a\\\""), "An unrelated write after interruption was not redirected to the original arguments.");
                 }
-                Check(task.RecoverableWriteConflict(revised, true) == null, "Write-recovery redirects must stay bounded.");
+                Check(task.RecoverableWriteConflict(unrelated, true) == null, "Write-recovery redirects must stay bounded.");
             }
             finally { if (System.IO.Directory.Exists(root)) System.IO.Directory.Delete(root, true); }
         }

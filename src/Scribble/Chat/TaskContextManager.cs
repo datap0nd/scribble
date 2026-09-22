@@ -249,11 +249,11 @@ namespace Scribble.Chat
         public const int MaxWriteRecoveryRedirects = 3;
 
         // A deck write that failed after its first native mutation can only be
-        // resumed with its original payload. A model that answers the failure
-        // with a revised payload used to end the task with a fatal "uncertain
-        // write". Nothing has been duplicated at that point, so the call is
-        // refused as an ordinary, bounded tool error that returns the original
-        // arguments to resend.
+        // resumed with its original payload. If the model proposes changed
+        // arguments for the same tool, restore the journaled arguments only
+        // after CanResume proves that every uncertain write belongs to that
+        // exact attempt. The journal then reconciles native IDs/fingerprints.
+        // An unrelated write remains a bounded, non-mutating tool error.
         public MailboxToolResult RecoverableWriteConflict(ChatToolCall call, bool changesDocument)
         {
             string pending;
@@ -261,6 +261,24 @@ namespace Scribble.Chat
             if (!_state.Writes.Any(w => w.Status != "verified" && w.Id.StartsWith("tool:")) ||
                 Scribble.Office.SamsungGenerationJournal.CanResume(_state, call) ||
                 Scribble.Office.PresentationRevision.CanResume(_state, call)) return null;
+            var proposedArguments = call.function.arguments;
+            var journalProvedResume = false;
+            try
+            {
+                var journal = _json.Deserialize<Scribble.Office.SamsungGenerationJournal.State>(pending);
+                if (journal != null && call.function.name == journal.ToolName && !string.IsNullOrWhiteSpace(journal.Arguments))
+                {
+                    call.function.arguments = journal.Arguments;
+                    if (Scribble.Office.SamsungGenerationJournal.CanResume(_state, call))
+                    {
+                        journalProvedResume = true;
+                        Diagnostics.Record("write_recovery_auto_resumed", new { call.id, tool = call.function.name });
+                    }
+                }
+            }
+            catch (Exception) { /* A damaged journal never authorizes a write. */ }
+            finally { if (!journalProvedResume) call.function.arguments = proposedArguments; }
+            if (journalProvedResume) return null;
             string prior; int redirects;
             if (!_state.HostData.TryGetValue("write_recovery_redirects", out prior) || !int.TryParse(prior, out redirects)) redirects = 0;
             if (redirects >= MaxWriteRecoveryRedirects) return null;
