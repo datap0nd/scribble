@@ -326,6 +326,7 @@ namespace Scribble.Office
                 {
                     if (cell == null || cell.Row < 0 || cell.Column < 0 ||
                         cell.Row >= table.Rows || cell.Column >= table.Columns ||
+                        string.IsNullOrWhiteSpace(cell.RawCellType) ||
                         !positions.Add(cell.Row.ToString(CultureInfo.InvariantCulture) +
                             ":" + cell.Column.ToString(CultureInfo.InvariantCulture)))
                         throw new InvalidOperationException(
@@ -372,10 +373,11 @@ namespace Scribble.Office
                     table.Columns.ToString(CultureInfo.InvariantCulture) + "|" +
                     string.Join(";", table.Cells.OrderBy(cell => cell.Row)
                         .ThenBy(cell => cell.Column).Select(cell =>
-                            cell.Row.ToString(CultureInfo.InvariantCulture) + "," +
-                            cell.Column.ToString(CultureInfo.InvariantCulture) + "," +
-                            cell.Reference + "," + cell.ValueType + "," +
-                            cell.RawValue + "," + cell.Value + "," +
+                             cell.Row.ToString(CultureInfo.InvariantCulture) + "," +
+                             cell.Column.ToString(CultureInfo.InvariantCulture) + "," +
+                             cell.Reference + "," + cell.ValueType + "," +
+                             cell.RawCellType + "," + cell.RawValue + "," +
+                             cell.Value + "," +
                             cell.DisplayText + "," +
                             cell.Formula + "," + cell.NumberFormat + "," +
                             cell.Status))));
@@ -635,6 +637,7 @@ namespace Scribble.Office
             {
                 Formula = formula,
                 NumberFormat = format,
+                RawCellType = RawType(raw),
                 RawValue = Raw(raw),
                 DisplayText = shown == null
                     ? string.Empty
@@ -646,6 +649,7 @@ namespace Scribble.Office
             if (error != null)
             {
                 result.ValueType = AnalysisContract.ErrorValue;
+                result.RawCellType = "error";
                 result.RawValue = error;
                 result.Value = string.Empty;
                 result.DisplayText = result.DisplayText.Length == 0
@@ -737,6 +741,15 @@ namespace Scribble.Office
                 value is ushort || value is int || value is uint ||
                 value is long || value is ulong || value is float ||
                 value is double || value is decimal;
+        }
+
+        private static string RawType(object value)
+        {
+            if (value == null) return "blank";
+            if (value is bool) return "boolean";
+            if (value is DateTime) return "date";
+            if (IsNumber(value)) return "number";
+            return "text";
         }
 
         private static string Raw(object value)
@@ -835,6 +848,7 @@ namespace Scribble.Office
         public int Column { get; set; }
         public string Reference { get; set; }
         public string ValueType { get; set; }
+        public string RawCellType { get; set; }
         public string RawValue { get; set; }
         public string Value { get; set; }
         public string DisplayText { get; set; }

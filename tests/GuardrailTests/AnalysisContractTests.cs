@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
+using System.Text;
+using System.Threading;
 using Scribble.Chat;
 using Scribble.Office;
 
@@ -253,6 +256,90 @@ namespace GuardrailTests
                 "Typed workbook capture lost raw values, display text, formulas, formats, or booleans.");
         }
 
+        public static void OpenXmlCaptureRetainsTypedCells()
+        {
+            var root = Path.Combine(Path.GetTempPath(),
+                "scribble-openxml-analysis-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(root);
+            try
+            {
+                var path = Path.Combine(root, "typed.xlsx");
+                using (var archive = ZipFile.Open(path, ZipArchiveMode.Create))
+                {
+                    Entry(archive, "xl/workbook.xml",
+                        "<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" " +
+                        "xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><sheets>" +
+                        "<sheet name=\"Ledger\" sheetId=\"2\" r:id=\"rId2\"/>" +
+                        "<sheet name=\"Notes\" sheetId=\"1\" r:id=\"rId1\"/></sheets></workbook>");
+                    Entry(archive, "xl/_rels/workbook.xml.rels",
+                        "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">" +
+                        "<Relationship Id=\"rId1\" Target=\"worksheets/sheet1.xml\" " +
+                        "Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\"/>" +
+                        "<Relationship Id=\"rId2\" Target=\"worksheets/sheet2.xml\" " +
+                        "Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\"/>" +
+                        "</Relationships>");
+                    Entry(archive, "xl/sharedStrings.xml",
+                        "<sst xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">" +
+                        "<si><t>Period</t></si><si><t>Revenue</t></si><si><t>Approved</t></si></sst>");
+                    Entry(archive, "xl/styles.xml",
+                        "<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">" +
+                        "<numFmts count=\"1\"><numFmt numFmtId=\"164\" formatCode=\"#,##0 &quot;EUR&quot;\"/></numFmts>" +
+                        "<cellXfs count=\"3\"><xf numFmtId=\"0\"/><xf numFmtId=\"14\"/><xf numFmtId=\"164\"/></cellXfs>" +
+                        "</styleSheet>");
+                    Entry(archive, "xl/worksheets/sheet1.xml",
+                        "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData>" +
+                        "<row r=\"1\"><c r=\"A1\" t=\"inlineStr\"><is><t>Source notes</t></is></c></row>" +
+                        "</sheetData></worksheet>");
+                    Entry(archive, "xl/worksheets/sheet2.xml",
+                        "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData>" +
+                        "<row r=\"1\"><c r=\"A1\" t=\"s\"><v>0</v></c><c r=\"B1\" t=\"s\"><v>1</v></c>" +
+                        "<c r=\"D1\" t=\"s\"><v>2</v></c></row>" +
+                        "<row r=\"2\"><c r=\"A2\" s=\"1\"><v>45808</v></c>" +
+                        "<c r=\"B2\" s=\"2\"><f>SUM(Source!B2:B10)</f><v>82992</v></c>" +
+                        "<c r=\"C2\"/><c r=\"D2\" t=\"b\"><v>1</v></c></row>" +
+                        "<row r=\"3\"><c r=\"A3\" t=\"b\"><v>maybe</v></c></row>" +
+                        "</sheetData></worksheet>");
+                }
+                var snapshot = OpenXmlWorkbookSnapshotReader.Capture(path,
+                    "attachment:typed", "revision-1", CancellationToken.None);
+                var table = snapshot.Tables[0];
+                var date = table.Cells.Single(cell => cell.Reference == "A2");
+                var formula = table.Cells.Single(cell => cell.Reference == "B2");
+                var blank = table.Cells.Single(cell => cell.Reference == "C2");
+                var approved = table.Cells.Single(cell => cell.Reference == "D2");
+                var malformed = table.Cells.Single(cell => cell.Reference == "A3");
+                Check(snapshot.Tables.Count == 2 && table.Name == "Ledger" &&
+                    snapshot.Tables[1].Name == "Notes" && table.Rows == 3 &&
+                    table.Columns == 4 && date.ValueType == AnalysisContract.DateValue &&
+                    date.RawValue == "45808" && date.NumberFormat == "m/d/yy" &&
+                    formula.Formula == "=SUM(Source!B2:B10)" &&
+                    formula.RawCellType == "n" && formula.RawValue == "82992" &&
+                    formula.NumberFormat.Contains("EUR") &&
+                    formula.Status == AnalysisContract.Unresolved &&
+                    blank.ValueType == AnalysisContract.MissingValue &&
+                    approved.ValueType == AnalysisContract.BooleanValue &&
+                    malformed.ValueType == AnalysisContract.ErrorValue &&
+                    malformed.RawCellType == "b" &&
+                    malformed.Status == AnalysisContract.Unresolved &&
+                    snapshot.CalculationState == "cached_formula_values_unverified",
+                    "OpenXML typed capture lost a sheet name, blank column, date serial, formula, format, boolean, malformed value, or cache status.");
+            }
+            finally
+            {
+                if (Directory.Exists(root)) Directory.Delete(root, true);
+            }
+        }
+
+        private static void Entry(
+            ZipArchive archive,
+            string name,
+            string content)
+        {
+            var entry = archive.CreateEntry(name);
+            using (var writer = new StreamWriter(entry.Open(),
+                new UTF8Encoding(false))) writer.Write(content);
+        }
+
         private static TableDataset Table()
         {
             return new TableDataset
@@ -288,6 +375,12 @@ namespace GuardrailTests
                 Column = column,
                 Reference = reference,
                 ValueType = valueType,
+                RawCellType = valueType == AnalysisContract.MissingValue
+                    ? "blank"
+                    : valueType == AnalysisContract.DecimalValue ||
+                      valueType == AnalysisContract.IntegerValue
+                        ? "number"
+                        : "text",
                 RawValue = value,
                 Value = value,
                 DisplayText = value,

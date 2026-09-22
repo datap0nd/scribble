@@ -75,6 +75,7 @@ namespace GuardrailTests
                 Run("Native report readback retains scalar cell formulas", HardeningTests.NativeReportReadback);
                 Run("Typed analysis snapshots preserve identity and serialization", AnalysisContractTests.SnapshotIdentityInvalidationAndSerialization);
                 Run("Typed analysis calculations preserve source authority", AnalysisContractTests.DeterministicCalculationsPreserveAuthority);
+                Run("OpenXML typed capture retains formulas formats dates and blanks", AnalysisContractTests.OpenXmlCaptureRetainsTypedCells);
                 Run("Duplicate document writes return a recoverable result", HardeningTests.DuplicateDraftIsRecoverable);
                 Run("Known invalid Excel draft formulas permit a fresh marked sheet", HardeningTests.RejectedDraftFormulaAllowsFreshMarkedSheet);
                 Run("Excel formula rejection occurs after a native grid write", HardeningTests.FormulaRejectionFollowsNativeGridWrite);
