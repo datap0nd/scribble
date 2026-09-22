@@ -40,6 +40,7 @@ namespace Scribble.Office
         public static RectangleF Footer { get { return Percent(3.8f, 93.5f, 87f, 3f); } }
         public static RectangleF Page { get { return Percent(94f, 96.8f, 6f, 3.2f); } }
         public static RectangleF Takeaway { get { return Percent(11.5f, 85.1f, 77f, 7.6f); } }
+        public static RectangleF ScorecardTakeaway { get { return Percent(11.5f, 79.5f, 77f, 7.6f); } }
         public static RectangleF[] Regions(string layout)
         {
             switch (layout)

@@ -120,6 +120,10 @@ namespace GuardrailTests
             var takeawayElement = elements.Single(element => (string)element.GetType().GetField("Text", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(element) == "June revenue fell to 82,992 EUR.");
             Check((float)takeawayElement.GetType().GetField("Minimum", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(takeawayElement) >= 14f,
                 "A factual takeaway was allowed to shrink below the native minimum body font.");
+            var takeawayBox = (System.Drawing.RectangleF)takeawayElement.GetType().GetField("Box", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(takeawayElement);
+            Check(Math.Abs(takeawayBox.Y - SamsungSlideDesign.ScorecardTakeaway.Y) < .1f &&
+                SamsungSlideDesign.ScorecardTakeaway.Bottom < SamsungSlideDesign.Footer.Y,
+                "A scorecard takeaway left a large empty gap or collided with the source footer.");
             var cardDraft = Invoke(Type("PresentationDraftWriter"), "ParseSlides", null,
                 (object)json.Deserialize<object[]>("[{\"id\":\"quality\",\"layout\":\"cards\",\"title\":\"Data quality\",\"subtitle\":\"Complete observations\",\"cards\":[{\"heading\":\"Integrity\",\"points\":[\"144 records verified\",\"No blanks\"]},{\"heading\":\"Coverage\",\"points\":[\"May 2026: 24 records\",\"June 2026: 24 records\"]}]}]"));
             var cardPage = ((IEnumerable)Invoke(Type("PresentationDraftWriter"), "ComposeSamsung", null, cardDraft))

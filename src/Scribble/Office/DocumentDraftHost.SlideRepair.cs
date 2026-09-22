@@ -61,6 +61,7 @@ namespace Scribble.Office
             var response = await ReviewSamsungAsync(client, settings,
                 SamsungAuthoringPolicy.Instructions + " Repair this single slide using the specific visual findings. Return JSON only: {\"slides\":[{...complete corrected slide...}]}. " +
                 "Return only the slide whose id is '" + SamsungAuthoringPolicy.Text(original, "id") + "'; do not return any other planned slide. " +
+                "Keep every user-required chart-title unit token (such as EUR); shorten surrounding wording if needed, never remove the unit. " +
                 "Keep the ID, all required table rows, chart type, categories, series names and values, calculations and source images unchanged. Do not add or remove a primary or secondary chart or table: this is a visual repair, not new evidence. For a sparse table slide, enlarge the existing table and use semantic highlight_rows and a coherent subtitle/takeaway; do not invent a chart. You may correct an existing chart title when the finding requires it. Omit evidence and source_spans from your answer: the host carries both over unchanged. You may choose a better Samsung layout and remove redundant wording. " +
                 "Do not invent pixel coordinates or remove evidence to make it fit. Schema: " + _serializer.Serialize(PresentationToolCatalog.DraftDefinition().function.parameters),
                 _serializer.Serialize(new { original, findings, instruction = prompt }), output.Image, token, repairTokens);
@@ -92,6 +93,7 @@ namespace Scribble.Office
                     SamsungAuthoringPolicy.Text(original, "id")))
                 throw new InvalidOperationException("SLIDE_REPAIR_FACTS: " + review);
             var parsed = PresentationDraftWriter.ParseSlides(replacements);
+            ValidatePromptChartConstraints(prompt, parsed);
             foreach (var image in output.Page.Source.ImageData) parsed[0].ImageData.Add(image);
             var pages = PresentationDraftWriter.ComposeSamsung(parsed);
             var targets = related ?? new[] { output };
