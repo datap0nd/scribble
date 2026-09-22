@@ -148,6 +148,17 @@ namespace GuardrailTests
                 .Cast<object>().ToArray();
             Check(compactGridElements.Any(element => ((string)element.GetType().GetField("Text", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(element)).Contains("Revenue & Cost EUR")),
                 "A four-card source panel was dropped or overflowed instead of fitting at the native minimum size.");
+            var numericGridDraft = Invoke(Type("PresentationDraftWriter"), "ParseSlides", null,
+                (object)json.Deserialize<object[]>("[{\"id\":\"quality\",\"layout\":\"cards\",\"title\":\"Data-quality limits\",\"subtitle\":\"Ledger is complete\",\"cards\":[{\"heading\":\"Completeness\",\"points\":[\"144 unique RowIDs\",\"0 blank cells\",\"24 rows per month\"]},{\"heading\":\"Rate and method\",\"points\":[\"Rates use aggregate totals\",\"Never average row percentages\"]},{\"heading\":\"Incomplete observation\",\"points\":[\"History through May 2026\",\"June sourced from Ledger\"]},{\"heading\":\"Cross-check\",\"points\":[\"May reconciles Ledger and History\",\"Revenue EUR 85,519\",\"Cost EUR 36,702\"]}]}]"));
+            var numericGridPage = ((IEnumerable)Invoke(Type("PresentationDraftWriter"), "ComposeSamsung", null, numericGridDraft))
+                .Cast<object>().Single();
+            var numericGridHeroes = ((IEnumerable)numericGridPage.GetType().GetField("Elements", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(numericGridPage))
+                .Cast<object>().Where(element =>
+                    (float)element.GetType().GetField("Size", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(element) >= 26f)
+                .Select(element => (string)element.GetType().GetField("Text", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(element))
+                .ToArray();
+            Check(numericGridHeroes.Contains("144") && numericGridHeroes.Contains("85,519") && !numericGridHeroes.Contains("2026"),
+                "A four-card numeric evidence slide lacked two relevant metric anchors or promoted a year as a metric.");
             Check((bool)Invoke(Type("PresentationDraftWriter"), "RetryableSamsungChartFailure", null,
                 "write chart data: COMException 0x800A01A8 Exception from HRESULT: 0x800A01A8"),
                 "A transient embedded Excel chart-grid failure should be retried inside the host call.");

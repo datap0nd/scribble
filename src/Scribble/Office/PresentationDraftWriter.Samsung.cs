@@ -318,10 +318,11 @@ namespace Scribble.Office
             // creates hierarchy without asking the model to invent artwork or
             // weakening the exact evidence/citation checks.
             var evidenceHeroes = new string[count];
-            if (draft.Layout == "cards" && count > 1 && count <= 3)
+            if (draft.Layout == "cards" && count > 1 && count <= 4)
             {
                 var used = new HashSet<string>(StringComparer.Ordinal);
-                var width = (region.Width - 26f * (count - 1)) / count - 28f;
+                var columns = count == 4 ? 2 : count;
+                var width = (region.Width - 26f * (columns - 1)) / columns - 28f;
                 for (var cardIndex = 0; cardIndex < count; cardIndex++)
                 {
                     var body = string.Join("\n", draft.Cards[cardIndex].Points);
@@ -378,6 +379,7 @@ namespace Scribble.Office
                     var columns = count == 4 ? 2 : count;
                     var rows = count == 4 ? 2 : 1;
                     var compact = rows == 2;
+                    var compactHero = compact && heroMode && !string.IsNullOrEmpty(evidenceHeroes[i]);
                     const float columnGap = 26f, rowGap = 18f;
                     var evidenceWidth = (region.Width - columnGap * (columns - 1)) / columns;
                     var evidenceHeight = (region.Height - rowGap * (rows - 1)) / rows;
@@ -401,15 +403,23 @@ namespace Scribble.Office
                         fill: SamsungSlideDesign.Blue));
                     elements.Add(TextElement(card.Heading,
                         new RectangleF(evidenceBox.X + 14f, evidenceBox.Y + (compact ? 10f : 16f),
-                            evidenceBox.Width - 28f, compact ? 29f : 38f),
+                            evidenceBox.Width - (compactHero ? 166f : 28f), compact ? 29f : 38f),
                         compact ? 18 : 20, 16, MetoTheme.TitleFont, true, null, SamsungSlideDesign.Blue));
+                    if (compactHero)
+                    {
+                        var hero = TextElement(evidenceHeroes[i],
+                            new RectangleF(evidenceBox.Right - 146f, evidenceBox.Y + 7f, 132f, 38f),
+                            29, 26, MetoTheme.TitleFont, true, null, SamsungSlideDesign.Blue);
+                        hero.Alignment = 3;
+                        elements.Add(hero);
+                    }
                     var body = string.Join("\n", card.Points);
                     if (body.Length > 0)
                     {
                         var bodyStart = compact ? 45f : 64f;
                         var bodySpace = evidenceBox.Height - (compact ? 52f : 78f);
                         var bodyWidth = evidenceBox.Width - 28f;
-                        if (heroMode && !string.IsNullOrEmpty(evidenceHeroes[i]))
+                        if (!compact && heroMode && !string.IsNullOrEmpty(evidenceHeroes[i]))
                         {
                             elements.Add(TextElement(body,
                                 new RectangleF(evidenceBox.X + 14f, evidenceBox.Y + bodyStart,
