@@ -78,7 +78,9 @@ namespace Scribble.Chat
                     Add("Attached document", document.Content);
                     // An inline preview may omit later ledger rows. Only a
                     // complete extracted workbook table can supply totals.
-                    if (!document.HasMoreContent)
+                    var extension = Path.GetExtension(document.Name ?? "");
+                    if (!document.HasMoreContent && new[] { ".xlsx", ".xlsm", ".xls" }
+                        .Contains(extension, StringComparer.OrdinalIgnoreCase))
                     {
                         var totals = CompleteWorkbookTotals(document.Content);
                         if (totals != null) Add("Host-calculated attached workbook totals", totals);
