@@ -20,13 +20,18 @@ namespace Scribble.Chat
                 var schema = json.DeserializeObject(json.Serialize(definition.function.parameters)) as IDictionary<string, object>;
                 var map = args as IDictionary<string, object>;
                 // This read-only inventory has no parameters. Some compatible
-                // providers invent conventional paging/visibility hints even
-                // when its schema is {}. Discard only those inert hints so a
-                // repeated malformed call cannot strand the whole task.
+                // providers invent conventional paging/visibility hints, or
+                // copy sheet/range arguments from read_cells, even when this
+                // schema is {}. The inventory ignores all of these fields;
+                // discard only known inert hints so a repeated malformed
+                // call cannot strand a cross-app task.
                 if (map != null && call.function.name == WorkbookToolCatalog.ListWorksheets)
                 {
                     map.Remove("limit");
                     map.Remove("include_hidden");
+                    map.Remove("sheet");
+                    map.Remove("range");
+                    map.Remove("run_in_background");
                 }
                 // Known compatibility case only: decode one encoded slide/plan array.
                 // Some OpenAI-compatible gateways preserve a model's nested JSON

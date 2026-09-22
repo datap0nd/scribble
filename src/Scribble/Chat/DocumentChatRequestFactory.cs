@@ -344,8 +344,16 @@ namespace Scribble.Chat
                       "and merged cells remain unchanged, and the workbook is " +
                       "never saved."
                     : string.Empty;
+                var excelHandoffInstruction = hostKind == "excel"
+                    ? " In Excel, list_worksheets is an inventory with no required arguments; use {} for it. " +
+                      "Use read_cells with a worksheet name and range to read actual values. A Scribble Draft sheet " +
+                      "listed in the active workbook is available in memory even when the workbook is unsaved. " +
+                      "For an authorized PowerPoint request, send_to_powerpoint is the live cross-app handoff. " +
+                      "Do not claim that handoff is unavailable or ask the user to repeat values already readable " +
+                      "from the active workbook; read the sheet and continue the requested deck."
+                    : string.Empty;
                 return boundary + selectionInstruction +
-                    koreanWorkbookInstruction +
+                    koreanWorkbookInstruction + excelHandoffInstruction +
                     " The local host recognized an explicit draft request in the " +
                     "user's latest prompt and authorized ONE deliverable for this " +
                     "request, which you may build over several bounded draft calls " +

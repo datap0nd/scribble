@@ -187,13 +187,19 @@ namespace GuardrailTests
                 item => item.function.name == WorkbookToolCatalog.ListWorksheets);
             var call = new ChatToolCall { id = "hint", type = "function", function = new ChatToolCallFunction {
                 name = WorkbookToolCatalog.ListWorksheets,
-                arguments = "{\"include_hidden\":\"True\",\"limit\":\"30\"}"
+                arguments = "{\"include_hidden\":\"True\",\"limit\":\"30\",\"sheet\":\"Scribble Draft\",\"range\":\"A3:C16\",\"run_in_background\":false}"
             } };
             Check(ToolContractValidator.Validate(call, definition).Count == 0 && call.function.arguments == "{}",
                 "Inert worksheet-list hints blocked a read-only inventory.");
             call.function.arguments = "{\"unexpected_write\":true}";
             Check(ToolContractValidator.Validate(call, definition).Count > 0,
                 "Unexpected worksheet-list parameters escaped validation.");
+            var request = DocumentChatRequestFactory.Create("test-model", "excel", "Sheet: Scribble Draft",
+                new List<ChatTurn>(), "Create a PowerPoint from my draft sheet", true);
+            var system = Convert.ToString(((ChatCompletionInputMessage)request.messages[0]).content);
+            Check(system.Contains("send_to_powerpoint is the live cross-app handoff") &&
+                system.Contains("Do not claim that handoff is unavailable"),
+                "Excel-to-PowerPoint continuation again asks for source numbers already in the draft sheet.");
         }
 
         public static void DeckReviewWarningsHaveRepairTargets()
