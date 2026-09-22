@@ -1,4 +1,4 @@
-# Reliability phase 0 baseline (in progress)
+# Reliability phase 0 baseline
 
 Prepared 23 September 2026 from `bffd25e` on `codex/stress-suite-200`.
 The authoritative plan is `RELIABILITY_PLAN.md` at `9792f2de` on
@@ -49,8 +49,13 @@ not a full account balance reconciliation.
 The pilot test model remains hosted OpenRouter `qwen/qwen3.8-27b`; the configured
 Scribble endpoint was verified as `https://openrouter.ai/api/v1`. Current code
 restricts only tool-bearing requests to a six-provider allow-list and permits
-fallbacks. Tool-less reviewers can route to other providers. The pilot should
-pin a provider or record each serving provider before comparing performance.
+fallbacks. Long authoring calls sort those providers by throughput; shorter
+tool calls use the fixed provider order. Tool-less reviewers can route to
+other providers. The exact sanitized proposed pilot configuration is
+`baselines/pilot-hosted-config.json` (SHA-256
+`ee2400f4288b6f51754e36aaf801cfa4527bba02b96be60e0c9e00d311e4e941`).
+Record each serving provider before comparing performance; fallback routing
+does not support a like-for-like latency claim by itself.
 
 The local deployment candidate is Ollama `qwen3.8:27b` on
 `127.0.0.1:11434`. A bounded 4,096-context vision probe with a synthetic red
@@ -60,10 +65,16 @@ thinking capabilities and a 262,144-token model context length. That declared
 length is not an operationally verified context on this PC.
 Free RAM fell from 13.43 GiB to 0.35 GiB. The model was unloaded and the exact
 server process started for the probe was stopped; free RAM recovered to 14.5
-GiB. Larger-context, strict-schema, and tool-call probes remain unverified.
-Do not run them with the current user-owned Excel session open and this memory
-headroom. A name-based vision-capability flag is not a substitute for this
-measured result or for the missing production-path certification.
+GiB. A separate 2,048-context OpenAI-compatible `json_schema` request returned
+`approved: false` as a boolean, `issues` as a string, and no extra fields in
+25.56 seconds. Free RAM fell from 14.43 GiB to 0.98 GiB and recovered to 14.79
+GiB after unload. This is one schema-conformant sample, not a general proof of
+server-side enforcement. Actual tool-call reliability and larger context sizes
+remain unverified. The current local hardware/configuration is **not certified
+for the Office pilot**: even 4K leaves almost no memory headroom alongside the
+user-owned Excel session. Keep bounded parse/validation fallback in the target
+architecture; do not route pilot review to the local model implicitly. A
+name-based vision flag is not a substitute for production-path certification.
 
 ## Candidate model-call floor
 
@@ -93,8 +104,14 @@ targets, measure the actual implementation's stage calls and adjust this floor.
   `RepairOwnedGroupAsync` calls `RepairSlideContentAsync` for visual findings;
   phase 3 must replace this geometry route with renderer-owned repair.
 
-The Python usage-summary test passes locally. C# compilation and guardrail
-execution are pending because this workstation has no current MSBuild or .NET
-SDK; the legacy Framework MSBuild cannot parse PackageReference. Phase 0 is
-**not complete**. Do not begin phase 1 until runtime-capability evidence and
-the CI gate are reported.
+The Python usage-summary and catalog tests pass locally. Windows CI run
+`35790300096` on draft PR #22 passed the complete workflow, including solution
+build, benchmark infrastructure, GuardrailTests, the static capability scan,
+installer and release-freeze checks. This workstation has no current MSBuild
+or .NET SDK; the legacy Framework MSBuild cannot parse PackageReference.
+
+**Phase 0 exit gate: passed for the hosted pilot.** All seven mechanisms have
+offline coverage, the raw traces are archived, sanitized usage/configuration
+and call floors are recorded, and the local runtime has a measured no-go for
+the Office pilot. Phase 1 may begin after this status is reported to the owner.
+No paid inference has been used for phase 0.
