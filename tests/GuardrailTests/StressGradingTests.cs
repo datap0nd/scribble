@@ -33,6 +33,11 @@ namespace GuardrailTests
                 "A final targeted run was blocked despite a $0.25 balance on the capped key.");
             Check(TestLabStressBudget.Validate("{\"data\":{\"limit\":30,\"limit_remaining\":10.277,\"usage\":19.723,\"limit_reset\":null}}").limit == 30,
                 "The funded $10 extension of the no-reset key was rejected.");
+            Check(TestLabStressBudget.RetryTransientBudgetCheck(new System.Threading.Tasks.TaskCanceledException(), false, 0) &&
+                TestLabStressBudget.RetryTransientBudgetCheck(new System.Net.Http.HttpRequestException(), false, 1) &&
+                !TestLabStressBudget.RetryTransientBudgetCheck(new System.Threading.Tasks.TaskCanceledException(), true, 0) &&
+                !TestLabStressBudget.RetryTransientBudgetCheck(new System.Threading.Tasks.TaskCanceledException(), false, 2),
+                "Transient cap-check timeouts were not bounded and distinguished from an actual user stop.");
             foreach (var response in new[] {
                 "{\"data\":{\"limit\":null,\"limit_remaining\":null,\"usage\":0}}",
                 "{\"data\":{\"limit\":100,\"limit_remaining\":100,\"usage\":0}}",

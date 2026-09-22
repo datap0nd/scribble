@@ -47,29 +47,47 @@ namespace Scribble.Testing
                 !string.IsNullOrEmpty(endpoint.UserInfo) || !string.IsNullOrEmpty(endpoint.Query) ||
                 endpoint.AbsolutePath.TrimEnd('/') != "/api/v1" || settings.Model != "qwen/qwen3.8-27b")
                 throw new InvalidOperationException("Stress tests require the configured Qwen3.8 27B OpenRouter endpoint and the approved no-reset key capped at $30 total. No model request was submitted.");
-            using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancel))
-            using (var handler = new HttpClientHandler { AllowAutoRedirect = false })
-            using (var client = new HttpClient(handler))
-            using (var request = new HttpRequestMessage(HttpMethod.Get, "https://openrouter.ai/api/v1/key"))
+            string text = null;
+            for (var attempt = 0; attempt < 3 && text == null; attempt++)
             {
-                timeout.CancelAfter(TimeSpan.FromSeconds(15));
-                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", settings.ApiKey);
-                using (var response = await client.SendAsync(request, timeout.Token).ConfigureAwait(true))
+                try
                 {
-                    if (!response.IsSuccessStatusCode)
-                        throw new InvalidOperationException("Cannot verify the API spending cap (HTTP " + (int)response.StatusCode + "). No next case was submitted.");
-                    var text = await response.Content.ReadAsStringAsync().ConfigureAwait(true);
-                    var key = Validate(text);
-                    // Only billing totals are retained; never the key, label, or account details.
-                    File.AppendAllText(Path.Combine(state.folder, "usage.jsonl"), TestLab.Serialize(new {
-                        utc = DateTime.UtcNow.ToString("O"), case_id = state.caseId, model = settings.Model,
-                        limit_usd = key.limit, remaining_usd = key.limit_remaining, usage_usd = key.usage,
-                        source = "OpenRouter /api/v1/key", total_limit_no_reset = true,
-                        checkpoint_stop_usage_usd = MaximumCheckpointUsageUsd
-                    }) + Environment.NewLine, new UTF8Encoding(false));
+                    using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancel))
+                    using (var handler = new HttpClientHandler { AllowAutoRedirect = false })
+                    using (var client = new HttpClient(handler))
+                    using (var request = new HttpRequestMessage(HttpMethod.Get, "https://openrouter.ai/api/v1/key"))
+                    {
+                        timeout.CancelAfter(TimeSpan.FromSeconds(15));
+                        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", settings.ApiKey);
+                        using (var response = await client.SendAsync(request, timeout.Token).ConfigureAwait(true))
+                        {
+                            var status = (int)response.StatusCode;
+                            if (!response.IsSuccessStatusCode)
+                            {
+                                if ((status == 408 || status == 429 || status >= 500) && attempt < 2)
+                                { await Task.Delay(TimeSpan.FromMilliseconds(500 * (attempt + 1)), cancel).ConfigureAwait(true); continue; }
+                                throw new InvalidOperationException("Cannot verify the API spending cap (HTTP " + status + "). No next model request was submitted.");
+                            }
+                            text = await response.Content.ReadAsStringAsync().ConfigureAwait(true);
+                        }
+                    }
                 }
+                catch (Exception error) when (RetryTransientBudgetCheck(error, cancel.IsCancellationRequested, attempt))
+                { await Task.Delay(TimeSpan.FromMilliseconds(500 * (attempt + 1)), cancel).ConfigureAwait(true); }
             }
+            if (text == null)
+                throw new InvalidOperationException("Cannot verify the API spending cap after three transient network attempts. No next model request was submitted.");
+            var key = Validate(text);
+            // Only billing totals are retained; never the key, label, or account details.
+            File.AppendAllText(Path.Combine(state.folder, "usage.jsonl"), TestLab.Serialize(new {
+                utc = DateTime.UtcNow.ToString("O"), case_id = state.caseId, model = settings.Model,
+                limit_usd = key.limit, remaining_usd = key.limit_remaining, usage_usd = key.usage,
+                source = "OpenRouter /api/v1/key", total_limit_no_reset = true,
+                checkpoint_stop_usage_usd = MaximumCheckpointUsageUsd
+            }) + Environment.NewLine, new UTF8Encoding(false));
         }
+        internal static bool RetryTransientBudgetCheck(Exception error, bool userCancelled, int attempt)
+        { return !userCancelled && attempt < 2 && (error is TaskCanceledException || error is HttpRequestException); }
         public static void RecordProviderResponse(int httpStatus)
         {
             if (!StopsSuite(httpStatus)) return;
