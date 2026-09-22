@@ -227,12 +227,64 @@ namespace Scribble.Office
             var count = Math.Min(12000, content.Length - offset);
             var previewSuppressed = ContainsNativeChart(slide);
             var render = previewSuppressed ? string.Empty : Preview(slide);
+            // The structured capture is JSON, so quoted shape text contains
+            // escaped line breaks. Source citations must instead be copied
+            // from decoded native text. Keep this read-only transcript beside
+            // the structured page; TaskSources retains it as a verified span.
+            var citationText = offset == 0
+                ? CitationTextFromCaptured(json.Deserialize<Dictionary<string, object>>(content))
+                : null;
             return new { presentation_id = IdentityFor(presentation), slide_id = (int)((dynamic)slide).SlideID,
                 fingerprint = TaskCheckpointStore.Fingerprint(content + render), content = content.Substring(offset, count), offset, total_characters = content.Length,
                 next_offset = offset + count < content.Length ? (int?)(offset + count) : null,
+                citation_text = citationText,
                 image = preview && !string.IsNullOrEmpty(render) ? render : null,
                 preview_unavailable = preview && previewSuppressed ? "Native-chart preview omitted because this Office build may terminate while exporting it; structured chart data is included." : null,
                 untrusted_document_data = true };
+        }
+        public static string CitationTextFromCaptured(IDictionary<string, object> capture)
+        {
+            if (capture == null) return string.Empty;
+            var lines = new List<string>();
+            object shapes;
+            if (capture.TryGetValue("shapes", out shapes)) AppendCitationShapes(shapes, lines);
+            object notes;
+            if (capture.TryGetValue("notes", out notes) && !string.IsNullOrWhiteSpace(Convert.ToString(notes)))
+                lines.Add(Convert.ToString(notes).Trim());
+            var text = string.Join("\n", lines);
+            return text.Length <= 12000 ? text : text.Substring(0, 12000);
+        }
+        private static void AppendCitationShapes(object source, List<string> lines)
+        {
+            var shapes = source as IEnumerable;
+            if (shapes == null || source is string) return;
+            foreach (var raw in shapes)
+            {
+                var shape = raw as IDictionary<string, object>;
+                if (shape == null) continue;
+                object value;
+                if (shape.TryGetValue("text", out value) && !string.IsNullOrWhiteSpace(Convert.ToString(value)))
+                    lines.Add(Convert.ToString(value).Trim());
+                if (shape.TryGetValue("table", out value))
+                {
+                    var rows = value as IEnumerable;
+                    if (rows != null) foreach (var rawRow in rows)
+                    {
+                        var cells = rawRow as IEnumerable;
+                        if (cells == null || rawRow is string) continue;
+                        var texts = new List<string>();
+                        foreach (var rawCell in cells)
+                        {
+                            var cell = rawCell as IDictionary<string, object>;
+                            object cellText;
+                            texts.Add(cell != null && cell.TryGetValue("text", out cellText)
+                                ? Convert.ToString(cellText).Trim() : string.Empty);
+                        }
+                        lines.Add(string.Join("\t", texts));
+                    }
+                }
+                if (shape.TryGetValue("children", out value)) AppendCitationShapes(value, lines);
+            }
         }
     }
 }

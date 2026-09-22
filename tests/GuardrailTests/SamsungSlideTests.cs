@@ -181,6 +181,20 @@ namespace GuardrailTests
         }
         public static void EvidenceAndNumbers()
         {
+            var citation = PresentationInspection.CitationTextFromCaptured(new Dictionary<string, object> {
+                { "shapes", new object[] {
+                    new Dictionary<string, object> { { "text", "June revenue eur: 82,992.\r\rCost EUR: 36,714." } },
+                    new Dictionary<string, object> { { "table", new object[] {
+                        new object[] { new Dictionary<string, object> { { "text", "Group" } }, new Dictionary<string, object> { { "text", "Revenue EUR" } } },
+                        new object[] { new Dictionary<string, object> { { "text", "North" } }, new Dictionary<string, object> { { "text", "19,219" } } } } } } } },
+                { "notes", "January–June 2026" } });
+            if (!citation.Contains("June revenue eur: 82,992.") || !citation.Contains("Cost EUR: 36,714.") ||
+                !citation.Contains("Group\tRevenue EUR\nNorth\t19,219") || citation.Contains("\\r"))
+                throw new Exception("Native PowerPoint citation text lost decoded source values or table associations.");
+            SamsungEvidence.ValidateClaims(new Dictionary<string, object> { { "claims", new object[] {
+                new Dictionary<string, object> { { "text", "June revenue EUR 82,992" },
+                    { "evidence", "June revenue eur: 82,992.\r\rCost EUR: 36,714." },
+                    { "label", "Revenue EUR" }, { "unit", "EUR" }, { "period", "2026-06" } } } } }, citation);
             SamsungPresentationReview.ValidatePlan(new[] { "intro", "evidence", "decision" }, new[] { "evidence" }, new[] { "intro" });
             ExpectFailure(() => SamsungPresentationReview.ValidatePlan(new[] { "intro", "intro" }, new[] { "intro" }, new string[0]));
             ExpectFailure(() => SamsungPresentationReview.ValidatePlan(new[] { "intro", "decision" }, new[] { "decision" }, new string[0]));
