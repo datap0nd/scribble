@@ -26,10 +26,19 @@ namespace GuardrailTests
                 "\n[Sheet 2]\nPeriod\tRevenue EUR\n2026-05\t210";
             var totals = summarize(ledger);
             Check(totals != null && totals.Contains("12 unique RowIDs") &&
-                totals.Contains("2026-05\tAll groups\t6\t210\t42") &&
-                totals.Contains("2026-06\tNorth\t3\t270\t54") &&
-                totals.Contains("2026-06\tAll groups\t6\t570\t114"),
+                totals.Contains("Period 2026-05; Group All groups; Rows 6; RevenueEUR 210 EUR; CostEUR 42 EUR") &&
+                totals.Contains("Period 2026-06; Group North; Rows 3; RevenueEUR 270 EUR; CostEUR 54 EUR") &&
+                totals.Contains("Period 2026-06; Group All groups; Rows 6; RevenueEUR 570 EUR; CostEUR 114 EUR"),
                 "A complete attached workbook did not yield exact grouped decimal sums.");
+            var juneReceipt = totals.Split('\n').Single(line => line.StartsWith("Period 2026-06; Group All groups;", StringComparison.Ordinal));
+            var margin = new { label = "Gross margin", operation = "margin_percent", result = 80m, unit = "%", decimals = 2,
+                operands = new[] {
+                    new { value = 570m, label = "Revenue EUR", unit = "EUR", period = "2026-06", evidence = juneReceipt },
+                    new { value = 114m, label = "Cost EUR", unit = "EUR", period = "2026-06", evidence = juneReceipt } } };
+            SamsungPresentationReview.ValidateEvidence(new JavaScriptSerializer().Serialize(new {
+                title = "June margin", subtitle = "June gross margin was 80%", evidence = juneReceipt,
+                sources = "Complete attached workbook", calculations = new[] { margin }
+            }), totals);
             Check(summarize(ledger.Replace("R12\t", "R11\t")) == null,
                 "Duplicate RowIDs were included in a host-calculated source receipt.");
             Check(summarize(ledger.Replace("R12\t2026-06\tSouth\t120", "R12\t2026-06\tSouth\tunknown")) == null,
