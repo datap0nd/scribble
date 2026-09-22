@@ -277,17 +277,22 @@ namespace Scribble.Office
                 if (draft.HighlightRows.Count > 0 && draft.Takeaway.Length > 0 && draft.Layout == "annotated_chart")
                     elements.Add(new SamsungElement { Box = SamsungSlideDesign.Percent(50.8f, 80.2f, 5.3f, 4.5f), Connector = true });
             }
-            var source = string.Join("; ", new[] { SamsungAuthoringPolicy.AudienceNote(draft.Footnote), draft.Sources }.Where(s => !string.IsNullOrWhiteSpace(s)));
+            var audienceFootnote = SamsungAuthoringPolicy.AudienceNote(draft.Footnote);
+            var source = string.Join("; ", new[] { audienceFootnote, draft.Sources }.Where(s => !string.IsNullOrWhiteSpace(s)));
             // The complete citation always reaches the speaker notes. A cover or
             // divider keeps only a short visible reference, placed clear of the
-            // cover's accent bar instead of across it.
+            // cover's accent bar instead of across it. When the combined note
+            // is long, the actual citation takes priority over optional caveats.
             var sparse = draft.Layout == "cover" || draft.Layout == "divider" || draft.Layout == "closing";
             var visibleSource = source;
             if (source.Length > (sparse ? 90 : 120))
             {
-                var shortReference = source.Split(';')[0].Trim();
-                if (shortReference.Length > 90) shortReference = shortReference.Substring(0, 90).TrimEnd() + "…";
-                visibleSource = shortReference + " • full evidence in speaker notes";
+                var shortReference = string.IsNullOrWhiteSpace(draft.Sources) ? audienceFootnote : draft.Sources.Trim();
+                shortReference = shortReference.Split(';')[0].Trim();
+                var limit = sparse ? 90 : 120;
+                if (shortReference.Length > limit)
+                    shortReference = shortReference.Substring(0, limit - 1).TrimEnd() + "…";
+                visibleSource = shortReference;
             }
             if (source.Length > 0) elements.Add(TextElement(visibleSource,
                 draft.Layout == "cover" ? SamsungSlideDesign.Percent(3.8f, 90.8f, 87f, 3f) : SamsungSlideDesign.Footer, 10, 9, "Arial Narrow"));

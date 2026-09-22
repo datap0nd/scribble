@@ -123,6 +123,8 @@ namespace GuardrailTests
             const string captionText = "June 2026 records only. Margin uses aggregate revenue and cost, never an average of row rates.";
             var captionPlan = SamsungPresentationReview.InspectPlan(json.Serialize(new[] {
                 new { title = "June results", subtitle = "Revenue held firm", layout = "table", caption = captionText, unit = "(EUR; % where shown)",
+                    footnote = "Rates use aggregate revenue and cost, never row averages; each RowID is counted once; missing inputs remain unknown rather than zero; the visible numbers are rounded only for display.",
+                    sources = "Source: WB01 Ledger",
                     table = new { headers = new[] { "Group", "Revenue EUR" }, rows = new[] { new[] { "North", "19,219" } } } } }));
             var captioned = (IEnumerable)json.DeserializeObject(json.Serialize(captionPlan));
             var captionPage = (Dictionary<string, object>)captioned.Cast<object>().Single();
@@ -130,6 +132,10 @@ namespace GuardrailTests
                 .Single(element => Convert.ToString(element["text"]) == captionText);
             if (Convert.ToDouble(caption["size"]) < 14 || Convert.ToDouble(caption["minimum"]) < 14 || Convert.ToDouble(caption["width"]) < 610)
                 throw new Exception("Samsung analytical captions must remain readable at the native presentation minimum.");
+            var captionElements = ((IEnumerable)captionPage["elements"]).Cast<Dictionary<string, object>>().ToArray();
+            if (!captionElements.Any(e => Convert.ToString(e["text"]) == "Source: WB01 Ledger") ||
+                captionElements.Any(e => Convert.ToString(e["text"]).Contains("full evidence in speaker notes")))
+                throw new Exception("A long caveat must not displace the audience-facing citation with workflow copy.");
             const string chartCaveat = "June source workbook, Summary!B4:C5";
             var chartPlan = SamsungPresentationReview.InspectPlan(json.Serialize(new[] { new {
                 title = "Revenue by region", subtitle = "West leads", layout = "chart", unit = "EUR",
