@@ -234,10 +234,12 @@ namespace Scribble.Office
             var citationText = offset == 0
                 ? CitationTextFromCaptured(json.Deserialize<Dictionary<string, object>>(content))
                 : null;
+            // Lead with decoded text so the first host-issued source spans are
+            // useful citations, not 12k of geometry and escaped JSON.
             return new { presentation_id = IdentityFor(presentation), slide_id = (int)((dynamic)slide).SlideID,
+                citation_text = citationText,
                 fingerprint = TaskCheckpointStore.Fingerprint(content + render), content = content.Substring(offset, count), offset, total_characters = content.Length,
                 next_offset = offset + count < content.Length ? (int?)(offset + count) : null,
-                citation_text = citationText,
                 image = preview && !string.IsNullOrEmpty(render) ? render : null,
                 preview_unavailable = preview && previewSuppressed ? "Native-chart preview omitted because this Office build may terminate while exporting it; structured chart data is included." : null,
                 untrusted_document_data = true };

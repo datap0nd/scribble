@@ -99,7 +99,19 @@ namespace Scribble.Chat
                 var known = new HashSet<string>(Spans().Select(span => span.Id), StringComparer.Ordinal);
                 if (suppliedIds.Length > 0 && suppliedIds.All(known.Contains)) return suppliedIds;
             }
-            if (parsed != null) Collect(parsed, strings);
+            if (name == PresentationToolCatalog.InspectSlide && map != null)
+            {
+                // Preserve citation-friendly native text before the large
+                // geometry JSON. The model can cite the first retained spans
+                // without reconstructing escaped text from shape metadata.
+                object citation;
+                if (map.TryGetValue("citation_text", out citation) && citation is string &&
+                    !string.IsNullOrWhiteSpace((string)citation)) strings.Add((string)citation);
+                object content;
+                if (map.TryGetValue("content", out content) && content is string)
+                    strings.Add((string)content);
+            }
+            else if (parsed != null) Collect(parsed, strings);
             var spanIds = Add(name, string.Join("\n", strings));
             result.AttachSourceSpans(spanIds);
             foreach (var image in result.VisionImages)
