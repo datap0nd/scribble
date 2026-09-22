@@ -294,13 +294,16 @@ namespace GuardrailTests
                 var revised = new ChatToolCall { id = "call-2", function = new ChatToolCallFunction { name = CrossAppToolCatalog.SendToPowerPoint, arguments = "{\"slides\":[{\"id\":\"b\"}]}" } };
                 Check(task.RecoverableWriteConflict(revised, true) == null, "A task without an interrupted write was redirected.");
                 var original = new ChatToolCall { id = "call-1", function = new ChatToolCallFunction { name = CrossAppToolCatalog.SendToPowerPoint, arguments = "{\"slides\":[{\"id\":\"a\"}]}" } };
+                var journalType = typeof(DocumentDraftHost).Assembly.GetType("Scribble.Office.SamsungGenerationJournal", true);
+                var inputHash = journalType.GetMethod("InputHash", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+                var canResume = journalType.GetMethod("CanResume", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
                 task.State.HostData["samsung_pending"] = new JavaScriptSerializer().Serialize(new Dictionary<string, object> {
-                    { "Owner", "o" }, { "Input", SamsungGenerationJournal.InputHash(original) }, { "ToolCall", "call-1" },
+                    { "Owner", "o" }, { "Input", inputHash.Invoke(null, new object[] { original }) }, { "ToolCall", "call-1" },
                     { "ToolName", original.function.name }, { "Arguments", original.function.arguments }, { "AttemptCalls", new[] { "call-1" } } });
                 task.State.Writes.Add(new TaskWriteRecord { Id = "tool:call-1", Status = "uncertain" });
                 Check(task.RecoverableWriteConflict(revised, false) == null, "A read-only call was treated as a write conflict.");
                 Check(task.RecoverableWriteConflict(revised, true) == null && revised.function.arguments == original.function.arguments &&
-                    SamsungGenerationJournal.CanResume(task.State, revised), "The same slide tool did not safely recover its original payload.");
+                    (bool)canResume.Invoke(null, new object[] { task.State, revised }), "The same slide tool did not safely recover its original payload.");
                 var unrelated = new ChatToolCall { id = "call-3", function = new ChatToolCallFunction { name = WorkbookToolCatalog.WriteDraftSheet, arguments = "{\"rows\":[[\"new\"]]}" } };
                 for (var attempt = 0; attempt < TaskContextManager.MaxWriteRecoveryRedirects; attempt++)
                 {
