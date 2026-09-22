@@ -105,6 +105,11 @@ namespace Scribble.Office
                 @"\s*(?:\(|[—–-])\s*(?:zero[- ]based(?: value)? axis|native editable chart|single primary series|value axis (?:from|begins at|starts at) zero)\s*\)?$",
                 "", RegexOptions.IgnoreCase).Trim();
         }
+        public static string AudienceUnit(string value)
+        {
+            var unit = (value ?? "").Trim();
+            return Regex.IsMatch(unit, @"^(?:not applicable|n/?a|none)$", RegexOptions.IgnoreCase) ? "" : unit;
+        }
         public static string AudienceTakeaway(string value)
         {
             // Preserve the business result after a model prefixes it with a

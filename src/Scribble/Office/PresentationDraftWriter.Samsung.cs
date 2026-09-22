@@ -244,7 +244,8 @@ namespace Scribble.Office
                 }
                 var audienceCaption = SamsungAuthoringPolicy.AudienceNote(draft.Caption);
                 if (audienceCaption.Length > 0) elements.Add(TextElement(audienceCaption, SamsungSlideDesign.Percent(15.6f, 21f, 64.2f, 3.5f), 14, 14, "Arial Narrow"));
-                if (draft.Unit.Length > 0) { var unit = TextElement(draft.Unit, SamsungSlideDesign.Percent(80, 21.5f, 16.2f, 3.1f), 11, 11, "Calibri"); unit.Alignment = 3; elements.Add(unit); }
+                var audienceUnit = SamsungAuthoringPolicy.AudienceUnit(draft.Unit);
+                if (audienceUnit.Length > 0) { var unit = TextElement(audienceUnit, SamsungSlideDesign.Percent(80, 21.5f, 16.2f, 3.1f), 11, 11, "Calibri"); unit.Alignment = 3; elements.Add(unit); }
                 var audienceTakeaway = SamsungAuthoringPolicy.AudienceTakeaway(draft.Takeaway);
                 if (audienceTakeaway.Length > 0) elements.Add(TextElement(audienceTakeaway,
                     draft.Layout == "scorecard" ? SamsungSlideDesign.ScorecardTakeaway : SamsungSlideDesign.Takeaway,
@@ -696,7 +697,7 @@ namespace Scribble.Office
                         ? slide.Shapes.AddShape(element.Circle ? 9 : 1, box.X, box.Y, box.Width, box.Height)
                         : slide.Shapes.AddTextbox(1, box.X, box.Y, box.Width, box.Height);
                     shape.Line.Visible = element.Hollow ? -1 : 0;
-                    if (element.Hollow) { shape.Fill.Visible = 0; shape.Line.ForeColor.RGB = MetoTheme.Rgb(SamsungSlideDesign.Red); shape.Line.Weight = 1f; }
+                    if (element.Hollow) { shape.Fill.Visible = 0; shape.Line.ForeColor.RGB = MetoTheme.Rgb(SamsungSlideDesign.Blue); shape.Line.Weight = 1f; }
                     else
                     {
                         if (element.Fill != null) { shape.Fill.Solid(); shape.Fill.ForeColor.RGB = MetoTheme.Rgb(element.Fill); }

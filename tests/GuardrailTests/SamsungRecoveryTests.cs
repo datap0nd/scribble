@@ -111,6 +111,10 @@ namespace GuardrailTests
                 "A single primary revenue series on a zero-based axis shows the 2,527 EUR dip.") ==
                 "The 2,527 EUR dip.",
                 "A measure-specific chart-construction clause leaked into the visible takeaway.");
+            Check(SamsungAuthoringPolicy.AudienceUnit("not applicable") == "" &&
+                SamsungAuthoringPolicy.AudienceUnit("N/A") == "" &&
+                SamsungAuthoringPolicy.AudienceUnit(" EUR ") == "EUR",
+                "A placeholder unit reached the visible slide or a real unit was removed.");
             var visualDraft = Invoke(Type("PresentationDraftWriter"), "ParseSlides", null,
                 (object)json.Deserialize<object[]>("[{\"id\":\"headline\",\"layout\":\"scorecard\",\"title\":\"Results\",\"subtitle\":\"June revenue declined\",\"takeaway\":\"June revenue fell to 82,992 EUR.\",\"cards\":[{\"heading\":\"Revenue\",\"points\":[\"82,992\"]},{\"heading\":\"Cost\",\"points\":[\"36,714\"]}]}]"));
             var visualPage = ((IEnumerable)Invoke(Type("PresentationDraftWriter"), "ComposeSamsung", null, visualDraft))
