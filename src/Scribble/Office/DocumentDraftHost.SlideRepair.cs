@@ -279,14 +279,27 @@ namespace Scribble.Office
                 if (findings == null) return SamsungAuthoringPolicy.CacheKey(settings.Model, settings.BaseUrl, deckContent, source);
                 if (cycle == 3) throw new InvalidOperationException("SLIDE_DECK_REVIEW: " + findings);
                 var report = _serializer.Deserialize<Dictionary<string, object>>(findings);
-                var affected = SamsungAuthoringPolicy.Array(report, "findings").Select(SamsungAuthoringPolicy.ReadMap)
-                    .Where(f => SamsungAuthoringPolicy.Text(f, "severity") == "blocker").Select(f => SamsungAuthoringPolicy.Text(f, "slide_id")).Distinct().ToArray();
+                var affected = AffectedDeckReviewSlides(report);
                 if (affected.Length == 0 || affected.Any(id => !content.ContainsKey(id))) throw new InvalidOperationException("SLIDE_DECK_REVIEW_TARGET: Review must identify affected logical slide IDs. " + findings);
                 foreach (var id in affected) await RepairOwnedGroupAsync(outputs, content, id, findings, source, prompt, client, settings, token, journal);
                 await ReviewOwnedPagesAsync(outputs.Where(o => affected.Contains(o.Page.Source.Id)).ToArray(), content, source, prompt, client, settings, token, journal, progress);
                 ArchiveOwnedPages(outputs);
             }
             throw new InvalidOperationException("SLIDE_DECK_REVIEW_INCOMPLETE");
+        }
+
+        internal static string[] AffectedDeckReviewSlides(IDictionary<string, object> report)
+        {
+            var findings = SamsungAuthoringPolicy.Array(report, "findings")
+                .Select(SamsungAuthoringPolicy.ReadMap).ToArray();
+            var blockers = findings.Where(f => SamsungAuthoringPolicy.Text(f, "severity") == "blocker").ToArray();
+            // An independent reviewer can reject a deck with actionable
+            // warnings only. Repair those instead of reporting a missing
+            // target and abandoning an otherwise complete native deck.
+            var actionable = blockers.Length > 0 ? blockers : findings.Where(f =>
+                SamsungAuthoringPolicy.Text(f, "severity") == "warning").ToArray();
+            return actionable.Select(f => SamsungAuthoringPolicy.Text(f, "slide_id"))
+                .Where(id => !string.IsNullOrWhiteSpace(id)).Distinct().ToArray();
         }
     }
 }

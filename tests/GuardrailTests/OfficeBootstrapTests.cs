@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
@@ -164,6 +165,23 @@ namespace GuardrailTests
                 "An explicit selection replacement was redirected.");
             Check(route("unexpected", "Create a memo.") == "new_document",
                 "An unknown Word placement edited the source document.");
+        }
+
+        public static void DeckReviewWarningsHaveRepairTargets()
+        {
+            var method = typeof(DocumentDraftHost).GetMethod("AffectedDeckReviewSlides",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Check(method != null, "The deck-review target selector is missing.");
+            Func<object[], string[]> affected = findings => (string[])method.Invoke(null,
+                new object[] { new Dictionary<string, object> { { "findings", findings } } });
+            Func<string, string, object> finding = (severity, slideId) =>
+                new Dictionary<string, object> { { "severity", severity }, { "slide_id", slideId } };
+            Check(affected(new[] { finding("warning", "headline"), finding("warning", "period") })
+                .SequenceEqual(new[] { "headline", "period" }),
+                "A warning-only rejection abandoned a repairable deck.");
+            Check(affected(new[] { finding("warning", "period"), finding("blocker", "quality") })
+                .SequenceEqual(new[] { "quality" }),
+                "Blockers must be repaired before advisory warnings.");
         }
 
         public static void PowerPointLaunchTracksReusedOrFreshProcess()
