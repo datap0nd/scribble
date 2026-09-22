@@ -28,7 +28,7 @@ namespace Scribble.Office
             IDictionary<string, object> original,
             IDictionary<string, object> replacement)
         {
-            foreach (var field in new[] { "table", "secondary_table", "chart", "secondary_chart", "image_names", "source_spans", "evidence", "calculations", "content_kind" })
+            foreach (var field in new[] { "table", "secondary_table", "chart", "secondary_chart", "image_names", "source_spans", "evidence", "sources", "calculations", "content_kind" })
             {
                 object before, after;
                 original.TryGetValue(field, out before);
@@ -36,6 +36,17 @@ namespace Scribble.Office
                 if (SamsungRepairPolicy.Serialize(RepairEvidenceValue(field, before)) !=
                     SamsungRepairPolicy.Serialize(RepairEvidenceValue(field, after)))
                     throw new InvalidOperationException("SLIDE_REPAIR_EVIDENCE_CHANGED: " + field);
+            }
+        }
+        internal static void RetainSlideRepairSources(
+            IDictionary<string, object> original,
+            IDictionary<string, object> replacement)
+        {
+            foreach (var hostOwned in new[] { "evidence", "source_spans", "sources" })
+            {
+                object retained;
+                if (original.TryGetValue(hostOwned, out retained)) replacement[hostOwned] = retained;
+                else replacement.Remove(hostOwned);
             }
         }
         internal static object[] SelectSlideRepair(IDictionary<string, object> wrapper, string expectedId)
@@ -62,7 +73,7 @@ namespace Scribble.Office
                 SamsungAuthoringPolicy.Instructions + " Repair this single slide using the specific visual findings. Return JSON only: {\"slides\":[{...complete corrected slide...}]}. " +
                 "Return only the slide whose id is '" + SamsungAuthoringPolicy.Text(original, "id") + "'; do not return any other planned slide. " +
                 "Keep every user-required chart-title unit token (such as EUR); shorten surrounding wording if needed, never remove the unit. " +
-                "Keep the ID, all required table rows, chart type, categories, series names and values, calculations and source images unchanged. Do not add or remove a primary or secondary chart or table: this is a visual repair, not new evidence. For a sparse table slide, enlarge the existing table and use semantic highlight_rows and a coherent subtitle/takeaway; do not invent a chart. You may correct an existing chart title when the finding requires it. Omit evidence and source_spans from your answer: the host carries both over unchanged. You may choose a better Samsung layout and remove redundant wording. " +
+                "Keep the ID, all required table rows, chart type, categories, series names and values, calculations and source images unchanged. Do not add or remove a primary or secondary chart or table: this is a visual repair, not new evidence. For a sparse table slide, enlarge the existing table and use semantic highlight_rows and a coherent subtitle/takeaway; do not invent a chart. You may correct an existing chart title when the finding requires it. Omit evidence, source_spans and sources from your answer: the host carries them over unchanged. You may choose a better Samsung layout and remove redundant wording. " +
                 "Do not invent pixel coordinates or remove evidence to make it fit. Schema: " + _serializer.Serialize(PresentationToolCatalog.DraftDefinition().function.parameters),
                 _serializer.Serialize(new { original, findings, instruction = prompt }), output.Image, token, repairTokens);
             var wrapper = await ReadSlideRepairJsonAsync(client, settings, response, token, repairTokens);
@@ -72,16 +83,10 @@ namespace Scribble.Office
             var errors = ToolContractValidator.Validate(testCall, PresentationToolCatalog.DraftDefinition());
             if (errors.Count > 0) throw new InvalidOperationException("SLIDE_REPAIR_SCHEMA: " + string.Join("; ", errors));
             if (SamsungAuthoringPolicy.Text(replacement, "id") != SamsungAuthoringPolicy.Text(original, "id")) throw new InvalidOperationException("SLIDE_REPAIR_ID_CHANGED");
-            // The resolved evidence text and its span IDs belong to the host. A
-            // visual repair cannot alter them, and must not fail because the
-            // repair model could not retype several thousand characters of
-            // source text byte for byte: they are carried over by construction.
-            foreach (var hostOwned in new[] { "evidence", "source_spans" })
-            {
-                object retained;
-                if (original.TryGetValue(hostOwned, out retained)) replacement[hostOwned] = retained;
-                else replacement.Remove(hostOwned);
-            }
+            // Evidence, span IDs and the visible citation belong to the host.
+            // A visual repair must never lose them because the repair model
+            // omitted a field or failed to retype source text byte for byte.
+            RetainSlideRepairSources(original, replacement);
             ValidateSlideRepairEvidence(original, replacement);
             if (SamsungRepairPolicy.Serialize(original) == SamsungRepairPolicy.Serialize(replacement)) throw new InvalidOperationException("SLIDE_REPAIR_STALLED: No meaningful content or layout change was proposed.");
             SamsungPresentationReview.ValidateEvidence(_serializer.Serialize(replacement), source);

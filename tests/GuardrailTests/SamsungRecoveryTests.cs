@@ -129,7 +129,7 @@ namespace GuardrailTests
                 SamsungSlideDesign.ScorecardTakeaway.Bottom < SamsungSlideDesign.Footer.Y,
                 "A scorecard takeaway left a large empty gap or collided with the source footer.");
             var cardDraft = Invoke(Type("PresentationDraftWriter"), "ParseSlides", null,
-                (object)json.Deserialize<object[]>("[{\"id\":\"quality\",\"layout\":\"cards\",\"title\":\"Data quality\",\"subtitle\":\"Complete observations\",\"cards\":[{\"heading\":\"Integrity\",\"points\":[\"144 records verified\",\"No blanks\"]},{\"heading\":\"Coverage\",\"points\":[\"May 2026: 24 records\",\"June 2026: 24 records\"]}]}]"));
+                (object)json.Deserialize<object[]>("[{\"id\":\"quality\",\"layout\":\"cards\",\"title\":\"Data quality\",\"subtitle\":\"Complete observations\",\"cards\":[{\"heading\":\"Integrity\",\"points\":[\"Ledger A2:L145\",\"144 records verified\",\"No blanks\"]},{\"heading\":\"Coverage\",\"points\":[\"May 2026: 24 records\",\"June 2026: 24 records\"]}]}]"));
             var cardPage = ((IEnumerable)Invoke(Type("PresentationDraftWriter"), "ComposeSamsung", null, cardDraft))
                 .Cast<object>().Single();
             var cardElements = ((IEnumerable)cardPage.GetType().GetField("Elements", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(cardPage))
@@ -138,8 +138,8 @@ namespace GuardrailTests
                 (float)element.GetType().GetField("Size", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(element) >= 26f)
                 .Select(element => (string)element.GetType().GetField("Text", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(element))
                 .ToArray();
-            Check(largeText.Contains("144") && largeText.Contains("24") && !largeText.Contains("2026"),
-                "A reporting year was promoted as a hero metric instead of the record count.");
+            Check(largeText.Contains("144") && largeText.Contains("24") && !largeText.Contains("2026") && !largeText.Contains("45,"),
+                "A reporting year or fragment of a cell range was promoted as a hero metric.");
             var compactGridDraft = Invoke(Type("PresentationDraftWriter"), "ParseSlides", null,
                 (object)json.Deserialize<object[]>("[{\"id\":\"data-quality\",\"layout\":\"cards\",\"title\":\"Data quality\",\"subtitle\":\"Complete figures\",\"cards\":[{\"heading\":\"Source coverage\",\"points\":[\"Workbook WB01 (Ledger)\",\"Jan–Jun 2026\",\"North / South / East / West\",\"Revenue & Cost EUR\"]},{\"heading\":\"Completeness\",\"points\":[\"24 obs in June\",\"0 blank Revenue\",\"0 blank Cost\",\"June measures complete\"]},{\"heading\":\"Method\",\"points\":[\"Additive SUMIF sums\",\"Blanks = unknown\",\"Aggregate-total rates\",\"No row-avg %\"]},{\"heading\":\"Evidence boundary\",\"points\":[\"Group compare: June only\",\"Blanks remain unknown\",\"Planned ≠ completed\",\"Financial ≠ operational\"]}]}]"));
             var compactGridPage = ((IEnumerable)Invoke(Type("PresentationDraftWriter"), "ComposeSamsung", null, compactGridDraft))
@@ -177,6 +177,19 @@ namespace GuardrailTests
             Invoke(typeof(DocumentDraftHost), "ValidateSlideRepairEvidence", null, originalSlide, retitledSlide);
             var changedData = json.Deserialize<Dictionary<string, object>>(json.Serialize(retitledSlide).Replace("82992", "82993"));
             Reject(() => Invoke(typeof(DocumentDraftHost), "ValidateSlideRepairEvidence", null, originalSlide, changedData), "SLIDE_REPAIR_EVIDENCE_CHANGED: chart");
+            var sourcedSlide = json.Deserialize<Dictionary<string, object>>(
+                "{\"id\":\"quality\",\"title\":\"Old title\",\"sources\":\"WB01 Ledger & Scribble Draft\",\"evidence\":\"verified cells\",\"source_spans\":[\"span-1\"]}");
+            var visualReplacement = json.Deserialize<Dictionary<string, object>>(
+                "{\"id\":\"quality\",\"title\":\"Clearer title\",\"sources\":\"\"}");
+            Invoke(typeof(DocumentDraftHost), "RetainSlideRepairSources", null, sourcedSlide, visualReplacement);
+            Check(SamsungAuthoringPolicy.Text(visualReplacement, "sources") == "WB01 Ledger & Scribble Draft" &&
+                SamsungAuthoringPolicy.Text(visualReplacement, "evidence") == "verified cells" &&
+                visualReplacement.ContainsKey("source_spans"),
+                "A visual-only repair discarded the original visible citation or resolved evidence.");
+            Invoke(typeof(DocumentDraftHost), "ValidateSlideRepairEvidence", null, sourcedSlide, visualReplacement);
+            visualReplacement["sources"] = "Unrelated source";
+            Reject(() => Invoke(typeof(DocumentDraftHost), "ValidateSlideRepairEvidence", null, sourcedSlide, visualReplacement),
+                "SLIDE_REPAIR_EVIDENCE_CHANGED: sources");
             var repairWithExtra = json.Deserialize<Dictionary<string, object>>(
                 "{\"slides\":[{\"id\":\"headline\",\"layout\":\"scorecard\"},{\"id\":\"period-comparison\",\"layout\":\"chart\"}]}");
             var selectedRepair = (object[])Invoke(typeof(DocumentDraftHost), "SelectSlideRepair", null,
