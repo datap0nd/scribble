@@ -1920,6 +1920,7 @@ namespace Scribble.Outlook
 
                 string cellType = null;
                 var rowValues = new List<string>();
+                var cellColumn = -1;
                 while (!reader.EOF)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
@@ -1947,9 +1948,10 @@ namespace Scribble.Outlook
                                     : string.Empty;
                         }
 
-                        if (content.Length > 0)
+                        if (cellColumn >= 0 &&
+                            cellColumn < rowValues.Count)
                         {
-                            rowValues.Add(content);
+                            rowValues[cellColumn] += content;
                         }
 
                         continue;
@@ -1960,6 +1962,22 @@ namespace Scribble.Outlook
                         reader.LocalName == "c")
                     {
                         cellType = reader.GetAttribute("t");
+                        var reference = reader.GetAttribute("r");
+                        var referencedColumn = XlsxColumnIndex(reference);
+                        cellColumn = referencedColumn >= 0
+                            ? referencedColumn
+                            : rowValues.Count;
+                        if (cellColumn >= 0 && cellColumn < 16384)
+                            while (rowValues.Count <= cellColumn)
+                                rowValues.Add(string.Empty);
+                        else
+                            cellColumn = -1;
+                    }
+                    else if (reader.NodeType ==
+                                 System.Xml.XmlNodeType.EndElement &&
+                             reader.LocalName == "c")
+                    {
+                        cellColumn = -1;
                     }
                     else if (reader.NodeType ==
                                  System.Xml.XmlNodeType
@@ -1988,6 +2006,22 @@ namespace Scribble.Outlook
                     }
                 }
             }
+        }
+
+        private static int XlsxColumnIndex(string reference)
+        {
+            if (string.IsNullOrWhiteSpace(reference)) return -1;
+            var column = 0;
+            var index = 0;
+            while (index < reference.Length &&
+                   reference[index] >= 'A' && reference[index] <= 'Z')
+            {
+                column = column * 26 + reference[index] - 'A' + 1;
+                if (column > 16384) return -1;
+                index++;
+            }
+            return index > 0 && index < reference.Length &&
+                char.IsDigit(reference[index]) ? column - 1 : -1;
         }
 
         private static IList<string> ReadSharedStrings(

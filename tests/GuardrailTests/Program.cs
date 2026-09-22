@@ -3965,6 +3965,24 @@ namespace GuardrailTests
                     content.Text.Contains("777"),
                     "The second worksheet was not extracted: " +
                     content.Text);
+
+                var sparsePath = Path.Combine(temp, "sparse.xlsx");
+                WriteZipEntries(sparsePath,
+                    new[] { "xl/worksheets/sheet1.xml" },
+                    new[] {
+                        "<worksheet xmlns=\"" + sheetNamespace + "\"><sheetData>" +
+                        "<row r=\"1\"><c r=\"A1\" t=\"inlineStr\"><is><t>RowID</t></is></c>" +
+                        "<c r=\"C1\" t=\"inlineStr\"><is><t>Revenue</t></is></c>" +
+                        "<c r=\"D1\" t=\"inlineStr\"><is><t>Period</t></is></c></row>" +
+                        "<row r=\"2\"><c r=\"A2\" t=\"inlineStr\"><is><t>R1</t></is></c>" +
+                        "<c r=\"B2\"/><c r=\"C2\"><v>0</v></c>" +
+                        "<c r=\"D2\" t=\"inlineStr\"><is><t>2026-06</t></is></c></row>" +
+                        "</sheetData></worksheet>"
+                    });
+                var sparse = EmailAttachmentReader.LoadLocalFile(sparsePath);
+                Assert(sparse.Text.Contains("RowID\t\tRevenue\tPeriod") &&
+                    sparse.Text.Contains("R1\t\t0\t2026-06"),
+                    "Blank XLSX cells shifted values under the wrong header: " + sparse.Text);
             }
             finally
             {
@@ -4098,11 +4116,11 @@ namespace GuardrailTests
                         stream,
                         7,
                         BiffCell(0, isstOne));
-                    WriteBiffRecord(stream, 5, BiffCell(1, real));
+                    WriteBiffRecord(stream, 5, BiffCell(2, real));
                     WriteBiffRecord(
                         stream,
                         4,
-                        BiffCell(2, new byte[] { 1 }));
+                        BiffCell(4, new byte[] { 1 }));
                     sheet = stream.ToArray();
                 }
 
@@ -4131,8 +4149,8 @@ namespace GuardrailTests
                     (content == null ? "null" : content.Text));
                 Assert(
                     content.Text.Contains(
-                        "Northern office\t98.5\tTRUE"),
-                    "BIFF12 real and boolean cells were not " +
+                        "Northern office\t\t98.5\t\tTRUE"),
+                    "BIFF12 sparse real and boolean cells were not " +
                     "decoded: " + content.Text);
 
                 // The same bytes with an unknown extension must be

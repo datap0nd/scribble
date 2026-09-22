@@ -296,9 +296,39 @@ namespace GuardrailTests
                 Check(!task.State.CanComplete(false), "A requested five-slide deck completed before any slide tool ran.");
                 task.Sources.Add("Source A", "Sales were 10 units.\nLaunch review.");
                 task.Sources.Add("Source B", "Delivery begins on Monday.");
+                var identicalA = task.Sources.Add(
+                    "Attached document",
+                    "Identical workbook text",
+                    "attachment:one");
+                var identicalB = task.Sources.Add(
+                    "Attached document",
+                    "Identical workbook text",
+                    "attachment:two");
+                var identicalReplay = task.Sources.Add(
+                    "Attached document",
+                    "Identical workbook text",
+                    "attachment:one");
+                Check(identicalA.Count == 1 && identicalB.Count == 1 &&
+                    identicalA[0] != identicalB[0] &&
+                    identicalReplay[0] == identicalA[0],
+                    "Content hashes collapsed distinct source instances or failed to deduplicate the same instance.");
                 var spans = task.Sources.Spans();
                 var evidence = task.Sources.Resolve(spans.Select(s => s.Id));
                 Check(evidence.Contains("10 units") && evidence.Contains("Monday"), "Multiple host-issued sources could not be resolved.");
+                var read = Call("read_messages", "{}");
+                read.id = "typed-read";
+                var readResult = new MailboxToolResult(
+                    read.id,
+                    "{\"content\":\"Revenue\",\"count\":3,\"complete\":true,\"missing\":null}",
+                    "Read messages");
+                var readSpans = task.Sources.CaptureRead(read, readResult);
+                var readEvidence = task.Sources.Resolve(readSpans);
+                Check(readEvidence.Contains("content: Revenue") &&
+                    readEvidence.Contains("count: 3") &&
+                    readEvidence.Contains("complete: True") &&
+                    readEvidence.Contains("missing: null"),
+                    "Generic read capture dropped object keys or typed scalar values: " +
+                    readEvidence);
                 var rejected = false;
                 try { task.Sources.Resolve(new[] { "fabricated-span" }); } catch (InvalidOperationException) { rejected = true; }
                 Check(rejected, "An invented source span was trusted.");

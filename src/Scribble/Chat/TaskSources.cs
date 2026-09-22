@@ -16,6 +16,9 @@ namespace Scribble.Chat
     {
         public string Id { get; set; }
         public string SourceId { get; set; }
+        public string EvidenceId { get; set; }
+        public string InstanceId { get; set; }
+        public string ContentHash { get; set; }
         public string Label { get; set; }
         public int Offset { get; set; }
         public int Length { get; set; }
@@ -40,12 +43,24 @@ namespace Scribble.Chat
 
         public IReadOnlyList<string> Add(string label, string text)
         {
+            return Add(label, text, "label:" + (label ?? string.Empty));
+        }
+
+        public IReadOnlyList<string> Add(
+            string label,
+            string text,
+            string sourceInstanceId)
+        {
             if (string.IsNullOrWhiteSpace(text)) return new string[0];
-            var sourceId = TaskCheckpointStore.Fingerprint(text);
+            var evidenceId = _task.RegisterEvidence(text);
+            var instanceId = string.IsNullOrWhiteSpace(sourceInstanceId)
+                ? "label:" + (label ?? string.Empty)
+                : sourceInstanceId.Trim();
+            var sourceId = TaskCheckpointStore.Fingerprint(
+                instanceId + "\n" + evidenceId);
             var spans = Spans().ToList();
             var existing = spans.Where(s => s.SourceId == sourceId).Select(s => s.Id).ToArray();
             if (existing.Length > 0) return existing;
-            _task.RegisterEvidence(text);
             for (var offset = 0; offset < text.Length;)
             {
                 var length = Math.Min(3000, text.Length - offset);
@@ -54,7 +69,9 @@ namespace Scribble.Chat
                     var end = text.LastIndexOf('\n', offset + length - 1, length);
                     if (end > offset + 1000) length = end - offset + 1;
                 }
-                spans.Add(new TaskSourceSpan { Id = sourceId + ":" + offset, SourceId = sourceId,
+                spans.Add(new TaskSourceSpan { Id = sourceId + ":" + offset,
+                    SourceId = sourceId, EvidenceId = evidenceId,
+                    InstanceId = instanceId, ContentHash = evidenceId,
                     Label = label, Offset = offset, Length = length });
                 offset += length;
             }
@@ -73,9 +90,16 @@ namespace Scribble.Chat
             try
             {
                 var input = TaskRecoveryInput.Read(_task.State);
-                foreach (var document in input.Documents)
+                for (var documentIndex = 0;
+                    documentIndex < input.Documents.Count;
+                    documentIndex++)
                 {
-                    Add("Attached document", document.Content);
+                    var document = input.Documents[documentIndex];
+                    var instance = "attachment:" +
+                        documentIndex.ToString(CultureInfo.InvariantCulture) +
+                        ":" + (document.Name ?? string.Empty) + ":" +
+                        (document.SourcePath ?? string.Empty);
+                    Add("Attached document", document.Content, instance);
                     // An inline preview may omit later ledger rows. Only a
                     // complete extracted workbook table can supply totals.
                     var extension = Path.GetExtension(document.Name ?? "");
@@ -83,13 +107,32 @@ namespace Scribble.Chat
                         .Contains(extension, StringComparer.OrdinalIgnoreCase))
                     {
                         var totals = CompleteWorkbookTotals(document.Content);
-                        if (totals != null) Add("Host-calculated attached workbook totals", totals);
+                        if (totals != null) Add(
+                            "Host-calculated attached workbook totals",
+                            totals,
+                            instance + ":host-totals");
                     }
                 }
-                foreach (var mail in input.Working.Concat(input.Selected == null ? new SavedMessage[0] : new[] { input.Selected }))
-                    Add("Captured email: " + mail.Subject, "Subject: " + mail.Subject + "\nSender: " + mail.Sender +
-                        "\nReceived: " + mail.ReceivedAt?.ToString("O") + "\n" + mail.Body);
-                if (input.Selection != null) Add("Captured selection", input.Selection.Preview);
+                var mails = input.Working.Concat(input.Selected == null
+                    ? new SavedMessage[0]
+                    : new[] { input.Selected }).ToArray();
+                for (var mailIndex = 0; mailIndex < mails.Length; mailIndex++)
+                {
+                    var mail = mails[mailIndex];
+                    Add("Captured email: " + mail.Subject,
+                        "Subject: " + mail.Subject + "\nSender: " + mail.Sender +
+                        "\nReceived: " + mail.ReceivedAt?.ToString("O") + "\n" + mail.Body,
+                        "mail:" + mailIndex.ToString(CultureInfo.InvariantCulture) +
+                        ":" + (mail.Subject ?? string.Empty) + ":" +
+                        mail.ReceivedAt?.ToString("O"));
+                }
+                if (input.Selection != null) Add(
+                    "Captured selection",
+                    input.Selection.Preview,
+                    "selection:" + (input.Selection.AttachmentId ?? string.Empty) +
+                    ":" + (input.Selection.WorkbookIdentity ?? string.Empty) +
+                    ":" + (input.Selection.WorksheetName ?? string.Empty) +
+                    ":" + (input.Selection.Address ?? string.Empty));
             }
             catch (ArgumentException) { /* Chrome uses its own capture DTO. */ }
         }
@@ -126,8 +169,11 @@ namespace Scribble.Chat
                 if (map.TryGetValue("content", out content) && content is string)
                     strings.Add((string)content);
             }
-            else if (parsed != null) Collect(parsed, strings);
-            var spanIds = Add(name, string.Join("\n", strings));
+            else if (parsed != null) Collect(parsed, strings, string.Empty);
+            var spanIds = Add(
+                name,
+                string.Join("\n", strings),
+                "tool:" + name + ":" + call.id);
             result.AttachSourceSpans(spanIds);
             foreach (var image in result.VisionImages)
             {
@@ -138,13 +184,49 @@ namespace Scribble.Chat
             return spanIds;
         }
 
-        private static void Collect(object value, List<string> strings)
+        private static void Collect(
+            object value,
+            List<string> strings,
+            string path)
         {
-            if (value is string) { strings.Add((string)value); return; }
+            if (value == null)
+            {
+                strings.Add((path.Length == 0 ? "value" : path) + ": null");
+                return;
+            }
+            if (value is string || value is bool ||
+                value is byte || value is sbyte || value is short ||
+                value is ushort || value is int || value is uint ||
+                value is long || value is ulong || value is float ||
+                value is double || value is decimal)
+            {
+                strings.Add((path.Length == 0 ? "value" : path) + ": " +
+                    Convert.ToString(value, CultureInfo.InvariantCulture));
+                return;
+            }
             var map = value as IDictionary<string, object>;
-            if (map != null) { foreach (var item in map.Values) Collect(item, strings); return; }
+            if (map != null)
+            {
+                foreach (var item in map.OrderBy(pair => pair.Key,
+                    StringComparer.Ordinal))
+                {
+                    Collect(item.Value, strings,
+                        path.Length == 0 ? item.Key : path + "." + item.Key);
+                }
+                return;
+            }
             var array = value as IEnumerable;
-            if (array != null) foreach (var item in array) Collect(item, strings);
+            if (array != null)
+            {
+                var index = 0;
+                foreach (var item in array)
+                {
+                    Collect(item, strings,
+                        (path.Length == 0 ? "items" : path) + "[" +
+                        index.ToString(CultureInfo.InvariantCulture) + "]");
+                    index++;
+                }
+            }
         }
 
         public string Resolve(IEnumerable<string> ids)
@@ -155,7 +237,11 @@ namespace Scribble.Chat
             {
                 var span = spans.FirstOrDefault(s => s.Id == id);
                 if (span == null) throw new InvalidOperationException("SLIDE_SOURCE_REF_INVALID: Unknown source span " + id);
-                text.Add(_task.Store.ReadEvidence(_task.State.Id, span.SourceId).Substring(span.Offset, span.Length));
+                text.Add(_task.Store.ReadEvidence(
+                    _task.State.Id,
+                    string.IsNullOrEmpty(span.EvidenceId)
+                        ? span.SourceId
+                        : span.EvidenceId).Substring(span.Offset, span.Length));
             }
             return string.Join("\n", text);
         }
@@ -171,7 +257,9 @@ namespace Scribble.Chat
             return new MailboxToolResult(call.id, _json.Serialize(new { untrusted_source_data = true,
                 spans = all.Skip(offset).Take(20).Select(s => new { span_id = s.Id, source_id = s.SourceId,
                     label = s.Label, offset = s.Offset, length = s.Length,
-                    text = _task.Store.ReadEvidence(_task.State.Id, s.SourceId).Substring(s.Offset, s.Length) }),
+                    text = _task.Store.ReadEvidence(_task.State.Id,
+                        string.IsNullOrEmpty(s.EvidenceId) ? s.SourceId : s.EvidenceId)
+                        .Substring(s.Offset, s.Length) }),
                 next_offset = offset + 20 < all.Count ? (int?)(offset + 20) : null }), "Read retained source passages");
         }
 
@@ -294,13 +382,16 @@ namespace Scribble.Chat
 
             var page = EmailAttachmentReader.LoadLocalPage(
                 document.SourcePath, offset, 6000, CancellationToken.None);
-            Add("Attached document page: " + document.Name, page.Text);
+            var pageSpanIds = Add(
+                "Attached document page: " + document.Name,
+                page.Text,
+                "attachment-page:" + index.ToString(CultureInfo.InvariantCulture) +
+                ":" + offset.ToString(CultureInfo.InvariantCulture) + ":" +
+                fingerprint);
             _task.State.HostData[offsetKey] = Math.Max(readUntil, offset + page.Text.Length).ToString();
             if (!page.NextOffset.HasValue)
                 _task.State.HostData["external_document_complete:" + index] = "true";
             _task.Checkpoint();
-            var pageSource = TaskCheckpointStore.Fingerprint(page.Text);
-            var spanIds = Spans().Where(span => span.SourceId == pageSource).Select(span => span.Id).ToArray();
             return new MailboxToolResult(call.id, _json.Serialize(new
             {
                 untrusted_document_data = true,
@@ -309,7 +400,7 @@ namespace Scribble.Chat
                 offset,
                 next_offset = page.NextOffset,
                 complete = !page.NextOffset.HasValue,
-                source_spans = spanIds,
+                source_spans = pageSpanIds,
                 content = page.Text,
                 source_fingerprint = fingerprint
             }), "Read verified attached document page");
