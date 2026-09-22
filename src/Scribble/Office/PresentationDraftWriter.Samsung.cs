@@ -377,6 +377,7 @@ namespace Scribble.Office
                 {
                     var columns = count == 4 ? 2 : count;
                     var rows = count == 4 ? 2 : 1;
+                    var compact = rows == 2;
                     const float columnGap = 26f, rowGap = 18f;
                     var evidenceWidth = (region.Width - columnGap * (columns - 1)) / columns;
                     var evidenceHeight = (region.Height - rowGap * (rows - 1)) / rows;
@@ -399,17 +400,19 @@ namespace Scribble.Office
                     elements.Add(TextElement("", new RectangleF(evidenceBox.X, evidenceBox.Y, evidenceBox.Width, 4f),
                         fill: SamsungSlideDesign.Blue));
                     elements.Add(TextElement(card.Heading,
-                        new RectangleF(evidenceBox.X + 14f, evidenceBox.Y + 16f, evidenceBox.Width - 28f, 38f),
-                        20, 16, MetoTheme.TitleFont, true, null, SamsungSlideDesign.Blue));
+                        new RectangleF(evidenceBox.X + 14f, evidenceBox.Y + (compact ? 10f : 16f),
+                            evidenceBox.Width - 28f, compact ? 29f : 38f),
+                        compact ? 18 : 20, 16, MetoTheme.TitleFont, true, null, SamsungSlideDesign.Blue));
                     var body = string.Join("\n", card.Points);
                     if (body.Length > 0)
                     {
-                        var bodySpace = evidenceBox.Height - 78f;
+                        var bodyStart = compact ? 45f : 64f;
+                        var bodySpace = evidenceBox.Height - (compact ? 52f : 78f);
                         var bodyWidth = evidenceBox.Width - 28f;
                         if (heroMode && !string.IsNullOrEmpty(evidenceHeroes[i]))
                         {
                             elements.Add(TextElement(body,
-                                new RectangleF(evidenceBox.X + 14f, evidenceBox.Y + 64f,
+                                new RectangleF(evidenceBox.X + 14f, evidenceBox.Y + bodyStart,
                                     bodyWidth, evidenceBox.Height - 160f),
                                 16, 14, "Arial", false, null, "#202A35"));
                             elements.Add(TextElement(evidenceHeroes[i],
@@ -428,17 +431,17 @@ namespace Scribble.Office
                         {
                             var inset = (bodySpace - contentHeight) / 2f;
                             elements.Add(TextElement(lead,
-                                new RectangleF(evidenceBox.X + 14f, evidenceBox.Y + 64f + inset,
+                                new RectangleF(evidenceBox.X + 14f, evidenceBox.Y + bodyStart + inset,
                                     bodyWidth, leadHeight), 18, 16, "Arial", true, null, "#202A35"));
                             if (supporting.Length > 0)
                                 elements.Add(TextElement(supporting,
                                     new RectangleF(evidenceBox.X + 14f,
-                                        evidenceBox.Y + 64f + inset + leadHeight + 10f,
+                                        evidenceBox.Y + bodyStart + inset + leadHeight + 10f,
                                         bodyWidth, supportingHeight), 16, 14, "Arial", false, null, "#202A35"));
                         }
                         else
                             elements.Add(TextElement(body,
-                                new RectangleF(evidenceBox.X + 14f, evidenceBox.Y + 64f,
+                                new RectangleF(evidenceBox.X + 14f, evidenceBox.Y + bodyStart,
                                     bodyWidth, bodySpace), 16, 14, "Arial", false, null, "#202A35"));
                     }
                     continue;

@@ -140,6 +140,14 @@ namespace GuardrailTests
                 .ToArray();
             Check(largeText.Contains("144") && largeText.Contains("24") && !largeText.Contains("2026"),
                 "A reporting year was promoted as a hero metric instead of the record count.");
+            var compactGridDraft = Invoke(Type("PresentationDraftWriter"), "ParseSlides", null,
+                (object)json.Deserialize<object[]>("[{\"id\":\"data-quality\",\"layout\":\"cards\",\"title\":\"Data quality\",\"subtitle\":\"Complete figures\",\"cards\":[{\"heading\":\"Source coverage\",\"points\":[\"Workbook WB01 (Ledger)\",\"Jan–Jun 2026\",\"North / South / East / West\",\"Revenue & Cost EUR\"]},{\"heading\":\"Completeness\",\"points\":[\"24 obs in June\",\"0 blank Revenue\",\"0 blank Cost\",\"June measures complete\"]},{\"heading\":\"Method\",\"points\":[\"Additive SUMIF sums\",\"Blanks = unknown\",\"Aggregate-total rates\",\"No row-avg %\"]},{\"heading\":\"Evidence boundary\",\"points\":[\"Group compare: June only\",\"Blanks remain unknown\",\"Planned ≠ completed\",\"Financial ≠ operational\"]}]}]"));
+            var compactGridPage = ((IEnumerable)Invoke(Type("PresentationDraftWriter"), "ComposeSamsung", null, compactGridDraft))
+                .Cast<object>().Single();
+            var compactGridElements = ((IEnumerable)compactGridPage.GetType().GetField("Elements", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(compactGridPage))
+                .Cast<object>().ToArray();
+            Check(compactGridElements.Any(element => ((string)element.GetType().GetField("Text", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(element)).Contains("Revenue & Cost EUR")),
+                "A four-card source panel was dropped or overflowed instead of fitting at the native minimum size.");
             Check((bool)Invoke(Type("PresentationDraftWriter"), "RetryableSamsungChartFailure", null,
                 "write chart data: COMException 0x800A01A8 Exception from HRESULT: 0x800A01A8"),
                 "A transient embedded Excel chart-grid failure should be retried inside the host call.");
