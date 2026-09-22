@@ -1110,6 +1110,12 @@ namespace Scribble.Chat
                 // reviewers/summarizers retain their original smaller limits.
                 var isDraftRequest = requestModel.max_tokens ==
                     DocumentChatRequestFactory.DraftResponseTokens;
+                var hasNativePresentationDraftTool = isDraftRequest &&
+                    requestModel.tools != null &&
+                    requestModel.tools.Any(tool => tool?.function != null &&
+                        string.Equals(tool.function.name,
+                            PresentationToolCatalog.AddDraftSlides,
+                            StringComparison.Ordinal));
                 if (isDraftRequest)
                 {
                     var hasPresentationDraftTool = requestModel.tools != null &&
@@ -1132,21 +1138,23 @@ namespace Scribble.Chat
                 // supported reasoning effort; sending the unsupported minimal
                 // value can fall back to the model's xhigh default and consume
                 // the entire response allowance before a tool call is emitted.
-                // Keep low reasoning on normal task turns so Qwen can still
-                // reconcile source material while leaving room for complete
-                // tool-call JSON.
+                // Keep low reasoning on normal task turns. For a native
+                // multi-slide draft, low was ignored by one provider: it spent
+                // 32,154 of 32,768 output tokens on hidden reasoning and cut
+                // the first tool call in the middle of its JSON arguments.
+                // Qwen 3.8 marks reasoning as optional, so disable it only for
+                // this long, contract-checked authoring call.
                 var compactInternalCall =
                     (requestModel.tools == null ||
                      requestModel.tools.Count == 0) &&
                     requestModel.max_tokens.HasValue &&
                     requestModel.max_tokens.Value <= 2048;
-                payload["reasoning"] = new Dictionary<string, object>
-                {
+                payload["reasoning"] = hasNativePresentationDraftTool
+                    ? new Dictionary<string, object> { { "enabled", false } }
+                    : new Dictionary<string, object>
                     {
-                        "effort",
-                        compactInternalCall ? "none" : "low"
-                    }
-                };
+                        { "effort", compactInternalCall ? "none" : "low" }
+                    };
                 if (includeOptionalToolControls &&
                     requestModel.tools != null &&
                     requestModel.tools.Count > 0)

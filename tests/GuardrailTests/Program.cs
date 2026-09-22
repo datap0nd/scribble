@@ -8363,6 +8363,34 @@ namespace GuardrailTests
                 !authoringProvider.ContainsKey("order") &&
                 ((string[])authoringProvider["only"]).Length == 6,
                 "Long deck-authoring completions must stay on the allow-list but prefer its fastest route.");
+            var nativeDraft = (Dictionary<string, object>)method.Invoke(null,
+                new object[]
+                {
+                    new ChatCompletionRequest
+                    {
+                        model = "qwen/qwen3.8-27b",
+                        messages = new List<object>(),
+                        tools = new List<ChatToolDefinition>
+                        {
+                            new ChatToolDefinition
+                            {
+                                function = new ChatToolFunctionDefinition
+                                {
+                                    name = PresentationToolCatalog.AddDraftSlides
+                                }
+                            }
+                        },
+                        max_tokens = DocumentChatRequestFactory.DraftResponseTokens
+                    },
+                    new Uri(openRouterUrl),
+                    true
+                });
+            var nativeReasoning = (Dictionary<string, object>)nativeDraft["reasoning"];
+            Assert(nativeReasoning.ContainsKey("enabled") &&
+                !(bool)nativeReasoning["enabled"] &&
+                !nativeReasoning.ContainsKey("effort") &&
+                (string)((Dictionary<string, object>)authoring["reasoning"])["effort"] == "low",
+                "Only native multi-slide authoring should disable Qwen reasoning after a 32K-token truncation; other source handoffs retain low reasoning.");
             var request = new ChatCompletionRequest
             {
                 model = "qwen/qwen3.8-27b",
