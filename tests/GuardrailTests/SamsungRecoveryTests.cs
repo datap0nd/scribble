@@ -117,6 +117,10 @@ namespace GuardrailTests
                 "[{\"id\":\"trend\",\"title\":\"Trend\",\"layout\":\"chart\",\"chart\":{\"type\":\"column\",\"categories\":[\"2026-05\",\"2026-06\"],\"series\":[{\"name\":\"Revenue EUR\",\"values\":[85519,82992]},{\"name\":\"Cost EUR\",\"values\":[36702,36714]}]}}]"));
             Reject(() => Invoke(typeof(DocumentDraftHost), "ValidatePromptChartConstraints", null,
                 "The chart must use only primary values for May and June.", primaryOnlySlides), "SLIDE_PRIMARY_SERIES_ONLY");
+            var splitCharts = Invoke(Type("PresentationDraftWriter"), "ParseSlides", null, (object)json.Deserialize<object[]>(
+                "[{\"id\":\"trend\",\"title\":\"Trend\",\"layout\":\"annotated_chart\",\"chart\":{\"type\":\"column\",\"categories\":[\"2026-05\",\"2026-06\"],\"series\":[{\"name\":\"Revenue EUR\",\"values\":[85519,82992]}]},\"secondary_chart\":{\"type\":\"column\",\"categories\":[\"2026-05\",\"2026-06\"],\"series\":[{\"name\":\"Cost EUR\",\"values\":[36702,36714]}]}}]"));
+            Reject(() => Invoke(typeof(DocumentDraftHost), "ValidatePromptChartConstraints", null,
+                "The chart must use only primary values for May and June.", splitCharts), "SLIDE_PRIMARY_SERIES_ONLY");
             Invoke(typeof(DocumentDraftHost), "ValidatePromptChartConstraints", null,
                 "Compare primary and secondary values in the chart.", primaryOnlySlides);
             var compliantChartSlides = Invoke(Type("PresentationDraftWriter"), "ParseSlides", null, (object)json.Deserialize<object[]>(
@@ -150,10 +154,27 @@ namespace GuardrailTests
             Check(!(bool)Invoke(typeof(DocumentDraftHost), "ReviewApprovedOrSatisfiedPromptConstraint", null,
                 mixedFinding, "Use EUR in the title.", ((IEnumerable)compliantChartSlides).Cast<object>().Single()),
                 "A real factual blocker was hidden beside a satisfied title constraint.");
+            var falseCostFinding = "{\"approved\":false,\"issues\":\"Cost series missing from chart.\",\"findings\":[{\"slide_id\":\"trend\",\"object_id\":\"chart\",\"severity\":\"blocker\",\"type\":\"coverage\",\"correction\":\"Add a second Cost EUR series to the native chart.\"}]}";
+            Check((bool)Invoke(typeof(DocumentDraftHost), "ReviewApprovedOrSatisfiedPromptConstraint", null,
+                falseCostFinding, "The chart must use only primary values for May and June.",
+                ((IEnumerable)compliantChartSlides).Cast<object>().Single()),
+                "A reviewer demanded the exact secondary chart series forbidden by the user.");
+            Check(!(bool)Invoke(typeof(DocumentDraftHost), "ReviewApprovedOrSatisfiedPromptConstraint", null,
+                falseCostFinding, "Compare revenue and cost in the chart.",
+                ((IEnumerable)compliantChartSlides).Cast<object>().Single()),
+                "A genuinely requested second series was ignored.");
             var contradictoryBriefs = json.Deserialize<object[]>(
                 "[{\"id\":\"trend\",\"layout\":\"chart\",\"required_content\":[\"Revenue EUR and Cost EUR series\"]}]");
             Reject(() => Invoke(typeof(DocumentDraftHost), "ValidatePromptChartBriefConstraints", null,
                 "The chart must use only primary values for May and June.", contradictoryBriefs), "SLIDE_PRIMARY_SERIES_ONLY");
+            var splitSeriesBrief = json.Deserialize<object[]>(
+                "[{\"id\":\"trend\",\"layout\":\"chart\",\"required_content\":[\"Revenue series: 85519, 82992\",\"Cost series: 36702, 36714\"]}]");
+            Reject(() => Invoke(typeof(DocumentDraftHost), "ValidatePromptChartBriefConstraints", null,
+                "The chart must use only primary values for May and June.", splitSeriesBrief), "SLIDE_PRIMARY_SERIES_ONLY");
+            var chartPurposeBrief = json.Deserialize<object[]>(
+                "[{\"id\":\"trend\",\"layout\":\"chart\",\"purpose\":\"Show revenue and cost as a native editable chart\",\"required_content\":[\"Revenue series: 85519, 82992\"]}]");
+            Reject(() => Invoke(typeof(DocumentDraftHost), "ValidatePromptChartBriefConstraints", null,
+                "The chart must use only primary values for May and June.", chartPurposeBrief), "SLIDE_PRIMARY_SERIES_ONLY");
             var chart = Type("PresentationChartEdit");
             var range = Invoke(chart, "Resolve", null, "=SERIES(Sheet1!$B$1,Sheet1!$A$2:$A$4,Sheet1!$B$2:$B$4,1)", 2);
             Check((string)range.GetType().GetField("Cell", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(range) == "B3", "Chart point mapped to wrong cell.");

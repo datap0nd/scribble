@@ -364,11 +364,17 @@ namespace Scribble.Office
                 .Where(value => value != null)
                 .ToArray();
             if (RequiresPrimaryOnlyCharts(prompt))
+            {
                 foreach (var chart in charts)
                     if (chart.Series.Count != 1)
                         throw new InvalidOperationException(
                             "SLIDE_PRIMARY_SERIES_ONLY: The user required primary values only. " +
-                            "Each chart must contain exactly one primary series; remove every secondary measure from the chart.");
+                            "Each chart must contain exactly one primary series; remove every secondary measure from the chart. Put sourced secondary comparisons in text or a table, not a second chart series.");
+                if ((slides ?? Enumerable.Empty<PresentationDraftWriter.DraftSlide>())
+                    .Any(slide => slide.Chart != null && slide.SecondaryChart != null))
+                    throw new InvalidOperationException(
+                        "SLIDE_PRIMARY_SERIES_ONLY: The user requested a primary-only chart. Do not add a secondary chart for the secondary measure; use sourced text or a table if that comparison matters.");
+            }
 
             var titleToken = RequiredChartTitleToken(prompt);
             if (titleToken != null)
@@ -407,6 +413,7 @@ namespace Scribble.Office
             PresentationDraftWriter.DraftSlide slide)
         {
             if (SamsungAuthoringPolicy.Approved(review)) return true;
+            if (PrimaryOnlySecondarySeriesFalsePositive(review, prompt, slide)) return true;
             var token = RequiredChartTitleToken(prompt);
             var charts = slide == null
                 ? new PresentationDraftWriter.DraftChart[0]
@@ -453,6 +460,33 @@ namespace Scribble.Office
             }
         }
 
+        private static bool PrimaryOnlySecondarySeriesFalsePositive(
+            string review, string prompt, PresentationDraftWriter.DraftSlide slide)
+        {
+            if (!RequiresPrimaryOnlyCharts(prompt) || slide?.Chart == null ||
+                slide.Chart.Series.Count != 1 || slide.SecondaryChart != null) return false;
+            try
+            {
+                var map = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(review);
+                object raw;
+                if (map == null || !map.TryGetValue("findings", out raw) || raw is string) return false;
+                var findings = (raw as IEnumerable)?.Cast<object>()
+                    .Select(value => value as Dictionary<string, object>)
+                    .ToArray();
+                if (findings == null || findings.Length == 0 || findings.Any(value => value == null)) return false;
+                return findings.All(finding =>
+                {
+                    var detail = SamsungAuthoringPolicy.Text(finding, "object_id") + " " +
+                        SamsungAuthoringPolicy.Text(finding, "correction");
+                    return Regex.IsMatch(detail, @"(?i)\bchart\b") &&
+                        Regex.IsMatch(detail, @"(?i)\bseries\b") &&
+                        Regex.IsMatch(detail, @"(?i)\b(?:cost|budget|secondary|second|additional)\b") &&
+                        Regex.IsMatch(detail, @"(?i)\b(?:add|missing|omit|require|include)\b");
+                });
+            }
+            catch { return false; }
+        }
+
         private static string RequiredChartTitleToken(string prompt)
         {
             var match = Regex.Match(prompt ?? string.Empty,
@@ -476,11 +510,17 @@ namespace Scribble.Office
                 .Where(value => SamsungAuthoringPolicy.Text(value, "layout").IndexOf("chart", StringComparison.OrdinalIgnoreCase) >= 0))
             {
                 var required = string.Join(" ", SamsungAuthoringPolicy.Array(brief, "required_content").Select(Convert.ToString));
+                var wording = SamsungAuthoringPolicy.Text(brief, "purpose") + " " +
+                    SamsungAuthoringPolicy.Text(brief, "message");
+                var namedSeries = Regex.Matches(required,
+                    @"(?i)\b(?:revenue|sales|cost|budget|actual|forecast|headcount|units?|margin|rate)\s+(?:EUR|USD|AED|%)?\s*series\b");
                 if (Regex.IsMatch(required,
-                    @"(?is)\b(?:two|both|multiple)\s+(?:named\s+)?series\b|\bprimary\s+(?:and|&)\s+secondary\b|\b(?:revenue|sales|cost|budget|actual|forecast|headcount|units?|margin|rate)\b.{0,50}\b(?:and|&)\b.{0,50}\bseries\b"))
+                    @"(?is)\b(?:two|both|multiple)\s+(?:named\s+)?series\b|\bprimary\s+(?:and|&)\s+secondary\b|\b(?:revenue|sales|cost|budget|actual|forecast|headcount|units?|margin|rate)\b.{0,50}\b(?:and|&)\b.{0,50}\bseries\b") || namedSeries.Count > 1 ||
+                    Regex.IsMatch(wording,
+                        @"(?i)\b(?:revenue|sales|cost|budget|actual|forecast|headcount|units?|margin|rate)\s+(?:and|&)\s+(?:revenue|sales|cost|budget|actual|forecast|headcount|units?|margin|rate)\s+as\s+(?:a\s+)?(?:native\s+editable\s+)?chart\b"))
                     throw new InvalidOperationException(
                         "SLIDE_PRIMARY_SERIES_ONLY: The user required primary values only. " +
-                        "The chart brief must request exactly one primary series and must not require a secondary measure.");
+                        "The chart brief must request exactly one primary series and must not require a secondary measure. A period comparison may put sourced secondary values in text or a table, never a second chart series.");
             }
         }
 
