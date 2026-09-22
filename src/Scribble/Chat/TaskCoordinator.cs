@@ -87,6 +87,10 @@ namespace Scribble.Chat
         public int ContextBudget { get; set; } = 96000;
         public int RequiredPresentationSlides { get; set; }
         public int SamsungWorkflowVersion { get; set; }
+        // Zero means the task predates the typed reliability path. New-path
+        // tasks set this explicitly and never reinterpret a legacy journal.
+        public int AnalysisContractVersion { get; set; }
+        public string AnalysisArtifactEvidenceId { get; set; }
         public bool PresentationReviewRequired { get; set; }
         public string PresentationReviewReceipt { get; set; }
         public bool UserPaused { get; set; }

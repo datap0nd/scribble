@@ -198,6 +198,7 @@
     <Compile Include="Office\WordDraftWriter.cs" />
     <Compile Include="Office\DraftFormulaAssociation.cs" />
     <Compile Include="Office\WorkbookGroupedTotals.cs" />
+    <Compile Include="Office\AnalysisContracts.cs" />
     <Compile Include="Office\DraftTextLayout.cs" />
     <Compile Include="Office\DraftChartTypes.cs" />
     <Compile Include="Office\MetoTheme.cs" />

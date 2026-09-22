@@ -73,6 +73,8 @@ namespace GuardrailTests
             {
                 if (args.Length == 2 && args[0] == "--filter") _filter = args[1];
                 Run("Native report readback retains scalar cell formulas", HardeningTests.NativeReportReadback);
+                Run("Typed analysis snapshots preserve identity and serialization", AnalysisContractTests.SnapshotIdentityInvalidationAndSerialization);
+                Run("Typed analysis calculations preserve source authority", AnalysisContractTests.DeterministicCalculationsPreserveAuthority);
                 Run("Duplicate document writes return a recoverable result", HardeningTests.DuplicateDraftIsRecoverable);
                 Run("Known invalid Excel draft formulas permit a fresh marked sheet", HardeningTests.RejectedDraftFormulaAllowsFreshMarkedSheet);
                 Run("Excel formula rejection occurs after a native grid write", HardeningTests.FormulaRejectionFollowsNativeGridWrite);
