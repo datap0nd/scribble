@@ -366,7 +366,10 @@ namespace Scribble.Chat
                     "material facts, labels, and citations. Never apply an " +
                     "aggregate variance to every region or product; verify " +
                     "each subgroup against its own comparison value before " +
-                    "stating which groups missed a budget. For slides, choose " +
+                    "stating which groups missed a budget. A planned review " +
+                    "of a cost category is not evidence that category's " +
+                    "costs rose; separate observed totals from possible " +
+                    "causes under investigation. For slides, choose " +
                     "tables, charts, diagrams or concise summary lists to match the content. When the " +
                     "user asks for tables or charts, put one on most slides, give " +
                     "each data slide its unit indicator and source footnote, and " +
