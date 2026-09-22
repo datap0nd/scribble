@@ -529,8 +529,10 @@ namespace GuardrailTests
             Check(SamsungAuthoringPolicy.ReviewContract.Contains("opaque PowerPoint identity") && SamsungAuthoringPolicy.ReviewContract.Contains("expected_page text"), "Deck review can mistake a native slide ID for its sequence number.");
             var numberOnly = "{\"approved\":false,\"issues\":\"Page number shows 7 but cover position is 1.\",\"findings\":[{\"severity\":\"blocker\",\"type\":\"layout\",\"correction\":\"Change the footer page number from - 7 - to 1.\"}]}";
             Check(SamsungAuthoringPolicy.OnlyHostOwnedPageNumberBlockers(numberOnly), "A native-index-only page-number objection was not recognized.");
+            Check(SamsungAuthoringPolicy.OnlyHostOwnedPageNumberBlockers(numberOnly.Replace("\"layout\"", "\"facts\"")),
+                "A page-number-only objection tagged as facts was not recognized.");
             Check(!SamsungAuthoringPolicy.OnlyHostOwnedPageNumberBlockers(numberOnly.Replace("\"layout\"", "\"content\"")),
-                "A content defect bypassed review as a page-number false positive.");
+                "A non-page content defect bypassed review as a page-number false positive.");
             Check(!SamsungAuthoringPolicy.OnlyHostOwnedPageNumberBlockers(numberOnly.Replace("Change the footer page number from - 7 - to 1.", "Fix clipped chart labels.")),
                 "A visual defect bypassed review as a page-number false positive.");
             // Full source provenance lives in speaker notes; only visible footer text is length-limited.

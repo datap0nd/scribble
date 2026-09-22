@@ -295,7 +295,7 @@ namespace Scribble.Office
             var findings = Array(map, "findings").Select(ReadMap).ToArray();
             return findings.Length > 0 && findings.All(f =>
                 Text(f, "severity") == "blocker" &&
-                Text(f, "type") == "layout" &&
+                (Text(f, "type") == "layout" || Text(f, "type") == "facts") &&
                 Regex.IsMatch(Text(f, "correction"),
                     @"\b(?:page|slide)\s*(?:number|numbering)\b",
                     RegexOptions.IgnoreCase));
