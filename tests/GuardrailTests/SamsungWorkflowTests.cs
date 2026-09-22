@@ -109,6 +109,20 @@ namespace GuardrailTests
                 "Period 2025-05; RevenueEUR 70000 EUR\n" + may + "\n" + june)),
                 "Period 2025-05; RevenueEUR 70000 EUR\n" + may + "\n" + june);
         }
+        internal static void RetainedPlanOverridesModelEcho()
+        {
+            var resolve = typeof(DocumentDraftHost).GetMethod("ResolveSamsungPlan",
+                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+            Check(resolve != null, "The retained slide plan has no resolution boundary.");
+            var saved = new JavaScriptSerializer().Serialize(new[] { "s1-headline", "s2-trend", "s3-groups" });
+            var plan = (string[])resolve.Invoke(null, new object[] { saved,
+                new[] { "changed-headline", "changed-trend", "s3-groups" } });
+            Check(plan.SequenceEqual(new[] { "s1-headline", "s2-trend", "s3-groups" }),
+                "A later model echo replaced the plan already used for native slides.");
+            SamsungPresentationReview.ValidatePlan(plan, new[] { "s3-groups" }, new[] { "s1-headline", "s2-trend" });
+            Reject(() => SamsungPresentationReview.ValidatePlan(plan, new[] { "new-id" },
+                new[] { "s1-headline", "s2-trend" }));
+        }
         internal static void Evidence()
         {
             var json = new JavaScriptSerializer();

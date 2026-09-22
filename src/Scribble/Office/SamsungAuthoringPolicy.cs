@@ -162,8 +162,12 @@ namespace Scribble.Office
                 var layout = Text(slide, "layout").ToLowerInvariant();
                 if (new[] { "cover", "divider", "closing", "agenda" }.Contains(layout))
                 {
-                    if (Text(slide, "sources").Length > 90 || Text(slide, "footnote").Length > 90)
-                        throw new InvalidOperationException("SLIDE_COVER_FOOTER_TOO_LONG: Keep a cover's visible source line under 90 characters. Put data-quality caveats on the relevant evidence slide; full source detail remains in speaker notes.");
+                    // The renderer already shortens a long citation on a
+                    // sparse slide and retains it in speaker notes. A long
+                    // qualifying footnote is different: truncating it could
+                    // conceal a required disclosure, so keep that bounded.
+                    if (Text(slide, "footnote").Length > 90)
+                        throw new InvalidOperationException("SLIDE_COVER_FOOTNOTE_TOO_LONG: Keep a cover's qualifying footnote under 90 characters. Put longer data-quality caveats on the relevant evidence slide.");
                     continue;
                 }
                 var cards = Array(slide, "cards");

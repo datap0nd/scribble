@@ -22,6 +22,14 @@ namespace Scribble.Office
                 Regex.IsMatch(instruction ?? "", @"\b(?:repair(?:ed)?|recreat(?:e|ed)|rebuild|reconstruct)\b", RegexOptions.IgnoreCase) &&
                 Regex.IsMatch(instruction ?? "", @"\b(?:preserve|retain|keep)\s+(?:the\s+)?(?:original\s+|source\s+)?slides?\b|\bsource\s+(?:deck|presentation)\s+(?:unchanged|intact)\b", RegexOptions.IgnoreCase);
         }
+        internal static string[] ResolveSamsungPlan(string savedPlanJson, string[] suppliedPlan)
+        {
+            // Once a batch has written native slides, the reviewed plan is
+            // authoritative. Later model echoes can drift on completed IDs;
+            // their actual next-slide IDs are checked against this plan below.
+            return string.IsNullOrWhiteSpace(savedPlanJson) ? suppliedPlan :
+                new JavaScriptSerializer().Deserialize<string[]>(savedPlanJson);
+        }
         private async Task<MailboxToolResult> ExecuteSamsungAsync(ChatToolCall call, OneShotDraftAuthorization authorization,
             bool exclusive, string prompt, OpenAiCompatibleClient client, AppSettings settings, CancellationToken token, Action<int, int> progress = null)
         {
@@ -84,10 +92,9 @@ namespace Scribble.Office
                 if (planValue != null && planValue.Any(id => !(id is string)))
                     throw new InvalidOperationException("SLIDE_PLAN_INVALID: Each plan ID must be a string.");
                 var suppliedPlan = planValue == null ? null : planValue.Cast<string>().ToArray();
-                string savedPlan;
-                var plan = _taskContext != null && _taskContext.State.HostData.TryGetValue("samsung_plan", out savedPlan)
-                    ? _serializer.Deserialize<string[]>(savedPlan) : suppliedPlan;
-                if (suppliedPlan != null && plan != null && !suppliedPlan.SequenceEqual(plan)) throw new InvalidOperationException("SLIDE_PLAN_CHANGED: Preserve the original storyline IDs.");
+                string savedPlan = null;
+                if (_taskContext != null) _taskContext.State.HostData.TryGetValue("samsung_plan", out savedPlan);
+                var plan = ResolveSamsungPlan(savedPlan, suppliedPlan);
                 var completed = _taskContext == null ? new string[0] : _taskContext.State.Batches.SelectMany(b => b.CoveredSourceIds).Where(id => id.StartsWith("ppt:")).Select(id => id.Substring(4)).ToArray();
                 stage = "PLAN";
                 SamsungPresentationReview.ValidatePlan(plan, slides.Select(s => s.Id).ToArray(), completed);

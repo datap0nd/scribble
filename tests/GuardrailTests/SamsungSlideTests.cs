@@ -114,6 +114,12 @@ namespace GuardrailTests
                     .Any(color => !string.IsNullOrEmpty(color) && !palette.Contains(color))))
                 throw new Exception("Evidence-card colors must stay inside the supplied Samsung palette.");
             SamsungAuthoringPolicy.ValidateVisualDesign(new[] { new Dictionary<string, object> { { "title", "June performance" }, { "layout", "scorecard" }, { "cards", new object[] { new { heading = "Revenue", points = new[] { "82,992" } }, new { heading = "Margin", points = new[] { "55.76%" } } } } } });
+            SamsungAuthoringPolicy.ValidateVisualDesign(new[] { new Dictionary<string, object> {
+                { "title", "Source-backed cover" }, { "layout", "cover" },
+                { "sources", new string('S', 120) }, { "footnote", "Fictional source" } } });
+            ExpectFailure(() => SamsungAuthoringPolicy.ValidateVisualDesign(new[] { new Dictionary<string, object> {
+                { "title", "Source-backed cover" }, { "layout", "cover" },
+                { "sources", "WB01" }, { "footnote", new string('F', 120) } } }));
             ExpectFailure(() => SamsungAuthoringPolicy.ValidateVisualDesign(new[] { new Dictionary<string, object> { { "title", "June performance" }, { "layout", "bullets" }, { "purpose", "analytical" }, { "bullets", new[] { "Revenue 82,992", "Cost 36,714", "Margin 55.76%" } } } }));
             ExpectFailure(() => SamsungAuthoringPolicy.ValidateVisualDesign(new[] { new Dictionary<string, object> { { "title", "Data Quality and Methodology" }, { "layout", "bullets" }, { "purpose", "methodology" }, { "bullets", new[] { "144 source rows", "0 missing inputs", "24 rows per period", "Each ID counted once", "Rates use aggregate totals", "No imputation" } } } }));
             ExpectFailure(() => SamsungAuthoringPolicy.ValidateVisualDesign(new[] { new Dictionary<string, object> { { "title", "Data Quality and Methodology" }, { "layout", "action_list" }, { "purpose", "explanatory" }, { "bullets", new[] { "144 source rows", "0 missing inputs", "24 rows per period", "No duplicates" } } } }));
