@@ -284,6 +284,15 @@ namespace GuardrailTests
                 visualReport, new Func<IDictionary<string, object>, bool>(finding => true));
             Check(Convert.ToBoolean(json.Deserialize<Dictionary<string, object>>(allRefuted)["approved"]),
                 "Fully native-refuted findings still blocked an unchanged slide.");
+            var multiSlideReview = "{\"approved\":false,\"issues\":\"two slides\",\"findings\":[" +
+                "{\"slide_id\":\"review\",\"severity\":\"blocker\",\"correction\":\"Remove repeated KPI copy\"}," +
+                "{\"slide_id\":\"coverage\",\"severity\":\"blocker\",\"correction\":\"Tighten the footer\"}]}";
+            var reviewOnly = (string)Invoke(typeof(DocumentDraftHost), "ReviewFindingsForSlide", null,
+                multiSlideReview, "review");
+            var reviewOnlyMap = json.Deserialize<Dictionary<string, object>>(reviewOnly);
+            Check(SamsungAuthoringPolicy.Array(reviewOnlyMap, "findings").Length == 1 &&
+                reviewOnly.Contains("Remove repeated KPI copy") && !reviewOnly.Contains("Tighten the footer"),
+                "A single-slide repair received another slide's visual findings.");
             var briefConflict = "{\"approved\":false,\"issues\":\"Gross margin is 55.76%, but the brief explicitly requires 55.74%.\",\"findings\":[" +
                 "{\"slide_id\":\"evidence\",\"severity\":\"blocker\",\"type\":\"facts\",\"correction\":\"Change gross margin from 55.76% to 55.74% as specified in the brief.\"}," +
                 "{\"slide_id\":\"evidence\",\"severity\":\"warning\",\"type\":\"facts\",\"correction\":\"Keep the period caveat visible.\"}]}";
@@ -318,11 +327,17 @@ namespace GuardrailTests
                 new InvalidOperationException("SLIDE_REPAIR_COUNT: ambiguous target"), 0) &&
                 (bool)Invoke(typeof(DocumentDraftHost), "CanRetrySlideRepairShape", null,
                 new InvalidOperationException("SLIDE_REPAIR_ID_CHANGED"), 0) &&
-                !(bool)Invoke(typeof(DocumentDraftHost), "CanRetrySlideRepairShape", null,
+                (bool)Invoke(typeof(DocumentDraftHost), "CanRetrySlideRepairShape", null,
                 new InvalidOperationException("SLIDE_REPAIR_COUNT: ambiguous target"), 1) &&
                 !(bool)Invoke(typeof(DocumentDraftHost), "CanRetrySlideRepairShape", null,
+                new InvalidOperationException("SLIDE_REPAIR_COUNT: ambiguous target"), 2) &&
+                !(bool)Invoke(typeof(DocumentDraftHost), "CanRetrySlideRepairShape", null,
                 new InvalidOperationException("SLIDE_REPAIR_EVIDENCE_CHANGED: chart"), 0),
-                "A malformed visual repair was not offered exactly one safe, pre-mutation correction.");
+                "A malformed visual repair was not offered two bounded, safe pre-mutation corrections.");
+            Check((string)Invoke(Type("PresentationDraftWriter"), "StripHeroClauses", null,
+                    "Revenue EUR 82,992 across 24 ledger records; Cost EUR 36,714", "82,992", "36,714") ==
+                "24 ledger records",
+                "Evidence-card KPI callouts repeated the same metrics in body copy.");
             var coverHeadline = new[] { json.Deserialize<Dictionary<string, object>>(
                 "{\"id\":\"headline\",\"layout\":\"cover\",\"title\":\"June results\"}") };
             Reject(() => SamsungAuthoringPolicy.ValidateRequestedHeadlineLayout(

@@ -67,7 +67,7 @@ namespace Scribble.Office
         }
         internal static bool CanRetrySlideRepairShape(Exception error, int proposal)
         {
-            if (proposal != 0 || !(error is InvalidOperationException)) return false;
+            if (proposal >= 2 || !(error is InvalidOperationException)) return false;
             return new[] { "SLIDE_REPAIR_COUNT:", "SLIDE_REPAIR_SCHEMA:", "SLIDE_REPAIR_ID_CHANGED" }
                 .Any(code => error.Message.StartsWith(code, StringComparison.Ordinal));
         }
@@ -85,7 +85,7 @@ namespace Scribble.Office
                 _serializer.Serialize(new { original, findings, instruction = prompt }), output.Image, token, repairTokens);
             object[] replacements = null;
             Dictionary<string, object> replacement = null;
-            for (var proposal = 0; proposal < 2; proposal++)
+            for (var proposal = 0; proposal < 3; proposal++)
             {
                 var wrapper = await ReadSlideRepairJsonAsync(client, settings, response, token, repairTokens);
                 try
@@ -339,6 +339,30 @@ namespace Scribble.Office
                 return review;
             }
         }
+        internal static string ReviewFindingsForSlide(string review, string slideId)
+        {
+            try
+            {
+                var json = new System.Web.Script.Serialization.JavaScriptSerializer { MaxJsonLength = int.MaxValue };
+                var report = json.Deserialize<Dictionary<string, object>>(review);
+                var findings = SamsungAuthoringPolicy.Array(report, "findings")
+                    .Select(SamsungAuthoringPolicy.ReadMap).ToArray();
+                var matching = findings.Where(finding => string.Equals(
+                    SamsungAuthoringPolicy.Text(finding, "slide_id"), slideId,
+                    StringComparison.OrdinalIgnoreCase)).ToArray();
+                if (matching.Length == 0 || matching.Length == findings.Length) return review;
+                report["findings"] = matching;
+                report["approved"] = false;
+                report["issues"] = string.Join("; ", matching.Select(finding =>
+                    SamsungAuthoringPolicy.Text(finding, "correction")));
+                return json.Serialize(report);
+            }
+            catch (Exception)
+            {
+                // A malformed review never bypasses inspection or changes its target.
+                return review;
+            }
+        }
         internal static string FilterBriefRefutedReview(string review, string brief, string slide)
         {
             if (!Regex.IsMatch(review ?? "", @"\bbrief\b.{0,80}\b(?:require|specif|demand)",
@@ -469,6 +493,7 @@ namespace Scribble.Office
                     SamsungAuthoringPolicy.OnlyOtherSlideCoverageBlockers(review, output.Page.Source.Id))
                     continue;
                 var id = output.Page.Source.Id; int count; attempts.TryGetValue(id, out count);
+                review = ReviewFindingsForSlide(review, id);
                 if (count >= 3) throw new InvalidOperationException("SLIDE_REVIEW_INCOMPLETE: " + review);
                 attempts[id] = count + 1;
                 await RepairOwnedGroupAsync(outputs, content, id, review, source, prompt, client, settings, token, journal);
@@ -516,7 +541,8 @@ namespace Scribble.Office
                 var report = _serializer.Deserialize<Dictionary<string, object>>(findings);
                 var affected = AffectedDeckReviewSlides(report);
                 if (affected.Length == 0 || affected.Any(id => !content.ContainsKey(id))) throw new InvalidOperationException("SLIDE_DECK_REVIEW_TARGET: Review must identify affected logical slide IDs. " + findings);
-                foreach (var id in affected) await RepairOwnedGroupAsync(outputs, content, id, findings, source, prompt, client, settings, token, journal);
+                foreach (var id in affected) await RepairOwnedGroupAsync(outputs, content, id,
+                    ReviewFindingsForSlide(findings, id), source, prompt, client, settings, token, journal);
                 await ReviewOwnedPagesAsync(outputs.Where(o => affected.Contains(o.Page.Source.Id)).ToArray(), content, source, prompt, client, settings, token, journal, progress);
                 ArchiveOwnedPages(outputs);
             }

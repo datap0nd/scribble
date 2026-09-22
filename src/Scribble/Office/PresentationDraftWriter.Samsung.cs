@@ -551,10 +551,21 @@ namespace Scribble.Office
 
         private static string StripHeroClauses(string point, string primary, string secondary)
         {
-            return string.Join("; ", (point ?? "").Split(';').Select(clause => clause.Trim())
-                .Where(clause => clause.Length > 0 &&
-                    !IsStandaloneHeroPoint(clause, primary) &&
-                    !IsStandaloneHeroPoint(clause, secondary)));
+            return string.Join("; ", (point ?? "").Split(';').Select(clause =>
+                StripHeroMetric(clause.Trim(), primary, secondary))
+                .Where(clause => clause.Length > 0));
+        }
+
+        private static string StripHeroMetric(string clause, params string[] heroes)
+        {
+            foreach (var hero in heroes.Where(value => !string.IsNullOrWhiteSpace(value)))
+            {
+                if (IsStandaloneHeroPoint(clause, hero)) return "";
+                clause = Regex.Replace(clause,
+                    @"\b(?:revenue|cost|margin|sales|budget|profit|headcount|rate|total)\s*(?:EUR|USD|%)?\s*[:=]?\s*" +
+                    Regex.Escape(hero) + @"(?![A-Za-z0-9])", "", RegexOptions.IgnoreCase).Trim().TrimStart(',', ':', '-', '–');
+            }
+            return Regex.Replace(clause, @"^(?:across|at|is|was)\s+", "", RegexOptions.IgnoreCase).Trim();
         }
 
         private static float EvidenceCardContentHeight(DraftCard card, float width)
