@@ -242,7 +242,8 @@ namespace Scribble.Office
                 var audienceCaption = SamsungAuthoringPolicy.AudienceNote(draft.Caption);
                 if (audienceCaption.Length > 0) elements.Add(TextElement(audienceCaption, SamsungSlideDesign.Percent(15.6f, 21f, 64.2f, 3.5f), 14, 14, "Arial Narrow"));
                 if (draft.Unit.Length > 0) { var unit = TextElement(draft.Unit, SamsungSlideDesign.Percent(80, 21.5f, 16.2f, 3.1f), 11, 11, "Calibri"); unit.Alignment = 3; elements.Add(unit); }
-                if (draft.Takeaway.Length > 0) elements.Add(TextElement(draft.Takeaway, SamsungSlideDesign.Takeaway, 14, 11, "Arial Narrow", true, SamsungSlideDesign.Blue, "#FFFFFF"));
+                var audienceTakeaway = SamsungAuthoringPolicy.AudienceTakeaway(draft.Takeaway);
+                if (audienceTakeaway.Length > 0) elements.Add(TextElement(audienceTakeaway, SamsungSlideDesign.Takeaway, 14, 14, "Arial Narrow", true, SamsungSlideDesign.Blue, "#FFFFFF"));
                 AddSamsungAnnotations(elements, draft, table, secondaryTable, part, perPage);
                 // Semantic row references, never model-supplied coordinates.
                 var primary = elements.FirstOrDefault(e => e.Table != null || e.Chart != null);

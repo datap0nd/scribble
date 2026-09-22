@@ -105,6 +105,15 @@ namespace Scribble.Office
                 @"\s*(?:\(|[—–-])\s*(?:zero[- ]based(?: value)? axis|native editable chart|single primary series|value axis (?:from|begins at|starts at) zero)\s*\)?$",
                 "", RegexOptions.IgnoreCase).Trim();
         }
+        public static string AudienceTakeaway(string value)
+        {
+            // Preserve the business result after a model prefixes it with a
+            // chart-construction check from the prompt.
+            var audience = Regex.Replace(value ?? "",
+                @"^\s*(?:single primary series on a zero[- ]based axis|primary values only on a zero[- ]based axis)\s*[:;—–-]\s*",
+                "", RegexOptions.IgnoreCase);
+            return AudienceNote(audience);
+        }
         public static object[] Array(IDictionary<string, object> map, string key)
         {
             object value;

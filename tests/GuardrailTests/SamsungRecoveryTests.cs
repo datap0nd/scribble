@@ -101,6 +101,21 @@ namespace GuardrailTests
         internal static void RepairScopeAndChartBindings()
         {
             var json = new JavaScriptSerializer(); var policy = Type("SamsungRepairPolicy");
+            Check(SamsungSlideDesign.Takeaway.Width > 700f,
+                "The takeaway band is too narrow for readable executive copy.");
+            Check(SamsungAuthoringPolicy.AudienceTakeaway(
+                "Single primary series on a zero-based axis: June revenue fell to 82,992 EUR.") ==
+                "June revenue fell to 82,992 EUR.",
+                "A chart-construction instruction leaked into the visible takeaway.");
+            var visualDraft = Invoke(Type("PresentationDraftWriter"), "ParseSlides", null,
+                (object)json.Deserialize<object[]>("[{\"id\":\"headline\",\"layout\":\"scorecard\",\"title\":\"Results\",\"subtitle\":\"June revenue declined\",\"takeaway\":\"June revenue fell to 82,992 EUR.\",\"cards\":[{\"heading\":\"Revenue\",\"points\":[\"82,992\"]},{\"heading\":\"Cost\",\"points\":[\"36,714\"]}]}]"));
+            var visualPage = ((IEnumerable)Invoke(Type("PresentationDraftWriter"), "ComposeSamsung", null, visualDraft))
+                .Cast<object>().Single();
+            var elements = ((IEnumerable)visualPage.GetType().GetField("Elements", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(visualPage))
+                .Cast<object>();
+            var takeawayElement = elements.Single(element => (string)element.GetType().GetField("Text", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(element) == "June revenue fell to 82,992 EUR.");
+            Check((float)takeawayElement.GetType().GetField("Minimum", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(takeawayElement) >= 14f,
+                "A factual takeaway was allowed to shrink below the native minimum body font.");
             Func<string, object[]> parse = value => json.Deserialize<object[]>(value);
             var original = parse("[{\"kind\":\"replace_text\",\"slide_id\":42,\"shape_id\":9,\"fingerprint\":\"fixed\",\"before\":\"Sales 100 units\",\"text\":\"Sales increased to 125 units\"}]");
             var corrected = parse(json.Serialize(original).Replace("Sales increased to 125 units", "Sales: 125 units"));
