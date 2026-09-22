@@ -84,6 +84,8 @@ namespace Scribble.Office
                     title,
                     MaxTitleCharacters).PlainText,
                 MaxTitleCharacters);
+            while (boundedTitle.StartsWith(DraftMarker, StringComparison.OrdinalIgnoreCase))
+                boundedTitle = boundedTitle.Substring(DraftMarker.Length).TrimStart();
             if (boundedTitle.Length > 0)
             {
                 heading += " " + boundedTitle;
@@ -144,6 +146,7 @@ namespace Scribble.Office
             }
 
             var tables = 0;
+            var firstBodyBlock = true;
             for (var blockIndex = 0; blockIndex < blocks.Count; blockIndex++)
             {
                 var block = blocks[blockIndex];
@@ -153,11 +156,14 @@ namespace Scribble.Office
                 // adjacent report titles. Drop only that exact structural
                 // duplicate; in-place and selection writes remain untouched.
                 var leading = block as DraftTextLayout.Paragraph;
-                if (mode == 2 && blockIndex == 0 && leading != null &&
+                if (mode == 2 && leading != null && string.IsNullOrWhiteSpace(leading.Text))
+                    continue;
+                if (mode == 2 && firstBodyBlock && leading != null &&
                     leading.Kind == DraftTextLayout.KindHeading1 &&
                     string.Equals(leading.Text.Trim(), boundedTitle.Trim(),
                         StringComparison.OrdinalIgnoreCase))
                     continue;
+                firstBodyBlock = false;
                 var table = block as DraftTextLayout.Table;
                 if (table != null)
                 {

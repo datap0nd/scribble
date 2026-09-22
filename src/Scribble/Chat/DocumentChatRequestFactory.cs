@@ -363,7 +363,10 @@ namespace Scribble.Chat
                     "requests a one-page Word memo, keep it to roughly 300 " +
                     "words, use compact tables for only the essential results " +
                     "and actions, and omit redundant narrative; preserve all " +
-                    "material facts, labels, and citations. For slides, choose " +
+                    "material facts, labels, and citations. Never apply an " +
+                    "aggregate variance to every region or product; verify " +
+                    "each subgroup against its own comparison value before " +
+                    "stating which groups missed a budget. For slides, choose " +
                     "tables, charts, diagrams or concise summary lists to match the content. When the " +
                     "user asks for tables or charts, put one on most slides, give " +
                     "each data slide its unit indicator and source footnote, and " +

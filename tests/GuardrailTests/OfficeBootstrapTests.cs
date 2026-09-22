@@ -184,6 +184,35 @@ namespace GuardrailTests
                 "Blockers must be repaired before advisory warnings.");
         }
 
+        public static void WordSourcePreservationSurvivesDraftReordering()
+        {
+            var method = typeof(TestLabEvaluator).GetMethod("FindUnchangedSource",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Check(method != null, "Source-preservation matching is missing.");
+            var after = new Dictionary<string, string> {
+                { "Word-1", "new Scribble draft" }, { "Word-2", "unchanged source" } };
+            var matched = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var found = (string)method.Invoke(null, new object[] {
+                "Word-1", "unchanged source", after, matched });
+            Check(found == "Word-2", "A new Word draft ordinal hid an unchanged source.");
+            matched.Add(found);
+            Check(method.Invoke(null, new object[] {
+                "Word-3", "unchanged source", after, matched }) == null,
+                "One final source readback incorrectly satisfied two original sources.");
+        }
+
+        public static void WordMemoRejectsUniversalBudgetClaim()
+        {
+            var bad = TestLabEvaluator.CheckOutputFacts("WD01",
+                "June revenue 120000, on-time 94%. Revenue below budget by 7.7% on every region/product line.");
+            Check(bad.Any(c => c.name == "budget_gap_scope" && !c.passed),
+                "The Word oracle missed a false claim that every segment missed budget.");
+            var good = TestLabEvaluator.CheckOutputFacts("WD01",
+                "June revenue 120000, on-time 94%. Only North A and South B missed budget.");
+            Check(good.Any(c => c.name == "budget_gap_scope" && c.passed),
+                "The Word oracle rejected the correctly scoped budget gap.");
+        }
+
         public static void PowerPointLaunchTracksReusedOrFreshProcess()
         {
             var candidate = typeof(TestLabOfficeConnection).GetMethod("IsLaunchCandidate", BindingFlags.Static | BindingFlags.NonPublic);

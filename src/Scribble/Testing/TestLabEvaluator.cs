@@ -97,12 +97,31 @@ namespace Scribble.Testing
         {
             if (allowSourceEdit) return;
             var before = Readbacks(archive, "-source-source-"); var after = Readbacks(archive, "-final-source-");
+            var matched = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var pair in before)
             {
-                string value;
-                Add(checks, "source_preserved_" + pair.Key, after.TryGetValue(pair.Key, out value) && value == pair.Value,
-                    after.ContainsKey(pair.Key) ? "Native source readback changed between pre-write and final capture." : "Final source readback is missing.");
+                var key = FindUnchangedSource(pair.Key, pair.Value, after, matched);
+                if (key != null) matched.Add(key);
+                var host = pair.Key.Split('-')[0] + "-";
+                Add(checks, "source_preserved_" + pair.Key, key != null,
+                    after.Keys.Any(k => k.StartsWith(host, StringComparison.OrdinalIgnoreCase))
+                        ? "Native source readback changed between pre-write and final capture."
+                        : "Final source readback is missing.");
             }
+        }
+
+        internal static string FindUnchangedSource(string beforeKey, string beforeText,
+            IDictionary<string, string> after, ISet<string> matched)
+        {
+            // Opening a new draft can reorder Word's Documents collection.
+            // Compare source readbacks by host and content, not COM ordinal;
+            // consume each final source at most once so duplicates cannot hide
+            // a removed or altered source.
+            var host = beforeKey.Split('-')[0] + "-";
+            return after.Where(p => p.Key.StartsWith(host, StringComparison.OrdinalIgnoreCase) &&
+                    p.Value == beforeText && !matched.Contains(p.Key))
+                .OrderBy(p => string.Equals(p.Key, beforeKey, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+                .Select(p => p.Key).FirstOrDefault();
         }
 
         private static bool HasMemoryOutput(ZipArchive archive, string extension)
@@ -320,6 +339,10 @@ namespace Scribble.Testing
                 RequirePercent(checks, numbers, "delivery_target", 97);
             }
             if (caseId == "OL01" || caseId == "OL02") CheckFinanceStatements(checks, output ?? "");
+            if (caseId == "WD01")
+                Add(checks, "budget_gap_scope",
+                    !Regex.IsMatch(output ?? "", @"\b(?:every|all)\s+(?:region/product|regions?|products?|segments?|lines?)\b[^\r\n]{0,100}\b(?:below|under|missed?)\s+(?:the\s+)?budget\b|\b(?:below|under|missed?)\s+(?:the\s+)?budget\b[^\r\n]{0,100}\b(?:every|all)\s+(?:region/product|regions?|products?|segments?|lines?)\b", RegexOptions.IgnoreCase),
+                    "The June budget shortfall affects North A and South B, not every region/product line.");
             if (caseId == "OL02")
             {
                 if (checkMailHeaders) checks.AddRange(CheckLegacyMailHeaders(output ?? ""));
