@@ -234,7 +234,7 @@ namespace Scribble.Chat
                 result.Append("Host decimal sums from complete extracted ").Append(lines[start].Trim())
                     .Append("; ").Append(rows.ToString(CultureInfo.InvariantCulture))
                     .Append(" unique RowIDs; RevenueEUR and CostEUR source cells, no rows excluded.\n")
-                    .Append("Each line is a complete, independently citable period/group receipt with metric labels and EUR units.\n");
+                    .Append("Each metric also has its own independently citable period/group receipt; copy a whole line verbatim for each claim or operand.\n");
                 foreach (var item in sums.OrderBy(pair => pair.Key, StringComparer.Ordinal))
                 {
                     foreach (var member in groups.Where(pair => pair.Key.StartsWith(item.Key + "\t", StringComparison.Ordinal))
@@ -250,6 +250,12 @@ namespace Scribble.Chat
         private static void AppendWorkbookTotal(StringBuilder result, string period, string group,
             Tuple<int, decimal, decimal> values)
         {
+            var prefix = "Period " + period + "; Group " + group + "; Rows " +
+                values.Item1.ToString(CultureInfo.InvariantCulture) + "; ";
+            result.Append(prefix).Append("RevenueEUR ")
+                .Append(values.Item2.ToString(CultureInfo.InvariantCulture)).Append(" EUR\n");
+            result.Append(prefix).Append("CostEUR ")
+                .Append(values.Item3.ToString(CultureInfo.InvariantCulture)).Append(" EUR\n");
             result.Append("Period ").Append(period).Append("; Group ").Append(group)
                 .Append("; Rows ").Append(values.Item1.ToString(CultureInfo.InvariantCulture))
                 .Append("; RevenueEUR ").Append(values.Item2.ToString(CultureInfo.InvariantCulture))

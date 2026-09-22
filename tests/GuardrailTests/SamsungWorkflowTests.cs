@@ -26,6 +26,8 @@ namespace GuardrailTests
                 "\n[Sheet 2]\nPeriod\tRevenue EUR\n2026-05\t210";
             var totals = summarize(ledger);
             Check(totals != null && totals.Contains("12 unique RowIDs") &&
+                totals.Split('\n').Contains("Period 2026-06; Group All groups; Rows 6; RevenueEUR 570 EUR") &&
+                totals.Split('\n').Contains("Period 2026-06; Group All groups; Rows 6; CostEUR 114 EUR") &&
                 totals.Contains("Period 2026-05; Group All groups; Rows 6; RevenueEUR 210 EUR; CostEUR 42 EUR") &&
                 totals.Contains("Period 2026-06; Group North; Rows 3; RevenueEUR 270 EUR; CostEUR 54 EUR") &&
                 totals.Contains("Period 2026-06; Group All groups; Rows 6; RevenueEUR 570 EUR; CostEUR 114 EUR"),
@@ -38,6 +40,13 @@ namespace GuardrailTests
             SamsungPresentationReview.ValidateEvidence(new JavaScriptSerializer().Serialize(new {
                 title = "June margin", subtitle = "June gross margin was 80%", evidence = juneReceipt,
                 sources = "Complete attached workbook", calculations = new[] { margin }
+            }), totals);
+            var separateCost = "Period 2026-06; Group All groups; Rows 6; CostEUR 114 EUR";
+            SamsungPresentationReview.ValidateEvidence(new JavaScriptSerializer().Serialize(new {
+                title = "June cost", subtitle = "June cost was 114 EUR", evidence = separateCost,
+                sources = "Complete attached workbook", claims = new[] { new {
+                    evidence = separateCost, label = "CostEUR", period = "2026-06", unit = "EUR",
+                    text = "June all-groups Cost 114 EUR" } }
             }), totals);
             Check(summarize(ledger.Replace("R12\t", "R11\t")) == null,
                 "Duplicate RowIDs were included in a host-calculated source receipt.");
