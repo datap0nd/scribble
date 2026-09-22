@@ -359,7 +359,11 @@ namespace Scribble.Chat
                     "Make it DENSE and specific - carry the real numbers, names, " +
                     "dates, and table rows from the source into the output; never " +
                     "reduce a rich source to a thin outline of headings and " +
-                    "one-line bullets, and never invent filler. For slides, choose " +
+                    "one-line bullets, and never invent filler. If the user " +
+                    "requests a one-page Word memo, keep it to roughly 300 " +
+                    "words, use compact tables for only the essential results " +
+                    "and actions, and omit redundant narrative; preserve all " +
+                    "material facts, labels, and citations. For slides, choose " +
                     "tables, charts, diagrams or concise summary lists to match the content. When the " +
                     "user asks for tables or charts, put one on most slides, give " +
                     "each data slide its unit indicator and source footnote, and " +
