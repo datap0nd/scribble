@@ -131,6 +131,14 @@ namespace GuardrailTests
                 "[{\"id\":\"trend\",\"title\":\"Trend\",\"layout\":\"chart\",\"chart\":{\"type\":\"column\",\"title\":\"Revenue EUR\",\"categories\":[\"May\",\"June\"],\"series\":[{\"name\":\"Revenue EUR\",\"values\":[85519,82992]}]}}]"));
             Reject(() => Invoke(typeof(DocumentDraftHost), "ValidatePromptChartConstraints", null,
                 "Use YYYY-MM categories and EUR in the title.", invalidCategories), "SLIDE_CHART_CATEGORY_FORMAT");
+            var groupCategories = Invoke(Type("PresentationDraftWriter"), "ParseSlides", null, (object)json.Deserialize<object[]>(
+                "[{\"id\":\"groups\",\"title\":\"Group performance\",\"layout\":\"chart\",\"chart\":{\"type\":\"bar\",\"title\":\"Revenue EUR by group\",\"categories\":[\"North\",\"South\",\"East\",\"West\"],\"series\":[{\"name\":\"Revenue EUR\",\"values\":[19219,22675,19054,22044]}]}}]"));
+            Invoke(typeof(DocumentDraftHost), "ValidatePromptChartConstraints", null,
+                "The period chart must use only primary values with YYYY-MM categories and EUR in the title.", groupCategories);
+            var mixedCategories = Invoke(Type("PresentationDraftWriter"), "ParseSlides", null, (object)json.Deserialize<object[]>(
+                "[{\"id\":\"trend\",\"title\":\"Trend\",\"layout\":\"chart\",\"chart\":{\"type\":\"column\",\"title\":\"Revenue EUR\",\"categories\":[\"May\",\"2026-06\"],\"series\":[{\"name\":\"Revenue EUR\",\"values\":[85519,82992]}]}}]"));
+            Reject(() => Invoke(typeof(DocumentDraftHost), "ValidatePromptChartConstraints", null,
+                "Use YYYY-MM categories and EUR in the title.", mixedCategories), "SLIDE_CHART_CATEGORY_FORMAT");
             var falseTitleFinding = "{\"approved\":false,\"issues\":\"Chart title lacks EUR.\",\"findings\":[{\"slide_id\":\"trend\",\"object_id\":\"chart\",\"severity\":\"blocker\",\"type\":\"facts\",\"correction\":\"Include EUR explicitly in the chart title.\"}]}";
             Check((bool)Invoke(typeof(DocumentDraftHost), "ReviewApprovedOrSatisfiedPromptConstraint", null,
                 falseTitleFinding, "Use EUR in the title.", ((IEnumerable)compliantChartSlides).Cast<object>().Single()),

@@ -87,14 +87,17 @@ namespace Scribble.Office
                     _taskContext.State.PresentationReviewRequired = true;
                     _taskContext.State.PresentationReviewReceipt = null;
                     briefs = ParsedArray(args, "briefs", false);
-                    ValidatePromptChartBriefConstraints(prompt, briefs);
                     string existingBriefs;
                     if (_taskContext.State.HostData.TryGetValue("samsung_briefs", out existingBriefs))
                     {
-                        if (briefs != null && _serializer.Serialize(briefs) != existingBriefs)
-                            throw new InvalidOperationException("SLIDE_BRIEFS_CHANGED: Preserve the accepted outline.");
+                        // The accepted factual brief remains authoritative. A
+                        // later batch may echo or revise model-authored briefs,
+                        // but those proposals cannot replace the reviewed plan.
+                        // Its actual slide is still checked below against the
+                        // retained brief, source evidence and native output.
                         briefs = _serializer.Deserialize<object[]>(existingBriefs);
                     }
+                    ValidatePromptChartBriefConstraints(prompt, briefs);
                     if (briefs != null)
                     {
                         SamsungAuthoringPolicy.ValidateBriefs(briefs, plan);
@@ -163,16 +166,11 @@ namespace Scribble.Office
                         if (matches.Length != 1 || !matches[0].DataUrl.StartsWith("data:image/")) throw new InvalidOperationException("SLIDE_IMAGE_UNRESOLVED: Source image must be uniquely attached to this task: " + name);
                         slide.ImageData.Add(matches[0].DataUrl);
                     }
-                if (modern && briefs != null)
-                {
-                    var briefMaps = briefs.Select(SamsungAuthoringPolicy.ReadMap).ToArray();
-                    foreach (var slide in slides)
-                    {
-                        var brief = briefMaps.Single(b => SamsungAuthoringPolicy.Text(b, "id") == slide.Id);
-                        if (SamsungAuthoringPolicy.Text(brief, "layout") != slide.Layout)
-                            throw new InvalidOperationException("SLIDE_BRIEF_LAYOUT: Use the reviewed recipe or submit a revised outline before writing.");
-                    }
-                }
+                // Layout in a model-authored brief is a visual proposal, not a
+                // factual commitment. A later slide may use another Samsung
+                // recipe when the data suggests a better composition. Its ID,
+                // required content and evidence are still checked against the
+                // accepted brief by the source and visual reviewers.
                 if (slides.Count == 0) throw new InvalidOperationException("At least one slide is required.");
                 stage = "SOURCE_REVIEW";
                 foreach (var raw in rawSlides)
@@ -383,12 +381,19 @@ namespace Scribble.Office
             if (Regex.IsMatch(prompt ?? string.Empty,
                 @"(?is)\bYYYY\s*-\s*MM\b.{0,40}\bcategor(?:y|ies)\b"))
                 foreach (var chart in charts)
-                    if (chart.Categories.Any(category => !Regex.IsMatch(
+                    if (chart.Categories.Any(LooksLikeMonthCategory) &&
+                        chart.Categories.Any(category => !Regex.IsMatch(
                         category ?? string.Empty,
                         @"^\d{4}-(?:0[1-9]|1[0-2])$")))
                         throw new InvalidOperationException(
-                            "SLIDE_CHART_CATEGORY_FORMAT: The user required YYYY-MM chart categories. " +
-                            "Use four-digit year and two-digit month labels such as 2026-05.");
+                            "SLIDE_CHART_CATEGORY_FORMAT: The user required YYYY-MM categories for the period chart. " +
+                            "Use four-digit year and two-digit month labels such as 2026-05; a separate categorical chart may use group names.");
+        }
+
+        private static bool LooksLikeMonthCategory(string category)
+        {
+            return Regex.IsMatch(category ?? string.Empty,
+                @"(?i)^\s*(?:\d{4}[-/]\d{1,2}|\d{1,2}[-/]\d{4}|(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)(?:\s+\d{4})?)\s*$");
         }
 
         // A probabilistic fact reviewer must not block a slide by claiming a

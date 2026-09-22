@@ -58,6 +58,7 @@ namespace Scribble.Office
             "The host has also verified that every displayed period label such as 2026-05 occurs in the sources this task read. A cited table may head the same column with the month name alone (May, June); treat that as the same period unless the evidence names a different year. " +
             "A slide brief is an authoring plan, not evidence. If its requested numeric wording is unsupported, reject that wording; do not demand the slide repeat an unsupported number from the brief. A used-range endpoint is not a completeness or uniqueness count. " +
             "Titles, section names, slide ids, layout and purpose are authoring choices, not facts: never require them to occur in the source, and do not reject a slide because its purpose label reads differently from its brief. " +
+            "A brief's layout is a visual proposal, not a requirement to include a particular chart or table. Check its required_content and the user's original request, but do not demand a chart solely because the brief named a chart recipe. " +
             "Title names the subject; analytical subtitle states the finding; optional takeaway adds information. Check evidence annotations.";
         public const string DeckReview =
             "Review the entire Samsung deck against the original brief and mandatory content. Check coverage, exact slide count, narrative order, repeated messages, " +
