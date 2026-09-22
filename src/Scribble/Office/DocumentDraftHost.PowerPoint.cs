@@ -64,6 +64,8 @@ namespace Scribble.Office
                     source += "\n" + evidence;
                 }
                 var rawSlides = ((IEnumerable)args["slides"]).Cast<object>().ToArray();
+                SamsungAuthoringPolicy.ValidateRequestedHeadlineLayout(prompt,
+                    rawSlides.Select(SamsungAuthoringPolicy.ReadMap));
                 SamsungAuthoringPolicy.ValidateVisualDesign(rawSlides.Select(SamsungAuthoringPolicy.ReadMap));
                 var slides = ParsedSlides(args);
                 ValidatePromptChartConstraints(prompt, slides);
@@ -100,6 +102,8 @@ namespace Scribble.Office
                     ValidatePromptChartBriefConstraints(prompt, briefs);
                     if (briefs != null)
                     {
+                        SamsungAuthoringPolicy.ValidateRequestedHeadlineLayout(prompt,
+                            briefs.Select(SamsungAuthoringPolicy.ReadMap));
                         SamsungAuthoringPolicy.ValidateBriefs(briefs, plan);
                         SamsungAuthoringPolicy.ValidateSourceSpanCoverage(briefs,
                             ((IEnumerable)args["slides"]).Cast<object>().Select(SamsungAuthoringPolicy.ReadMap),

@@ -155,6 +155,18 @@ namespace Scribble.Office
                     throw new InvalidOperationException("SLIDE_DESIGN_FLAT: A dense factual slide cannot be a single text panel, regardless of its purpose label. Use a native chart or table for comparisons, a scorecard for KPIs, or a structured evidence composition for methodology and data quality.");
             }
         }
+        public static void ValidateRequestedHeadlineLayout(string instruction,
+            IEnumerable<IDictionary<string, object>> items)
+        {
+            if (!Regex.IsMatch(instruction ?? "", @"\bheadline\b", RegexOptions.IgnoreCase) ||
+                Regex.IsMatch(instruction ?? "", @"\b(?:cover|title slide)\b", RegexOptions.IgnoreCase)) return;
+            foreach (var item in items ?? new IDictionary<string, object>[0])
+            {
+                if (Text(item, "id").IndexOf("headline", StringComparison.OrdinalIgnoreCase) < 0) continue;
+                if (new[] { "cover", "divider", "closing" }.Contains(Text(item, "layout"), StringComparer.OrdinalIgnoreCase))
+                    throw new InvalidOperationException("SLIDE_HEADLINE_NOT_COVER: The user asked for a results headline, not a title-only cover. Use a source-backed visual such as a scorecard, with the headline metrics visible.");
+            }
+        }
         public static void ValidateDeckVisualDesign(IEnumerable<IDictionary<string, object>> slides)
         {
             var content = (slides ?? new IDictionary<string, object>[0]).Where(slide =>

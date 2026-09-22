@@ -125,6 +125,13 @@ namespace GuardrailTests
                 "{\"slides\":[{\"id\":\"headline\"},{\"id\":\"headline\"}]}");
             Reject(() => Invoke(typeof(DocumentDraftHost), "SelectSlideRepair", null, ambiguousRepair, "headline"),
                 "SLIDE_REPAIR_COUNT");
+            var coverHeadline = new[] { json.Deserialize<Dictionary<string, object>>(
+                "{\"id\":\"headline\",\"layout\":\"cover\",\"title\":\"June results\"}") };
+            Reject(() => SamsungAuthoringPolicy.ValidateRequestedHeadlineLayout(
+                "Create four slides: headline, period chart, groups and data quality.", coverHeadline),
+                "SLIDE_HEADLINE_NOT_COVER");
+            SamsungAuthoringPolicy.ValidateRequestedHeadlineLayout(
+                "Create a cover and then a headline slide.", coverHeadline);
             var primaryOnlySlides = Invoke(Type("PresentationDraftWriter"), "ParseSlides", null, (object)json.Deserialize<object[]>(
                 "[{\"id\":\"trend\",\"title\":\"Trend\",\"layout\":\"chart\",\"chart\":{\"type\":\"column\",\"categories\":[\"2026-05\",\"2026-06\"],\"series\":[{\"name\":\"Revenue EUR\",\"values\":[85519,82992]},{\"name\":\"Cost EUR\",\"values\":[36702,36714]}]}}]"));
             Reject(() => Invoke(typeof(DocumentDraftHost), "ValidatePromptChartConstraints", null,
