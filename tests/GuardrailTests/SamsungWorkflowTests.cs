@@ -458,6 +458,16 @@ namespace GuardrailTests
                 var before = task.Sources.Spans().Count;
                 task.Sources.CaptureRead(call, result);
                 Check(task.Sources.Spans().Count == before, "Replaying an enriched receipt created citation-only source spans.");
+                var inspectCall = new ChatToolCall { id = "inspect-1", function = new ChatToolCallFunction {
+                    name = PresentationToolCatalog.InspectSlide, arguments = "{\"index\":1}" } };
+                var inspectPayload = new JavaScriptSerializer().Serialize(new {
+                    content = "{\"shapes\":[]}", citation_text = "June revenue EUR 82,992\nCost EUR 36,714" });
+                var inspectResult = new MailboxToolResult(inspectCall.id, inspectPayload, "Inspected slide");
+                task.AfterTool(inspectCall, inspectResult);
+                var inspectReceipt = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(inspectResult.Content);
+                var inspectIds = ((IEnumerable)inspectReceipt["source_spans"]).Cast<object>().Select(Convert.ToString).ToArray();
+                Check(inspectIds.Length > 0 && task.Sources.Resolve(new[] { inspectIds[0] }).StartsWith("June revenue EUR 82,992"),
+                    "Native citation text was not retained before escaped inspection JSON.");
             }
             finally { if (System.IO.Directory.Exists(root)) System.IO.Directory.Delete(root, true); }
         }
