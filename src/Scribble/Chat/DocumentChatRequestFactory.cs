@@ -348,6 +348,10 @@ namespace Scribble.Chat
                     ? " In Excel, list_worksheets is an inventory with no required arguments; use {} for it. " +
                       "Use read_cells with a worksheet name and range to read actual values. A Scribble Draft sheet " +
                       "listed in the active workbook is available in memory even when the workbook is unsaved. " +
+                      "For a draft audit table, put live formulas only in cells the user asked to calculate; " +
+                      "write optional data-quality observations as sourced text unless the user explicitly " +
+                      "requests additional calculated cells. Keep formulas simple and valid in ordinary Excel " +
+                      "syntax; do not add speculative array formulas or duplicate a metric in extra sections. " +
                       "For an authorized PowerPoint request, send_to_powerpoint is the live cross-app handoff. " +
                       "Do not claim that handoff is unavailable or ask the user to repeat values already readable " +
                       "from the active workbook; read the sheet and continue the requested deck."
