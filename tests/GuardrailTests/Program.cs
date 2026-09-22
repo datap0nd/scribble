@@ -427,6 +427,7 @@ namespace GuardrailTests
                 Run("Outlook embedding startup waits for the registered add-in", OfficeBootstrapTests.OutlookEmbeddingStartupWaitsForAddIn);
                 Run("Word creation cannot overwrite the source document", OfficeBootstrapTests.WordCreationCannotOverwriteSource);
                 Run("Word one-page drafts preflight their layout", OfficeBootstrapTests.WordOnePagePreflightLimitsLayout);
+                Run("Read-only worksheet inventory ignores inert hints", OfficeBootstrapTests.ReadOnlyWorksheetInventoryIgnoresInertHints);
                 Run("Deck review warnings retain repair targets", OfficeBootstrapTests.DeckReviewWarningsHaveRepairTargets);
                 Run("Word source preservation survives draft reordering", OfficeBootstrapTests.WordSourcePreservationSurvivesDraftReordering);
                 Run("Word memo rejects universal budget claims", OfficeBootstrapTests.WordMemoRejectsUniversalBudgetClaim);

@@ -181,6 +181,21 @@ namespace GuardrailTests
                 "Oversized memo prose was accepted.");
         }
 
+        public static void ReadOnlyWorksheetInventoryIgnoresInertHints()
+        {
+            var definition = WorkbookToolCatalog.CreateDefinitions().First(
+                item => item.function.name == WorkbookToolCatalog.ListWorksheets);
+            var call = new ChatToolCall { id = "hint", type = "function", function = new ChatToolCallFunction {
+                name = WorkbookToolCatalog.ListWorksheets,
+                arguments = "{\"include_hidden\":\"True\",\"limit\":\"30\"}"
+            } };
+            Check(ToolContractValidator.Validate(call, definition).Count == 0 && call.function.arguments == "{}",
+                "Inert worksheet-list hints blocked a read-only inventory.");
+            call.function.arguments = "{\"unexpected_write\":true}";
+            Check(ToolContractValidator.Validate(call, definition).Count > 0,
+                "Unexpected worksheet-list parameters escaped validation.");
+        }
+
         public static void DeckReviewWarningsHaveRepairTargets()
         {
             Check(SamsungAuthoringPolicy.DeckReview.Contains("across the whole deck") &&

@@ -19,6 +19,15 @@ namespace Scribble.Chat
                 var args = json.DeserializeObject(call.function.arguments ?? "{}");
                 var schema = json.DeserializeObject(json.Serialize(definition.function.parameters)) as IDictionary<string, object>;
                 var map = args as IDictionary<string, object>;
+                // This read-only inventory has no parameters. Some compatible
+                // providers invent conventional paging/visibility hints even
+                // when its schema is {}. Discard only those inert hints so a
+                // repeated malformed call cannot strand the whole task.
+                if (map != null && call.function.name == WorkbookToolCatalog.ListWorksheets)
+                {
+                    map.Remove("limit");
+                    map.Remove("include_hidden");
+                }
                 // Known compatibility case only: decode one encoded slide/plan array.
                 // Some OpenAI-compatible gateways preserve a model's nested JSON
                 // array as a string. Qwen can also append one structurally misplaced
