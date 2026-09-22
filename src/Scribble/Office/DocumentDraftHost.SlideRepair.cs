@@ -64,6 +64,12 @@ namespace Scribble.Office
             if (matching.Length == 1) return matching;
             throw new InvalidOperationException("SLIDE_REPAIR_COUNT: Repair exactly one identifiable slide.");
         }
+        internal static bool CanRetrySlideRepairShape(Exception error, int proposal)
+        {
+            if (proposal != 0 || !(error is InvalidOperationException)) return false;
+            return new[] { "SLIDE_REPAIR_COUNT:", "SLIDE_REPAIR_SCHEMA:", "SLIDE_REPAIR_ID_CHANGED" }
+                .Any(code => error.Message.StartsWith(code, StringComparison.Ordinal));
+        }
         private async Task<Dictionary<string, object>> RepairSlideContentAsync(PresentationDraftWriter.SamsungOutput output,
             Dictionary<string, object> original, string findings, string source, string prompt,
             OpenAiCompatibleClient client, AppSettings settings, CancellationToken token, IReadOnlyList<PresentationDraftWriter.SamsungOutput> related = null)
@@ -81,12 +87,31 @@ namespace Scribble.Office
             for (var proposal = 0; proposal < 2; proposal++)
             {
                 var wrapper = await ReadSlideRepairJsonAsync(client, settings, response, token, repairTokens);
-                replacements = SelectSlideRepair(wrapper, SamsungAuthoringPolicy.Text(original, "id"));
-                replacement = SamsungAuthoringPolicy.ReadMap(replacements[0]);
-                var testCall = new ChatToolCall { id = "repair", function = new ChatToolCallFunction { name = PresentationToolCatalog.AddDraftSlides, arguments = _serializer.Serialize(new { slides = replacements }) } };
-                var errors = ToolContractValidator.Validate(testCall, PresentationToolCatalog.DraftDefinition());
-                if (errors.Count > 0) throw new InvalidOperationException("SLIDE_REPAIR_SCHEMA: " + string.Join("; ", errors));
-                if (SamsungAuthoringPolicy.Text(replacement, "id") != SamsungAuthoringPolicy.Text(original, "id")) throw new InvalidOperationException("SLIDE_REPAIR_ID_CHANGED");
+                try
+                {
+                    replacements = SelectSlideRepair(wrapper, SamsungAuthoringPolicy.Text(original, "id"));
+                    replacement = SamsungAuthoringPolicy.ReadMap(replacements[0]);
+                    var testCall = new ChatToolCall { id = "repair", function = new ChatToolCallFunction { name = PresentationToolCatalog.AddDraftSlides, arguments = _serializer.Serialize(new { slides = replacements }) } };
+                    var errors = ToolContractValidator.Validate(testCall, PresentationToolCatalog.DraftDefinition());
+                    if (errors.Count > 0) throw new InvalidOperationException("SLIDE_REPAIR_SCHEMA: " + string.Join("; ", errors));
+                    if (SamsungAuthoringPolicy.Text(replacement, "id") != SamsungAuthoringPolicy.Text(original, "id")) throw new InvalidOperationException("SLIDE_REPAIR_ID_CHANGED");
+                }
+                catch (InvalidOperationException ex) when (CanRetrySlideRepairShape(ex, proposal))
+                {
+                    // Nothing native was changed. Correct a missing, ambiguous
+                    // or malformed target inside this receipted repair call,
+                    // instead of asking chat to replay the written deck.
+                    response = await ReviewSamsungAsync(client, settings,
+                        SamsungAuthoringPolicy.Instructions + " Your repair was rejected (" + ex.Message + "). " +
+                        "Return JSON only: a slides array containing exactly one complete slide with id '" +
+                        SamsungAuthoringPolicy.Text(original, "id") + "'. Do not include another planned slide. " +
+                        "Preserve the original evidence, chart/table data, required facts and source image names. " +
+                        "Omit evidence, source_spans and sources because the host retains them. Schema: " +
+                        _serializer.Serialize(PresentationToolCatalog.DraftDefinition().function.parameters),
+                        _serializer.Serialize(new { original, findings, previous_invalid_response = response, instruction = prompt }),
+                        output.Image, token, repairTokens);
+                    continue;
+                }
                 // Evidence, span IDs and the visible citation belong to the host.
                 RetainSlideRepairSources(original, replacement);
                 try { ValidateSlideRepairEvidence(original, replacement); }

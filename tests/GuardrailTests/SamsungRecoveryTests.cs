@@ -250,6 +250,15 @@ namespace GuardrailTests
                 "{\"slides\":[{\"id\":\"headline\"},{\"id\":\"headline\"}]}");
             Reject(() => Invoke(typeof(DocumentDraftHost), "SelectSlideRepair", null, ambiguousRepair, "headline"),
                 "SLIDE_REPAIR_COUNT");
+            Check((bool)Invoke(typeof(DocumentDraftHost), "CanRetrySlideRepairShape", null,
+                new InvalidOperationException("SLIDE_REPAIR_COUNT: ambiguous target"), 0) &&
+                (bool)Invoke(typeof(DocumentDraftHost), "CanRetrySlideRepairShape", null,
+                new InvalidOperationException("SLIDE_REPAIR_ID_CHANGED"), 0) &&
+                !(bool)Invoke(typeof(DocumentDraftHost), "CanRetrySlideRepairShape", null,
+                new InvalidOperationException("SLIDE_REPAIR_COUNT: ambiguous target"), 1) &&
+                !(bool)Invoke(typeof(DocumentDraftHost), "CanRetrySlideRepairShape", null,
+                new InvalidOperationException("SLIDE_REPAIR_EVIDENCE_CHANGED: chart"), 0),
+                "A malformed visual repair was not offered exactly one safe, pre-mutation correction.");
             var coverHeadline = new[] { json.Deserialize<Dictionary<string, object>>(
                 "{\"id\":\"headline\",\"layout\":\"cover\",\"title\":\"June results\"}") };
             Reject(() => SamsungAuthoringPolicy.ValidateRequestedHeadlineLayout(
