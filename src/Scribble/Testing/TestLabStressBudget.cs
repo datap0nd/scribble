@@ -15,10 +15,10 @@ namespace Scribble.Testing
     {
         // Final native validation uses the remaining balance on the same
         // no-reset key. A final targeted validation may use the remaining
-        // balance while retaining $0.05 below the $30 hard cap. Every model
+        // balance while retaining $0.05 below the $40 hard cap. Every model
         // request rechecks the live key before dispatch.
-        public const decimal MaximumTotalUsd = 30m;
-        public const decimal MaximumCheckpointUsageUsd = 30m;
+        public const decimal MaximumTotalUsd = 40m;
+        public const decimal MaximumCheckpointUsageUsd = 40m;
         public static async Task GuardRequestAsync(AppSettings actual, string requestedModel, CancellationToken cancel)
         {
             var state = TestLabSuite.Active();
@@ -46,7 +46,7 @@ namespace Scribble.Testing
                 endpoint.Scheme != "https" || endpoint.Host != "openrouter.ai" || !endpoint.IsDefaultPort ||
                 !string.IsNullOrEmpty(endpoint.UserInfo) || !string.IsNullOrEmpty(endpoint.Query) ||
                 endpoint.AbsolutePath.TrimEnd('/') != "/api/v1" || settings.Model != "qwen/qwen3.8-27b")
-                throw new InvalidOperationException("Stress tests require the configured Qwen3.8 27B OpenRouter endpoint and the approved no-reset key capped at $30 total. No model request was submitted.");
+                throw new InvalidOperationException("Stress tests require the configured Qwen3.8 27B OpenRouter endpoint and the approved no-reset key capped at $40 total. No model request was submitted.");
             string text = null;
             for (var attempt = 0; attempt < 3 && text == null; attempt++)
             {
@@ -157,7 +157,7 @@ namespace Scribble.Testing
                 !string.IsNullOrEmpty(key.limit_reset) || !key.limit_remaining.HasValue || !key.usage.HasValue ||
                 key.limit_remaining < 0 || key.limit_remaining > key.limit || key.usage < 0 ||
                 key.is_management_key || key.is_provisioning_key)
-                throw new InvalidOperationException("The API key must be an inference key with a positive total limit of at most $30 and no periodic reset. Unverified limits cannot start stress tests.");
+                throw new InvalidOperationException("The API key must be an inference key with a positive total limit of at most $40 and no periodic reset. Unverified limits cannot start stress tests.");
             var reserve = key.limit >= 20m ? .05m : .25m;
             if (key.limit_remaining <= reserve)
                 throw new InvalidOperationException("API budget nearly exhausted: $" + key.limit_remaining.Value.ToString("0.000", CultureInfo.InvariantCulture) + " remains. Remaining tests were not submitted.");

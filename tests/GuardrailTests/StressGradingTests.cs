@@ -33,6 +33,8 @@ namespace GuardrailTests
                 "A final targeted run was blocked despite a $0.25 balance on the capped key.");
             Check(TestLabStressBudget.Validate("{\"data\":{\"limit\":30,\"limit_remaining\":10.277,\"usage\":19.723,\"limit_reset\":null}}").limit == 30,
                 "The funded $10 extension of the no-reset key was rejected.");
+            Check(TestLabStressBudget.Validate("{\"data\":{\"limit\":40,\"limit_remaining\":14.47,\"usage\":25.53,\"limit_reset\":null}}").limit == 40,
+                "The second funded $10 extension of the no-reset key was rejected.");
             Check(TestLabStressBudget.RetryTransientBudgetCheck(new System.Threading.Tasks.TaskCanceledException(), false, 0) &&
                 TestLabStressBudget.RetryTransientBudgetCheck(new System.Net.Http.HttpRequestException(), false, 1) &&
                 !TestLabStressBudget.RetryTransientBudgetCheck(new System.Threading.Tasks.TaskCanceledException(), true, 0) &&
@@ -41,11 +43,12 @@ namespace GuardrailTests
             foreach (var response in new[] {
                 "{\"data\":{\"limit\":null,\"limit_remaining\":null,\"usage\":0}}",
                 "{\"data\":{\"limit\":100,\"limit_remaining\":100,\"usage\":0}}",
-                "{\"data\":{\"limit\":30.01,\"limit_remaining\":30.01,\"usage\":0}}",
+                "{\"data\":{\"limit\":40.01,\"limit_remaining\":40.01,\"usage\":0}}",
                 "{\"data\":{\"limit\":10,\"limit_remaining\":10,\"usage\":0,\"limit_reset\":\"monthly\"}}",
                 "{\"data\":{\"limit\":10,\"limit_remaining\":0.1,\"usage\":9.9}}",
                 "{\"data\":{\"limit\":20,\"limit_remaining\":0.05,\"usage\":19.95}}",
                 "{\"data\":{\"limit\":30,\"limit_remaining\":0.05,\"usage\":29.95}}",
+                "{\"data\":{\"limit\":40,\"limit_remaining\":0.05,\"usage\":39.95}}",
                 "{\"data\":{\"limit\":10,\"limit_remaining\":10,\"usage\":0,\"is_management_key\":true}}" })
             {
                 bool failed = false; try { TestLabStressBudget.Validate(response); } catch (InvalidOperationException) { failed = true; }
