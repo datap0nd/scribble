@@ -95,6 +95,14 @@ namespace Scribble.Office
                     @"\b(?:native\s+editable\s+(?:chart|table|slide)|single\s+primary\s+series|primary\s+values\s+only|value\s+axis\s+(?:from|begins\s+at|starts\s+at)|categories\s+(?:shown|formatted)\s+as|source_spans|speaker\s+notes)\b",
                     RegexOptions.IgnoreCase)));
         }
+        public static string AudienceChartTitle(string value)
+        {
+            // A chart title should identify the measure, not narrate the
+            // construction checks that the host already enforces.
+            return Regex.Replace(value ?? "",
+                @"\s*(?:\(|[—–-])\s*(?:zero[- ]based(?: value)? axis|native editable chart|single primary series|value axis (?:from|begins at|starts at) zero)\s*\)?$",
+                "", RegexOptions.IgnoreCase).Trim();
+        }
         public static object[] Array(IDictionary<string, object> map, string key)
         {
             object value;

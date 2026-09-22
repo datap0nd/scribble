@@ -2261,7 +2261,7 @@ namespace Scribble.Office
             return new DraftChart(
                 DraftChartTypes.Resolve(
                     Convert.ToString(typeValue)),
-                Clean(Convert.ToString(titleValue), 180),
+                SamsungAuthoringPolicy.AudienceChartTitle(Clean(Convert.ToString(titleValue), 180)),
                 categories,
                 series);
         }

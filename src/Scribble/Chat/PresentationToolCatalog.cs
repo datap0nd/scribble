@@ -389,7 +389,7 @@ namespace Scribble.Chat
                         },
                         {
                             "title",
-                            ToolSchema.String("Chart title.")
+                            ToolSchema.String("Audience-facing measure, period and unit. Never mention zero-baseline checks, native editability, series count or other chart-building mechanics.")
                         },
                         {
                             "categories",

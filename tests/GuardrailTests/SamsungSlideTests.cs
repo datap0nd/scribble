@@ -148,6 +148,8 @@ namespace GuardrailTests
                 throw new Exception("Chart implementation instructions leaked onto the audience-facing canvas.");
             if (!visibleCopy.Contains(chartCaveat) || !visibleCopy.Contains("June source workbook"))
                 throw new Exception("Filtering chart instructions removed a factual source or caveat.");
+            if (SamsungAuthoringPolicy.AudienceChartTitle("Revenue EUR by month (zero-based axis)") != "Revenue EUR by month")
+                throw new Exception("Chart construction checks leaked into the native audience-facing title.");
             if (!chartElements.Any(e => Convert.ToString(e["text"]) == "EUR" && Convert.ToDouble(e["size"]) >= 11))
                 throw new Exception("Chart units must be legible in the native presentation.");
             var pages = (IEnumerable)SamsungPresentationReview.InspectPlan(json.Serialize(new[] { new { title = "Data", layout = "matrix", subtitle = "Review every row", table = new { headers = new[] { "Item", "Value" }, rows } } }));
