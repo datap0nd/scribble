@@ -63,6 +63,7 @@ namespace Scribble.Office
         public const string DeckReview =
             "Review the entire Samsung deck against the original brief and mandatory content. Check coverage, exact slide count, narrative order, repeated messages, " +
             "terminology, periods, units, slide numbering, visual consistency and whether the business question is answered. Judge it as an executive presentation at thumbnail size, not merely as readable Office geometry. Reject plain body-text dumps, accidental whitespace, weak focal hierarchy, repeated conclusions and monotonous composition. Evidence may be dense, but density is never permission to paste a report onto a slide. " +
+            "Judge required coverage across the whole deck, not by demanding that a headline slide repeat a statistic already present on its dedicated evidence slide. A requested zero-based chart axis is satisfied by a native visible zero tick; do not require the words 'zero-based' in the chart title or subtitle when the axis itself starts at zero. " +
             "Do not require an appendix or recommend discarding mandatory rows. Do not invent a conclusion for explanatory slides.";
         public const string OutlineReview =
             "Review a proposed Samsung deck outline before any slides in this batch are written. " +

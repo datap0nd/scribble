@@ -169,6 +169,9 @@ namespace GuardrailTests
 
         public static void DeckReviewWarningsHaveRepairTargets()
         {
+            Check(SamsungAuthoringPolicy.DeckReview.Contains("across the whole deck") &&
+                SamsungAuthoringPolicy.DeckReview.Contains("native visible zero tick"),
+                "Deck review again demands duplicate coverage or a literal zero-baseline title.");
             var method = typeof(DocumentDraftHost).GetMethod("AffectedDeckReviewSlides",
                 BindingFlags.Static | BindingFlags.NonPublic);
             Check(method != null, "The deck-review target selector is missing.");
