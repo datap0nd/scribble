@@ -14,9 +14,10 @@ namespace Scribble.Testing
     public static class TestLabStressBudget
     {
         // Final native validation uses the remaining balance on the same
-        // no-reset key. Preserve at least $1.50 below its $20 hard cap.
+        // no-reset key. Keep a $0.75 reserve below its $20 hard cap, and
+        // stop starting requests $0.25 before that checkpoint.
         public const decimal MaximumTotalUsd = 20m;
-        public const decimal MaximumCheckpointUsageUsd = 18.5m;
+        public const decimal MaximumCheckpointUsageUsd = 19.25m;
         public static async Task GuardRequestAsync(AppSettings actual, string requestedModel, CancellationToken cancel)
         {
             var state = TestLabSuite.Active();
@@ -134,7 +135,7 @@ namespace Scribble.Testing
             if (key.limit_remaining <= .25m)
                 throw new InvalidOperationException("API budget nearly exhausted: $" + key.limit_remaining.Value.ToString("0.000", CultureInfo.InvariantCulture) + " remains. Remaining tests were not submitted.");
             if (key.usage >= MaximumCheckpointUsageUsd - .25m)
-                throw new InvalidOperationException("Golden Showcase checkpoint budget nearly exhausted: total key usage is $" + key.usage.Value.ToString("0.000", CultureInfo.InvariantCulture) + ". The checkpoint stops before $18.50 total usage; remaining tests were not submitted.");
+                throw new InvalidOperationException("Golden Showcase checkpoint budget nearly exhausted: total key usage is $" + key.usage.Value.ToString("0.000", CultureInfo.InvariantCulture) + ". The checkpoint stops before $" + MaximumCheckpointUsageUsd.ToString("0.00", CultureInfo.InvariantCulture) + " total usage; remaining tests were not submitted.");
             return key;
         }
     }

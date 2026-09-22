@@ -25,12 +25,14 @@ namespace GuardrailTests
                 "The approved same-key checkpoint budget was rejected.");
             Check(TestLabStressBudget.Validate("{\"data\":{\"limit\":20,\"limit_remaining\":5.2,\"usage\":14.8,\"limit_reset\":null}}").limit == 20,
                 "The final native-validation allowance was rejected.");
+            Check(TestLabStressBudget.Validate("{\"data\":{\"limit\":20,\"limit_remaining\":1.7,\"usage\":18.3}}").limit == 20,
+                "The reserved final native-validation allowance was rejected.");
             foreach (var response in new[] {
                 "{\"data\":{\"limit\":null,\"limit_remaining\":null,\"usage\":0}}",
                 "{\"data\":{\"limit\":100,\"limit_remaining\":100,\"usage\":0}}",
                 "{\"data\":{\"limit\":10,\"limit_remaining\":10,\"usage\":0,\"limit_reset\":\"monthly\"}}",
                 "{\"data\":{\"limit\":10,\"limit_remaining\":0.1,\"usage\":9.9}}",
-                "{\"data\":{\"limit\":20,\"limit_remaining\":1.7,\"usage\":18.3}}",
+                "{\"data\":{\"limit\":20,\"limit_remaining\":0.9,\"usage\":19.1}}",
                 "{\"data\":{\"limit\":10,\"limit_remaining\":10,\"usage\":0,\"is_management_key\":true}}" })
             {
                 bool failed = false; try { TestLabStressBudget.Validate(response); } catch (InvalidOperationException) { failed = true; }
