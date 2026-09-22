@@ -8,7 +8,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 using Scribble.Chat;
+using Scribble.Office;
 using Scribble.Outlook;
+using Scribble.Security;
 using Scribble.Utilities;
 
 namespace GuardrailTests
@@ -110,6 +112,50 @@ namespace GuardrailTests
                     task.State.Writes[1].Status == "pending", "The corrected draft did not preserve the first write receipt.");
             }
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+        }
+
+        public static void FormulaRejectionFollowsNativeGridWrite()
+        {
+            var events = new List<string>();
+            var application = new CrossAppFixture("excel", events);
+            var rows = new List<IReadOnlyList<string>>
+            {
+                new List<string> { "Metric", "Value" },
+                new List<string> { "Revenue", "=SUM(B4:B4)" }
+            };
+            // Use a valid, allowed formula so the injected native rejection
+            // reaches both Formula and FormulaLocal after the bulk grid write.
+            var writer = typeof(DraftFormulaPolicy).Assembly.GetType("Scribble.Office.WorkbookDraftWriter");
+            var method = writer.GetMethods(System.Reflection.BindingFlags.Static |
+                System.Reflection.BindingFlags.NonPublic).Single(item =>
+                    item.Name == "WriteDraftSheet" && item.GetParameters().Length == 5);
+            try
+            {
+                CrossAppFixture.BeforeNativeSet = (path, value) =>
+                {
+                    if (!path.EndsWith(".Formula", StringComparison.Ordinal) &&
+                        !path.EndsWith(".FormulaLocal", StringComparison.Ordinal)) return;
+                    events.Add("rejected:" + path);
+                    throw new InvalidOperationException("Synthetic Excel formula rejection");
+                };
+                try
+                {
+                    method.Invoke(null, new object[] { application, "Analysis", rows, null, true });
+                    throw new Exception("The rejected formula was accepted.");
+                }
+                catch (System.Reflection.TargetInvocationException error)
+                {
+                    Check(error.InnerException is InvalidOperationException &&
+                        error.InnerException.Message.Contains("DRAFT_FORMULA_INVALID"),
+                        "The native formula rejection did not surface as a failed draft.");
+                }
+            }
+            finally { CrossAppFixture.BeforeNativeSet = null; }
+            var gridWrite = events.FindIndex(item => item.EndsWith(".Value2=Metric|Value|Revenue|", StringComparison.Ordinal));
+            var formulaReject = events.FindIndex(item => item.StartsWith("rejected:", StringComparison.Ordinal));
+            Check(gridWrite >= 0 && formulaReject > gridWrite &&
+                events.Any(item => item.Contains(".Name=Scribble Draft")),
+                "Formula validation no longer exposes the pre-existing partial marked sheet; update the phase-0 mechanism test.");
         }
 
         public static void PowerPointArgumentsGiveRepair()

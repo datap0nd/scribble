@@ -71,17 +71,22 @@ namespace Scribble.Office
             return new[] { "SLIDE_REPAIR_COUNT:", "SLIDE_REPAIR_SCHEMA:", "SLIDE_REPAIR_ID_CHANGED" }
                 .Any(code => error.Message.StartsWith(code, StringComparison.Ordinal));
         }
+        internal static string SlideRepairDirective(string id)
+        {
+            return " Repair this single slide using the specific visual findings. Return JSON only: {\"slides\":[{...complete corrected slide...}]}. " +
+                "Return only the slide whose id is '" + id + "'; do not return any other planned slide. " +
+                "Keep every user-required chart-title unit token (such as EUR); shorten surrounding wording if needed, never remove the unit. " +
+                "Keep the ID, all required table rows, chart type, categories, series names and values, calculations and source images unchanged. Do not add or remove a primary or secondary chart or table: this is a visual repair, not new evidence. For a sparse table slide, enlarge the existing table and use semantic highlight_rows and a coherent subtitle/takeaway; do not invent a chart. You may correct an existing chart title when the finding requires it. Omit evidence, source_spans and sources from your answer: the host carries them over unchanged. You may choose a better Samsung layout and remove redundant wording. " +
+                "Do not invent pixel coordinates or remove evidence to make it fit. Schema: ";
+        }
         private async Task<Dictionary<string, object>> RepairSlideContentAsync(PresentationDraftWriter.SamsungOutput output,
             Dictionary<string, object> original, string findings, string source, string prompt,
             OpenAiCompatibleClient client, AppSettings settings, CancellationToken token, IReadOnlyList<PresentationDraftWriter.SamsungOutput> related = null)
         {
             var repairTokens = Math.Min(32768, Math.Max(8192, _serializer.Serialize(original).Length / 2));
             var response = await ReviewSamsungAsync(client, settings,
-                SamsungAuthoringPolicy.Instructions + " Repair this single slide using the specific visual findings. Return JSON only: {\"slides\":[{...complete corrected slide...}]}. " +
-                "Return only the slide whose id is '" + SamsungAuthoringPolicy.Text(original, "id") + "'; do not return any other planned slide. " +
-                "Keep every user-required chart-title unit token (such as EUR); shorten surrounding wording if needed, never remove the unit. " +
-                "Keep the ID, all required table rows, chart type, categories, series names and values, calculations and source images unchanged. Do not add or remove a primary or secondary chart or table: this is a visual repair, not new evidence. For a sparse table slide, enlarge the existing table and use semantic highlight_rows and a coherent subtitle/takeaway; do not invent a chart. You may correct an existing chart title when the finding requires it. Omit evidence, source_spans and sources from your answer: the host carries them over unchanged. You may choose a better Samsung layout and remove redundant wording. " +
-                "Do not invent pixel coordinates or remove evidence to make it fit. Schema: " + _serializer.Serialize(PresentationToolCatalog.DraftDefinition().function.parameters),
+                SamsungAuthoringPolicy.Instructions + SlideRepairDirective(SamsungAuthoringPolicy.Text(original, "id")) +
+                _serializer.Serialize(PresentationToolCatalog.DraftDefinition().function.parameters),
                 _serializer.Serialize(new { original, findings, instruction = prompt }), output.Image, token, repairTokens);
             object[] replacements = null;
             Dictionary<string, object> replacement = null;

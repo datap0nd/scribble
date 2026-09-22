@@ -1,0 +1,242 @@
+{
+  "schema": 1,
+  "suite_id": "scribble-stress-v1",
+  "case_id": "XA01",
+  "run_id": "c76d52d4917c4086ab34f0d4f825ca2b",
+  "run_status": "finished",
+  "trace_complete": true,
+  "assembly_version": "2.0.385.0",
+  "assembly_sha256": "1a043b9f8e9d2e02ce22c2c75d0c058208b08b36afee13ebbae4809870d3b062",
+  "selected_model": "qwen/qwen3.8-27b",
+  "started_utc": "2026-09-22T16:35:59.2720834Z",
+  "finished_utc": "2026-09-22T16:47:13.6901799Z",
+  "request_count": 26,
+  "response_count": 26,
+  "requests_without_response": 0,
+  "prompt_tokens": 356054,
+  "completion_tokens": 59712,
+  "responses_without_token_usage": 0,
+  "reported_cost_usd": 0.2000213108,
+  "responses_without_reported_cost": 0,
+  "cost_complete": true,
+  "provider_counts": {
+    "AkashML": 1,
+    "Darkbloom": 3,
+    "DeepInfra": 1,
+    "DekaLLM": 7,
+    "Mancer 2": 8,
+    "Phala": 2,
+    "Wafer": 4
+  },
+  "calls": [
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 11038,
+      "completion_tokens": 566,
+      "cost_usd": 0.0036225,
+      "provider": "Mancer 2"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 19679,
+      "completion_tokens": 8728,
+      "cost_usd": 0.025755,
+      "provider": "Mancer 2"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 20595,
+      "completion_tokens": 4126,
+      "cost_usd": 0.0144325,
+      "provider": "Mancer 2"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 21148,
+      "completion_tokens": 471,
+      "cost_usd": 0.005405,
+      "provider": "Mancer 2"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 21561,
+      "completion_tokens": 698,
+      "cost_usd": 0.006055,
+      "provider": "Mancer 2"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 9946,
+      "completion_tokens": 3672,
+      "cost_usd": 0.0111675,
+      "provider": "Mancer 2"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 11206,
+      "completion_tokens": 15656,
+      "cost_usd": 0.04138,
+      "provider": "Mancer 2"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 16427,
+      "completion_tokens": 6308,
+      "cost_usd": 0.019055,
+      "provider": "Mancer 2"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 3463,
+      "completion_tokens": 21,
+      "cost_usd": 0.0007334046,
+      "provider": "Phala"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 3061,
+      "completion_tokens": 24,
+      "cost_usd": 0.0006595512,
+      "provider": "Phala"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 4757,
+      "completion_tokens": 21,
+      "cost_usd": 0.0005135,
+      "provider": "Darkbloom"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 4068,
+      "completion_tokens": 16,
+      "cost_usd": 0.0004356,
+      "provider": "Darkbloom"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 21232,
+      "completion_tokens": 5152,
+      "cost_usd": 0.01542784,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 24425,
+      "completion_tokens": 3244,
+      "cost_usd": 0.00955812,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 3241,
+      "completion_tokens": 12,
+      "cost_usd": 0.00083665,
+      "provider": "AkashML"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 28112,
+      "completion_tokens": 3617,
+      "cost_usd": 0.01241594,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 31632,
+      "completion_tokens": 3419,
+      "cost_usd": 0.01234334,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 3241,
+      "completion_tokens": 154,
+      "cost_usd": 0.00072464,
+      "provider": "Wafer"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 35147,
+      "completion_tokens": 3203,
+      "cost_usd": 0.01222514,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 3240,
+      "completion_tokens": 24,
+      "cost_usd": 0.00038608,
+      "provider": "Wafer"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 2156,
+      "completion_tokens": 17,
+      "cost_usd": 0.0002385,
+      "provider": "Wafer"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 4383,
+      "completion_tokens": 17,
+      "cost_usd": 0.00056846,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 3241,
+      "completion_tokens": 16,
+      "cost_usd": 0.0003529,
+      "provider": "Darkbloom"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 2681,
+      "completion_tokens": 12,
+      "cost_usd": 0.00035172,
+      "provider": "Wafer"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 8085,
+      "completion_tokens": 29,
+      "cost_usd": 0.001267125,
+      "provider": "DeepInfra"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 38289,
+      "completion_tokens": 489,
+      "cost_usd": 0.0041103,
+      "provider": "DekaLLM"
+    }
+  ],
+  "note": "Provider-reported inference usage only. Missing usage is unknown. No model calls were made."
+}

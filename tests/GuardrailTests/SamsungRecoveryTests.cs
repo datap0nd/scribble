@@ -128,6 +128,22 @@ namespace GuardrailTests
             backup.Shapes.AddTextbox(1, 10, 10, 100, 50).TextFrame.TextRange.Text = "Changed backup";
             Reject(() => Invoke(transaction, "Recover", null, (object)app, (object)deck, snapshot), "REVISION_RECOVERY_ORIGINAL_CHANGED");
         }
+        internal static void GeometryRepairOwnershipBaseline()
+        {
+            const string geometry = "{\"approved\":false,\"findings\":[{" +
+                "\"slide_id\":\"trend\",\"severity\":\"blocker\"," +
+                "\"code\":\"CHART_HIGHLIGHT_BOUNDS\"," +
+                "\"correction\":\"Move the highlight inside the chart\"}]}";
+            var scoped = (string)Invoke(typeof(DocumentDraftHost), "ReviewFindingsForSlide", null,
+                geometry, "trend");
+            var directive = (string)Invoke(typeof(DocumentDraftHost), "SlideRepairDirective", null,
+                "trend");
+            Check(!SamsungAuthoringPolicy.Approved(scoped) &&
+                scoped.Contains("CHART_HIGHLIGHT_BOUNDS") &&
+                directive.Contains("complete corrected slide") &&
+                directive.Contains("slide whose id is 'trend'"),
+                "The geometry-review baseline changed; verify repair ownership before replacing this diagnostic.");
+        }
         internal static void RepairScopeAndChartBindings()
         {
             var json = new JavaScriptSerializer(); var policy = Type("SamsungRepairPolicy");

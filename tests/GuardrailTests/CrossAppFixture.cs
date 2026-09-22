@@ -13,6 +13,7 @@ namespace GuardrailTests
     public sealed class CrossAppFixture : DynamicObject, IEnumerable
     {
         [ThreadStatic] internal static Action<string> BeforeNativeCall;
+        [ThreadStatic] internal static Action<string, object> BeforeNativeSet;
         private readonly Dictionary<string, object> _values = new Dictionary<string, object>();
         private readonly List<CrossAppFixture> _items = new List<CrossAppFixture>();
         private readonly string _path;
@@ -49,6 +50,7 @@ namespace GuardrailTests
         }
         public override bool TrySetMember(SetMemberBinder binder, object value)
         {
+            BeforeNativeSet?.Invoke(_path + "." + binder.Name, value);
             _values[binder.Name] = value;
             var grid = value as object[,];
             _events.Add(_path + "." + binder.Name + "=" + (grid == null ? Convert.ToString(value) : string.Join("|", grid.Cast<object>())));

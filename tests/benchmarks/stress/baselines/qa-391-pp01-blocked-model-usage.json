@@ -1,0 +1,625 @@
+{
+  "schema": 1,
+  "suite_id": "scribble-stress-v1",
+  "case_id": "PP01",
+  "run_id": "8ab277d705114e9eb92b89d1a49c53a1",
+  "run_status": "finished",
+  "trace_complete": false,
+  "assembly_version": "2.0.391.0",
+  "assembly_sha256": "299ebfc778a641e042218d627042437095f70984ec63fd627f2b57bc5fff2a14",
+  "selected_model": "qwen/qwen3.8-27b",
+  "started_utc": "2026-09-22T17:23:38.6049015Z",
+  "finished_utc": "2026-09-22T17:32:25.4681977Z",
+  "request_count": 74,
+  "response_count": 74,
+  "requests_without_response": 0,
+  "prompt_tokens": 3404690,
+  "completion_tokens": 70867,
+  "responses_without_token_usage": 0,
+  "reported_cost_usd": 0.48670295,
+  "responses_without_reported_cost": 0,
+  "cost_complete": true,
+  "provider_counts": {
+    "AkashML": 2,
+    "DekaLLM": 58,
+    "Ionstream": 1,
+    "Novita": 1,
+    "Parasail": 1,
+    "Wafer": 11
+  },
+  "calls": [
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 18161,
+      "completion_tokens": 15,
+      "cost_usd": 0.00221682,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 18597,
+      "completion_tokens": 52,
+      "cost_usd": 0.00236164,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 21526,
+      "completion_tokens": 52,
+      "cost_usd": 0.00271312,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 24833,
+      "completion_tokens": 52,
+      "cost_usd": 0.00181076,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 28309,
+      "completion_tokens": 27,
+      "cost_usd": 0.00346458,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 50505,
+      "completion_tokens": 2393,
+      "cost_usd": 0.01077526,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 53101,
+      "completion_tokens": 2155,
+      "cost_usd": 0.01175962,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 1500,
+      "completion_tokens": 24,
+      "cost_usd": 0.00015936,
+      "provider": "Wafer"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 2128,
+      "completion_tokens": 24,
+      "cost_usd": 0.00031536,
+      "provider": "Wafer"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 55335,
+      "completion_tokens": 628,
+      "cost_usd": 0.0043574,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 56205,
+      "completion_tokens": 831,
+      "cost_usd": 0.00751842,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 3655,
+      "completion_tokens": 153,
+      "cost_usd": 0.00074046,
+      "provider": "Wafer"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 57537,
+      "completion_tokens": 1537,
+      "cost_usd": 0.00705542,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 60235,
+      "completion_tokens": 1094,
+      "cost_usd": 0.00627168,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 3824,
+      "completion_tokens": 29,
+      "cost_usd": 0.00045074,
+      "provider": "Wafer"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 5908,
+      "completion_tokens": 24,
+      "cost_usd": 0.0015298,
+      "provider": "AkashML"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 61413,
+      "completion_tokens": 784,
+      "cost_usd": 0.0073494,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 63237,
+      "completion_tokens": 816,
+      "cost_usd": 0.00962844,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 65093,
+      "completion_tokens": 798,
+      "cost_usd": 0.00546952,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 66963,
+      "completion_tokens": 850,
+      "cost_usd": 0.00587768,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 68084,
+      "completion_tokens": 826,
+      "cost_usd": 0.00896724,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 69950,
+      "completion_tokens": 977,
+      "cost_usd": 0.00615042,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 71967,
+      "completion_tokens": 791,
+      "cost_usd": 0.00613354,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 73770,
+      "completion_tokens": 50,
+      "cost_usd": 0.00388812,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 73854,
+      "completion_tokens": 27,
+      "cost_usd": 0.00376902,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 65723,
+      "completion_tokens": 53,
+      "cost_usd": 0.02776266,
+      "provider": "Novita"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 40507,
+      "completion_tokens": 7909,
+      "cost_usd": 0.0233655,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 46518,
+      "completion_tokens": 3122,
+      "cost_usd": 0.01211932,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 49898,
+      "completion_tokens": 15,
+      "cost_usd": 0.0031939,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 50334,
+      "completion_tokens": 5422,
+      "cost_usd": 0.0184482,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 55948,
+      "completion_tokens": 6411,
+      "cost_usd": 0.01885262,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 62619,
+      "completion_tokens": 6406,
+      "cost_usd": 0.0223824,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 69249,
+      "completion_tokens": 2775,
+      "cost_usd": 0.01178882,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 72292,
+      "completion_tokens": 2949,
+      "cost_usd": 0.01490066,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 75511,
+      "completion_tokens": 2856,
+      "cost_usd": 0.01181988,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 6495,
+      "completion_tokens": 24,
+      "cost_usd": 0.00075876,
+      "provider": "Wafer"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 10181,
+      "completion_tokens": 125,
+      "cost_usd": 0.00282025,
+      "provider": "AkashML"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 78451,
+      "completion_tokens": 1259,
+      "cost_usd": 0.0090717,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 79950,
+      "completion_tokens": 1180,
+      "cost_usd": 0.00750848,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 7409,
+      "completion_tokens": 29,
+      "cost_usd": 0.00088094,
+      "provider": "Wafer"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 81360,
+      "completion_tokens": 1146,
+      "cost_usd": 0.00705508,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 7393,
+      "completion_tokens": 133,
+      "cost_usd": 0.00113902,
+      "provider": "Wafer"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 82967,
+      "completion_tokens": 1152,
+      "cost_usd": 0.01168916,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 7399,
+      "completion_tokens": 266,
+      "cost_usd": 0.00147224,
+      "provider": "Wafer"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 84798,
+      "completion_tokens": 1149,
+      "cost_usd": 0.00756474,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 7396,
+      "completion_tokens": 157,
+      "cost_usd": 0.00116802,
+      "provider": "Wafer"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 86478,
+      "completion_tokens": 96,
+      "cost_usd": 0.0053668,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 75393,
+      "completion_tokens": 1334,
+      "cost_usd": 0.02451174,
+      "provider": "Ionstream"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 25647,
+      "completion_tokens": 100,
+      "cost_usd": 0.0020598,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 31902,
+      "completion_tokens": 100,
+      "cost_usd": 0.0028104,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 38207,
+      "completion_tokens": 100,
+      "cost_usd": 0.003567,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 44896,
+      "completion_tokens": 100,
+      "cost_usd": 0.00296744,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 51139,
+      "completion_tokens": 100,
+      "cost_usd": 0.00414668,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 58656,
+      "completion_tokens": 100,
+      "cost_usd": 0.00549672,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 66586,
+      "completion_tokens": 100,
+      "cost_usd": 0.00509984,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 72204,
+      "completion_tokens": 100,
+      "cost_usd": 0.00425528,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 67975,
+      "completion_tokens": 22,
+      "cost_usd": 0.0163624,
+      "provider": "Parasail"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 24000,
+      "completion_tokens": 101,
+      "cost_usd": 0.00186466,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 30252,
+      "completion_tokens": 101,
+      "cost_usd": 0.0026149,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 35877,
+      "completion_tokens": 101,
+      "cost_usd": 0.0032899,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 41730,
+      "completion_tokens": 101,
+      "cost_usd": 0.00399226,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 43296,
+      "completion_tokens": 15,
+      "cost_usd": 0.00272422,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 43732,
+      "completion_tokens": 76,
+      "cost_usd": 0.00332328,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 48149,
+      "completion_tokens": 76,
+      "cost_usd": 0.00290804,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 54334,
+      "completion_tokens": 76,
+      "cost_usd": 0.00378912,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 60692,
+      "completion_tokens": 27,
+      "cost_usd": 0.0035515,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 40808,
+      "completion_tokens": 3136,
+      "cost_usd": 0.01146912,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 44191,
+      "completion_tokens": 1875,
+      "cost_usd": 0.00872258,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 3505,
+      "completion_tokens": 148,
+      "cost_usd": 0.00070996,
+      "provider": "Wafer"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 46509,
+      "completion_tokens": 934,
+      "cost_usd": 0.0047084,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 47671,
+      "completion_tokens": 907,
+      "cost_usd": 0.00672018,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 48829,
+      "completion_tokens": 935,
+      "cost_usd": 0.00692914,
+      "provider": "DekaLLM"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 3505,
+      "completion_tokens": 244,
+      "cost_usd": 0.00092308,
+      "provider": "Wafer"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "status": 200,
+      "prompt_tokens": 50439,
+      "completion_tokens": 215,
+      "cost_usd": 0.00532234,
+      "provider": "DekaLLM"
+    }
+  ],
+  "note": "Provider-reported inference usage only. Missing usage is unknown. No model calls were made."
+}

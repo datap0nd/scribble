@@ -75,6 +75,7 @@ namespace GuardrailTests
                 Run("Native report readback retains scalar cell formulas", HardeningTests.NativeReportReadback);
                 Run("Duplicate document writes return a recoverable result", HardeningTests.DuplicateDraftIsRecoverable);
                 Run("Known invalid Excel draft formulas permit a fresh marked sheet", HardeningTests.RejectedDraftFormulaAllowsFreshMarkedSheet);
+                Run("Excel formula rejection occurs after a native grid write", HardeningTests.FormulaRejectionFollowsNativeGridWrite);
                 Run("PowerPoint outline-only calls get a concrete repair before any write", HardeningTests.PowerPointArgumentsGiveRepair);
                 Run("Test Bench extracts the actual operations PDF filters", TestBenchRegressionTests.OperationsPdf);
                 Run("Test Bench detects work-PC Excel error representations", TestBenchRegressionTests.ExcelErrors);
@@ -98,6 +99,7 @@ namespace GuardrailTests
                 Run("Samsung v2 permits correction only after complete native slide rollback", SamsungRecoveryTests.FullyRolledBackWriteCanBeCorrected);
                 Run("Samsung v2 revision snapshots reconcile and preserve user edits", SamsungRecoveryTests.RevisionRecovery);
                 Run("Samsung v2 repair scope and chart source bindings", SamsungRecoveryTests.RepairScopeAndChartBindings);
+                Run("Geometry findings currently request a complete slide repair", SamsungRecoveryTests.GeometryRepairOwnershipBaseline);
                 Run("Samsung legacy renderer remains version pinned", SamsungRecoveryTests.LegacyRenderer);
                 Run("Samsung v2 evidence calculations and sample isolation", SamsungWorkflowTests.Evidence);
                 Run("Complete attached workbook totals are auditable", SamsungWorkflowTests.CompleteAttachedWorkbookTotalsAreAuditable);
@@ -120,6 +122,7 @@ namespace GuardrailTests
                 Run("Samsung slide numbers require verified source evidence", SamsungSlideTests.EvidenceAndNumbers);
                 Run("PowerPoint and Outlook slide tool calls reach independent review", SlideToolCallsReachReview);
                 Run("Empty endpoint responses retry once without replaying tools", EmptyEndpointResponsesRecover);
+                Run("Repeated evidence expands model request payloads", RepeatedEvidenceExpandsRequestPayloads);
                 Run("Embedded provider errors retry without executing partial tools", EmbeddedProviderErrorsRecover);
                 Run("Provider and empty response retries stay independent", ProviderAndEmptyResponseRetriesAreIndependent);
                 Run("Stalled endpoint responses time out without partial actions", StalledEndpointTimesOut);
@@ -8635,6 +8638,50 @@ namespace GuardrailTests
                 }
                 server.Wait();
                 Assert(server.Bodies.Count == 2 && server.Bodies[0] == server.Bodies[1], "Recovery must retry the identical inference once.");
+            }
+        }
+
+        private static void RepeatedEvidenceExpandsRequestPayloads()
+        {
+            var responses = Enumerable.Range(0, 3).Select(index =>
+                "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":null," +
+                "\"tool_calls\":[{\"id\":\"read" + index + "\",\"type\":\"function\"," +
+                "\"function\":{\"name\":\"read_task_evidence\",\"arguments\":\"{}\"}}]}}]}").ToArray();
+            using (var server = new FakeEndpoint(responses))
+            using (var client = new OpenAiCompatibleClient())
+            {
+                var request = new ChatCompletionRequest
+                {
+                    model = "synthetic",
+                    messages = new List<object>
+                    {
+                        new ChatCompletionInputMessage { role = "system", content = "Synthetic context-growth check." },
+                        new ChatCompletionInputMessage { role = "user", content = "Inspect the source." }
+                    },
+                    tools = new List<ChatToolDefinition>
+                    {
+                        new ChatToolDefinition { type = "function", function = new ChatToolFunctionDefinition
+                        { name = "read_task_evidence", parameters = new { type = "object" } } }
+                    }
+                };
+                var evidence = "unique-evidence:" + new string('E', 9000);
+                for (var index = 0; index < 3; index++)
+                {
+                    var response = client.CompleteAsync(EndpointSettings(server.BaseUrl),
+                        request, CancellationToken.None).GetAwaiter().GetResult();
+                    Assert(response.tool_calls != null && response.tool_calls.Count == 1,
+                        "The fake evidence read did not return one tool call.");
+                    ChatRequestFactory.AppendToolExchange(request, response,
+                        new[] { new MailboxToolResult(response.tool_calls[0].id, evidence,
+                            "Synthetic source read", null, 12000) }, request.model);
+                }
+                server.Wait();
+                Assert(server.Bodies.Count == 3 &&
+                    server.Bodies[0].Split(new[] { "unique-evidence:" }, StringSplitOptions.None).Length == 1 &&
+                    server.Bodies[1].Split(new[] { "unique-evidence:" }, StringSplitOptions.None).Length == 2 &&
+                    server.Bodies[2].Split(new[] { "unique-evidence:" }, StringSplitOptions.None).Length == 3 &&
+                    server.Bodies[2].Length > server.Bodies[1].Length + 8000,
+                    "Repeated tool evidence no longer grows the request payload; update the phase-0 baseline.");
             }
         }
 

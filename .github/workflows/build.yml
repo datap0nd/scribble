@@ -247,6 +247,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Fixture kit validation failed.' }
           python tests/benchmarks/stress/test_catalog.py
           if ($LASTEXITCODE -ne 0) { throw 'The 200-case stress catalog contract failed.' }
+          python tests/benchmarks/stress/test_summarize_usage.py
+          if ($LASTEXITCODE -ne 0) { throw 'The sanitized usage summary contract failed.' }
           Expand-Archive -LiteralPath tests/benchmarks/releases/scribble-test-kit-v1.zip -DestinationPath tests/benchmarks/generated -Force
           foreach ($testScript in @('Test-TestLab.ps1','Test-TestLabLoader.ps1','Test-TestLabPreparation.ps1')) {
             & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path 'tests/benchmarks' $testScript)
