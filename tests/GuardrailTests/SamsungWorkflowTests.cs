@@ -246,6 +246,15 @@ namespace GuardrailTests
                 var ask = new ChatToolCall { id = "ask-1", function = new ChatToolCallFunction { name = PromptHelperTool.Name,
                     arguments = "{\"question\":\"How should I handle the gross margin percentages?\",\"options\":[{\"label\":\"Omit\",\"description\":\"Leave out\"},{\"label\":\"Keep\",\"description\":\"Show\"}]}" } };
                 Check(task.DeferClarification(ask) == null, "A clarification before any slide was written must reach the user.");
+                var handoffRequest = DocumentChatRequestFactory.Create("model", "excel",
+                    "Workbook: WB01\nSheet: Scribble Draft (used range A1:C16)", new ChatTurn[0], objective, true);
+                var handoff = new TaskContextManager(handoffRequest, "excel", objective,
+                    new TaskCheckpointStore(System.IO.Path.Combine(root, "handoff")));
+                var handoffAnswer = handoff.DeferClarification(ask);
+                Check(handoffAnswer != null && handoffAnswer.Content.Contains("read_cells") &&
+                    handoffAnswer.Content.Contains("send_to_powerpoint") &&
+                    handoffAnswer.Outcome.PermissionConsumed == false,
+                    "A workbook-to-deck task asked for numbers already readable from its draft sheet.");
                 foreach (var id in new[] { "cover", "compare", "groups", "limits" }) task.State.ExpectedSourceIds.Add("ppt:" + id);
                 task.State.Batches.Add(new TaskBatchResult { Id = "ppt:cover", CoveredSourceIds = new List<string> { "ppt:cover" } });
                 var read = new ChatToolCall { id = "read-1", function = new ChatToolCallFunction { name = "read_range", arguments = "{}" } };

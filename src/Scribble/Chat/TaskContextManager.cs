@@ -176,21 +176,29 @@ namespace Scribble.Chat
                 b.CoveredSourceIds.Any(id => id.StartsWith("ppt:", StringComparison.Ordinal)));
             var remaining = _state.Outstanding().Where(id => id.StartsWith("ppt:", StringComparison.Ordinal))
                 .Select(id => id.Substring(4)).ToArray();
-            if (!started || remaining.Length == 0) return null;
+            var workbookHandoff = !started && string.Equals(_state.Host, "excel", StringComparison.Ordinal) &&
+                (_state.Objective ?? "").IndexOf("PowerPoint", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                _request.tools.Any(tool => tool.function.name == CrossAppToolCatalog.SendToPowerPoint) &&
+                _request.messages.OfType<ChatCompletionInputMessage>().Any(message =>
+                    message.role == "user" &&
+                    (Convert.ToString(message.content) ?? "").IndexOf("Sheet: Scribble Draft", StringComparison.OrdinalIgnoreCase) >= 0);
+            if ((!started || remaining.Length == 0) && !workbookHandoff) return null;
             string prior; int deferred;
             if (!_state.HostData.TryGetValue("clarification_deferred", out prior) || !int.TryParse(prior, out deferred)) deferred = 0;
             if (deferred >= MaxDeferredClarifications) return null;
             _state.HostData["clarification_deferred"] = (deferred + 1).ToString();
-            Diagnostics.Record("clarification_deferred", new { call.id, remaining, deferred = deferred + 1 });
+            Diagnostics.Record("clarification_deferred", new { call.id, remaining, workbookHandoff, deferred = deferred + 1 });
             Checkpoint();
             return new MailboxToolResult(call.id, _json.Serialize(new
             {
                 error_code = "TASK_CLARIFICATION_DEFERRED",
                 permission_consumed = false,
                 asked_user = false,
-                message = "The user was not asked. The written deck already settled the request, audience, period, units and format, and its first slides are verified. " +
-                    "Resolve this within the tool contract and continue the retained plan with the presentation draft tool as the only tool call." +
-                    Scribble.Office.SamsungEvidence.DerivedValueGuidance,
+                message = workbookHandoff
+                    ? "The user was not asked. The active in-memory Scribble Draft sheet already contains the derived workbook output, and send_to_powerpoint is available for this authorized cross-app request. Call list_worksheets with {}, then read_cells with the returned sheet name and a range covering the audit; use those exact values and continue the requested deck. Do not invent numbers or claim that handoff is unavailable."
+                    : "The user was not asked. The written deck already settled the request, audience, period, units and format, and its first slides are verified. " +
+                      "Resolve this within the tool contract and continue the retained plan with the presentation draft tool as the only tool call." +
+                      Scribble.Office.SamsungEvidence.DerivedValueGuidance,
                 remaining_slide_ids = remaining
             }), "Continuing the planned slides without interrupting the user");
         }
