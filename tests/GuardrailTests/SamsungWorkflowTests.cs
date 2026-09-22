@@ -57,6 +57,38 @@ namespace GuardrailTests
             Check(summarize(ledger.Replace("[Sheet 1]", "Unverified preview")) == null,
                 "A source without an extracted worksheet boundary was summarized.");
         }
+        internal static void CitedDueDatesAndTableRankings()
+        {
+            var json = new JavaScriptSerializer();
+            const string register = "Owner\tProposed follow-up\tDue date\n" +
+                "Mira Cole\tReconcile North source records\t2026-07-10\n" +
+                "Leon Park\tReview South exceptions\t2026-07-12\n" +
+                "Nadia Shah\tConfirm East operating assumptions\t2026-07-14\n" +
+                "Evan Reed\tReview West source completeness\t2026-07-16";
+            Func<string, object> dueSlide = date => new {
+                title = "Follow-up register", purpose = "explanatory", evidence = register,
+                sources = "Supplied follow-up register", table = new {
+                    headers = new[] { "Owner", "Proposed follow-up", "Due date" },
+                    rows = new[] { new[] { "Mira Cole", "Reconcile North source records", date },
+                        new[] { "Leon Park", "Review South exceptions", "2026-07-12" },
+                        new[] { "Nadia Shah", "Confirm East operating assumptions", "2026-07-14" },
+                        new[] { "Evan Reed", "Review West source completeness", "2026-07-16" } }
+                }
+            };
+            SamsungPresentationReview.ValidateEvidence(json.Serialize(dueSlide("2026-07-10")), register);
+            Reject(() => SamsungPresentationReview.ValidateEvidence(json.Serialize(dueSlide("2026-07-11")), register));
+
+            const string grouped = "Group\tRevenue EUR\tCost EUR\nNorth\t19219\t8082\nSouth\t22675\t10787\nEast\t19054\t9708\nWest\t22044\t8137";
+            Func<string, object> groupSlide = takeaway => new {
+                title = "June results by operating group", purpose = "explanatory", evidence = grouped,
+                sources = "Supplied June grouped totals", takeaway,
+                table = new { headers = new[] { "Group", "Revenue EUR", "Cost EUR" }, rows = new[] {
+                    new[] { "North", "19,219", "8,082" }, new[] { "South", "22,675", "10,787" },
+                    new[] { "East", "19,054", "9,708" }, new[] { "West", "22,044", "8,137" } } }
+            };
+            SamsungPresentationReview.ValidateEvidence(json.Serialize(groupSlide("South had the highest June revenue at 22,675 EUR; South had the highest cost at 10,787 EUR.")), grouped);
+            Reject(() => SamsungPresentationReview.ValidateEvidence(json.Serialize(groupSlide("South had the highest June revenue at 22,675 EUR; East had the highest cost at 9,708 EUR.")), grouped));
+        }
         internal static void Evidence()
         {
             var json = new JavaScriptSerializer();

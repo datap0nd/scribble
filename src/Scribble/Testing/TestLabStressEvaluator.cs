@@ -328,12 +328,23 @@ namespace Scribble.Testing
             var panels = slide.shapes.Where(shape => string.IsNullOrWhiteSpace(shape.text) &&
                 !string.IsNullOrEmpty(shape.fill_color) && shape.width >= slideHeight * .30 &&
                 shape.height >= slideHeight * .25).ToArray();
-            return panels.Count(panel => body.Any(shape => shape.font_size >= 17 &&
+            if (panels.Count(panel => body.Any(shape => shape.font_size >= 17 &&
                 shape.x >= panel.x + 4 && shape.x + shape.width <= panel.x + panel.width + 2 &&
                 shape.y >= panel.y + panel.height * .15 && shape.y < panel.y + panel.height * .75 &&
                 Regex.IsMatch(shape.text ?? "",
                     @"^\s*\d[\d,]*(?:\.\d+)?\s+(?:(?:source|unique|distinct)\s+)?(?:rows?|records?|duplicates?|duplicate\s+RowIDs?|blanks?|observations?)\b",
-                    RegexOptions.IgnoreCase))) >= 2;
+                    RegexOptions.IgnoreCase))) >= 2) return true;
+            // Explanatory slides can have dates and other incidental numbers
+            // without promoting them to giant KPIs. Distinct titled panels
+            // with readable body copy are a real hierarchy; empty decorative
+            // boxes or a flat text dump are not.
+            return panels.Count(panel => body.Any(shape => shape.font_size >= 17 &&
+                shape.x >= panel.x + 4 && shape.x + shape.width <= panel.x + panel.width + 2 &&
+                shape.y >= panel.y + 4 && shape.y < panel.y + panel.height * .32 &&
+                !Regex.IsMatch(shape.text ?? "", @"^\s*[-+\u2212]?\d")) &&
+                body.Any(shape => shape.font_size >= 14 &&
+                shape.x >= panel.x + 4 && shape.x + shape.width <= panel.x + panel.width + 2 &&
+                shape.y >= panel.y + panel.height * .32 && shape.y < panel.y + panel.height * .88)) >= 2;
         }
         private static bool Headers(string value, string[] expected)
         {

@@ -72,9 +72,10 @@ namespace Scribble.Office
                 if (value.StartsWith("-", StringComparison.Ordinal)) allowed.Add(value.Substring(1));
             }
             SamsungEvidence.ValidateClaims(data, evidence);
+            ValidateTableComparatives(data);
             // A period label (2026-05, June 2026) names a column rather than a
             // quantity; it must occur in the sources this task has read.
-            var quantities = SamsungEvidence.RemoveVerifiedPeriodLabels(content, actualSource);
+            var quantities = SamsungEvidence.RemoveVerifiedPeriodLabels(content, actualSource, evidence);
             var missing = Numbers(quantities).Where(n => !allowed.Contains(n)).Distinct().ToArray();
             if (missing.Length > 0) throw new InvalidOperationException("SLIDE_NUMBERS_UNVERIFIED: Values absent from cited evidence: " + string.Join(", ", missing));
             if (special) return;
@@ -85,6 +86,51 @@ namespace Scribble.Office
                 throw new InvalidOperationException("SLIDE_CITATION_REQUIRED: Every factual slide needs a nonempty sources string, the visible citation line such as 'Source: WB01 Ledger; Scribble Draft audit'. A footnote is a separate qualifying note and does not replace sources. Add sources to this slide and to every other factual slide in the batch.");
         }
         private static string NormalizeSource(string value) { return Regex.Replace(value ?? "", @"\s+", " ").Trim(); }
+
+        private static void ValidateTableComparatives(IDictionary<string, object> slide)
+        {
+            object raw;
+            if (!slide.TryGetValue("table", out raw) || raw == null) return;
+            var table = SamsungAuthoringPolicy.ReadMap(raw);
+            var headers = SamsungAuthoringPolicy.Array(table, "headers").Select(item => Convert.ToString(item)).ToArray();
+            if (headers.Length < 2) return;
+            var rows = SamsungAuthoringPolicy.Array(table, "rows")
+                .Select(item => (item as IEnumerable)?.Cast<object>().Select(cell => Convert.ToString(cell)).ToArray())
+                .Where(row => row != null && row.Length == headers.Length && !string.IsNullOrWhiteSpace(row[0]) &&
+                    !Regex.IsMatch(row[0], @"^\s*(?:all\s+groups|grand\s+total|total)\s*$", RegexOptions.IgnoreCase))
+                .ToArray();
+            if (rows.Length < 2) return;
+            var assertions = string.Join("; ", new[] { "title", "subtitle", "takeaway", "message" }
+                .Select(key => SamsungAuthoringPolicy.Text(slide, key)));
+            foreach (var clause in Regex.Split(assertions, @"[;\r\n]"))
+            foreach (var column in Enumerable.Range(1, headers.Length - 1))
+            {
+                var metric = Regex.Match(headers[column] ?? "", @"\b(?:revenue|cost|profit|margin|volume|units?)\b", RegexOptions.IgnoreCase);
+                if (!metric.Success) continue;
+                var values = new List<Tuple<string, decimal>>();
+                foreach (var row in rows)
+                {
+                    decimal value;
+                    if (!decimal.TryParse(row[column], System.Globalization.NumberStyles.Number,
+                        System.Globalization.CultureInfo.InvariantCulture, out value)) { values.Clear(); break; }
+                    values.Add(Tuple.Create(row[0], value));
+                }
+                if (values.Count != rows.Length) continue;
+                foreach (var item in values)
+                {
+                    var ranking = Regex.Match(clause,
+                        @"\b" + Regex.Escape(item.Item1) + @"\b.{0,80}?\b(?<rank>highest|largest|lowest|smallest)\s+(?:\w+\s+){0,3}?" +
+                        Regex.Escape(metric.Value) + @"\b", RegexOptions.IgnoreCase);
+                    if (!ranking.Success) continue;
+                    var highest = Regex.IsMatch(ranking.Groups["rank"].Value, @"^(?:highest|largest)$", RegexOptions.IgnoreCase);
+                    var extreme = highest ? values.Max(value => value.Item2) : values.Min(value => value.Item2);
+                    if (item.Item2 != extreme)
+                        throw new InvalidOperationException("SLIDE_TABLE_RANKING_FALSE: '" + item.Item1 + "' is not the " +
+                            ranking.Groups["rank"].Value.ToLowerInvariant() + " " + metric.Value.ToLowerInvariant() +
+                            " row in the supplied table. Correct the takeaway or the table; no slides were written.");
+                }
+            }
+        }
 
         private static IEnumerable<string> DisplayedStrings(object value, string field)
         {

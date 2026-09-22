@@ -59,11 +59,19 @@ namespace Scribble.Office
         // Period labels are not quantities. A displayed YYYY-MM or "June 2026"
         // is verified against every source the task has read; the numbers
         // beside it remain bound to the slide's cited evidence.
-        public static string RemoveVerifiedPeriodLabels(string displayed, string taskSources)
+        public static string RemoveVerifiedPeriodLabels(string displayed, string taskSources, string citedEvidence)
         {
             var known = CanonicalPeriods(taskSources);
-            if (known.Count == 0) return displayed ?? "";
-            return PeriodPattern.Replace(displayed ?? "", match =>
+            // A full ISO date is a label, too. Strip it only when the exact
+            // date occurs in the slide's cited passage. Otherwise the month
+            // replacement below would leave "-10" from 2026-07-10 and make
+            // a valid due date look like an unsupported negative quantity.
+            var withoutCitedDates = Regex.Replace(displayed ?? "",
+                @"(?<![0-9])(?:19|20)[0-9]{2}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])(?![0-9])",
+                match => Regex.IsMatch(citedEvidence ?? "",
+                    @"(?<![0-9])" + Regex.Escape(match.Value) + @"(?![0-9])") ? " " : match.Value);
+            if (known.Count == 0) return withoutCitedDates;
+            return PeriodPattern.Replace(withoutCitedDates, match =>
             {
                 var canonical = CanonicalPeriods(match.Value);
                 return canonical.Count == 1 && known.Contains(canonical.Single()) ? " " : match.Value;
