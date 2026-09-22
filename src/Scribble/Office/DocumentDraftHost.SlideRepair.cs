@@ -327,7 +327,9 @@ namespace Scribble.Office
                 var remaining = findings.Where(finding => !refuted(finding)).ToArray();
                 if (remaining.Length == findings.Length) return review;
                 report["findings"] = remaining;
-                report["approved"] = remaining.Length == 0;
+                report["approved"] = !remaining.Any(finding =>
+                    string.Equals(SamsungAuthoringPolicy.Text(finding, "severity"), "blocker",
+                        StringComparison.OrdinalIgnoreCase));
                 report["issues"] = string.Join("; ", remaining.Select(finding => SamsungAuthoringPolicy.Text(finding, "correction")));
                 return json.Serialize(report);
             }
@@ -336,6 +338,21 @@ namespace Scribble.Office
                 // Malformed review output never bypasses inspection.
                 return review;
             }
+        }
+        internal static string FilterBriefRefutedReview(string review, string brief, string slide)
+        {
+            if (!Regex.IsMatch(review ?? "", @"\bbrief\b.{0,80}\b(?:require|specif|demand)",
+                RegexOptions.IgnoreCase | RegexOptions.Singleline)) return review;
+            var slideNumbers = new HashSet<string>(Regex.Matches(slide ?? "", @"(?<!\d)\d[\d,.]*%?")
+                .Cast<Match>().Select(match => match.Value), StringComparer.OrdinalIgnoreCase);
+            var staleBriefNumbers = new HashSet<string>(Regex.Matches(brief ?? "", @"(?<!\d)\d[\d,.]*%?")
+                .Cast<Match>().Select(match => match.Value).Where(value => !slideNumbers.Contains(value)),
+                StringComparer.OrdinalIgnoreCase);
+            if (staleBriefNumbers.Count == 0) return review;
+            return FilterReviewFindings(review, finding =>
+                string.Equals(SamsungAuthoringPolicy.Text(finding, "type"), "facts", StringComparison.OrdinalIgnoreCase) &&
+                staleBriefNumbers.Any(value => SamsungAuthoringPolicy.Text(finding, "correction")
+                    .IndexOf(value, StringComparison.OrdinalIgnoreCase) >= 0));
         }
         private static string FilterNativeRefutedReview(string review,
             IReadOnlyList<PresentationDraftWriter.SamsungOutput> outputs)

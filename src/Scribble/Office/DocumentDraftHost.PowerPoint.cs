@@ -217,6 +217,7 @@ namespace Scribble.Office
                         (sampleSlides.Contains(slideId) ? "The user explicitly authorized SAMPLE DATA. The user's specification is valid evidence, including compressed numeric lists and week ranges. Do not require external sources or a second approval. Check the supplied values and associations are preserved; illustrative strategy wording is permitted when labeled sample, but fabricated real-world claims are not. " : "") +
                         SamsungAuthoringPolicy.ReviewContract,
                         "Original task and preserved answers: " + prompt + "\n" + (_taskContext == null ? "" : string.Join("\n", _taskContext.State.OriginalDecisions)) + "\nReviewed slide briefs (verify all required content for this slide): " + briefContext + "\nProposed slide and source evidence: " + text, null, token);
+                    review = FilterBriefRefutedReview(review, briefContext, text);
                     if (!ReviewApprovedOrSatisfiedPromptConstraint(review, prompt, slides.Single(value => value.Id == slideId)))
                         throw new InvalidOperationException("SLIDE_SOURCE_REVIEW: " + review);
                     if (_taskContext != null) { _taskContext.State.HostData[reviewKey] = "approved"; _taskContext.Checkpoint(); }

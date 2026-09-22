@@ -284,6 +284,17 @@ namespace GuardrailTests
                 visualReport, new Func<IDictionary<string, object>, bool>(finding => true));
             Check(Convert.ToBoolean(json.Deserialize<Dictionary<string, object>>(allRefuted)["approved"]),
                 "Fully native-refuted findings still blocked an unchanged slide.");
+            var briefConflict = "{\"approved\":false,\"issues\":\"Gross margin is 55.76%, but the brief explicitly requires 55.74%.\",\"findings\":[" +
+                "{\"slide_id\":\"evidence\",\"severity\":\"blocker\",\"type\":\"facts\",\"correction\":\"Change gross margin from 55.76% to 55.74% as specified in the brief.\"}," +
+                "{\"slide_id\":\"evidence\",\"severity\":\"warning\",\"type\":\"facts\",\"correction\":\"Keep the period caveat visible.\"}]}";
+            var grounded = (string)Invoke(typeof(DocumentDraftHost), "FilterBriefRefutedReview", null,
+                briefConflict, "{\"required_content\":[\"Gross margin 55.74%\"]}",
+                "{\"calculations\":[{\"result\":55.76}],\"subtitle\":\"Gross margin 55.76%\"}");
+            var groundedMap = json.Deserialize<Dictionary<string, object>>(grounded);
+            Check(Convert.ToBoolean(groundedMap["approved"]) &&
+                SamsungAuthoringPolicy.Array(groundedMap, "findings").Length == 1 &&
+                grounded.Contains("period caveat") && !grounded.Contains("Change gross margin"),
+                "A stale numeric brief overrode host-verified slide arithmetic or erased an unrelated warning.");
             var writerType = Type("PresentationDraftWriter");
             var outputType = writerType.GetNestedType("SamsungOutput", BindingFlags.NonPublic);
             var pageType = writerType.GetNestedType("SamsungPage", BindingFlags.NonPublic);
