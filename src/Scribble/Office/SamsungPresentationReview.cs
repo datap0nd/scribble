@@ -73,6 +73,7 @@ namespace Scribble.Office
             }
             SamsungEvidence.ValidateClaims(data, evidence);
             ValidateTableComparatives(data);
+            ValidatePeriodComparatives(data, evidence);
             // A period label (2026-05, June 2026) names a column rather than a
             // quantity; it must occur in the sources this task has read.
             var quantities = SamsungEvidence.RemoveVerifiedPeriodLabels(content, actualSource, evidence);
@@ -130,6 +131,76 @@ namespace Scribble.Office
                             " row in the supplied table. Correct the takeaway or the table.");
                 }
             }
+        }
+
+        private static void ValidatePeriodComparatives(IDictionary<string, object> slide, string evidence)
+        {
+            // A displayed direction is a claim about two periods, even if only
+            // the current value is printed. A single June receipt cannot
+            // justify "above May". When the cited evidence includes host
+            // period totals for both months, also check the direction itself.
+            var assertions = string.Join("; ", new[] { "title", "subtitle", "takeaway", "message" }
+                .Select(key => SamsungAuthoringPolicy.Text(slide, key)));
+            const string month = @"(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?|20\d{2}-\d{2})";
+            var pattern = @"\b(?<current>" + month + @")\b(?<between>.{0,130}?)\b(?<direction>above|below|higher than|lower than|greater than|less than|up from|down from)\s+(?<other>" + month + @")\b";
+            foreach (Match claim in Regex.Matches(assertions, pattern, RegexOptions.IgnoreCase))
+            {
+                var current = claim.Groups["current"].Value;
+                var other = claim.Groups["other"].Value;
+                var currentMonth = MonthNumber(current);
+                var otherMonth = MonthNumber(other);
+                if (currentMonth == null || otherMonth == null) continue;
+                var years = Regex.Matches(claim.Value + " " + evidence, @"\b20\d{2}\b").Cast<Match>()
+                    .Select(match => match.Value).Distinct().ToArray();
+                var year = years.Length == 1 ? years[0] : null;
+                var currentPeriod = current.Length == 7 && current[4] == '-' ? current : year + "-" + currentMonth;
+                var otherPeriod = other.Length == 7 && other[4] == '-' ? other : year + "-" + otherMonth;
+                Func<string, string, bool> cited = (token, period) =>
+                    Regex.IsMatch(evidence ?? "", @"\b" + Regex.Escape(token) + @"\b", RegexOptions.IgnoreCase) ||
+                    (year != null && (evidence ?? "").IndexOf(period, StringComparison.OrdinalIgnoreCase) >= 0);
+                if (!cited(current, currentPeriod) || !cited(other, otherPeriod))
+                    throw new InvalidOperationException("SLIDE_PERIOD_COMPARISON_UNVERIFIED: The '" +
+                        claim.Groups["direction"].Value + " " + other +
+                        "' claim needs cited evidence for both compared periods. Cite both operands or remove the comparison.");
+                var metric = Regex.Matches(claim.Groups["between"].Value,
+                    @"\b(?:revenue|cost|profit|margin|volume|units?)\b", RegexOptions.IgnoreCase)
+                    .Cast<Match>().Select(match => match.Value).LastOrDefault();
+                if (metric == null || year == null) continue;
+                decimal currentValue, otherValue;
+                if (!TryPeriodMetric(evidence, currentPeriod, metric, out currentValue) ||
+                    !TryPeriodMetric(evidence, otherPeriod, metric, out otherValue)) continue;
+                var higher = Regex.IsMatch(claim.Groups["direction"].Value,
+                    @"^(?:above|higher than|greater than|up from)$", RegexOptions.IgnoreCase);
+                if (higher ? currentValue <= otherValue : currentValue >= otherValue)
+                    throw new InvalidOperationException("SLIDE_PERIOD_COMPARISON_FALSE: " + metric + " in " +
+                        currentPeriod + " is " + currentValue + ", versus " + otherValue + " in " +
+                        otherPeriod + "; correct the directional claim.");
+            }
+        }
+
+        private static string MonthNumber(string token)
+        {
+            if (Regex.IsMatch(token ?? "", @"^20\d{2}-\d{2}$")) return token.Substring(5, 2);
+            var names = new[] { "January", "February", "March", "April", "May", "June",
+                "July", "August", "September", "October", "November", "December" };
+            for (var i = 0; i < names.Length; i++)
+                if (names[i].StartsWith(token ?? "", StringComparison.OrdinalIgnoreCase) && (token ?? "").Length >= 3)
+                    return (i + 1).ToString("00");
+            return null;
+        }
+
+        private static bool TryPeriodMetric(string evidence, string period, string metric, out decimal value)
+        {
+            value = 0;
+            foreach (var line in Regex.Split(evidence ?? "", @"[\r\n]+"))
+            {
+                if (!Regex.IsMatch(line, @"\bPeriod\s+" + Regex.Escape(period) + @"\b", RegexOptions.IgnoreCase)) continue;
+                var found = Regex.Match(line, @"\b" + Regex.Escape(metric) +
+                    @"\s*(?:EUR|%)?\s*[:=]?\s*(?<value>-?\d[\d,]*(?:\.\d+)?)\b", RegexOptions.IgnoreCase);
+                if (found.Success && decimal.TryParse(found.Groups["value"].Value,
+                    System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out value)) return true;
+            }
+            return false;
         }
 
         private static IEnumerable<string> DisplayedStrings(object value, string field)

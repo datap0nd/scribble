@@ -90,6 +90,20 @@ namespace GuardrailTests
             Reject(() => SamsungPresentationReview.ValidateEvidence(json.Serialize(groupSlide("South had the highest June revenue at 22,675 EUR; East had the highest cost at 9,708 EUR.")), grouped));
             SamsungPresentationReview.ValidateEvidence(json.Serialize(groupSlide("South leads on revenue at 22,675 EUR.")), grouped);
             Reject(() => SamsungPresentationReview.ValidateEvidence(json.Serialize(groupSlide("West leads on revenue at 22,044 EUR.")), grouped));
+
+            const string may = "Period 2026-05; Group All groups; Rows 24; RevenueEUR 85519 EUR; CostEUR 36702 EUR";
+            const string june = "Period 2026-06; Group All groups; Rows 24; RevenueEUR 82992 EUR; CostEUR 36714 EUR";
+            Func<string, string, object> periodSlide = (subtitle, cited) => new {
+                title = "Sales review", subtitle, evidence = cited, sources = "WB01 period totals"
+            };
+            Reject(() => SamsungPresentationReview.ValidateEvidence(json.Serialize(periodSlide(
+                "June 2026 revenue reached 82,992 EUR, above May", june)), may + "\n" + june));
+            Reject(() => SamsungPresentationReview.ValidateEvidence(json.Serialize(periodSlide(
+                "June 2026 revenue reached 82,992 EUR, above May", may + "\n" + june)), may + "\n" + june));
+            SamsungPresentationReview.ValidateEvidence(json.Serialize(periodSlide(
+                "June 2026 revenue reached 82,992 EUR, below May", may + "\n" + june)), may + "\n" + june);
+            SamsungPresentationReview.ValidateEvidence(json.Serialize(periodSlide(
+                "June 2026 cost reached 36,714 EUR, above May", may + "\n" + june)), may + "\n" + june);
         }
         internal static void Evidence()
         {
