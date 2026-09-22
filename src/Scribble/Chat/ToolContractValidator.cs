@@ -57,10 +57,8 @@ namespace Scribble.Chat
                             {
                                 IList decodedPrefix;
                                 if (key == "slides" &&
-                                    TryDecodeCompleteObjectArrayPrefix(
-                                        (string)raw,
-                                        json,
-                                        out decodedPrefix))
+                                    (TryCloseOneTableRowsArray((string)raw, json, out decodedPrefix) ||
+                                     TryDecodeCompleteObjectArrayPrefix((string)raw, json, out decodedPrefix)))
                                 {
                                     map[key] = decodedPrefix;
                                 }
@@ -76,6 +74,50 @@ namespace Scribble.Chat
             }
             catch (ArgumentException) { errors.Add("$: arguments must be valid JSON matching the tool schema."); }
             return errors;
+        }
+
+        // Qwen sometimes quotes the whole slides array and omits exactly the
+        // closing bracket of a table's rows, while every row and cell is intact.
+        // Repair this one structural typo only; schema, source and visual gates
+        // still run on the complete decoded slide. Never synthesize content.
+        private static bool TryCloseOneTableRowsArray(string raw, JavaScriptSerializer json, out IList decoded)
+        {
+            decoded = null;
+            if (string.IsNullOrWhiteSpace(raw) ||
+                (raw.IndexOf("\"table\"", StringComparison.Ordinal) < 0 &&
+                 raw.IndexOf("\"secondary_table\"", StringComparison.Ordinal) < 0)) return false;
+            var rows = raw.IndexOf("\"rows\"", StringComparison.Ordinal);
+            if (rows < 0) return false;
+            var start = raw.IndexOf('[', rows + 6);
+            if (start < 0) return false;
+            var depth = 0;
+            var inString = false;
+            var escaped = false;
+            for (var i = start; i < raw.Length; i++)
+            {
+                var c = raw[i];
+                if (inString)
+                {
+                    if (escaped) escaped = false;
+                    else if (c == '\\') escaped = true;
+                    else if (c == '"') inString = false;
+                    continue;
+                }
+                if (c == '"') { inString = true; continue; }
+                if (c == '[') { depth++; continue; }
+                if (c == ']') { if (--depth == 0) return false; continue; }
+                if (c != '}' || depth != 1 || i == 0 || raw[i - 1] != ']') continue;
+                try
+                {
+                    var fixedArray = json.DeserializeObject(raw.Insert(i, "]")) as IList;
+                    if (fixedArray == null || fixedArray.Count == 0 ||
+                        fixedArray.Cast<object>().Any(item => !(item is IDictionary<string, object>))) return false;
+                    decoded = fixedArray;
+                    return true;
+                }
+                catch (ArgumentException) { return false; }
+            }
+            return false;
         }
 
         private static bool TryDecodeCompleteObjectArrayPrefix(

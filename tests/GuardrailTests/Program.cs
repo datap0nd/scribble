@@ -429,6 +429,7 @@ namespace GuardrailTests
                 Run("Word creation cannot overwrite the source document", OfficeBootstrapTests.WordCreationCannotOverwriteSource);
                 Run("Word one-page drafts preflight their layout", OfficeBootstrapTests.WordOnePagePreflightLimitsLayout);
                 Run("Read-only worksheet inventory ignores inert hints", OfficeBootstrapTests.ReadOnlyWorksheetInventoryIgnoresInertHints);
+                Run("Encoded slide table rows retain content after one bracket repair", OfficeBootstrapTests.EncodedSlideWithOneMissingTableRowsBracketKeepsContent);
                 Run("Deck review warnings retain repair targets", OfficeBootstrapTests.DeckReviewWarningsHaveRepairTargets);
                 Run("Word source preservation survives draft reordering", OfficeBootstrapTests.WordSourcePreservationSurvivesDraftReordering);
                 Run("Word memo rejects universal budget claims", OfficeBootstrapTests.WordMemoRejectsUniversalBudgetClaim);
