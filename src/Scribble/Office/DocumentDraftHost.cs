@@ -302,6 +302,26 @@ namespace Scribble.Office
                 }
             }
 
+            // A one-page request must fit before consuming its draft
+            // permission. The model can then shorten and retry safely.
+            if ((name == WordToolCatalog.WriteDraftDocument ||
+                 name == CrossAppToolCatalog.SendToWord) &&
+                System.Text.RegularExpressions.Regex.IsMatch(
+                    _latestUserPrompt ?? string.Empty,
+                    @"\bone[- ]page\b",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+            {
+                var pageIssues = WordDraftWriter.OnePageIssues(
+                    GetLongString(arguments, "body"));
+                if (pageIssues.Length > 0)
+                    return Error(
+                        call.id,
+                        authorization,
+                        "WORD_ONE_PAGE_LIMIT",
+                        "No document was written and no draft permission was consumed. " +
+                        string.Join(" ", pageIssues));
+            }
+
             // A deck or workbook may be built over several bounded
             // calls, but one request may open at most ONE unsent
             // email draft - recipients are the sensitive surface,

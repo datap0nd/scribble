@@ -360,10 +360,12 @@ namespace Scribble.Chat
                     "dates, and table rows from the source into the output; never " +
                     "reduce a rich source to a thin outline of headings and " +
                     "one-line bullets, and never invent filler. If the user " +
-                    "requests a one-page Word memo, keep it to roughly 300 " +
-                    "words, use compact tables for only the essential results " +
-                    "and actions, and omit redundant narrative; preserve all " +
-                    "material facts, labels, and citations. Never apply an " +
+                    "requests a one-page Word memo, use at most 190 prose " +
+                    "words and two compact tables (results and actions) with " +
+                    "at most ten total rows including headers. Put segment " +
+                    "details in one sentence instead of a third table; omit " +
+                    "redundant narrative while preserving material facts, " +
+                    "labels, and citations. Never apply an " +
                     "aggregate variance to every region or product; verify " +
                     "each subgroup against its own comparison value before " +
                     "stating which groups missed a budget. A planned review " +

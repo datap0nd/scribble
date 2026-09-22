@@ -19,6 +19,25 @@ namespace Scribble.Office
         internal const int MaxDraftCharacters = 48000;
         internal const int MaxTitleCharacters = 180;
 
+        internal static string[] OnePageIssues(string body)
+        {
+            var tables = 0;
+            var tableRows = 0;
+            var proseWords = 0;
+            foreach (var block in DraftTextLayout.ParseBlocks(body ?? string.Empty))
+            {
+                var table = block as DraftTextLayout.Table;
+                if (table != null) { tables++; tableRows += table.Rows.Count; continue; }
+                var paragraph = (DraftTextLayout.Paragraph)block;
+                proseWords += Regex.Matches(paragraph.Text, @"\b[\p{L}\p{N}][\p{L}\p{N}\-]*\b").Count;
+            }
+            var issues = new List<string>();
+            if (tables > 2) issues.Add("Use at most two tables: one compact results table and one action table; summarize segment details in a sentence.");
+            if (tableRows > 10) issues.Add("Keep the two tables to at most ten total rows including headers.");
+            if (proseWords > 190) issues.Add("Reduce prose to at most 190 words, including headings and citations; keep only two concise risk bullets.");
+            return issues.ToArray();
+        }
+
         // A model-supplied placement is not authorization to modify the
         // source document. Creation requests go to a separate draft even if
         // the model mistakes the open source for the destination.

@@ -167,6 +167,20 @@ namespace GuardrailTests
                 "An unknown Word placement edited the source document.");
         }
 
+        public static void WordOnePagePreflightLimitsLayout()
+        {
+            var type = typeof(TestLab).Assembly.GetType("Scribble.Office.WordDraftWriter", true);
+            var method = type.GetMethod("OnePageIssues", BindingFlags.Static | BindingFlags.NonPublic);
+            Check(method != null, "One-page draft preflight is missing.");
+            Func<string, string[]> issues = body => (string[])method.Invoke(null, new object[] { body });
+            Check(issues("Brief finding.\n| Result | Value |\n| A | 1 |\n| Action | Owner |\n| Fix | Ops |").Length == 0,
+                "A compact memo was rejected.");
+            Check(issues("| A | B |\n| 1 | 2 |\n\n| C | D |\n| 3 | 4 |\n\n| E | F |\n| 5 | 6 |").Any(x => x.Contains("two tables")),
+                "A third table was accepted for a one-page memo.");
+            Check(issues(string.Join(" ", Enumerable.Repeat("word", 191))).Any(x => x.Contains("190 words")),
+                "Oversized memo prose was accepted.");
+        }
+
         public static void DeckReviewWarningsHaveRepairTargets()
         {
             Check(SamsungAuthoringPolicy.DeckReview.Contains("across the whole deck") &&
