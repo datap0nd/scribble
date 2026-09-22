@@ -810,7 +810,9 @@ namespace Scribble.Office
             {
                 formatsComplete = false;
             }
-            var worksheetName = Convert.ToString(range.Worksheet.Name);
+            string worksheetName = Convert.ToString(
+                (object)range.Worksheet.Name,
+                CultureInfo.InvariantCulture) ?? string.Empty;
             var startRow = (int)range.Row;
             var startColumn = (int)range.Column;
             var table = WorkbookTypedCapture.Capture(
