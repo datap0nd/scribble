@@ -13,12 +13,10 @@ namespace Scribble.Testing
 {
     public static class TestLabStressBudget
     {
-        // The user authorized a second $10 checkpoint on the original
-        // no-reset key. The provider remains the absolute lifetime backstop,
-        // while this build stops the Golden Showcase before total usage
-        // reaches $15 (about $5.50 of new spend from its $9.50 baseline).
+        // Final native validation uses the remaining balance on the same
+        // no-reset key. Preserve at least $1.50 below its $20 hard cap.
         public const decimal MaximumTotalUsd = 20m;
-        public const decimal MaximumCheckpointUsageUsd = 15m;
+        public const decimal MaximumCheckpointUsageUsd = 18.5m;
         public static async Task GuardRequestAsync(AppSettings actual, string requestedModel, CancellationToken cancel)
         {
             var state = TestLabSuite.Active();
@@ -136,7 +134,7 @@ namespace Scribble.Testing
             if (key.limit_remaining <= .25m)
                 throw new InvalidOperationException("API budget nearly exhausted: $" + key.limit_remaining.Value.ToString("0.000", CultureInfo.InvariantCulture) + " remains. Remaining tests were not submitted.");
             if (key.usage >= MaximumCheckpointUsageUsd - .25m)
-                throw new InvalidOperationException("Golden Showcase checkpoint budget nearly exhausted: total key usage is $" + key.usage.Value.ToString("0.000", CultureInfo.InvariantCulture) + ". The checkpoint stops before $15 total usage; remaining tests were not submitted.");
+                throw new InvalidOperationException("Golden Showcase checkpoint budget nearly exhausted: total key usage is $" + key.usage.Value.ToString("0.000", CultureInfo.InvariantCulture) + ". The checkpoint stops before $18.50 total usage; remaining tests were not submitted.");
             return key;
         }
     }
