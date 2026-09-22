@@ -16,6 +16,12 @@ namespace Scribble.Office
     public sealed partial class DocumentDraftHost
     {
         private object _samsungPresentation;
+        internal static bool ShouldDraftRepairedDeck(string hostKind, string instruction, int requestedSlides)
+        {
+            return hostKind == "powerpoint" && requestedSlides > 0 &&
+                Regex.IsMatch(instruction ?? "", @"\b(?:repair(?:ed)?|recreat(?:e|ed)|rebuild|reconstruct)\b", RegexOptions.IgnoreCase) &&
+                Regex.IsMatch(instruction ?? "", @"\b(?:preserve|retain|keep)\s+(?:the\s+)?(?:original\s+|source\s+)?slides?\b|\bsource\s+(?:deck|presentation)\s+(?:unchanged|intact)\b", RegexOptions.IgnoreCase);
+        }
         private async Task<MailboxToolResult> ExecuteSamsungAsync(ChatToolCall call, OneShotDraftAuthorization authorization,
             bool exclusive, string prompt, OpenAiCompatibleClient client, AppSettings settings, CancellationToken token, Action<int, int> progress = null)
         {
@@ -23,6 +29,7 @@ namespace Scribble.Office
                 return await ExecuteLegacySamsungAsync(call, authorization, exclusive, prompt, client, settings, token);
             var modern = _taskContext?.State.SamsungWorkflowVersion >= 2;
             var written = false;
+            var newDraftDestination = false;
             SamsungGenerationJournal journal = null;
             var stage = "ARGUMENTS";
             string slideId = null;
@@ -39,6 +46,9 @@ namespace Scribble.Office
                     throw new InvalidOperationException("SLIDE_VISION_REQUIRED: Select a configured vision-capable model before drafting.");
                 var source = SamsungPresentationReview.SourceCorpus(_taskContext, prompt);
                 var trustedInstruction = _taskContext == null ? prompt : string.Join("\n", _taskContext.State.OriginalDecisions);
+                newDraftDestination = call.function.name == CrossAppToolCatalog.SendToPowerPoint ||
+                    (call.function.name == PresentationToolCatalog.AddDraftSlides &&
+                     ShouldDraftRepairedDeck(_hostKind, trustedInstruction, _taskContext?.State.RequiredPresentationSlides ?? 0));
                 var sampleSlides = new HashSet<string>();
                 foreach (var raw in ParsedArray(args, "slides", true))
                 {
@@ -215,7 +225,7 @@ namespace Scribble.Office
                 stage = "WRITE";
                 if (_hostKind == "powerpoint" && _taskContext != null) OfficeTaskBinding.Validate(_taskContext.State, _hostKind, _hostApplication);
                 var app = call.function.name == PresentationToolCatalog.AddDraftSlides ? _hostApplication : GetSiblingApplication("PowerPoint.Application");
-                if (call.function.name == CrossAppToolCatalog.SendToPowerPoint && _samsungPresentation == null &&
+                if (newDraftDestination && _samsungPresentation == null &&
                     _taskContext != null && _taskContext.State.HostData.ContainsKey("samsung_destination"))
                 {
                     dynamic application = app;
@@ -226,7 +236,7 @@ namespace Scribble.Office
                         if (string.Equals((string)candidate.Tags["ScribbleTask"], _taskContext.State.Id, StringComparison.OrdinalIgnoreCase)) matches.Add((object)candidate);
                         else if (System.Runtime.InteropServices.Marshal.IsComObject(candidate)) System.Runtime.InteropServices.Marshal.ReleaseComObject(candidate);
                     }
-                    if (matches.Count != 1) throw new InvalidOperationException("SLIDE_DESTINATION_MISSING: Reopen the uniquely identified original draft deck. No replacement deck was created.");
+                    if (matches.Count != 1) throw new InvalidOperationException("SLIDE_DESTINATION_MISSING: Reopen the uniquely identified draft deck. No replacement deck was created.");
                     _samsungPresentation = matches[0];
                 }
                 if (modern) journal = new SamsungGenerationJournal(_taskContext, call);
@@ -251,10 +261,10 @@ namespace Scribble.Office
                     written = true;
                 };
                 var status = PresentationDraftWriter.AddDraftSlides(app, slides, ParsedAfterSlide(args),
-                    call.function.name == CrossAppToolCatalog.SendToPowerPoint, output =>
+                    newDraftDestination, output =>
                     {
                         outputs.Add(output);
-                        if (call.function.name == CrossAppToolCatalog.SendToPowerPoint && _taskContext != null)
+                        if (newDraftDestination && _taskContext != null)
                         {
                             dynamic created = output.Slide;
                             _samsungPresentation = (object)created.Parent;
@@ -341,7 +351,7 @@ namespace Scribble.Office
                 // thread exits. A destination deck retained for the next batch
                 // or a retry would arrive as a dead wrapper, so the next call
                 // rebinds the deck through its ScribbleTask tag instead.
-                if (call?.function?.name == CrossAppToolCatalog.SendToPowerPoint)
+                if (newDraftDestination)
                 {
                     var retained = _samsungPresentation;
                     _samsungPresentation = null;

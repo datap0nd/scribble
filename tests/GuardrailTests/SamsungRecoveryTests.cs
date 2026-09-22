@@ -101,6 +101,12 @@ namespace GuardrailTests
         internal static void RepairScopeAndChartBindings()
         {
             var json = new JavaScriptSerializer(); var policy = Type("SamsungRepairPolicy");
+            Check((bool)Invoke(Type("DocumentDraftHost"), "ShouldDraftRepairedDeck", null,
+                "powerpoint", "Create a repaired, editable draft of every slide. Retain exactly 6 output slides. Preserve source slides.", 6),
+                "A full-deck repair would append six drafts to the six source slides instead of creating a separate six-slide output.");
+            Check(!(bool)Invoke(Type("DocumentDraftHost"), "ShouldDraftRepairedDeck", null,
+                "powerpoint", "Add two draft slides after the current slide.", 2),
+                "An ordinary in-deck slide request was redirected to a new presentation.");
             Check(SamsungSlideDesign.Takeaway.Width > 700f,
                 "The takeaway band is too narrow for readable executive copy.");
             Check(SamsungAuthoringPolicy.AudienceTakeaway(
