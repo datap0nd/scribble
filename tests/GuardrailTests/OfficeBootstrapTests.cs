@@ -187,7 +187,7 @@ namespace GuardrailTests
                 item => item.function.name == WorkbookToolCatalog.ListWorksheets);
             var call = new ChatToolCall { id = "hint", type = "function", function = new ChatToolCallFunction {
                 name = WorkbookToolCatalog.ListWorksheets,
-                arguments = "{\"include_hidden\":\"True\",\"limit\":\"30\",\"sheet\":\"Scribble Draft\",\"range\":\"A3:C16\",\"run_in_background\":false}"
+                arguments = "{\"include_hidden\":\"True\",\"limit\":\"30\",\"sheet\":\"Scribble Draft\",\"range\":\"A3:C16\",\"rows\":\"500\",\"columns\":\"50\",\"run_in_background\":false}"
             } };
             Check(ToolContractValidator.Validate(call, definition).Count == 0 && call.function.arguments == "{}",
                 "Inert worksheet-list hints blocked a read-only inventory.");

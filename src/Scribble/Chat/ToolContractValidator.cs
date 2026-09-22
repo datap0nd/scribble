@@ -31,6 +31,8 @@ namespace Scribble.Chat
                     map.Remove("include_hidden");
                     map.Remove("sheet");
                     map.Remove("range");
+                    map.Remove("rows");
+                    map.Remove("columns");
                     map.Remove("run_in_background");
                 }
                 // Known compatibility case only: decode one encoded slide/plan array.
