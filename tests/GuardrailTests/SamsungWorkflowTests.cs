@@ -104,6 +104,10 @@ namespace GuardrailTests
                 "June 2026 revenue reached 82,992 EUR, below May", may + "\n" + june)), may + "\n" + june);
             SamsungPresentationReview.ValidateEvidence(json.Serialize(periodSlide(
                 "June 2026 cost reached 36,714 EUR, above May", may + "\n" + june)), may + "\n" + june);
+            SamsungPresentationReview.ValidateEvidence(json.Serialize(periodSlide(
+                "June 2026 revenue reached 82,992 EUR, below May",
+                "Period 2025-05; RevenueEUR 70000 EUR\n" + may + "\n" + june)),
+                "Period 2025-05; RevenueEUR 70000 EUR\n" + may + "\n" + june);
         }
         internal static void Evidence()
         {

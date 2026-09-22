@@ -150,9 +150,10 @@ namespace Scribble.Office
                 var currentMonth = MonthNumber(current);
                 var otherMonth = MonthNumber(other);
                 if (currentMonth == null || otherMonth == null) continue;
-                var years = Regex.Matches(claim.Value + " " + evidence, @"\b20\d{2}\b").Cast<Match>()
+                var namedYear = Regex.Match(claim.Value, @"\b20\d{2}\b");
+                var citedYears = Regex.Matches(evidence ?? "", @"\b20\d{2}\b").Cast<Match>()
                     .Select(match => match.Value).Distinct().ToArray();
-                var year = years.Length == 1 ? years[0] : null;
+                var year = namedYear.Success ? namedYear.Value : citedYears.Length == 1 ? citedYears[0] : null;
                 var currentPeriod = current.Length == 7 && current[4] == '-' ? current : year + "-" + currentMonth;
                 var otherPeriod = other.Length == 7 && other[4] == '-' ? other : year + "-" + otherMonth;
                 Func<string, string, bool> cited = (token, period) =>
@@ -165,7 +166,8 @@ namespace Scribble.Office
                 var metric = Regex.Matches(claim.Groups["between"].Value,
                     @"\b(?:revenue|cost|profit|margin|volume|units?)\b", RegexOptions.IgnoreCase)
                     .Cast<Match>().Select(match => match.Value).LastOrDefault();
-                if (metric == null || year == null) continue;
+                if (metric == null || currentPeriod.StartsWith("-", StringComparison.Ordinal) ||
+                    otherPeriod.StartsWith("-", StringComparison.Ordinal)) continue;
                 decimal currentValue, otherValue;
                 if (!TryPeriodMetric(evidence, currentPeriod, metric, out currentValue) ||
                     !TryPeriodMetric(evidence, otherPeriod, metric, out otherValue)) continue;
