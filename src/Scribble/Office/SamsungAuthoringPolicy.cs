@@ -163,6 +163,10 @@ namespace Scribble.Office
                 var layout = Text(slide, "layout").ToLowerInvariant();
                 if (new[] { "cover", "divider", "closing", "agenda" }.Contains(layout))
                 {
+                    if (layout == "cover" && Regex.Matches(
+                        Text(slide, "subtitle") + " " + Text(slide, "takeaway"),
+                        @"(?<![A-Za-z])[-+\u2212]?\d[\d,.]*(?:%|\b)").Count >= 3)
+                        throw new InvalidOperationException("SLIDE_COVER_DATA_DUMP: A cover cannot carry three or more numeric facts in a subtitle or takeaway. Use a scorecard or another structured content slide for financial results.");
                     // The renderer already shortens a long citation on a
                     // sparse slide and retains it in speaker notes. A long
                     // qualifying footnote is different: truncating it could

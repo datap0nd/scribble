@@ -208,7 +208,7 @@ namespace GuardrailTests
                 !concentratedHeroes.Contains("0144") && !concentratedHeroes.Contains("2026"),
                 "A single quantified card lost its distinct metric anchors or promoted an identifier/year.");
             var dualDraft = Invoke(Type("PresentationDraftWriter"), "ParseSlides", null,
-                (object)json.Deserialize<object[]>("[{\"id\":\"bounds\",\"layout\":\"cards\",\"title\":\"Evidence bounds\",\"cards\":[{\"heading\":\"June figures\",\"points\":[\"Revenue EUR 82,992\",\"Cost EUR 36,714\",\"24 ledger rows\"]},{\"heading\":\"Period scope\",\"points\":[\"June from Ledger\"]},{\"heading\":\"Method\",\"points\":[\"Blanks are unknown\"]}]}]"));
+                (object)json.Deserialize<object[]>("[{\"id\":\"bounds\",\"layout\":\"cards\",\"title\":\"Evidence bounds\",\"cards\":[{\"heading\":\"June figures\",\"points\":[\"Revenue EUR 82,992; Cost EUR 36,714\",\"24 ledger rows\"]},{\"heading\":\"Period scope\",\"points\":[\"June from Ledger\"]},{\"heading\":\"Method\",\"points\":[\"Blanks are unknown\"]}]}]"));
             var dualPage = ((IEnumerable)Invoke(Type("PresentationDraftWriter"), "ComposeSamsung", null, dualDraft))
                 .Cast<object>().Single();
             var dualText = ((IEnumerable)dualPage.GetType().GetField("Elements", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(dualPage))
@@ -217,6 +217,14 @@ namespace GuardrailTests
                 dualText.Contains("Cost EUR") && dualText.Contains("24 ledger rows") &&
                 !dualText.Any(value => value.Contains("Revenue EUR 82,992") || value.Contains("Cost EUR 36,714")),
                 "The two hero metrics repeated their source lines instead of retaining labels and one readable copy of each number.");
+            var highlightedDraft = Invoke(Type("PresentationDraftWriter"), "ParseSlides", null,
+                (object)json.Deserialize<object[]>("[{\"id\":\"trend\",\"layout\":\"chart\",\"title\":\"Trend\",\"highlight_rows\":[1],\"chart\":{\"type\":\"column\",\"title\":\"Revenue EUR\",\"categories\":[\"2026-05\",\"2026-06\"],\"series\":[{\"name\":\"Revenue EUR\",\"values\":[85519,82992]}]}}]"));
+            var highlightedPage = ((IEnumerable)Invoke(Type("PresentationDraftWriter"), "ComposeSamsung", null, highlightedDraft))
+                .Cast<object>().Single();
+            var highlights = ((IEnumerable)highlightedPage.GetType().GetField("Elements", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(highlightedPage))
+                .Cast<object>().Where(element => element.GetType().GetField("HighlightChart", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(element) != null).ToArray();
+            Check(highlights.Length == 1 && (int)highlights[0].GetType().GetField("HighlightSeries", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(highlights[0]) == 1,
+                "Chart annotation surrounded an empty full-height category slot rather than the source bar.");
             Check((bool)Invoke(Type("PresentationDraftWriter"), "RetryableSamsungChartFailure", null,
                 "write chart data: COMException 0x800A01A8 Exception from HRESULT: 0x800A01A8"),
                 "A transient embedded Excel chart-grid failure should be retried inside the host call.");

@@ -265,7 +265,8 @@ namespace Scribble.Office
                     { var h = primary.Box.Height / (total + 1); box = new RectangleF(primary.Box.X, primary.Box.Y + row * h, primary.Box.Width, h); }
                     else
                     { var w = primary.Box.Width * .8f / total; box = new RectangleF(primary.Box.X + primary.Box.Width * .15f + (row - 1) * w, primary.Box.Y + primary.Box.Height * .2f, w, primary.Box.Height * .6f); }
-                    elements.Add(new SamsungElement { Box = box, Hollow = true, HighlightChart = primary.Chart, HighlightCategory = row });
+                    elements.Add(new SamsungElement { Box = box, Hollow = true, HighlightChart = primary.Chart,
+                        HighlightCategory = row, HighlightSeries = primary.Chart == null ? 0 : 1 });
                 }
                 foreach (var data in elements.Where(e => e.Table != null).ToArray())
                 {
@@ -350,7 +351,9 @@ namespace Scribble.Office
                         var following = tokens[tokenIndex].point.Substring(
                             tokens[tokenIndex].match.Index + tokens[tokenIndex].match.Length);
                         var label = Regex.Match(following, @"^\s+(?<word>[A-Za-z]+)");
-                        var preceding = tokens[tokenIndex].point.Substring(0, tokens[tokenIndex].match.Index)
+                        var preceding = tokens[tokenIndex].point.Substring(
+                            tokens[tokenIndex].point.LastIndexOf(';', tokens[tokenIndex].match.Index) + 1,
+                            tokens[tokenIndex].match.Index - tokens[tokenIndex].point.LastIndexOf(';', tokens[tokenIndex].match.Index) - 1)
                             .Trim().TrimEnd(':', '=');
                         heroLabels[cardIndex, tokenIndex] = preceding.Length > 0 && preceding.Length <= 24
                             ? preceding : label.Success ? label.Groups["word"].Value : "";
@@ -447,9 +450,8 @@ namespace Scribble.Office
                     // Omit simple metric-only source lines from the body and put
                     // their original labels beneath the callouts instead.
                     var bodyPoints = i == dualHeroIndex
-                        ? card.Points.Where(point =>
-                            !IsStandaloneHeroPoint(point, evidenceHeroes[i]) &&
-                            !IsStandaloneHeroPoint(point, secondaryHero[i]))
+                        ? card.Points.Select(point => StripHeroClauses(point, evidenceHeroes[i], secondaryHero[i]))
+                            .Where(point => point.Length > 0)
                         : card.Points;
                     var body = string.Join("\n", bodyPoints);
                     if (body.Length > 0 || (!compact && heroMode && !string.IsNullOrEmpty(evidenceHeroes[i])))
@@ -547,6 +549,14 @@ namespace Scribble.Office
                 Regex.IsMatch(label, @"^[\p{L}\s:/%=-]+$");
         }
 
+        private static string StripHeroClauses(string point, string primary, string secondary)
+        {
+            return string.Join("; ", (point ?? "").Split(';').Select(clause => clause.Trim())
+                .Where(clause => clause.Length > 0 &&
+                    !IsStandaloneHeroPoint(clause, primary) &&
+                    !IsStandaloneHeroPoint(clause, secondary)));
+        }
+
         private static float EvidenceCardContentHeight(DraftCard card, float width)
         {
             var lead = card.Points.FirstOrDefault() ?? "";
@@ -638,7 +648,8 @@ namespace Scribble.Office
                         if (series < 1 || series > chart.Series.Count) throw new InvalidOperationException("SLIDE_ANNOTATION_INVALID: Missing chart series.");
                         elements.Add(new SamsungElement { Box = element.Box, Hollow = true, HighlightChart = chart, HighlightCategory = row, HighlightSeries = series });
                     }
-                    else elements.Add(new SamsungElement { Box = element.Box, Hollow = true, HighlightChart = chart, HighlightCategory = row });
+                    else elements.Add(new SamsungElement { Box = element.Box, Hollow = true,
+                        HighlightChart = chart, HighlightCategory = row, HighlightSeries = 1 });
                 }
             }
         }

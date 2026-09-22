@@ -539,6 +539,9 @@ namespace GuardrailTests
             SamsungAuthoringPolicy.ValidateVisualDesign(new[] {
                 new Dictionary<string, object> { { "layout", "cover" }, { "sources", new string('S', 91) } } });
             Reject(() => SamsungAuthoringPolicy.ValidateVisualDesign(new[] {
+                new Dictionary<string, object> { { "layout", "cover" },
+                    { "subtitle", "June 2026 revenue EUR 82,992; cost EUR 36,714; margin 55.76%" } } }));
+            Reject(() => SamsungAuthoringPolicy.ValidateVisualDesign(new[] {
                 new Dictionary<string, object> { { "layout", "cover" }, { "footnote", new string('F', 91) } } }));
             SamsungAuthoringPolicy.ValidateVisualDesign(new[] {
                 new Dictionary<string, object> { { "layout", "cover" }, { "sources", "Atlas Components | WB01" } } });
