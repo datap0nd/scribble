@@ -8294,6 +8294,44 @@ namespace GuardrailTests
                 "SerializablePayload",
                 BindingFlags.Static | BindingFlags.NonPublic);
             Assert(method != null, "The bounded request serializer is missing.");
+            var malformedHistory = new ChatToolCall
+            {
+                id = "bad-draft",
+                type = "function",
+                function = new ChatToolCallFunction
+                {
+                    name = PresentationToolCatalog.AddDraftSlides,
+                    arguments = "{\"plan\":[\"s1\",\"s2\"]"
+                        .TrimEnd('}')
+                }
+            };
+            var historicalRequest = new ChatCompletionRequest
+            {
+                model = "qwen/qwen3.8-27b",
+                messages = new List<object>
+                {
+                    new ChatCompletionAssistantToolMessage
+                    {
+                        role = "assistant",
+                        content = "",
+                        tool_calls = new List<ChatToolCall> { malformedHistory }
+                    },
+                    new ChatCompletionToolResultMessage
+                    {
+                        role = "tool",
+                        tool_call_id = "bad-draft",
+                        content = "{\"error_code\":\"TOOL_ARGUMENTS_INVALID\"}"
+                    }
+                }
+            };
+            var historicalPayload = (Dictionary<string, object>)method.Invoke(null,
+                new object[] { historicalRequest, new Uri(openRouterUrl), true });
+            var safeHistory = (List<object>)historicalPayload["messages"];
+            var safeCall = ((ChatCompletionAssistantToolMessage)safeHistory[0]).tool_calls[0];
+            Assert(safeCall.function.arguments == "{}" &&
+                malformedHistory.function.arguments != safeCall.function.arguments &&
+                ((ChatCompletionToolResultMessage)safeHistory[1]).content.Contains("TOOL_ARGUMENTS_INVALID"),
+                "A malformed historical tool call must not poison the next provider request or mutate the validator's original evidence.");
             var authoring = (Dictionary<string, object>)method.Invoke(
                 null,
                 new object[]

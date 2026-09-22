@@ -1061,7 +1061,7 @@ namespace Scribble.Chat
             var payload = new Dictionary<string, object>
             {
                 { "model", requestModel.model },
-                { "messages", requestModel.messages },
+                { "messages", ProviderSafeMessages(requestModel.messages) },
                 { "stream", requestModel.stream }
             };
             if (requestModel.tools != null &&
@@ -1201,6 +1201,67 @@ namespace Scribble.Chat
             }
 
             return payload;
+        }
+
+        private static List<object> ProviderSafeMessages(List<object> messages)
+        {
+            if (messages == null) return null;
+            var safe = new List<object>(messages.Count);
+            var parser = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
+            foreach (var message in messages)
+            {
+                var assistant = message as ChatCompletionAssistantToolMessage;
+                if (assistant?.tool_calls == null)
+                {
+                    safe.Add(message);
+                    continue;
+                }
+                var calls = new List<ChatToolCall>(assistant.tool_calls.Count);
+                var changed = false;
+                foreach (var call in assistant.tool_calls)
+                {
+                    if (call?.function == null)
+                    {
+                        calls.Add(call);
+                        continue;
+                    }
+                    var validObject = false;
+                    try
+                    {
+                        validObject = parser.DeserializeObject(call.function.arguments ?? "")
+                            is IDictionary<string, object>;
+                    }
+                    catch (ArgumentException) { }
+                    catch (InvalidOperationException) { }
+                    if (validObject)
+                    {
+                        calls.Add(call);
+                        continue;
+                    }
+                    // The tool validator sees and rejects the original malformed
+                    // call. Only the historical wire copy is made parseable:
+                    // strict OpenAI-compatible providers reject a later turn
+                    // before the model can read that validator's repair receipt.
+                    changed = true;
+                    calls.Add(new ChatToolCall
+                    {
+                        id = call.id,
+                        type = call.type,
+                        function = new ChatToolCallFunction
+                        {
+                            name = call.function.name,
+                            arguments = "{}"
+                        }
+                    });
+                }
+                safe.Add(changed ? new ChatCompletionAssistantToolMessage
+                {
+                    role = assistant.role,
+                    content = assistant.content,
+                    tool_calls = calls
+                } : message);
+            }
+            return safe;
         }
 
         private static bool UsesOpenRouterQwenPolicy(
