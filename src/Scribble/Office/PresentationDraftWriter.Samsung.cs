@@ -321,7 +321,13 @@ namespace Scribble.Office
                     var body = string.Join("\n", draft.Cards[cardIndex].Points);
                     if (MeasureEvidenceBody(body, width) > region.Height - 160f) continue;
                     var token = Regex.Matches(body, @"(?<![A-Za-z])\d[\d,]*(?:\.\d+)?%?")
-                        .Cast<Match>().Select(match => match.Value).FirstOrDefault(value => used.Add(value));
+                        .Cast<Match>().Select(match => match.Value)
+                        .Where(value =>
+                        {
+                            int year;
+                            return !int.TryParse(value, out year) || year < 1900 || year > 2100;
+                        })
+                        .FirstOrDefault(value => used.Add(value));
                     evidenceHeroes[cardIndex] = token;
                 }
             }

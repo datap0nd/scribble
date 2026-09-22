@@ -107,6 +107,10 @@ namespace GuardrailTests
                 "Single primary series on a zero-based axis: June revenue fell to 82,992 EUR.") ==
                 "June revenue fell to 82,992 EUR.",
                 "A chart-construction instruction leaked into the visible takeaway.");
+            Check(SamsungAuthoringPolicy.AudienceTakeaway(
+                "A single primary revenue series on a zero-based axis shows the 2,527 EUR dip.") ==
+                "The 2,527 EUR dip.",
+                "A measure-specific chart-construction clause leaked into the visible takeaway.");
             var visualDraft = Invoke(Type("PresentationDraftWriter"), "ParseSlides", null,
                 (object)json.Deserialize<object[]>("[{\"id\":\"headline\",\"layout\":\"scorecard\",\"title\":\"Results\",\"subtitle\":\"June revenue declined\",\"takeaway\":\"June revenue fell to 82,992 EUR.\",\"cards\":[{\"heading\":\"Revenue\",\"points\":[\"82,992\"]},{\"heading\":\"Cost\",\"points\":[\"36,714\"]}]}]"));
             var visualPage = ((IEnumerable)Invoke(Type("PresentationDraftWriter"), "ComposeSamsung", null, visualDraft))
@@ -116,6 +120,18 @@ namespace GuardrailTests
             var takeawayElement = elements.Single(element => (string)element.GetType().GetField("Text", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(element) == "June revenue fell to 82,992 EUR.");
             Check((float)takeawayElement.GetType().GetField("Minimum", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(takeawayElement) >= 14f,
                 "A factual takeaway was allowed to shrink below the native minimum body font.");
+            var cardDraft = Invoke(Type("PresentationDraftWriter"), "ParseSlides", null,
+                (object)json.Deserialize<object[]>("[{\"id\":\"quality\",\"layout\":\"cards\",\"title\":\"Data quality\",\"subtitle\":\"Complete observations\",\"cards\":[{\"heading\":\"Integrity\",\"points\":[\"144 records verified\",\"No blanks\"]},{\"heading\":\"Coverage\",\"points\":[\"May 2026: 24 records\",\"June 2026: 24 records\"]}]}]"));
+            var cardPage = ((IEnumerable)Invoke(Type("PresentationDraftWriter"), "ComposeSamsung", null, cardDraft))
+                .Cast<object>().Single();
+            var cardElements = ((IEnumerable)cardPage.GetType().GetField("Elements", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(cardPage))
+                .Cast<object>().ToArray();
+            var largeText = cardElements.Where(element =>
+                (float)element.GetType().GetField("Size", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(element) >= 26f)
+                .Select(element => (string)element.GetType().GetField("Text", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(element))
+                .ToArray();
+            Check(largeText.Contains("144") && largeText.Contains("24") && !largeText.Contains("2026"),
+                "A reporting year was promoted as a hero metric instead of the record count.");
             Func<string, object[]> parse = value => json.Deserialize<object[]>(value);
             var original = parse("[{\"kind\":\"replace_text\",\"slide_id\":42,\"shape_id\":9,\"fingerprint\":\"fixed\",\"before\":\"Sales 100 units\",\"text\":\"Sales increased to 125 units\"}]");
             var corrected = parse(json.Serialize(original).Replace("Sales increased to 125 units", "Sales: 125 units"));

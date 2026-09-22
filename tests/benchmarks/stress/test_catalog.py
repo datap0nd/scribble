@@ -60,6 +60,8 @@ class CatalogContractTests(unittest.TestCase):
         self.assertEqual(no_mail["expected_count"], 0)
         cases_by_id = {case["id"]: case for case in self.cases}
         self.assertIn("Total matches: N", cases_by_id["OL01"]["prompt"])
+        self.assertEqual(cases_by_id["XA01"]["timeout_seconds"], 1200)
+        self.assertEqual(cases_by_id["EX01"]["timeout_seconds"], 900)
         for index, workbook in enumerate(self.office["workbooks"]):
             monthly_rules = self.oracles[f"EX{index*3+1:02}"]["checks"]
             monthly_cells = {r["cell"]: r for r in monthly_rules if r["kind"] == "numeric_cell"}

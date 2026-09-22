@@ -110,9 +110,10 @@ namespace Scribble.Office
             // Preserve the business result after a model prefixes it with a
             // chart-construction check from the prompt.
             var audience = Regex.Replace(value ?? "",
-                @"^\s*(?:single primary series on a zero[- ]based axis|primary values only on a zero[- ]based axis)\s*[:;—–-]\s*",
+                @"^\s*(?:a\s+)?(?:single primary(?:\s+\w+)? series|primary values only)\s+on a zero[- ]based axis\s*(?:[:;—–-]|shows?)\s*",
                 "", RegexOptions.IgnoreCase);
-            return AudienceNote(audience);
+            audience = AudienceNote(audience);
+            return audience.Length == 0 ? audience : char.ToUpperInvariant(audience[0]) + audience.Substring(1);
         }
         public static object[] Array(IDictionary<string, object> map, string key)
         {

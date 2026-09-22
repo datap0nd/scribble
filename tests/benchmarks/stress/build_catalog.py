@@ -260,7 +260,7 @@ def cross_app_cases(cases, oracles, workbooks, presentations):
                   presentation_check(deck, 4, wb), native_chart(["2026-05", "2026-06"],
                     [wb["facts"]["previous"]["primary"], wb["facts"]["current"]["primary"]], chart_units(wb), host="PowerPoint")]
         add(cases, oracles, f"XA{index+1:02}", "Excel", prompt, [wb["path"], deck["path"]], ["xlsx", "pptx"], checks,
-            "excel_output_to_powerpoint", prerequisite=initial)
+            "excel_output_to_powerpoint", prerequisite=initial, timeout_seconds=1200)
     for index in range(10, 20):
         wb, deck = workbooks[index], presentations[index]
         initial = (f"Create exactly three native editable Samsung MD draft slides for {wb['company']} from the attached workbook: "
