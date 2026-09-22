@@ -427,10 +427,12 @@ namespace Scribble.Office
                             "title",
                             string.Empty),
                         GetLongString(arguments, "body"),
-                        ToolArguments.GetString(
-                            arguments,
-                            "placement",
-                            "end"));
+                        WordDraftWriter.ResolvePlacement(
+                            ToolArguments.GetString(
+                                arguments,
+                                "placement",
+                                "new_document"),
+                            _latestUserPrompt));
                 }
                 else if (string.Equals(
                              name,

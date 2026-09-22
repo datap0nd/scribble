@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using Scribble.Security;
 
 namespace Scribble.Office
@@ -17,6 +18,25 @@ namespace Scribble.Office
         internal const string DraftMarker = "[Scribble draft]";
         internal const int MaxDraftCharacters = 48000;
         internal const int MaxTitleCharacters = 180;
+
+        // A model-supplied placement is not authorization to modify the
+        // source document. Creation requests go to a separate draft even if
+        // the model mistakes the open source for the destination.
+        internal static string ResolvePlacement(string requested, string userPrompt)
+        {
+            var prompt = userPrompt ?? string.Empty;
+            if (string.Equals(requested, "selection", StringComparison.Ordinal))
+                return Regex.IsMatch(prompt,
+                    @"\b(replace|edit|rewrite|change|insert|fill)\b.{0,80}\b(selection|selected text)\b",
+                    RegexOptions.IgnoreCase | RegexOptions.Singleline)
+                    ? "selection" : "new_document";
+            if (string.Equals(requested, "end", StringComparison.Ordinal))
+                return Regex.IsMatch(prompt,
+                    @"\b(append|insert|add|write|put)\b.{0,100}\b(to|in|into|onto)\s+(my|this|the|current|active|existing)\s+(document|doc|file)\b|\b(edit|update|revise|rewrite|replace|fill|fix|continue|change)\b.{0,80}\b(my|this|the|current|active|existing)\s+(document|doc|file)\b",
+                    RegexOptions.IgnoreCase | RegexOptions.Singleline)
+                    ? "end" : "new_document";
+            return "new_document";
+        }
 
         // WdBuiltinStyle ids work in every localized Word.
         private const int StyleNormal = -1;

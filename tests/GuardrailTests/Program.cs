@@ -425,6 +425,7 @@ namespace GuardrailTests
                 Run("Office bootstrap documents contain no task data or external content", OfficeBootstrapTests.NeutralEmbeddedDocuments);
                 Run("Office bootstrap respects Stop before launching Office", OfficeBootstrapTests.CancelledStartupDoesNotReachOffice);
                 Run("Outlook embedding startup waits for the registered add-in", OfficeBootstrapTests.OutlookEmbeddingStartupWaitsForAddIn);
+                Run("Word creation cannot overwrite the source document", OfficeBootstrapTests.WordCreationCannotOverwriteSource);
                 Run("PowerPoint bootstrap tracks reused and fresh native processes", OfficeBootstrapTests.PowerPointLaunchTracksReusedOrFreshProcess);
                 Run("Office bootstrap rejects missing, foreign, stale and finished sibling bindings", OfficeBootstrapTests.UnverifiedSiblingCannotStartOffice);
                 Console.WriteLine("PASS: " + _passed + " guardrail tests");

@@ -147,6 +147,25 @@ namespace GuardrailTests
                 "Synthetic Outlook stores are not detached at suite cleanup.");
         }
 
+        public static void WordCreationCannotOverwriteSource()
+        {
+            var type = typeof(TestLab).Assembly.GetType("Scribble.Office.WordDraftWriter", true);
+            var resolve = type.GetMethod("ResolvePlacement", BindingFlags.Static | BindingFlags.NonPublic);
+            Check(resolve != null, "Word draft placement policy is missing.");
+            Func<string, string, string> route = (requested, prompt) =>
+                (string)resolve.Invoke(null, new object[] { requested, prompt });
+            Check(route("end", "Create a one-page executive memo from this document.") == "new_document",
+                "A creation request appended to the source Word document.");
+            Check(route("selection", "Create a summary of the selected text.") == "new_document",
+                "A creation request replaced the selected source text.");
+            Check(route("end", "Append the action table to my document.") == "end",
+                "An explicit in-place append was redirected.");
+            Check(route("selection", "Replace the current selection with a corrected paragraph.") == "selection",
+                "An explicit selection replacement was redirected.");
+            Check(route("unexpected", "Create a memo.") == "new_document",
+                "An unknown Word placement edited the source document.");
+        }
+
         public static void PowerPointLaunchTracksReusedOrFreshProcess()
         {
             var candidate = typeof(TestLabOfficeConnection).GetMethod("IsLaunchCandidate", BindingFlags.Static | BindingFlags.NonPublic);
