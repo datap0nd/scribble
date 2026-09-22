@@ -8246,6 +8246,24 @@ namespace GuardrailTests
 
         private static void OpenRouterQwenPolicy()
         {
+            var retryAfterMethod = typeof(OpenAiCompatibleClient).GetMethod(
+                "RateLimitRetryAfter", BindingFlags.Static | BindingFlags.NonPublic);
+            Assert(retryAfterMethod != null,
+                "The OpenRouter rate-limit backoff helper is missing.");
+            using (var rateLimited = new System.Net.Http.HttpResponseMessage(
+                HttpStatusCode.TooManyRequests))
+            {
+                var body = "{\"error\":{\"metadata\":{\"headers\":{\"Retry-After\":\"10\"}}}}";
+                Assert((TimeSpan)retryAfterMethod.Invoke(null,
+                    new object[] { rateLimited, body }) == TimeSpan.FromSeconds(10),
+                    "OpenRouter's admission-control Retry-After must be read from its error body.");
+                rateLimited.Headers.RetryAfter =
+                    new System.Net.Http.Headers.RetryConditionHeaderValue(
+                        TimeSpan.FromSeconds(3));
+                Assert((TimeSpan)retryAfterMethod.Invoke(null,
+                    new object[] { rateLimited, body }) == TimeSpan.FromSeconds(3),
+                    "The real HTTP Retry-After header must take precedence over body metadata.");
+            }
             var timeoutMethod = typeof(OpenAiCompatibleClient).GetMethod(
                 "CompletionRequestTimeoutFor",
                 BindingFlags.Static | BindingFlags.NonPublic);

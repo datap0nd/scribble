@@ -223,7 +223,8 @@ namespace Scribble.Chat
                 bool retryEmptyResponse = true,
                 bool retryTransientResponse = true,
                 string ignoredProvider = null,
-                int providerRetriesRemaining = 2)
+                int providerRetriesRemaining = 2,
+                int rateLimitRetriesRemaining = 3)
         {
             var circuitKey = endpoint.AbsoluteUri + "\n" + requestModel.model;
             lock (_optionalToolControlSync)
@@ -346,7 +347,26 @@ namespace Scribble.Chat
                     {
                         var error = TryReadError(responseText);
                         var status = (int)response.StatusCode;
-                        if (retryTransientResponse && (status == 429 || status == 502 || status == 503 || status == 504))
+                        if (status == 429 && rateLimitRetriesRemaining > 0)
+                        {
+                            var retryAfter = RateLimitRetryAfter(response, responseText);
+                            if (retryAfter <= TimeSpan.FromSeconds(90))
+                            {
+                                cancellationToken.ThrowIfCancellationRequested();
+                                await Task.Delay(retryAfter, cancellationToken)
+                                    .ConfigureAwait(true);
+                                await Scribble.Testing.TestLabStressBudget
+                                    .GuardRequestAsync(settings, requestModel?.model,
+                                        cancellationToken).ConfigureAwait(true);
+                                return await CompleteOpenAiAsync(settings, endpoint,
+                                    requestModel, includeOptionalToolControls,
+                                    cancellationToken, retryEmptyResponse,
+                                    retryTransientResponse, ignoredProvider,
+                                    providerRetriesRemaining,
+                                    rateLimitRetriesRemaining - 1).ConfigureAwait(true);
+                            }
+                        }
+                        if (retryTransientResponse && (status == 502 || status == 503 || status == 504))
                         {
                             var hint = response.Headers.RetryAfter;
                             var retryAfter = hint?.Delta ?? (hint?.Date.HasValue == true ? hint.Date.Value - DateTimeOffset.UtcNow : TimeSpan.FromSeconds(1));
@@ -367,7 +387,8 @@ namespace Scribble.Chat
                                     retryEmptyResponse,
                                     false,
                                     ignoredProvider,
-                                    providerRetriesRemaining).ConfigureAwait(true);
+                                    providerRetriesRemaining,
+                                    rateLimitRetriesRemaining).ConfigureAwait(true);
                             }
                         }
                         var reason = string.IsNullOrWhiteSpace(response.ReasonPhrase)
@@ -450,7 +471,8 @@ namespace Scribble.Chat
                                 retryEmptyResponse,
                                 false,
                                 string.Join("\n", excludedProviders),
-                                providerRetriesRemaining - 1).ConfigureAwait(true);
+                                providerRetriesRemaining - 1,
+                                rateLimitRetriesRemaining).ConfigureAwait(true);
                         }
 
                         var providerError = choice?.error;
@@ -512,7 +534,8 @@ namespace Scribble.Chat
                                 false,
                                 retryTransientResponse,
                                 string.Join("\n", excludedProviders),
-                                providerRetriesRemaining).ConfigureAwait(true);
+                                providerRetriesRemaining,
+                                rateLimitRetriesRemaining).ConfigureAwait(true);
                         }
                         lock (_optionalToolControlSync) _emptyResponseCircuits[circuitKey] = DateTime.UtcNow.AddSeconds(30);
                         throw new AiEndpointException(
@@ -1270,6 +1293,41 @@ namespace Scribble.Chat
                 } : message);
             }
             return safe;
+        }
+
+        private static TimeSpan RateLimitRetryAfter(HttpResponseMessage response,
+            string responseText)
+        {
+            var hint = response?.Headers.RetryAfter;
+            if (hint?.Delta.HasValue == true)
+                return hint.Delta.Value < TimeSpan.Zero ? TimeSpan.Zero : hint.Delta.Value;
+            if (hint?.Date.HasValue == true)
+            {
+                var until = hint.Date.Value - DateTimeOffset.UtcNow;
+                return until < TimeSpan.Zero ? TimeSpan.Zero : until;
+            }
+            // OpenRouter's admission-control 429 can put Retry-After only in
+            // error.metadata.headers, not the HTTP header. Respect it before
+            // retrying the identical, side-effect-free inference request.
+            try
+            {
+                var root = new JavaScriptSerializer().DeserializeObject(responseText ?? "")
+                    as IDictionary<string, object>;
+                object errorValue, metadataValue, headersValue, secondsValue;
+                var error = root != null && root.TryGetValue("error", out errorValue)
+                    ? errorValue as IDictionary<string, object> : null;
+                var metadata = error != null && error.TryGetValue("metadata", out metadataValue)
+                    ? metadataValue as IDictionary<string, object> : null;
+                var headers = metadata != null && metadata.TryGetValue("headers", out headersValue)
+                    ? headersValue as IDictionary<string, object> : null;
+                int seconds;
+                if (headers != null && headers.TryGetValue("Retry-After", out secondsValue) &&
+                    int.TryParse(Convert.ToString(secondsValue), out seconds) && seconds >= 0)
+                    return TimeSpan.FromSeconds(seconds);
+            }
+            catch (ArgumentException) { }
+            catch (InvalidOperationException) { }
+            return TimeSpan.FromSeconds(10);
         }
 
         private static bool UsesOpenRouterQwenPolicy(

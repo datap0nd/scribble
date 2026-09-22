@@ -251,6 +251,15 @@ namespace GuardrailTests
                 "[{\"id\":\"trend\",\"title\":\"Trend\",\"layout\":\"chart\",\"chart\":{\"type\":\"column\",\"title\":\"Revenue EUR\",\"categories\":[\"May\",\"2026-06\"],\"series\":[{\"name\":\"Revenue EUR\",\"values\":[85519,82992]}]}}]"));
             Reject(() => Invoke(typeof(DocumentDraftHost), "ValidatePromptChartConstraints", null,
                 "Use YYYY-MM categories and EUR in the title.", mixedCategories), "SLIDE_CHART_CATEGORY_FORMAT");
+            var fiveMonthChart = Invoke(Type("PresentationDraftWriter"), "ParseSlides", null, (object)json.Deserialize<object[]>(
+                "[{\"id\":\"period\",\"title\":\"History\",\"layout\":\"chart\",\"chart\":{\"type\":\"column\",\"title\":\"Revenue and cost EUR\",\"categories\":[\"2026-01\",\"2026-02\",\"2026-03\",\"2026-04\",\"2026-05\"],\"series\":[{\"name\":\"Revenue EUR\",\"values\":[1,2,3,4,5]},{\"name\":\"Cost EUR\",\"values\":[1,2,3,4,5]}]}}]"));
+            var sixMonthInstruction = "Recreate the monthly chart with exactly two series, all six YYYY-MM categories and EUR in its title.";
+            Reject(() => Invoke(typeof(DocumentDraftHost), "ValidatePromptChartConstraints", null,
+                sixMonthInstruction, fiveMonthChart), "SLIDE_CHART_PERIOD_COVERAGE");
+            var sixMonthChart = Invoke(Type("PresentationDraftWriter"), "ParseSlides", null, (object)json.Deserialize<object[]>(
+                "[{\"id\":\"period\",\"title\":\"History\",\"layout\":\"chart\",\"chart\":{\"type\":\"column\",\"title\":\"Revenue and cost EUR\",\"categories\":[\"2026-01\",\"2026-02\",\"2026-03\",\"2026-04\",\"2026-05\",\"2026-06\"],\"series\":[{\"name\":\"Revenue EUR\",\"values\":[1,2,3,4,5,6]},{\"name\":\"Cost EUR\",\"values\":[1,2,3,4,5,6]}]}}]"));
+            Invoke(typeof(DocumentDraftHost), "ValidatePromptChartConstraints", null,
+                sixMonthInstruction, sixMonthChart);
             var calculationFinding = json.Serialize(new { approved = false, findings = new[] {
                 new { slide_id = "headline", object_id = "calculation:Gross margin % (May)", type = "facts",
                     correction = "Correct May margin from 57.08% to 57.26%." } } });

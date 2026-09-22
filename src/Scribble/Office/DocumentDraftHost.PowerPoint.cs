@@ -399,6 +399,32 @@ namespace Scribble.Office
                         throw new InvalidOperationException(
                             "SLIDE_CHART_CATEGORY_FORMAT: The user required YYYY-MM categories for the period chart. " +
                             "Use four-digit year and two-digit month labels such as 2026-05; a separate categorical chart may use group names.");
+
+            // "All six YYYY-MM categories" is an exact coverage instruction,
+            // not merely a formatting hint. A five-month native chart with a
+            // disclosure about missing June still violates the requested
+            // Jan–Jun comparison even when every displayed value is true.
+            if (Regex.IsMatch(prompt ?? string.Empty,
+                @"(?is)\ball\s+six\s+YYYY\s*-\s*MM\s+categories\b"))
+                foreach (var chart in charts.Where(value =>
+                    value.Categories.Any(LooksLikeMonthCategory)))
+                {
+                    var periods = chart.Categories.Select(category =>
+                        Regex.Match(category ?? "", @"^(?<year>\d{4})-(?<month>0[1-9]|1[0-2])$")).ToArray();
+                    if (periods.Length != 6 || periods.Any(match => !match.Success) ||
+                        Enumerable.Range(1, 5).Any(index =>
+                            int.Parse(periods[index].Groups["year"].Value) * 12 +
+                            int.Parse(periods[index].Groups["month"].Value) !=
+                            int.Parse(periods[index - 1].Groups["year"].Value) * 12 +
+                            int.Parse(periods[index - 1].Groups["month"].Value) + 1))
+                        throw new InvalidOperationException(
+                            "SLIDE_CHART_PERIOD_COVERAGE: The user required all six consecutive YYYY-MM categories. " +
+                            "Include the missing period from the authoritative source; a five-month chart with a disclosure is not enough.");
+                    if (Regex.IsMatch(prompt ?? string.Empty, @"(?i)\bexactly\s+two\s+series\b") &&
+                        chart.Series.Count != 2)
+                        throw new InvalidOperationException(
+                            "SLIDE_CHART_SERIES_COUNT: The requested six-month chart requires exactly two source-backed series in the requested order.");
+                }
         }
 
         private static bool LooksLikeMonthCategory(string category)
