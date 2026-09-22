@@ -239,8 +239,9 @@ namespace Scribble.Office
                         elements.Add(element);
                     }
                 }
-                if (draft.Caption.Length > 0) elements.Add(TextElement(draft.Caption, SamsungSlideDesign.Percent(15.6f, 21f, 64.2f, 3.5f), 14, 14, "Arial Narrow"));
-                if (draft.Unit.Length > 0) { var unit = TextElement(draft.Unit, SamsungSlideDesign.Percent(80, 21.5f, 16.2f, 3.1f), 8, 8, "Calibri"); unit.Alignment = 3; elements.Add(unit); }
+                var audienceCaption = SamsungAuthoringPolicy.AudienceNote(draft.Caption);
+                if (audienceCaption.Length > 0) elements.Add(TextElement(audienceCaption, SamsungSlideDesign.Percent(15.6f, 21f, 64.2f, 3.5f), 14, 14, "Arial Narrow"));
+                if (draft.Unit.Length > 0) { var unit = TextElement(draft.Unit, SamsungSlideDesign.Percent(80, 21.5f, 16.2f, 3.1f), 11, 11, "Calibri"); unit.Alignment = 3; elements.Add(unit); }
                 if (draft.Takeaway.Length > 0) elements.Add(TextElement(draft.Takeaway, SamsungSlideDesign.Takeaway, 14, 11, "Arial Narrow", true, SamsungSlideDesign.Blue, "#FFFFFF"));
                 AddSamsungAnnotations(elements, draft, table, secondaryTable, part, perPage);
                 // Semantic row references, never model-supplied coordinates.
@@ -276,7 +277,7 @@ namespace Scribble.Office
                 if (draft.HighlightRows.Count > 0 && draft.Takeaway.Length > 0 && draft.Layout == "annotated_chart")
                     elements.Add(new SamsungElement { Box = SamsungSlideDesign.Percent(50.8f, 80.2f, 5.3f, 4.5f), Connector = true });
             }
-            var source = string.Join("; ", new[] { draft.Footnote, draft.Sources }.Where(s => !string.IsNullOrWhiteSpace(s)));
+            var source = string.Join("; ", new[] { SamsungAuthoringPolicy.AudienceNote(draft.Footnote), draft.Sources }.Where(s => !string.IsNullOrWhiteSpace(s)));
             // The complete citation always reaches the speaker notes. A cover or
             // divider keeps only a short visible reference, placed clear of the
             // cover's accent bar instead of across it.

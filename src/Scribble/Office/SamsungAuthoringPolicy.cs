@@ -42,6 +42,7 @@ namespace Scribble.Office
             "Choose a host-owned Samsung recipe for the evidence. A presentation is not a report page pasted onto a canvas: use the full slide intentionally, establish one dominant visual idea, and make the hierarchy obvious at thumbnail size. Tables and charts remain native; use attached image_names for artwork. " +
             "For a numeric headline or KPI summary, use scorecard with two to four cards: each card heading is the metric label, its first point is the large display value, and later points are short comparison context. For data quality or methodology, group coverage, integrity and calculation rules into two or three concise evidence cards; do not paste a six-line audit report into a bullet slide. A content slide with four or more factual lines or three or more numeric tokens must have a structured visual even when its purpose is explanatory. Use bullets only for genuinely short prose with no better chart, table, image, scorecard or structured-card treatment. Across a deck of three or more content slides, at least two thirds must contain a chart, table, source image or structured cards, and use more than one composition family. " +
             "Avoid repeated title/subtitle/body/takeaway wording, tiny decorative copy, and large accidental empty regions. A rendered slide that resembles a Word page, contains a plain multiline data dump, or lacks a clear focal point is incomplete even when every fact fits. " +
+            "Visible slide copy is for the audience. Never put build or validation mechanics such as native/editable chart, single primary series, axis baseline checks, category formatting, source_spans or speaker-note instructions in a title, caption, footnote or takeaway. Show the actual chart and keep any necessary implementation details in notes. Captions name table content; footnotes cite sources or explain material caveats. " +
             "When the user requests primary values only in a chart, include exactly one primary series and omit every secondary measure. " +
             "Use semantic annotations to emphasize supporting evidence. Do not invent tables to fill space. " +
             "The host checks facts, geometry, rendered slides and the complete deck. Resolve blockers before claiming completion. Themes and positions are host-controlled.";
@@ -82,6 +83,18 @@ namespace Scribble.Office
         { return value as Dictionary<string, object> ?? throw new InvalidOperationException("Expected a structured object."); }
         public static string Text(IDictionary<string, object> map, string key)
         { object value; return map.TryGetValue(key, out value) ? Convert.ToString(value, CultureInfo.InvariantCulture) : ""; }
+        // Model-supplied captions and footnotes occasionally echo the tool
+        // contract. Keep those details in speaker notes, not on the canvas.
+        // Split only optional copy; a mixed factual note retains its other
+        // fragments rather than losing a source or caveat.
+        public static string AudienceNote(string value)
+        {
+            return string.Join("; ", Regex.Split(value ?? "", @"\s*[;·•]\s*")
+                .Select(part => part.Trim())
+                .Where(part => part.Length > 0 && !Regex.IsMatch(part,
+                    @"\b(?:native\s+editable\s+(?:chart|table|slide)|single\s+primary\s+series|primary\s+values\s+only|value\s+axis\s+(?:from|begins\s+at|starts\s+at)|categories\s+(?:shown|formatted)\s+as|source_spans|speaker\s+notes)\b",
+                    RegexOptions.IgnoreCase)));
+        }
         public static object[] Array(IDictionary<string, object> map, string key)
         {
             object value;

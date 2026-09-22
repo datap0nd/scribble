@@ -112,6 +112,26 @@ namespace GuardrailTests
                 .Single(element => Convert.ToString(element["text"]) == captionText);
             if (Convert.ToDouble(caption["size"]) < 14 || Convert.ToDouble(caption["minimum"]) < 14 || Convert.ToDouble(caption["width"]) < 610)
                 throw new Exception("Samsung analytical captions must remain readable at the native presentation minimum.");
+            const string chartCaveat = "June source workbook, Summary!B4:C5";
+            var chartPlan = SamsungPresentationReview.InspectPlan(json.Serialize(new[] { new {
+                title = "Revenue by region", subtitle = "West leads", layout = "chart", unit = "EUR",
+                caption = "Native editable chart; single primary series; value axis from 0",
+                footnote = "Primary values only; value axis begins at zero; " + chartCaveat,
+                sources = "June source workbook", chart = new {
+                    categories = new[] { "North", "South", "West" },
+                    series = new[] { new { name = "Revenue", values = new[] { 10, 12, 16 } } }
+                } } }));
+            var chartPage = ((IEnumerable)json.DeserializeObject(json.Serialize(chartPlan)))
+                .Cast<Dictionary<string, object>>().Single();
+            var chartElements = ((IEnumerable)chartPage["elements"]).Cast<Dictionary<string, object>>().ToArray();
+            var visibleCopy = string.Join(" ", chartElements.Select(e => Convert.ToString(e["text"])));
+            if (visibleCopy.Contains("Native editable chart") || visibleCopy.Contains("single primary series") ||
+                visibleCopy.Contains("value axis") || visibleCopy.Contains("Primary values only"))
+                throw new Exception("Chart implementation instructions leaked onto the audience-facing canvas.");
+            if (!visibleCopy.Contains(chartCaveat) || !visibleCopy.Contains("June source workbook"))
+                throw new Exception("Filtering chart instructions removed a factual source or caveat.");
+            if (!chartElements.Any(e => Convert.ToString(e["text"]) == "EUR" && Convert.ToDouble(e["size"]) >= 11))
+                throw new Exception("Chart units must be legible in the native presentation.");
             var pages = (IEnumerable)SamsungPresentationReview.InspectPlan(json.Serialize(new[] { new { title = "Data", layout = "matrix", subtitle = "Review every row", table = new { headers = new[] { "Item", "Value" }, rows } } }));
             previews.Add(pages);
             File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "SamsungPlans.json"), json.Serialize(previews));

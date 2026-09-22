@@ -207,7 +207,7 @@ namespace Scribble.Chat
                     { "secondary_table", TableSchema() },
                     { "secondary_chart", ChartSchema() },
                     { "takeaway", ToolSchema.String("Evidence-backed conclusion in the bottom blue banner. At most two lines.") },
-                    { "caption", ToolSchema.String("Short table caption; use with matrix/table layouts.") },
+                    { "caption", ToolSchema.String("Short audience-facing table caption for matrix/table layouts only. Omit for charts. Never describe native editability, series count, axis checks, category formatting or other build mechanics.") },
                     { "sources", ToolSchema.String("Exact source references and supporting evidence for claims and numbers. Retained in speaker notes.") },
                     { "evidence", ToolSchema.String("Verbatim source excerpt supporting this slide, copied from user input or a read-tool receipt. Required for data slides. Preserve numbers and units. Never invent an excerpt.") },
                     { "source_spans", new Dictionary<string, object> { { "type", "array" }, { "items", new { type = "string" } }, { "description", "Exact host-issued IDs returned in source_spans by search/read receipts, or rediscovered with read_task_sources. Required for factual non-cover slides when source material was read. Copy IDs exactly; never place prose here. Multiple spans may support one slide and the host resolves their original text." } } },
@@ -223,9 +223,9 @@ namespace Scribble.Chat
                     {
                         "footnote",
                         ToolSchema.String(
-                            "Optional small source note shown at " +
+                            "Optional source citation or material caveat shown at " +
                             "the bottom left (e.g. 'GSCM S/I Biz " +
-                            "Plan'). On a 'cover' slide this is the " +
+                            "Plan'). Do not repeat chart construction or validation instructions here. On a 'cover' slide this is the " +
                             "metadata line instead (e.g. 'MENA / " +
                             "Nov 2024').")
                     }
