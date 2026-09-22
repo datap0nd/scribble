@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Scribble.Chat;
@@ -313,6 +314,123 @@ namespace Scribble.Office
             catch { /* An unreadable native footer cannot bypass visual review. */ }
             return false;
         }
+        internal static string FilterReviewFindings(string review,
+            Func<IDictionary<string, object>, bool> refuted)
+        {
+            try
+            {
+                var json = new System.Web.Script.Serialization.JavaScriptSerializer { MaxJsonLength = int.MaxValue };
+                var report = json.Deserialize<Dictionary<string, object>>(review);
+                var findings = SamsungAuthoringPolicy.Array(report, "findings")
+                    .Select(SamsungAuthoringPolicy.ReadMap).ToArray();
+                if (findings.Length == 0) return review;
+                var remaining = findings.Where(finding => !refuted(finding)).ToArray();
+                if (remaining.Length == findings.Length) return review;
+                report["findings"] = remaining;
+                report["approved"] = remaining.Length == 0;
+                report["issues"] = string.Join("; ", remaining.Select(finding => SamsungAuthoringPolicy.Text(finding, "correction")));
+                return json.Serialize(report);
+            }
+            catch (Exception)
+            {
+                // Malformed review output never bypasses inspection.
+                return review;
+            }
+        }
+        private static string FilterNativeRefutedReview(string review,
+            IReadOnlyList<PresentationDraftWriter.SamsungOutput> outputs)
+        {
+            return FilterReviewFindings(review, finding =>
+            {
+                var type = SamsungAuthoringPolicy.Text(finding, "type");
+                if (string.Equals(type, "facts", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(type, "coverage", StringComparison.OrdinalIgnoreCase)) return false;
+                var id = SamsungAuthoringPolicy.Text(finding, "slide_id");
+                var output = outputs.FirstOrDefault(item => item.Page.Source.Id == id) ??
+                    (outputs.Count == 1 ? outputs[0] : null);
+                if (output == null) return false;
+                var correction = SamsungAuthoringPolicy.Text(finding, "correction");
+                if (Regex.IsMatch(correction, @"\bspeaker\s+notes?\b", RegexOptions.IgnoreCase) &&
+                    Regex.IsMatch(correction, @"\b(?:overlap|collision|move|resize)\b", RegexOptions.IgnoreCase))
+                    return true; // Speaker notes are not slide-canvas objects.
+                if (correction.IndexOf(PresentationDraftWriter.DraftMarker, StringComparison.OrdinalIgnoreCase) >= 0 &&
+                    NativeTextExists(output, PresentationDraftWriter.DraftMarker)) return true;
+                if (Regex.IsMatch(correction, @"\b(?:zero[- ]based|zero\s+tick|0\s+tick|starts?\s+(?:at|from)\s+0)\b", RegexOptions.IgnoreCase) &&
+                    NativeZeroBaseline(output)) return true;
+                if (Regex.IsMatch(correction, @"\b(?:source|citation|footer|footnote)\b.{0,85}\b(?:cut off|clipp\w*|truncat\w*)\b", RegexOptions.IgnoreCase) &&
+                    NativeFooterFits(output)) return true;
+                if (Regex.IsMatch(correction, @"\b(?:takeaway|banner)\b.{0,100}\b(?:missing|represented|present)\b", RegexOptions.IgnoreCase) &&
+                    NativeTextExists(output, SamsungAuthoringPolicy.AudienceTakeaway(output.Page.Source.Takeaway))) return true;
+                if (Regex.IsMatch(correction, @"\b(?:cards?|containers?|headings?)\b", RegexOptions.IgnoreCase) &&
+                    Regex.IsMatch(correction, @"\b(?:single|generic|missing|absent|implement|add|replac\w*)\b", RegexOptions.IgnoreCase) &&
+                    NativeCardHeadingsPresent(output)) return true;
+                return false;
+            });
+        }
+        private static bool NativeTextExists(PresentationDraftWriter.SamsungOutput output, string wanted)
+        {
+            if (string.IsNullOrWhiteSpace(wanted)) return false;
+            try
+            {
+                dynamic slide = output.Slide;
+                for (var index = 1; index <= (int)slide.Shapes.Count; index++)
+                {
+                    dynamic shape = slide.Shapes[index];
+                    if ((int)shape.HasTextFrame == 0) continue;
+                    if (string.Equals(Convert.ToString(shape.TextFrame.TextRange.Text).Trim(), wanted.Trim(),
+                        StringComparison.OrdinalIgnoreCase)) return true;
+                }
+            }
+            catch { /* An unreadable native slide cannot refute a finding. */ }
+            return false;
+        }
+        private static bool NativeCardHeadingsPresent(PresentationDraftWriter.SamsungOutput output)
+        {
+            return output.Page.Source.Layout == "cards" && output.Page.Source.Cards.Count >= 2 &&
+                output.Page.Source.Cards.Select(card => card.Heading).Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Count() == output.Page.Source.Cards.Count &&
+                output.Page.Source.Cards.All(card => NativeTextExists(output, card.Heading));
+        }
+        private static bool NativeZeroBaseline(PresentationDraftWriter.SamsungOutput output)
+        {
+            try
+            {
+                dynamic slide = output.Slide; var count = 0;
+                for (var index = 1; index <= (int)slide.Shapes.Count; index++)
+                {
+                    dynamic shape = slide.Shapes[index];
+                    if ((int)shape.HasChart == 0) continue;
+                    count++;
+                    if (Math.Abs(Convert.ToDouble(shape.Chart.Axes(2).MinimumScale)) > .001) return false;
+                }
+                return count > 0;
+            }
+            catch { return false; }
+        }
+        private static bool NativeFooterFits(PresentationDraftWriter.SamsungOutput output)
+        {
+            try
+            {
+                dynamic slide = output.Slide; var found = false;
+                var height = (double)slide.Parent.PageSetup.SlideHeight;
+                var width = (double)slide.Parent.PageSetup.SlideWidth;
+                for (var index = 1; index <= (int)slide.Shapes.Count; index++)
+                {
+                    dynamic shape = slide.Shapes[index];
+                    if ((int)shape.HasTextFrame == 0 || (double)shape.Top < height * .90) continue;
+                    dynamic range = shape.TextFrame.TextRange;
+                    var text = Convert.ToString(range.Text).Trim();
+                    if (text.Length < 20 || text == PresentationDraftWriter.DraftMarker) continue;
+                    found = true;
+                    if ((double)shape.Left < -1 || (double)shape.Left + (double)shape.Width > width + 1 ||
+                        (double)shape.Top + (double)shape.Height > height + 1 ||
+                        (double)range.BoundHeight > (double)shape.Height + 1 ||
+                        (double)range.BoundWidth > (double)shape.Width + 1) return false;
+                }
+                return found;
+            }
+            catch { return false; }
+        }
         private async Task ReviewOwnedPagesAsync(IReadOnlyList<PresentationDraftWriter.SamsungOutput> outputs,
             Dictionary<string, Dictionary<string, object>> content, string source, string prompt, OpenAiCompatibleClient client,
             AppSettings settings, CancellationToken token, SamsungGenerationJournal journal, Action<int, int> progress)
@@ -328,6 +446,7 @@ namespace Scribble.Office
                     _serializer.Serialize(new { slide_id = output.Page.Source.Id, native_slide_id = (int)((dynamic)output.Slide).SlideID,
                         logical_content = content[output.Page.Source.Id], expected_page = output.Page.Elements.Select(e => new { text = e.Text, table = e.Table == null ? null : new { e.Table.Headers, e.Table.Rows }, chart = e.Chart == null ? null : new { title = e.Chart.Title, type = e.Chart.TypeCode, e.Chart.Categories, series = e.Chart.Series.Select(v => new { v.Name, v.Values }) } }), evidence = output.Page.Source.Evidence }), output.Image, token);
                 if (PresentationInspection.Fingerprint(output.Slide) != before || PresentationDraftWriter.ExportSamsung(output) != output.Image) throw new InvalidOperationException("SLIDE_CHANGED_DURING_REVIEW");
+                review = FilterNativeRefutedReview(review, new[] { output });
                 if (ReviewApproved(review) ||
                     (NativePageNumberMatches(output) && SamsungAuthoringPolicy.OnlyHostOwnedPageNumberBlockers(review)) ||
                     SamsungAuthoringPolicy.OnlyOtherSlideCoverageBlockers(review, output.Page.Source.Id))
@@ -356,6 +475,7 @@ namespace Scribble.Office
                         "Review consecutive native slides as an executive audience would see them at thumbnail size. Check visual consistency, focal hierarchy, balanced use of the canvas, meaningful visual storytelling and Samsung fidelity. Reject slides that resemble a Word page pasted onto a canvas or rely on a plain multiline data dump. A takeaway that adds a distinct sourced fact is not a repeated-conclusion defect. White space framing a substantial native chart or table is intentional. The page number is host-owned and follows actual native slide order; flag it only when the visible number differs from its supplied expected_page element. Report the provided logical slide IDs for affected slides." + SamsungAuthoringPolicy.ReviewContract,
                         _serializer.Serialize(new { prompt, slides = subset.Select(o => new { slide_id = o.Page.Source.Id, native_id = (int)((dynamic)o.Slide).SlideID,
                             expected_page = o.Page.Elements.Select(e => new { text = e.Text, table = e.Table == null ? null : new { e.Table.Headers, e.Table.Rows }, chart = e.Chart == null ? null : new { title = e.Chart.Title, type = e.Chart.TypeCode, e.Chart.Categories, series = e.Chart.Series.Select(v => new { v.Name, v.Values }) } }) }) }), SamsungDeckOverview.Montage(subset.Select(o => o.Image)), token);
+                    visual = FilterNativeRefutedReview(visual, subset);
                     if (!ReviewApproved(visual) &&
                         !(subset.All(NativePageNumberMatches) && SamsungAuthoringPolicy.OnlyHostOwnedPageNumberBlockers(visual)))
                     { findings = visual; break; }
@@ -366,6 +486,7 @@ namespace Scribble.Office
                 if (findings == null)
                 {
                     var verdict = await ReviewSamsungAsync(client, settings, SamsungAuthoringPolicy.DeckReview + SamsungAuthoringPolicy.ReviewContract, deckContent, null, token);
+                    verdict = FilterNativeRefutedReview(verdict, outputs);
                     if (!ReviewApproved(verdict) &&
                         !(outputs.All(NativePageNumberMatches) && SamsungAuthoringPolicy.OnlyHostOwnedPageNumberBlockers(verdict)))
                         findings = verdict;

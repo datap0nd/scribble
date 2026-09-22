@@ -250,6 +250,22 @@ namespace GuardrailTests
                 "{\"slides\":[{\"id\":\"headline\"},{\"id\":\"headline\"}]}");
             Reject(() => Invoke(typeof(DocumentDraftHost), "SelectSlideRepair", null, ambiguousRepair, "headline"),
                 "SLIDE_REPAIR_COUNT");
+            var visualReport = "{\"approved\":false,\"issues\":\"marker and real overflow\",\"findings\":[" +
+                "{\"slide_id\":\"headline\",\"severity\":\"blocker\",\"correction\":\"Remove host draft marker\"}," +
+                "{\"slide_id\":\"headline\",\"severity\":\"blocker\",\"correction\":\"Fix actual table overlap\"}]}";
+            Func<IDictionary<string, object>, bool> refuteMarker = finding =>
+                SamsungAuthoringPolicy.Text(finding, "correction").Contains("draft marker");
+            var filtered = (string)Invoke(typeof(DocumentDraftHost), "FilterReviewFindings", null,
+                visualReport, refuteMarker);
+            var filteredMap = json.Deserialize<Dictionary<string, object>>(filtered);
+            Check(!Convert.ToBoolean(filteredMap["approved"]) &&
+                SamsungAuthoringPolicy.Array(filteredMap, "findings").Length == 1 &&
+                filtered.Contains("actual table overlap") && !filtered.Contains("Remove host draft marker"),
+                "A genuine visual defect was lost while filtering a native-refuted finding.");
+            var allRefuted = (string)Invoke(typeof(DocumentDraftHost), "FilterReviewFindings", null,
+                visualReport, new Func<IDictionary<string, object>, bool>(finding => true));
+            Check(Convert.ToBoolean(json.Deserialize<Dictionary<string, object>>(allRefuted)["approved"]),
+                "Fully native-refuted findings still blocked an unchanged slide.");
             Check((bool)Invoke(typeof(DocumentDraftHost), "CanRetrySlideRepairShape", null,
                 new InvalidOperationException("SLIDE_REPAIR_COUNT: ambiguous target"), 0) &&
                 (bool)Invoke(typeof(DocumentDraftHost), "CanRetrySlideRepairShape", null,
