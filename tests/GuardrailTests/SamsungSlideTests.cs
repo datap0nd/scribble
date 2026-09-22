@@ -196,6 +196,8 @@ namespace GuardrailTests
             SamsungPresentationReview.InspectPlan(json.Serialize(new[] { new {
                 title = "Monthly comparison", layout = "cover", evidence = new string('E', 18000) } }));
             if (SamsungSlideDesign.FontFor("한글", "Arial") != "Malgun Gothic") throw new Exception("Korean font mapping lost.");
+            if (SamsungSlideDesign.FontFor("Planned ≠ completed", "Samsung Sharp Sans Bold") != "Arial")
+                throw new Exception("PowerPoint comparison glyph can render as a hash in the title font.");
             if (!SamsungSlideDesign.SameOwner("ABCDEF", "abcdef") || SamsungSlideDesign.SameOwner("", "")) throw new Exception("PowerPoint tag normalization broke ownership checks.");
         }
         public static void EvidenceAndNumbers()

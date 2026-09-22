@@ -350,7 +350,10 @@ namespace Scribble.Office
                         var following = tokens[tokenIndex].point.Substring(
                             tokens[tokenIndex].match.Index + tokens[tokenIndex].match.Length);
                         var label = Regex.Match(following, @"^\s+(?<word>[A-Za-z]+)");
-                        heroLabels[cardIndex, tokenIndex] = label.Success ? label.Groups["word"].Value : "";
+                        var preceding = tokens[tokenIndex].point.Substring(0, tokens[tokenIndex].match.Index)
+                            .Trim().TrimEnd(':', '=');
+                        heroLabels[cardIndex, tokenIndex] = preceding.Length > 0 && preceding.Length <= 24
+                            ? preceding : label.Success ? label.Groups["word"].Value : "";
                     }
                 }
             }
@@ -440,18 +443,27 @@ namespace Scribble.Office
                         hero.Alignment = 3;
                         elements.Add(hero);
                     }
-                    var body = string.Join("\n", card.Points);
-                    if (body.Length > 0)
+                    // The dual metric rail repeats two numbers as large callouts.
+                    // Omit simple metric-only source lines from the body and put
+                    // their original labels beneath the callouts instead.
+                    var bodyPoints = i == dualHeroIndex
+                        ? card.Points.Where(point =>
+                            !IsStandaloneHeroPoint(point, evidenceHeroes[i]) &&
+                            !IsStandaloneHeroPoint(point, secondaryHero[i]))
+                        : card.Points;
+                    var body = string.Join("\n", bodyPoints);
+                    if (body.Length > 0 || (!compact && heroMode && !string.IsNullOrEmpty(evidenceHeroes[i])))
                     {
                         var bodyStart = compact ? 45f : 64f;
                         var bodySpace = evidenceBox.Height - (compact ? 52f : 78f);
                         var bodyWidth = evidenceBox.Width - 28f;
                         if (!compact && heroMode && !string.IsNullOrEmpty(evidenceHeroes[i]))
                         {
-                            elements.Add(TextElement(body,
-                                new RectangleF(evidenceBox.X + 14f, evidenceBox.Y + bodyStart,
-                                    bodyWidth, evidenceBox.Height - 160f),
-                                16, 14, "Arial", false, null, "#202A35"));
+                            if (body.Length > 0)
+                                elements.Add(TextElement(body,
+                                    new RectangleF(evidenceBox.X + 14f, evidenceBox.Y + bodyStart,
+                                        bodyWidth, evidenceBox.Height - 160f),
+                                    16, 14, "Arial", false, null, "#202A35"));
                             if (i == dualHeroIndex)
                             {
                                 var metricWidth = (bodyWidth - 8f) / 2f;
@@ -523,6 +535,16 @@ namespace Scribble.Office
                    Regex.IsMatch(before,
                        @"\b(?:revenue|cost|margin|sales|budget|profit|headcount|rate|total)\s*(?:EUR|USD|%)?\s*[:=]?\s*$",
                        RegexOptions.IgnoreCase);
+        }
+
+        private static bool IsStandaloneHeroPoint(string point, string hero)
+        {
+            if (string.IsNullOrWhiteSpace(point) || string.IsNullOrWhiteSpace(hero)) return false;
+            var index = point.IndexOf(hero, StringComparison.Ordinal);
+            if (index < 0 || point.IndexOf(hero, index + hero.Length, StringComparison.Ordinal) >= 0) return false;
+            var label = point.Remove(index, hero.Length).Trim().TrimEnd(':', '=');
+            return label.Length > 0 && label.Length <= 32 &&
+                Regex.IsMatch(label, @"^[\p{L}\s:/%=-]+$");
         }
 
         private static float EvidenceCardContentHeight(DraftCard card, float width)

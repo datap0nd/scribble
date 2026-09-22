@@ -207,6 +207,16 @@ namespace GuardrailTests
             Check(concentratedHeroes.Contains("24") && concentratedHeroes.Contains("4") &&
                 !concentratedHeroes.Contains("0144") && !concentratedHeroes.Contains("2026"),
                 "A single quantified card lost its distinct metric anchors or promoted an identifier/year.");
+            var dualDraft = Invoke(Type("PresentationDraftWriter"), "ParseSlides", null,
+                (object)json.Deserialize<object[]>("[{\"id\":\"bounds\",\"layout\":\"cards\",\"title\":\"Evidence bounds\",\"cards\":[{\"heading\":\"June figures\",\"points\":[\"Revenue EUR 82,992\",\"Cost EUR 36,714\",\"24 ledger rows\"]},{\"heading\":\"Period scope\",\"points\":[\"June from Ledger\"]},{\"heading\":\"Method\",\"points\":[\"Blanks are unknown\"]}]}]"));
+            var dualPage = ((IEnumerable)Invoke(Type("PresentationDraftWriter"), "ComposeSamsung", null, dualDraft))
+                .Cast<object>().Single();
+            var dualText = ((IEnumerable)dualPage.GetType().GetField("Elements", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(dualPage))
+                .Cast<object>().Select(element => (string)element.GetType().GetField("Text", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(element)).ToArray();
+            Check(dualText.Contains("82,992") && dualText.Contains("36,714") && dualText.Contains("Revenue EUR") &&
+                dualText.Contains("Cost EUR") && dualText.Contains("24 ledger rows") &&
+                !dualText.Any(value => value.Contains("Revenue EUR 82,992") || value.Contains("Cost EUR 36,714")),
+                "The two hero metrics repeated their source lines instead of retaining labels and one readable copy of each number.");
             Check((bool)Invoke(Type("PresentationDraftWriter"), "RetryableSamsungChartFailure", null,
                 "write chart data: COMException 0x800A01A8 Exception from HRESULT: 0x800A01A8"),
                 "A transient embedded Excel chart-grid failure should be retried inside the host call.");

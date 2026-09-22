@@ -68,6 +68,9 @@ namespace Scribble.Office
         public static string FontFor(string text, string preferred)
         {
             if ((text ?? "").Any(c => (c >= '\uAC00' && c <= '\uD7AF') || (c >= '\u1100' && c <= '\u11FF'))) return "Malgun Gothic";
+            // Samsung Sharp Sans can substitute these comparison glyphs with '#'
+            // in native PowerPoint export. Use a font that preserves their meaning.
+            if ((text ?? "").IndexOfAny(new[] { '\u2260', '\u2264', '\u2265' }) >= 0) return "Arial";
             using (var installed = new InstalledFontCollection())
                 return installed.Families.Any(f => f.Name.Equals(preferred, StringComparison.OrdinalIgnoreCase)) ? preferred : "Arial";
         }
