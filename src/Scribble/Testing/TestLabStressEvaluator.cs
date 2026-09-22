@@ -268,6 +268,7 @@ namespace Scribble.Testing
             if (native.slides.SelectMany(s => s.charts).Count() < (int)Number(rule, "minimum_native_charts", 0)) return false;
             if (native.slides.SelectMany(s => s.shapes).Count(s => s.is_table_cell) < (int)Number(rule, "minimum_table_cells", 0)) return false;
             if (!RequiredNativeTables(native, rule)) return false;
+            if (!RequiredPeriodDirections(native, rule)) return false;
             var themePath = Text(rule, "theme_ref");
             if (string.IsNullOrEmpty(themePath) || !themePath.StartsWith("evaluator-only/", StringComparison.Ordinal)) return false;
             var manifest = TestLabSuite.Read<KitManifest>(Path.Combine(run.fixture_root, "manifest.json"));
@@ -335,6 +336,36 @@ namespace Scribble.Testing
                     })).All(cell => cells.TryGetValue(cell.Key, out var actual) &&
                         string.Equals(actual, cell.Value, StringComparison.OrdinalIgnoreCase));
                 })) return false;
+            }
+            return true;
+        }
+        private static bool RequiredPeriodDirections(StressNative native, Dictionary<string, object> rule)
+        {
+            foreach (var item in Items(Value(rule, "period_directions")))
+            {
+                var required = item as Dictionary<string, object>;
+                if (required == null) return false;
+                var slide = native.slides.FirstOrDefault(value => value.number == (int)Number(required, "slide", -1));
+                var metric = Text(required, "metric");
+                var previous = Text(required, "previous_period");
+                var currentValue = Number(required, "current_value", double.NaN);
+                var previousValue = Number(required, "previous_value", double.NaN);
+                DateTime date;
+                if (slide == null || string.IsNullOrWhiteSpace(metric) ||
+                    !DateTime.TryParseExact(previous, "yyyy-MM", CultureInfo.InvariantCulture,
+                        DateTimeStyles.None, out date) || double.IsNaN(currentValue) || double.IsNaN(previousValue)) return false;
+                var previousLabel = date.ToString("MMMM", CultureInfo.InvariantCulture);
+                var direction = @"\b(?<direction>above|below|higher than|lower than|greater than|less than|up from|down from)\s+(?:" +
+                    Regex.Escape(previousLabel) + "|" + Regex.Escape(previous) + @")\b";
+                foreach (var shape in slide.shapes.Where(shape => !string.IsNullOrWhiteSpace(shape.text)))
+                {
+                    var mention = Regex.Match(shape.text, @"\b" + Regex.Escape(metric) + @"\b.{0,100}?" + direction,
+                        RegexOptions.IgnoreCase | RegexOptions.Singleline);
+                    if (!mention.Success) continue;
+                    var higher = Regex.IsMatch(mention.Groups["direction"].Value,
+                        @"^(?:above|higher than|greater than|up from)$", RegexOptions.IgnoreCase);
+                    if (higher ? currentValue <= previousValue : currentValue >= previousValue) return false;
+                }
             }
             return true;
         }

@@ -184,6 +184,12 @@ def presentation_check(deck, count, wb, repair_source=False):
                      ["Leon Park", "Review South exceptions", "2026-07-12"],
                      ["Nadia Shah", "Confirm East operating assumptions", "2026-07-14"],
                      ["Evan Reed", "Review West source completeness", "2026-07-16"]]}]
+        # A correct number with a false comparative is still wrong. The
+        # previous live deck said June revenue was "above May" even though
+        # its own native chart had May 85,519 > June 82,992.
+        rule["period_directions"] = [{"slide": 1, "metric": "Revenue",
+            "previous_period": wb["facts"]["previous"]["period"],
+            "current_value": current["primary"], "previous_value": wb["facts"]["previous"]["primary"]}]
     return rule
 
 

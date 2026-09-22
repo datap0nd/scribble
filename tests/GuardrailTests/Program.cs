@@ -423,6 +423,7 @@ namespace GuardrailTests
                 Run("Stress numeric outputs require native recalculation", StressGradingTests.NativeCellsRequireRecalculation);
                 Run("Stress charts stay in their requested Office host", StressGradingTests.NativeChartsStayInRequestedHost);
                 Run("Stress cover source line remains footer metadata", StressGradingTests.CoverSourceLineIsFooterMetadata);
+                Run("Stress known-outcome oracle rejects false month direction", StressGradingTests.FalsePeriodDirectionFailsKnownOutcome);
                 Run("Stress mailbox grading requires complete search and exact IDs", StressGradingTests.MailRequiresCompleteSearchAndExactIds);
                 Run("Stress incomplete cells and draft metric labels stay grounded", StressGradingTests.IncompleteCellsAndDraftMetricsRemainGrounded);
                 Run("Stress hero cases require exact native and verified browser evidence", StressGradingTests.HeroCasesRequireExactNativeAndBrowserEvidence);

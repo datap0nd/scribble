@@ -164,6 +164,28 @@ namespace GuardrailTests
             Check(Evaluate(oracle, new[] { capture }, "", new[] { "pptx" }, theme).Any(c => !c.passed),
                 "Undersized body copy outside the footer band passed presentation grading.");
         }
+        public static void FalsePeriodDirectionFailsKnownOutcome()
+        {
+            var method = typeof(TestLabStressEvaluator).GetMethod("RequiredPeriodDirections",
+                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+            Check(method != null, "The native presentation grader lacks the period-direction oracle.");
+            var required = new Dictionary<string, object> {
+                { "slide", 1 }, { "metric", "Revenue" }, { "previous_period", "2026-05" },
+                { "current_value", 82992 }, { "previous_value", 85519 } };
+            var rule = new Dictionary<string, object> { { "period_directions", new object[] { required } } };
+            var shape = new StressShape();
+            var native = new StressNative { slides = new[] { new StressSlide { number = 1, shapes = new[] { shape } } } };
+            Func<string, bool> passes = value => {
+                shape.text = value;
+                return (bool)method.Invoke(null, new object[] { native, rule });
+            };
+            Check(!passes("June 2026 revenue reached 82,992 EUR, above May"),
+                "The native grader accepted June revenue as above May when 82,992 < 85,519.");
+            Check(passes("June 2026 revenue reached 82,992 EUR, below May"),
+                "The native grader rejected the correct June-versus-May direction.");
+            Check(passes("June 2026 revenue reached 82,992 EUR"),
+                "The native grader required an optional comparative claim.");
+        }
         public static void IncompleteCellsAndDraftMetricsRemainGrounded()
         {
             var cellOracle = new { id = "EX01", checks = new object[] { new { kind = "cell_text", sheet = "Scribble Draft*", cell = "F4", expected = "incomplete" } } };
