@@ -55,6 +55,9 @@ pin a provider or record each serving provider before comparing performance.
 The local deployment candidate is Ollama `qwen3.8:27b` on
 `127.0.0.1:11434`. A bounded 4,096-context vision probe with a synthetic red
 square returned `red` (37 prompt tokens, 2 generated tokens, 27.35 seconds).
+The no-load `/api/show` metadata declares completion, vision, tools, and
+thinking capabilities and a 262,144-token model context length. That declared
+length is not an operationally verified context on this PC.
 Free RAM fell from 13.43 GiB to 0.35 GiB. The model was unloaded and the exact
 server process started for the probe was stopped; free RAM recovered to 14.5
 GiB. Larger-context, strict-schema, and tool-call probes remain unverified.

@@ -3,11 +3,36 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from zipfile import ZipFile
 
-from summarize_usage import summarize_trace_export
+from summarize_usage import summarize, summarize_trace_export
 
 
 class TraceExportSummaryTests(unittest.TestCase):
+    def test_existing_suite_manifest_route_still_counts_zip_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            evidence = root / "case.zip"
+            with ZipFile(evidence, "w") as archive:
+                archive.writestr("timeline.jsonl", "\n".join((
+                    json.dumps({"stage": "inference_request"}),
+                    json.dumps({"stage": "inference_response", "detail": {
+                        "model": "synthetic", "response": json.dumps({
+                            "provider": "local", "usage": {
+                                "prompt_tokens": 7, "completion_tokens": 2, "cost": 0.0,
+                            },
+                        }),
+                    }}),
+                )))
+            suite = root / "suite.json"
+            suite.write_text(json.dumps({"suite": {"id": "suite"}, "cases": [
+                {"id": "XA01", "status": "finished", "evidence": str(evidence)},
+            ]}), encoding="utf-8")
+            result = summarize(suite)
+            self.assertEqual(result["response_count"], 1)
+            self.assertEqual(result["cases"][0]["calls"][0]["prompt_tokens"], 7)
+            self.assertTrue(result["cost_complete"])
+
     def test_counts_requests_and_omits_prompt_and_response_text(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
