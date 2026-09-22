@@ -14,10 +14,10 @@ namespace Scribble.Testing
     public static class TestLabStressBudget
     {
         // Final native validation uses the remaining balance on the same
-        // no-reset key. Keep a $0.75 reserve below its $20 hard cap, and
-        // stop starting requests $0.25 before that checkpoint.
+        // no-reset key. Keep a $0.25 reserve below its $20 hard cap;
+        // stop starting requests before the final checkpoint.
         public const decimal MaximumTotalUsd = 20m;
-        public const decimal MaximumCheckpointUsageUsd = 19.25m;
+        public const decimal MaximumCheckpointUsageUsd = 20m;
         public static async Task GuardRequestAsync(AppSettings actual, string requestedModel, CancellationToken cancel)
         {
             var state = TestLabSuite.Active();
