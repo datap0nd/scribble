@@ -162,6 +162,24 @@ namespace GuardrailTests
                 ((string)compiled.Slides[0]["sources"]).Contains("WB01"),
                 "Headline prose or citation lost its verified fact binding.");
 
+            plan.Slides[0].Subtitle.Add(Word(" and 9% growth"));
+            var numericProseRejected = false;
+            try { AnalysisDocumentCompiler.Compile(artifact, plan); }
+            catch (InvalidOperationException error)
+            { numericProseRejected = error.Message.Contains("NUMERIC_LITERAL_UNVERIFIED"); }
+            Check(numericProseRejected,
+                "A valid fact reference laundered an unsupported numeric claim.");
+            plan.Slides[0].Subtitle.RemoveAt(plan.Slides[0].Subtitle.Count - 1);
+
+            plan.Slides[1].TableRows[0].Cells[1] = Text("85,519");
+            var numericTableRejected = false;
+            try { AnalysisDocumentCompiler.Compile(artifact, plan); }
+            catch (InvalidOperationException error)
+            { numericTableRejected = error.Message.Contains("NUMERIC_LITERAL_UNVERIFIED"); }
+            Check(numericTableRejected,
+                "A slide table accepted an author-supplied numerical value.");
+            plan.Slides[1].TableRows[0].Cells[1] = Ref(mayRevenue);
+
             plan.Slides[1].Chart.Categories[0] = "2026-04";
             var wrongPeriodRejected = false;
             try { AnalysisDocumentCompiler.Compile(artifact, plan); }

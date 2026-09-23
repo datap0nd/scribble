@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Text.RegularExpressions;
 using Scribble.Security;
 
 namespace Scribble.Office
@@ -236,6 +237,8 @@ namespace Scribble.Office
             if (cell.Text.StartsWith("=", StringComparison.Ordinal))
                 throw new InvalidOperationException(
                     "ANALYSIS_LITERAL_FORMULA_INVALID: Formula cells require an expected fact binding.");
+            if (expected == null)
+                RejectNumericLiteral(cell.Text);
             return cell.Text;
         }
 
@@ -248,7 +251,11 @@ namespace Scribble.Office
                 if (part == null || (part.Text == null) ==
                     (part.FactId == null))
                     throw new InvalidOperationException("ANALYSIS_TEXT_AUTHORITY_AMBIGUOUS");
-                if (part.FactId == null) rendered.Add(part.Text);
+                if (part.FactId == null)
+                {
+                    RejectNumericLiteral(part.Text);
+                    rendered.Add(part.Text);
+                }
                 else
                 {
                     used.Add(part.FactId);
@@ -259,6 +266,17 @@ namespace Scribble.Office
                 }
             }
             return string.Join("", rendered);
+        }
+
+        // A fact reference cannot launder a separate model-supplied number
+        // in the surrounding prose. This is a narrow structural check;
+        // qualitative claims still require the Phase 3 evidence review.
+        private static void RejectNumericLiteral(string value)
+        {
+            if (Regex.IsMatch(value ?? string.Empty,
+                @"(?:[$€£]\s*\d|(?<![\p{L}\d])[-+]?\d+(?:[.,]\d+)?\s*%|(?<![\p{L}\d])[-+]?\d{2,}(?:[.,]\d+)*)"))
+                throw new InvalidOperationException(
+                    "ANALYSIS_NUMERIC_LITERAL_UNVERIFIED: Use a verified fact reference for numbers in slide prose and tables.");
         }
 
         private static object Chart(AnalysisPlanChart chart,
