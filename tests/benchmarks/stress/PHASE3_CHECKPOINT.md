@@ -82,6 +82,18 @@ passed, and the architectural-feasibility pilot is not authorized yet.
   passed a second disposable Office trial after adding a native chart-series
   edit and restore to the review-freshness test. All six structural result
   fields remained true, with `full_acceptance_passed=false` as expected.
+- `33c01f6` closes one source-to-analysis gap in the development pilot.
+  `AnalysisTableArtifactBuilder` binds a complete typed period table to
+  source-cell facts; it rejects unresolved formula caches, blank metrics,
+  duplicate keys, ambiguous headers, partial coverage, and mismatched
+  metric/currency labels. This automatic binding currently supports a
+  `Period` column with `YYYY-MM` text and exact source metric headers; broader
+  semantic aliases need a separately trusted mapping. The CI-built harness
+  from [run 35847770074](https://github.com/datap0nd/scribble/actions/runs/35847770074)
+  read actual disposable Excel cells into that artifact, then passed the
+  live-formula report, four native slides, source-preservation, isolated
+  retry, typed review and renderer-repair checks. Full CI was running when
+  recorded. No model generated the plan, and `full_acceptance_passed=false`.
 
 ## Still required for the Phase 3 exit gate
 
