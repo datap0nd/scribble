@@ -755,8 +755,8 @@ namespace Scribble.Office
                 nextRowOffset = rowOffset + rows;
             }
             var complete = nextRowOffset >= totalRows;
-            WorkbookTypedRead typed = CaptureTypedPage((object)page,
-                rows, columns);
+            WorkbookTypedRead typed = bindAnalysis
+                ? CaptureTypedPage((object)page, rows, columns) : null;
             AnalysisArtifact analysis = null;
             if (bindAnalysis)
             {
@@ -828,13 +828,16 @@ namespace Scribble.Office
                     { "complete", complete },
                     { "next_row_offset", complete ? 0 : nextRowOffset },
                     { "next_column_offset", complete ? 0 : nextColumnOffset },
-                    { "cells_tsv", text },
-                    { "cell_types_tsv", typed.TypesTsv },
-                    { "typed_cells", typed.Cells },
-                    { "typed_capture_complete", typed.Complete },
-                    { "number_formats_complete", typed.NumberFormatsComplete },
-                    { "calculation_state", typed.CalculationState }
+                    { "cells_tsv", text }
                 };
+            if (typed != null)
+            {
+                payload["cell_types_tsv"] = typed.TypesTsv;
+                payload["typed_cells"] = typed.Cells;
+                payload["typed_capture_complete"] = typed.Complete;
+                payload["number_formats_complete"] = typed.NumberFormatsComplete;
+                payload["calculation_state"] = typed.CalculationState;
+            }
             if (analysis != null)
             {
                 payload["analysis_id"] = analysis.AnalysisId;
@@ -940,10 +943,17 @@ namespace Scribble.Office
             try
             {
                 numberFormats = range.NumberFormat;
+                if (numberFormats == DBNull.Value)
+                    numberFormats = WorkbookTypedCapture.ResolveMixedNumberFormats(
+                        numberFormats, rows, columns,
+                        column => (object)range.Columns[column + 1].NumberFormat,
+                        (row, column) => (object)range.Cells[row + 1,
+                            column + 1].NumberFormat);
                 if (numberFormats == null) formatsComplete = false;
             }
             catch
             {
+                numberFormats = null;
                 formatsComplete = false;
             }
             string worksheetName = Convert.ToString(

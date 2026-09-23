@@ -521,6 +521,38 @@ namespace GuardrailTests
             }
         }
 
+        public static void MixedExcelFormatsResolveDates()
+        {
+            var values = new object[,] { { "Period", "Amount" },
+                { 45808d, 120d } };
+            var columnReads = 0;
+            var cellReads = 0;
+            var formats = WorkbookTypedCapture.ResolveMixedNumberFormats(
+                DBNull.Value, 2, 2,
+                column => { columnReads++; return column == 0
+                    ? DBNull.Value : (object)"#,##0"; },
+                (row, column) => { cellReads++; return row == 1
+                    ? (object)"m/d/yy" : "General"; });
+            var table = WorkbookTypedCapture.Capture("mixed", "Ledger",
+                values, null, formats, null, 2, 2, 1, 1);
+            Check(columnReads == 2 && cellReads == 2 &&
+                table.Cells.Single(cell => cell.Reference == "A2")
+                    .ValueType == AnalysisContract.DateValue &&
+                table.Cells.Single(cell => cell.Reference == "B2")
+                    .ValueType == AnalysisContract.DecimalValue,
+                "Excel DBNull mixed formats did not resolve the real date column.");
+            Check(WorkbookTypedCapture.ResolveMixedNumberFormats(
+                    DBNull.Value, 501, 1, _ => "General",
+                    (_, __) => "General") == null,
+                "Oversized mixed-format range should remain incomplete.");
+            var rejected = false;
+            try { WorkbookTypedCapture.Capture("mixed", "Ledger",
+                values, null, DBNull.Value, null, 2, 2, 1, 1); }
+            catch (InvalidOperationException exception)
+            { rejected = exception.Message.Contains("ANALYSIS_NUMBER_FORMAT_INCOMPLETE"); }
+            Check(rejected, "Unresolved DBNull formats were silently typed as numbers.");
+        }
+
         private static void Entry(
             ZipArchive archive,
             string name,
