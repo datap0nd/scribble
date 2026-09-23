@@ -59,6 +59,12 @@ namespace Scribble.Office
                         "ANALYSIS_PILOT_FORMULA_MISMATCH: " + expected.Key +
                         " expected " + wanted.ToString(CultureInfo.InvariantCulture) +
                         " but Excel returned " + actual.ToString(CultureInfo.InvariantCulture));
+                // Excel's generic optional-decimal format can print a bare
+                // trailing separator in PDF exports. Use a definite native
+                // format only after the fact has passed readback.
+                var scale = (decimal.GetBits(wanted)[3] >> 16) & 0xff;
+                cell.NumberFormat = scale == 0 ? "#,##0" :
+                    scale <= 2 ? "#,##0.00" : "General";
             }
             return status + " Verified " + compiled.ExpectedFormulaFacts.Count +
                 " live formula result(s) against the analysis.";
