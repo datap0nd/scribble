@@ -27,6 +27,7 @@ namespace Scribble.Office
         public string LogicalSlideId { get; set; }
         public int NativeSlideId { get; set; }
         public string TargetId { get; set; }
+        public string OtherTargetId { get; set; }
         public string Observed { get; set; }
         public string Expected { get; set; }
     }
@@ -187,6 +188,12 @@ namespace Scribble.Office
                 string.IsNullOrWhiteSpace(measure.Code) ||
                 string.IsNullOrWhiteSpace(measure.TargetId) ||
                 !Routes.ContainsKey(measure.Code) || Routes[measure.Code][0] != "renderer" ||
+                (measure.Code == "COLLISION"
+                    ? string.IsNullOrWhiteSpace(measure.OtherTargetId) ||
+                        !measure.TargetId.StartsWith("shape:", StringComparison.Ordinal) ||
+                        !measure.OtherTargetId.StartsWith("shape:", StringComparison.Ordinal) ||
+                        measure.OtherTargetId == measure.TargetId
+                    : !string.IsNullOrEmpty(measure.OtherTargetId)) ||
                 !result.Pages.Any(page => page.LogicalSlideId == measure.LogicalSlideId &&
                     page.NativeSlideId == measure.NativeSlideId)) ||
                 result.Measurements.GroupBy(measure => measure.MeasurementId).Any(group => group.Count() != 1))
@@ -207,7 +214,8 @@ namespace Scribble.Office
                 string.Join("|", result.Measurements.OrderBy(item => item.MeasurementId,
                     StringComparer.Ordinal).Select(item => item.MeasurementId + ":" + item.Code +
                     ":" + item.LogicalSlideId + ":" + item.NativeSlideId + ":" +
-                    item.TargetId + ":" + item.Observed + ":" + item.Expected)));
+                    item.TargetId + ":" + item.OtherTargetId + ":" +
+                    item.Observed + ":" + item.Expected)));
             return result;
         }
 

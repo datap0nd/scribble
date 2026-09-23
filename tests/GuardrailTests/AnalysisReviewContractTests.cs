@@ -166,7 +166,7 @@ namespace GuardrailTests
             {
                 MeasurementId = "geometry-1", Code = "COLLISION",
                 LogicalSlideId = "june", NativeSlideId = 412,
-                TargetId = "callout",
+                TargetId = "shape:10", OtherTargetId = "shape:9",
                 Observed = "chart and callout overlap by 12 px",
                 Expected = "no overlap"
             };
@@ -183,7 +183,7 @@ namespace GuardrailTests
                 hostOwned.Findings[0].MeasurementId == "geometry-1",
                 "The host geometry measurement was lost when the model omitted it.");
             var geometry = Finding("COLLISION", "renderer", "june", 412,
-                "callout", "", "geometry-1", "blocker", "adjust_layout",
+                "shape:10", "", "geometry-1", "blocker", "adjust_layout",
                 "Chart overlaps the callout.");
             Check(!AnalysisReviewContract.Parse(verdict(false,
                 new object[] { geometry }), context).Approved,

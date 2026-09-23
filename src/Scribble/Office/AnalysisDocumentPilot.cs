@@ -185,6 +185,27 @@ namespace Scribble.Office
                 if (pageNumbers.Count != 1 || pageNumbers[0] != expected)
                     findings.Add(Measure("PAGE_NUMBER", page, "page",
                         string.Join("; ", pageNumbers), expected));
+                var content = ContentBounds(slide, height);
+                for (var first = 0; first < content.Count; first++)
+                    for (var second = first + 1; second < content.Count;
+                        second++)
+                    {
+                        double horizontal, vertical;
+                        if (!Collides(content[first], content[second],
+                            out horizontal, out vertical)) continue;
+                        var target = content[first].Id > content[second].Id
+                            ? content[first] : content[second];
+                        var other = target == content[first]
+                            ? content[second] : content[first];
+                        findings.Add(Measure("COLLISION", page,
+                            "shape:" + target.Id,
+                            "shape:" + target.Id + " intersects shape:" +
+                                other.Id + " by " +
+                                horizontal.ToString("0.0", CultureInfo.InvariantCulture) +
+                                "x" + vertical.ToString("0.0",
+                                    CultureInfo.InvariantCulture) + " pt",
+                            "at least 6 pt separation", "shape:" + other.Id));
+                    }
             }
             return findings;
         }
@@ -213,6 +234,7 @@ namespace Scribble.Office
                     measurement.MeasurementId);
             if (current == null || current.Code != measurement.Code ||
                 current.TargetId != measurement.TargetId ||
+                current.OtherTargetId != measurement.OtherTargetId ||
                 current.Observed != measurement.Observed ||
                 current.Expected != measurement.Expected)
                 throw new InvalidOperationException("RENDERER_REPAIR_MEASUREMENT_CHANGED");
@@ -348,6 +370,80 @@ namespace Scribble.Office
                 }
                 return nextReceipt;
             }
+            if (measurement.Code == "COLLISION")
+            {
+                var content = ContentBounds(slide,
+                    (double)deck.PageSetup.SlideHeight);
+                var target = content.SingleOrDefault(item =>
+                    "shape:" + item.Id == measurement.TargetId);
+                var other = content.SingleOrDefault(item =>
+                    "shape:" + item.Id == measurement.OtherTargetId);
+                if (target == null || other == null)
+                    throw new InvalidOperationException(
+                        "RENDERER_REPAIR_TARGET_INVALID");
+                double overlapX, overlapY;
+                if (!Collides(target, other, out overlapX, out overlapY))
+                    throw new InvalidOperationException(
+                        "RENDERER_REPAIR_MEASUREMENT_CHANGED");
+                var slideWidth = (double)deck.PageSetup.SlideWidth;
+                var slideHeight = (double)deck.PageSetup.SlideHeight;
+                const double gap = 6d;
+                var positions = new[]
+                {
+                    new[] { other.Left - target.Width - gap, target.Top },
+                    new[] { other.Right + gap, target.Top },
+                    new[] { target.Left, other.Top - target.Height - gap },
+                    new[] { target.Left, other.Bottom + gap }
+                };
+                var viable = positions.Select(position => new
+                {
+                    Left = position[0], Top = position[1],
+                    Distance = Math.Abs(position[0] - target.Left) +
+                        Math.Abs(position[1] - target.Top)
+                }).Where(position => position.Left >= 0 &&
+                    position.Top >= 120 &&
+                    position.Left + target.Width <= slideWidth &&
+                    position.Top + target.Height <= slideHeight * .9 &&
+                    content.Where(item => item.Id != target.Id).All(item =>
+                    {
+                        double x, y;
+                        return !Collides(target.At(position.Left, position.Top),
+                            item, out x, out y);
+                    })).OrderBy(position => position.Distance).FirstOrDefault();
+                if (viable == null)
+                    throw new InvalidOperationException(
+                        "RENDERER_COLLISION_UNSUPPORTED: No bounded translation clears the overlap.");
+                dynamic native = null;
+                for (var index = 1; index <= (int)slide.Shapes.Count; index++)
+                    if ((int)slide.Shapes[index].Id == target.Id)
+                        native = slide.Shapes[index];
+                if (native == null)
+                    throw new InvalidOperationException(
+                        "RENDERER_REPAIR_TARGET_INVALID");
+                try
+                {
+                    native.Left = viable.Left;
+                    native.Top = viable.Top;
+                    var updated = ContentBounds(slide, slideHeight);
+                    var moved = updated.SingleOrDefault(item => item.Id == target.Id);
+                    if (moved == null || updated.Where(item => item.Id != target.Id)
+                        .Any(item =>
+                        {
+                            double x, y;
+                            return Collides(moved, item, out x, out y);
+                        }))
+                        throw new InvalidOperationException(
+                            "RENDERER_COLLISION_READBACK_FAILED");
+                }
+                catch
+                {
+                    try { native.Left = target.Left; native.Top = target.Top; }
+                    catch { throw new InvalidOperationException(
+                        "RENDERER_REPAIR_RECOVERY_REQUIRED"); }
+                    throw;
+                }
+                return nextReceipt;
+            }
             throw new InvalidOperationException(
                 "RENDERER_REPAIR_UNSUPPORTED: " + measurement.Code);
         }
@@ -416,9 +512,69 @@ namespace Scribble.Office
             state.Append(text.Length).Append(':').Append(text);
         }
 
+        private sealed class NativeBounds
+        {
+            public int Id;
+            public double Left, Top, Width, Height;
+            public double Right { get { return Left + Width; } }
+            public double Bottom { get { return Top + Height; } }
+            public NativeBounds At(double left, double top)
+            { return new NativeBounds { Id = Id, Left = left, Top = top,
+                Width = Width, Height = Height }; }
+        }
+
+        private static List<NativeBounds> ContentBounds(dynamic slide,
+            double slideHeight)
+        {
+            var result = new List<NativeBounds>();
+            for (var index = 1; index <= (int)slide.Shapes.Count; index++)
+            {
+                dynamic shape = slide.Shapes[index];
+                var bounds = new NativeBounds
+                {
+                    Id = (int)shape.Id, Left = (double)shape.Left,
+                    Top = (double)shape.Top, Width = (double)shape.Width,
+                    Height = (double)shape.Height
+                };
+                // Header and footer chrome has intentional ink and textbox
+                // overlaps. The pilot measures the central content canvas.
+                if (bounds.Top < 120 || bounds.Bottom > slideHeight * .9 ||
+                    bounds.Width <= 0 || bounds.Height <= 0) continue;
+                if ((int)shape.HasTextFrame != 0 &&
+                    (int)shape.HasTable == 0 && (int)shape.HasChart == 0 &&
+                    string.IsNullOrWhiteSpace(Convert.ToString(
+                        shape.TextFrame.TextRange.Text))) continue;
+                result.Add(bounds);
+            }
+            return result;
+        }
+
+        private static bool Collides(NativeBounds first, NativeBounds second,
+            out double horizontal, out double vertical)
+        {
+            horizontal = Math.Min(first.Right, second.Right) -
+                Math.Max(first.Left, second.Left);
+            vertical = Math.Min(first.Bottom, second.Bottom) -
+                Math.Max(first.Top, second.Top);
+            if (horizontal <= 4 || vertical <= 4) return false;
+            if (Contains(first, second) || Contains(second, first))
+                return false;
+            return horizontal * vertical /
+                Math.Min(first.Width * first.Height,
+                    second.Width * second.Height) >= .10;
+        }
+
+        private static bool Contains(NativeBounds outer, NativeBounds inner)
+        {
+            return inner.Left >= outer.Left - 2 &&
+                inner.Top >= outer.Top - 2 &&
+                inner.Right <= outer.Right + 2 &&
+                inner.Bottom <= outer.Bottom + 2;
+        }
+
         private static AnalysisReviewMeasurement Measure(string code,
             AnalysisReviewPage page, string target, string observed,
-            string expected)
+            string expected, string otherTarget = null)
         {
             return new AnalysisReviewMeasurement
             {
@@ -426,6 +582,7 @@ namespace Scribble.Office
                     code + ":" + target,
                 Code = code, LogicalSlideId = page.LogicalSlideId,
                 NativeSlideId = page.NativeSlideId, TargetId = target,
+                OtherTargetId = otherTarget,
                 Observed = observed, Expected = expected
             };
         }
