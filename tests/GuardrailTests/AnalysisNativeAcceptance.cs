@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -78,6 +79,7 @@ namespace GuardrailTests
                 Check((int)deck.Slides.Count == 4,
                     "The native deck did not contain exactly four slides.");
                 var chartCount = 0;
+                var captured = new List<Dictionary<string, object>>();
                 for (var index = 1; index <= 4; index++)
                 {
                     dynamic slide = deck.Slides[index];
@@ -87,12 +89,30 @@ namespace GuardrailTests
                     Check(File.Exists(path) && new FileInfo(path).Length > 1000,
                         "A native slide image was not rendered.");
                     images.Add(path);
+                    captured.Add(PresentationInspection.Capture((object)slide));
                     foreach (dynamic shape in slide.Shapes)
                         if (Convert.ToInt32(shape.HasChart) != 0)
                             chartCount++;
                 }
                 Check(chartCount >= 1,
                     "The comparison slide did not contain a native chart.");
+                var headline = PresentationInspection.CitationTextFromCaptured(
+                    captured[0]);
+                var comparison = PresentationInspection.CitationTextFromCaptured(
+                    captured[1]);
+                Check(headline.Contains("82,992") &&
+                    headline.Contains("36,714") &&
+                    comparison.Contains("85,519") &&
+                    comparison.Contains("82,992"),
+                    "The rendered slide content differed from the independent fact oracle.");
+                var nativeCharts = ((IEnumerable)captured[1]["shapes"])
+                    .Cast<object>().OfType<Dictionary<string, object>>()
+                    .Where(shape => shape.ContainsKey("chart"))
+                    .Select(shape => new JavaScriptSerializer().Serialize(
+                        shape["chart"])).ToArray();
+                Check(nativeCharts.Any(chart => chart.Contains("85519") &&
+                    chart.Contains("82992")),
+                    "The native chart data did not match the verified periods.");
                 var firstNotes = PresentationInspection.Notes((object)deck.Slides[1]);
                 Check(firstNotes.Contains("WB01"),
                     "The rendered slide lost its host-derived citation.");
