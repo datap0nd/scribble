@@ -31,19 +31,19 @@ namespace GuardrailTests
                 Metrics = new List<AnalysisMetricColumnBinding>
                 {
                     new AnalysisMetricColumnBinding { Header = "RevenueEUR",
-                        Metric = "Revenue", Unit = "currency",
+                        Metric = "RevenueEUR", Unit = "currency",
                         Currency = "EUR" },
                     new AnalysisMetricColumnBinding { Header = "CostEUR",
-                        Metric = "Cost", Unit = "currency",
+                        Metric = "CostEUR", Unit = "currency",
                         Currency = "EUR" }
                 }
             };
             var artifact = AnalysisTableArtifactBuilder.Build(
                 snapshot(MappedTable()), binding);
             Check(artifact.Facts.Count == 4 &&
-                artifact.Facts.Single(fact => fact.Metric == "Revenue" &&
+                artifact.Facts.Single(fact => fact.Metric == "RevenueEUR" &&
                     fact.Period == "2026-06").Value == "82992" &&
-                artifact.Facts.Single(fact => fact.Metric == "Cost" &&
+                artifact.Facts.Single(fact => fact.Metric == "CostEUR" &&
                     fact.Period == "2026-05").Locators.Single().Cell == "D2" &&
                 artifact.Facts.All(fact => fact.Status ==
                     AnalysisContract.Verified &&
@@ -55,9 +55,32 @@ namespace GuardrailTests
             zeroCell.RawValue = "0";
             zeroCell.DisplayText = "0";
             Check(AnalysisTableArtifactBuilder.Build(snapshot(zero), binding)
-                .Facts.Single(fact => fact.Metric == "Revenue" &&
+                .Facts.Single(fact => fact.Metric == "RevenueEUR" &&
                     fact.Period == "2026-06").Value == "0",
                 "A verified zero was treated as a missing metric.");
+            var mislabeled = new AnalysisTableBinding
+            {
+                TableId = "ledger", PeriodHeader = "Period",
+                Metrics = new List<AnalysisMetricColumnBinding>
+                {
+                    new AnalysisMetricColumnBinding { Header = "RevenueEUR",
+                        Metric = "CostEUR", Unit = "currency",
+                        Currency = "EUR" }
+                }
+            };
+            RejectTableBinding(() => AnalysisTableArtifactBuilder.Build(
+                snapshot(MappedTable()), mislabeled),
+                "ANALYSIS_TABLE_BINDING_INVALID");
+            binding.Metrics[0].Currency = "USD";
+            RejectTableBinding(() => AnalysisTableArtifactBuilder.Build(
+                snapshot(MappedTable()), binding),
+                "ANALYSIS_TABLE_BINDING_INVALID");
+            binding.Metrics[0].Currency = "EUR";
+            binding.PeriodHeader = "Group";
+            RejectTableBinding(() => AnalysisTableArtifactBuilder.Build(
+                snapshot(MappedTable()), binding),
+                "ANALYSIS_TABLE_BINDING_INVALID");
+            binding.PeriodHeader = "Period";
             var duplicate = MappedTable();
             duplicate.Cells.Single(cell => cell.Reference == "A3").Value =
                 "2026-05";

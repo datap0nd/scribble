@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 
 namespace Scribble.Office
 {
@@ -43,13 +44,20 @@ namespace Scribble.Office
                 throw new InvalidOperationException(
                     "ANALYSIS_TABLE_SOURCE_UNSUPPORTED");
             if (binding == null || string.IsNullOrWhiteSpace(binding.TableId) ||
-                string.IsNullOrWhiteSpace(binding.PeriodHeader) ||
+                binding.PeriodHeader != "Period" ||
                 binding.Metrics == null || binding.Metrics.Count == 0 ||
                 binding.DimensionHeaders == null ||
                 binding.DimensionHeaders.Any(string.IsNullOrWhiteSpace) ||
                 binding.Metrics.Any(metric => metric == null ||
                     string.IsNullOrWhiteSpace(metric.Header) ||
-                    string.IsNullOrWhiteSpace(metric.Metric)))
+                    string.IsNullOrWhiteSpace(metric.Metric) ||
+                    metric.Metric != metric.Header ||
+                    (string.IsNullOrWhiteSpace(metric.Currency)
+                        ? !string.IsNullOrWhiteSpace(metric.Unit)
+                        : metric.Unit != "currency" ||
+                            !metric.Header.EndsWith(metric.Currency,
+                                StringComparison.Ordinal) ||
+                            metric.Currency.Length != 3)))
                 throw new InvalidOperationException("ANALYSIS_TABLE_BINDING_INVALID");
             var table = snapshot.Tables.SingleOrDefault(item =>
                 item.TableId == binding.TableId);
@@ -88,9 +96,9 @@ namespace Scribble.Office
             {
                 var period = Required(cells, row,
                     headers[binding.PeriodHeader]);
-                if ((period.ValueType != AnalysisContract.TextValue &&
-                     period.ValueType != AnalysisContract.DateValue) ||
-                    string.IsNullOrWhiteSpace(period.Value))
+                if (period.ValueType != AnalysisContract.TextValue ||
+                    !Regex.IsMatch(period.Value,
+                        @"^\d{4}-(?:0[1-9]|1[0-2])$"))
                     throw new InvalidOperationException(
                         "ANALYSIS_TABLE_PERIOD_UNVERIFIED");
                 var dimensions = new Dictionary<string, string>(
