@@ -69,6 +69,18 @@ namespace GuardrailTests
                 });
                 var parsedPlan = AnalysisSlidePlanContract.Parse(
                     fixture.Item1, planJson);
+                var injectedFormula = planJson.Replace("\"Formula\":null",
+                    "\"Formula\":\"=1\"");
+                Check(injectedFormula != planJson,
+                    "The native fixture did not contain a table cell for the formula-injection check.");
+                var formulaRejected = false;
+                try { AnalysisSlidePlanContract.Parse(fixture.Item1,
+                    injectedFormula); }
+                catch (InvalidOperationException error)
+                { formulaRejected = error.Message.Contains(
+                    "ANALYSIS_PLAN_FORMULA_FORBIDDEN"); }
+                Check(formulaRejected,
+                    "A model-authored formula crossed the plan boundary.");
                 Check(parsedPlan.WorkbookRows.Count == 3 &&
                     parsedPlan.WorkbookRows[1].Cells[1].Formula
                         .StartsWith("=SUMIF(", StringComparison.Ordinal),

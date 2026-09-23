@@ -52,8 +52,19 @@ namespace Scribble.Office
                         var map = Map(row, "table row");
                         CheckKeys(map, "table row", "Cells");
                         foreach (var cell in Items(map, "Cells", 1, 30))
-                            CheckKeys(Map(cell, "table cell"),
-                                "table cell", "Text", "FactId");
+                        {
+                            var cellMap = Map(cell, "table cell");
+                            CheckKeys(cellMap, "table cell", "Text", "FactId",
+                                "Formula", "ExpectedFactId");
+                            object formula;
+                            object expectedFact;
+                            if ((cellMap.TryGetValue("Formula", out formula) &&
+                                    formula != null) ||
+                                (cellMap.TryGetValue("ExpectedFactId",
+                                    out expectedFact) && expectedFact != null))
+                                throw new InvalidOperationException(
+                                    "ANALYSIS_PLAN_FORMULA_FORBIDDEN");
+                        }
                     }
                 object chart;
                 if (fields.TryGetValue("Chart", out chart) && chart != null)
