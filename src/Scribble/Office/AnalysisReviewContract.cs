@@ -67,6 +67,14 @@ namespace Scribble.Office
             new List<AnalysisReviewMeasurement>();
     }
 
+    public sealed class AnalysisReviewRequest
+    {
+        public string Instructions { get; set; }
+        public string Content { get; set; }
+        public string BudgetReceipt { get; set; }
+        public int MaxResponseTokens { get; set; }
+    }
+
     public static class AnalysisReviewContract
     {
         public const int Version = 1;
@@ -94,6 +102,36 @@ namespace Scribble.Office
                 { "OUT_OF_BOUNDS", new[] { "renderer", "adjust_layout" } },
                 { "PAGE_NUMBER", new[] { "renderer", "fix_page_number" } }
             };
+
+        public static AnalysisReviewRequest PrepareRequest(
+            AnalysisArtifact artifact, AnalysisDocumentPlan plan,
+            AnalysisReviewContext context, string budgetReceipt,
+            int maxResponseTokens = 2048)
+        {
+            if (context == null || Context(artifact, plan, context.Pages,
+                context.Measurements).ContextId != context.ContextId)
+                throw new InvalidOperationException("REVIEW_CONTEXT_CHANGED");
+            var compiled = AnalysisDocumentCompiler.Compile(artifact, plan);
+            var content = new JavaScriptSerializer { MaxJsonLength = 16000000 }
+                .Serialize(new
+                {
+                    context_id = context.ContextId,
+                    analysis_id = context.AnalysisId,
+                    pages = context.Pages,
+                    measurements = context.Measurements,
+                    logical_slides = compiled.Slides
+                });
+            var budget = AnalysisRepairBudget.Read(budgetReceipt);
+            var next = budget.ConsumeModelCall(
+                ModelInstructions.Length + content.Length, maxResponseTokens);
+            return new AnalysisReviewRequest
+            {
+                Instructions = ModelInstructions,
+                Content = content,
+                BudgetReceipt = next,
+                MaxResponseTokens = maxResponseTokens
+            };
+        }
 
         public static AnalysisReviewContext Context(AnalysisArtifact artifact,
             AnalysisDocumentPlan plan, IEnumerable<AnalysisReviewPage> pages,
@@ -152,7 +190,10 @@ namespace Scribble.Office
                 result.Measurements.GroupBy(measure => measure.MeasurementId).Any(group => group.Count() != 1))
                 throw new InvalidOperationException("REVIEW_MEASUREMENT_INVALID");
             result.ContextId = TaskCheckpointStore.Fingerprint(
-                artifact.AnalysisId + "|" + string.Join("|", result.Pages.OrderBy(page =>
+                artifact.AnalysisId + "|" +
+                TaskCheckpointStore.Fingerprint(new JavaScriptSerializer
+                    { MaxJsonLength = 16000000 }.Serialize(plan)) + "|" +
+                string.Join("|", result.Pages.OrderBy(page =>
                     page.ExpectedPageNumber).Select(page => page.LogicalSlideId + ":" +
                     page.NativeSlideId + ":" + page.ExpectedPageNumber + ":" +
                     page.PageOrdinal + ":" + page.RenderFingerprint)) + "|" +

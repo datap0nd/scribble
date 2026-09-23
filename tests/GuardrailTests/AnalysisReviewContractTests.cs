@@ -76,6 +76,12 @@ namespace GuardrailTests
             };
             var context = AnalysisReviewContract.Context(artifact, plan,
                 new[] { page });
+            var request = AnalysisReviewContract.PrepareRequest(artifact, plan,
+                context, new AnalysisRepairBudget().Serialize());
+            Check(request.Content.Contains(context.ContextId) &&
+                request.Content.Contains(fact.FactId) &&
+                AnalysisRepairBudget.Read(request.BudgetReceipt).ModelCalls == 1,
+                "The bounded review request lost its context or call receipt.");
             var json = new JavaScriptSerializer();
             Func<bool, object[], string> verdict = (approved, findings) =>
                 json.Serialize(new Dictionary<string, object>
@@ -88,6 +94,39 @@ namespace GuardrailTests
                 new object[0]), context);
             Check(clean.Approved, "A clean review was rejected.");
             var oldApproval = verdict(true, new object[0]);
+            var claim = Finding("UNSUPPORTED_CLAIM", "content", "june",
+                412, "title", "", "", "blocker", "revise_text",
+                "The title implies a wider audit than this ledger supports.");
+            var claimReview = verdict(false, new object[] { claim });
+            var titlePatch = new AnalysisDocumentPatch
+            {
+                ContextId = context.ContextId, LogicalSlideId = "june",
+                TargetId = "title", SegmentIndex = 0,
+                ExpectedText = "June revenue",
+                ReplacementText = "Verified June revenue"
+            };
+            var repaired = AnalysisDocumentRepair.Apply(artifact, plan,
+                context, claimReview, titlePatch,
+                new AnalysisRepairBudget().Serialize());
+            Check(plan.Slides[0].Title == "June revenue" &&
+                repaired.Plan.Slides[0].Title == "Verified June revenue" &&
+                repaired.Plan.Slides[0].Cards[0].Points[0].FactId == fact.FactId,
+                "A one-field repair altered its source plan or fact reference.");
+            Reject(() => AnalysisDocumentRepair.Apply(artifact, plan,
+                context, claimReview, titlePatch, repaired.BudgetReceipt),
+                "REPAIR_TARGET_ALREADY_PATCHED");
+            titlePatch.ReplacementText = "Revenue 9";
+            Reject(() => AnalysisDocumentRepair.Apply(artifact, plan,
+                context, claimReview, titlePatch,
+                new AnalysisRepairBudget().Serialize()),
+                "ANALYSIS_NUMERIC_LITERAL_UNVERIFIED");
+            titlePatch.ReplacementText = "Verified June revenue";
+            plan.Slides[0].Title = "Changed after review";
+            Reject(() => AnalysisDocumentRepair.Apply(artifact, plan,
+                context, claimReview, titlePatch,
+                new AnalysisRepairBudget().Serialize()),
+                "REPAIR_CONTEXT_CHANGED");
+            plan.Slides[0].Title = "June revenue";
             var binding = Finding("BINDING_CHALLENGE", "analysis", "june",
                 412, "cards[0]", fact.FactId, "", "blocker",
                 "inspect_binding", "Check the Revenue label against Ledger column I.");
