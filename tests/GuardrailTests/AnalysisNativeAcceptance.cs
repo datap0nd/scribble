@@ -26,6 +26,7 @@ namespace GuardrailTests
             var sourcePreserved = false;
             var recoveryPassed = false;
             var typedReviewPassed = false;
+            var rendererRepairPassed = false;
             var images = new List<string>();
             var stage = "setup";
             var output = Path.GetDirectoryName(Path.GetFullPath(reportPath));
@@ -160,6 +161,39 @@ namespace GuardrailTests
                     cleanVerdict).Approved,
                     "A native page-bound typed review could not be parsed.");
                 typedReviewPassed = true;
+                stage = "powerpoint_renderer_repair";
+                dynamic firstSlide = deck.Slides[1];
+                dynamic folio = null;
+                for (var shapeIndex = 1;
+                    shapeIndex <= (int)firstSlide.Shapes.Count; shapeIndex++)
+                {
+                    dynamic shape = firstSlide.Shapes[shapeIndex];
+                    if ((int)shape.HasTextFrame != 0 &&
+                        (Convert.ToString(shape.TextFrame.TextRange.Text) ??
+                            string.Empty).Trim() == "- 1 -")
+                        folio = shape;
+                }
+                Check(folio != null, "The native slide has no editable folio.");
+                folio.TextFrame.TextRange.Text = "- 9 -";
+                var damagedPages = AnalysisDocumentPilot.CapturePresentationPages(
+                    (object)deck, fixture.Item1, fixture.Item2);
+                var damagedMeasurements =
+                    AnalysisDocumentPilot.CaptureNativeMeasurements(
+                        (object)deck, damagedPages);
+                var folioDefect = damagedMeasurements.Single(item =>
+                    item.Code == "PAGE_NUMBER" &&
+                    item.NativeSlideId == damagedPages[0].NativeSlideId);
+                AnalysisDocumentPilot.RepairNativeMeasurement((object)deck,
+                    damagedPages, folioDefect);
+                var correctedPages =
+                    AnalysisDocumentPilot.CapturePresentationPages(
+                        (object)deck, fixture.Item1, fixture.Item2);
+                Check(AnalysisDocumentPilot.CaptureNativeMeasurements(
+                    (object)deck, correctedPages).Count == 0 &&
+                    (Convert.ToString(folio.TextFrame.TextRange.Text) ??
+                        string.Empty).Trim() == "- 1 -",
+                    "The renderer did not correct and read back a native folio defect.");
+                rendererRepairPassed = true;
                 stage = "powerpoint_save_copy";
                 var deckCopy = Path.Combine(output, "analysis-deck.pptx");
                 deck.SaveCopyAs(deckCopy);
@@ -210,6 +244,7 @@ namespace GuardrailTests
                 source_preserved = sourcePreserved,
                 isolated_retry_passed = recoveryPassed,
                 typed_review_contract_passed = typedReviewPassed,
+                renderer_repair_passed = rendererRepairPassed,
                 rendered_images = images,
                 full_acceptance_passed = false,
                 note = "Hand-authored structural pilot only; no model, visual attestation, or recovery qualification.",

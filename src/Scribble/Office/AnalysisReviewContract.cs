@@ -254,15 +254,36 @@ namespace Scribble.Office
                 Validate(finding, context);
                 decision.Findings.Add(finding);
             }
+            if (decision.Findings.Where(finding =>
+                !string.IsNullOrEmpty(finding.MeasurementId))
+                .GroupBy(finding => finding.MeasurementId, StringComparer.Ordinal)
+                .Any(group => group.Count() != 1))
+                throw new InvalidOperationException("REVIEW_FINDING_DUPLICATE");
+            foreach (var measurement in context.Measurements)
+            {
+                var reported = decision.Findings.SingleOrDefault(finding =>
+                    finding.MeasurementId == measurement.MeasurementId);
+                if (reported != null && reported.Severity != "blocker")
+                    throw new InvalidOperationException(
+                        "REVIEW_HOST_SEVERITY_CONTRADICTION: " +
+                        measurement.MeasurementId);
+                if (reported == null)
+                    decision.Findings.Add(new AnalysisReviewFinding
+                    {
+                        Code = measurement.Code, Owner = "renderer",
+                        LogicalSlideId = measurement.LogicalSlideId,
+                        NativeSlideId = measurement.NativeSlideId,
+                        TargetId = measurement.TargetId,
+                        FactId = string.Empty,
+                        MeasurementId = measurement.MeasurementId,
+                        Severity = "blocker", Action = Routes[measurement.Code][1],
+                        Evidence = measurement.Observed + "; expected " +
+                            measurement.Expected
+                    });
+            }
             if (decision.Approved == decision.Findings.Any(finding =>
                 finding.Severity == "blocker"))
                 throw new InvalidOperationException("REVIEW_VERDICT_CONTRADICTORY");
-            // An absent model finding cannot erase a measured native defect.
-            foreach (var measurement in context.Measurements)
-                if (!decision.Findings.Any(finding => finding.MeasurementId ==
-                    measurement.MeasurementId && finding.Severity == "blocker"))
-                    throw new InvalidOperationException("REVIEW_HOST_MEASUREMENT_UNADDRESSED: " +
-                        measurement.MeasurementId);
             return decision;
         }
 

@@ -27,6 +27,11 @@ namespace GuardrailTests
             Reject(() => new AnalysisRepairBudget().ConsumeModelCall(
                 AnalysisRepairBudget.MaxPromptCharacters + 1, 100),
                 "REVIEW_CONTEXT_LIMIT");
+            receipt = AnalysisRepairBudget.CrossApp().Serialize();
+            for (var call = 0; call < 12; call++)
+                receipt = AnalysisRepairBudget.Read(receipt).ConsumeModelCall(100, 512);
+            Reject(() => AnalysisRepairBudget.Read(receipt).ConsumeModelCall(100, 512),
+                "REPAIR_MODEL_CALL_LIMIT");
         }
 
         public static void FindingsCannotOverrideVerifiedFactsOrPages()
@@ -163,7 +168,13 @@ namespace GuardrailTests
             Reject(() => AnalysisReviewContract.Parse(oldApproval, context),
                 "REVIEW_CONTEXT_CHANGED");
             Reject(() => AnalysisReviewContract.Parse(verdict(true,
-                new object[0]), context), "REVIEW_HOST_MEASUREMENT_UNADDRESSED");
+                new object[0]), context), "REVIEW_VERDICT_CONTRADICTORY");
+            var hostOwned = AnalysisReviewContract.Parse(verdict(false,
+                new object[0]), context);
+            Check(hostOwned.Findings.Count == 1 &&
+                hostOwned.Findings[0].Owner == "renderer" &&
+                hostOwned.Findings[0].MeasurementId == "geometry-1",
+                "The host geometry measurement was lost when the model omitted it.");
             var geometry = Finding("COLLISION", "renderer", "june", 412,
                 "callout", "", "geometry-1", "blocker", "adjust_layout",
                 "Chart overlaps the callout.");

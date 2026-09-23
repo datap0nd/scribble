@@ -55,7 +55,7 @@ jobs:
       # Native Office is unavailable on the hosted runner. Retain the built
       # binary early so an explicit workstation pilot can run while CI checks.
       - name: Upload native acceptance harness
-        if: github.head_ref == 'codex/reliability-phase2'
+        if: github.head_ref == 'codex/reliability-phase2' || github.head_ref == 'codex/reliability-phase3'
         uses: actions/upload-artifact@v4
         with:
           name: Phase2NativeHarness

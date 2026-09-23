@@ -121,26 +121,13 @@ namespace Scribble.Office
                 int ordinal;
                 ordinals.TryGetValue(logicalId, out ordinal);
                 ordinals[logicalId] = ordinal + 1;
-                var temporary = Path.Combine(Path.GetTempPath(),
-                    "scribble-analysis-review-" + Guid.NewGuid().ToString("N") +
-                    ".png");
-                string fingerprint;
-                try
-                {
-                    native.Export(temporary, "PNG", 1600, 900);
-                    using (var digest = SHA256.Create())
-                        fingerprint = BitConverter.ToString(digest.ComputeHash(
-                            File.ReadAllBytes(temporary))).Replace("-", "")
-                            .ToLowerInvariant();
-                }
-                finally { if (File.Exists(temporary)) File.Delete(temporary); }
                 pages.Add(new AnalysisReviewPage
                 {
                     LogicalSlideId = logicalId,
                     NativeSlideId = (int)native.SlideID,
                     ExpectedPageNumber = index,
                     PageOrdinal = ordinal,
-                    RenderFingerprint = fingerprint
+                    RenderFingerprint = RenderFingerprint(native)
                 });
             }
             return pages;
@@ -198,6 +185,136 @@ namespace Scribble.Office
                         string.Join("; ", pageNumbers), expected));
             }
             return findings;
+        }
+
+        // Renderer-owned fixes are finite native operations. They neither
+        // ask the model to rewrite the slide nor modify a bound fact.
+        public static void RepairNativeMeasurement(object presentation,
+            IReadOnlyList<AnalysisReviewPage> pages,
+            AnalysisReviewMeasurement measurement)
+        {
+            RequireEnabled();
+            if (measurement == null || pages == null)
+                throw new InvalidOperationException("RENDERER_REPAIR_TARGET_INVALID");
+            var page = pages.SingleOrDefault(item =>
+                item.NativeSlideId == measurement.NativeSlideId &&
+                item.LogicalSlideId == measurement.LogicalSlideId);
+            if (page == null || page.ExpectedPageNumber < 1)
+                throw new InvalidOperationException("RENDERER_REPAIR_TARGET_INVALID");
+            dynamic deck = presentation;
+            dynamic slide = deck.Slides[page.ExpectedPageNumber];
+            if ((int)slide.SlideID != page.NativeSlideId ||
+                RenderFingerprint(slide) != page.RenderFingerprint)
+                throw new InvalidOperationException("RENDERER_REPAIR_PAGE_CHANGED");
+            var current = CaptureNativeMeasurements(presentation, pages)
+                .SingleOrDefault(item => item.MeasurementId ==
+                    measurement.MeasurementId);
+            if (current == null || current.Code != measurement.Code ||
+                current.TargetId != measurement.TargetId ||
+                current.Observed != measurement.Observed ||
+                current.Expected != measurement.Expected)
+                throw new InvalidOperationException("RENDERER_REPAIR_MEASUREMENT_CHANGED");
+            if (measurement.Code == "PAGE_NUMBER")
+            {
+                var candidates = new List<object>();
+                for (var index = 1; index <= (int)slide.Shapes.Count; index++)
+                {
+                    dynamic shape = slide.Shapes[index];
+                    if ((int)shape.HasTextFrame == 0) continue;
+                    var text = (Convert.ToString(shape.TextFrame.TextRange.Text) ??
+                        string.Empty).Trim();
+                    if (Regex.IsMatch(text, @"^-\s*\d+\s*-$"))
+                        candidates.Add((object)shape);
+                }
+                if (candidates.Count != 1)
+                    throw new InvalidOperationException(
+                        "RENDERER_PAGE_NUMBER_UNSUPPORTED: Expected one native folio shape.");
+                dynamic target = candidates[0];
+                var before = Convert.ToString(target.TextFrame.TextRange.Text);
+                try
+                {
+                    target.TextFrame.TextRange.Text = current.Expected;
+                    if ((Convert.ToString(target.TextFrame.TextRange.Text) ??
+                        string.Empty).Trim() != current.Expected)
+                        throw new InvalidOperationException(
+                            "RENDERER_PAGE_NUMBER_READBACK_FAILED");
+                }
+                catch
+                {
+                    try { target.TextFrame.TextRange.Text = before; }
+                    catch { throw new InvalidOperationException(
+                        "RENDERER_REPAIR_RECOVERY_REQUIRED"); }
+                    throw;
+                }
+                return;
+            }
+            if (measurement.Code == "TEXT_OVERFLOW")
+            {
+                if (!measurement.TargetId.StartsWith("shape:",
+                    StringComparison.Ordinal))
+                    throw new InvalidOperationException(
+                        "RENDERER_REPAIR_TARGET_INVALID");
+                int shapeId;
+                if (!int.TryParse(measurement.TargetId.Substring(6),
+                    out shapeId))
+                    throw new InvalidOperationException(
+                        "RENDERER_REPAIR_TARGET_INVALID");
+                dynamic target = null;
+                for (var index = 1; index <= (int)slide.Shapes.Count; index++)
+                    if ((int)slide.Shapes[index].Id == shapeId)
+                        target = slide.Shapes[index];
+                if (target == null || (int)target.HasTextFrame == 0)
+                    throw new InvalidOperationException(
+                        "RENDERER_REPAIR_TARGET_INVALID");
+                dynamic range = target.TextFrame.TextRange;
+                var before = (float)range.Font.Size;
+                var text = Convert.ToString(range.Text);
+                var minimum = (double)target.Top >
+                    (double)deck.PageSetup.SlideHeight * .9 ? 9f :
+                    SamsungSlideDesign.BodyMinimum;
+                try
+                {
+                    var fitted = false;
+                    for (var size = before - .5f; size >= minimum;
+                        size -= .5f)
+                    {
+                        range.Font.Size = size;
+                        if (!PresentationRevision.NativeTextOverflows(text,
+                            (float)range.BoundHeight, (float)range.BoundWidth,
+                            (float)target.Height, (float)target.Width))
+                        { fitted = true; break; }
+                    }
+                    if (!fitted || Convert.ToString(range.Text) != text)
+                        throw new InvalidOperationException(
+                            "RENDERER_TEXT_FIT_UNSUPPORTED: The text cannot fit above its minimum readable size.");
+                }
+                catch
+                {
+                    try { range.Font.Size = before; }
+                    catch { throw new InvalidOperationException(
+                        "RENDERER_REPAIR_RECOVERY_REQUIRED"); }
+                    throw;
+                }
+                return;
+            }
+            throw new InvalidOperationException(
+                "RENDERER_REPAIR_UNSUPPORTED: " + measurement.Code);
+        }
+
+        private static string RenderFingerprint(dynamic slide)
+        {
+            var temporary = Path.Combine(Path.GetTempPath(),
+                "scribble-analysis-review-" + Guid.NewGuid().ToString("N") +
+                ".png");
+            try
+            {
+                slide.Export(temporary, "PNG", 1600, 900);
+                using (var digest = SHA256.Create())
+                    return BitConverter.ToString(digest.ComputeHash(
+                        File.ReadAllBytes(temporary))).Replace("-", "")
+                        .ToLowerInvariant();
+            }
+            finally { if (File.Exists(temporary)) File.Delete(temporary); }
         }
 
         private static AnalysisReviewMeasurement Measure(string code,

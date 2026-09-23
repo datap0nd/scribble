@@ -11,11 +11,14 @@ namespace Scribble.Office
     {
         public const int Version = 1;
         public const int MaxModelCalls = 18;
-        public const int MaxCorrectivePatches = 4;
+        // A six-slide repair can need one patch on every slide, with two
+        // spare targets for a workbook or follow-up content defect.
+        public const int MaxCorrectivePatches = 8;
         public const int MaxPromptCharacters = 36000;
         public const int MaxResponseTokens = 8192;
 
         public int ContractVersion { get; set; } = Version;
+        public int CallLimit { get; set; } = MaxModelCalls;
         public int ModelCalls { get; set; }
         public List<string> PatchedTargets { get; set; } = new List<string>();
 
@@ -28,7 +31,8 @@ namespace Scribble.Office
                 error is InvalidOperationException)
             { throw new InvalidOperationException("REPAIR_BUDGET_RECEIPT_INVALID", error); }
             if (budget == null || budget.ContractVersion != Version ||
-                budget.ModelCalls < 0 || budget.ModelCalls > MaxModelCalls ||
+                (budget.CallLimit != 12 && budget.CallLimit != MaxModelCalls) ||
+                budget.ModelCalls < 0 || budget.ModelCalls > budget.CallLimit ||
                 budget.PatchedTargets == null ||
                 budget.PatchedTargets.Count > MaxCorrectivePatches ||
                 budget.PatchedTargets.Any(string.IsNullOrWhiteSpace) ||
@@ -38,12 +42,15 @@ namespace Scribble.Office
             return budget;
         }
 
+        public static AnalysisRepairBudget CrossApp()
+        { return new AnalysisRepairBudget { CallLimit = 12 }; }
+
         public string ConsumeModelCall(int promptCharacters, int responseTokens)
         {
             if (promptCharacters < 0 || promptCharacters > MaxPromptCharacters ||
                 responseTokens < 1 || responseTokens > MaxResponseTokens)
                 throw new InvalidOperationException("REVIEW_CONTEXT_LIMIT: Shorten or split the request before inference.");
-            if (ModelCalls >= MaxModelCalls)
+            if (ModelCalls >= CallLimit)
                 throw new InvalidOperationException("REPAIR_MODEL_CALL_LIMIT: The task-level call budget is exhausted.");
             ModelCalls++;
             return Serialize();
