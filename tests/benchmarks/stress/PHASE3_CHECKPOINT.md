@@ -133,6 +133,20 @@ passed, and the architectural-feasibility pilot is not authorized yet.
   structural result fields true and `full_acceptance_passed=false`. Full
   Windows CI passed. The slides remain hand-authored fixture content, not a
   model-generated plan.
+- `aca7f91` adds the pilot's first active write route. After an Excel task
+  captures a typed analysis, the request swaps `write_draft_sheet` to an
+  `analysis_id` and title contract. `DocumentDraftHost` checks the task's
+  draft authorization and the exact source identity, re-reads the bound
+  workbook range, generates host-owned formulas, and verifies native results.
+  A changed source cell is rejected before permission consumption or sheet
+  creation. The CI-built harness from
+  [run 35855905340](https://github.com/datap0nd/scribble/actions/runs/35855905340)
+  passed one disposable Office run through that tool call; the report,
+  source-preservation, isolated retry, four slides, typed review and renderer
+  repair result fields were true. `full_acceptance_passed=false` remains
+  correct: the slide content is still hand-authored fixture content, and the
+  active PowerPoint tool has not migrated. The full Windows CI run passed,
+  including guardrails and installer smoke checks.
 
 ## Still required for the Phase 3 exit gate
 
