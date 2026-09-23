@@ -175,6 +175,31 @@ passed, and the architectural-feasibility pilot is not authorized yet.
   was inspected and closed. A clean native rerun and failure-path review are
   required before the Phase 3 gate can pass.
 
+## PR #22–#25 review corrections (23 September 2026)
+
+- Phase 1 now resolves Excel's real `DBNull.Value` response for mixed
+  `NumberFormat` pages by reading uniform column formats, then individual
+  formats only in mixed columns. The work is capped at 500 cells. Unresolved
+  formats are marked incomplete and cannot bind verified facts. A regression
+  test uses `DBNull.Value` rather than a prebuilt per-cell format matrix; the
+  native harness also creates a disposable workbook with a real Excel date
+  column and records `native_date_column_passed`.
+- The XLSX attachment extractor drops rows containing only styled empty
+  cells. A fixture with twelve ledger rows and a styled empty row below them
+  verifies that the default `CompleteWorkbookTotals` path still returns host
+  totals. Typed `read_cells` fields are emitted only for an explicit
+  `analysis_binding`; ordinary reads retain their original payload.
+- Windows Application Error event 1000 at 16:31:45 on 23 September identifies
+  `POWERPNT.EXE` 16.0.20326.20158 crashing in `chart.dll` with exception
+  `0xc0000005`; the same signature occurred twice earlier that day. The
+  harness now labels RPC-disconnection failures `POWERPOINT_EXITED` and omits
+  its own chart-slide PNG exports. The Phase 3 review capture also omits
+  chart exports and withholds model review and a completion receipt when a
+  visual page is unavailable. The draft remains pending for visual
+  inspection. This is an explicit incomplete gate, not visual approval.
+- The OfficeIMO source probe is parked for Phase 4 and its CI job is removed.
+  No paid model run was made for these corrections.
+
 ## Still required for the Phase 3 exit gate
 
 - Validate and finish the development-only analysis-bound PowerPoint handoff
