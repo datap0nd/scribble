@@ -3991,6 +3991,44 @@ namespace GuardrailTests
                 Assert(!sparse.Text.Contains("2026-06\n\t") &&
                     !sparse.Text.Contains("2026-06\r\n\t"),
                     "Styled empty cells emitted a blank ledger row: " + sparse.Text);
+                var styledLedgerPath = Path.Combine(temp, "styled-ledger.xlsx");
+                var ledgerXml = "<worksheet xmlns=\"" + sheetNamespace +
+                    "\"><sheetData><row r=\"1\">" +
+                    string.Concat(new[] { "RowID", "Period", "Group",
+                        "RevenueEUR", "CostEUR" }.Select((name, index) =>
+                        "<c r=\"" + (char)('A' + index) +
+                        "1\" t=\"inlineStr\"><is><t>" + name +
+                        "</t></is></c>")) + "</row>" +
+                    string.Concat(Enumerable.Range(1, 12).Select(index =>
+                        "<row r=\"" + (index + 1) + "\">" +
+                        "<c r=\"A" + (index + 1) +
+                        "\" t=\"inlineStr\"><is><t>R" + index +
+                        "</t></is></c><c r=\"B" + (index + 1) +
+                        "\" t=\"inlineStr\"><is><t>2026-" +
+                        (index <= 6 ? "05" : "06") +
+                        "</t></is></c><c r=\"C" + (index + 1) +
+                        "\" t=\"inlineStr\"><is><t>North</t></is></c>" +
+                        "<c r=\"D" + (index + 1) +
+                        "\"><v>10</v></c><c r=\"E" + (index + 1) +
+                        "\"><v>2</v></c></row>")) +
+                    "<row r=\"14\"><c r=\"A14\" s=\"1\"/>" +
+                    "<c r=\"E14\" s=\"1\"/></row>" +
+                    "</sheetData></worksheet>";
+                WriteZipEntries(styledLedgerPath,
+                    new[] { "xl/worksheets/sheet1.xml" },
+                    new[] { ledgerXml });
+                var styledLedger = EmailAttachmentReader.LoadLocalFile(
+                    styledLedgerPath);
+                var totalMethod = typeof(TaskSources).GetMethod(
+                    "CompleteWorkbookTotals",
+                    System.Reflection.BindingFlags.Static |
+                    System.Reflection.BindingFlags.NonPublic);
+                var styledTotals = (string)totalMethod.Invoke(null,
+                    new object[] { styledLedger.Text });
+                Assert(styledTotals != null &&
+                    styledTotals.Contains("12 unique RowIDs") &&
+                    styledTotals.Contains("RevenueEUR 60 EUR; CostEUR 12 EUR"),
+                    "Styled empty rows below the ledger hid host totals.");
             }
             finally
             {
