@@ -37,6 +37,16 @@ passed, and the architectural-feasibility pilot is not authorized yet.
   passed three fresh, sequential disposable Office trials (3/3) with budgeted
   folio and out-of-bounds repair. This is a narrow repeatability check, not
   a full repair/recovery qualification.
+- The CI-built `a0a4071` harness from
+  [run 35840351830](https://github.com/datap0nd/scribble/actions/runs/35840351830)
+  passed the disposable Office trial after deliberately overlapping the
+  native chart and table on slide 2. The host issued a `COLLISION`
+  measurement bound to both shape IDs. The renderer translated the chart to
+  a 6 pt gap, then PowerPoint readback found no remaining measured defect;
+  chart-cache values and the source ledger still matched the independent
+  oracle. The saved slide was rendered and visually inspected. This detector
+  covers central content shapes in the current pilot layouts, not arbitrary
+  authored-deck geometry.
 
 ## Still required for the Phase 3 exit gate
 
@@ -44,10 +54,10 @@ passed, and the architectural-feasibility pilot is not authorized yet.
   `DocumentDraftHost.PowerPoint` and `DocumentDraftHost.SlideRepair` to the
   typed analysis contract for supported capabilities, then retire the old
   brief/number/native regex finding filters on that route.
-- Handle collision measurements with a bounded renderer operation or return
-  an explicit unsupported capability before a model is allowed to approve.
-  Continue testing source-bound facts, page continuations, and retry receipts
-  against native outputs and context limits.
+- Extend collision ownership beyond the pilot's central content canvas or
+  return an explicit unsupported capability for other geometry. Continue
+  testing source-bound facts, page continuations, and retry receipts against
+  native outputs and context limits.
 - Finish and record the current full CI result, then freeze Phase 3 code for
   the offline gate. Only after Phases 0–3 pass offline may the pinned hosted
   OpenRouter `qwen/qwen3.8-27b` run the small paid architectural pilot.

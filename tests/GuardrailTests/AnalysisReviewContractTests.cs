@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Web.Script.Serialization;
+using Scribble.Chat;
 using Scribble.Office;
 
 namespace GuardrailTests
@@ -88,6 +90,42 @@ namespace GuardrailTests
                 request.Content.Contains(fact.FactId) &&
                 AnalysisRepairBudget.Read(request.BudgetReceipt).ModelCalls == 1,
                 "The bounded review request lost its context or call receipt.");
+            var checkpointRoot = Path.Combine(Path.GetTempPath(),
+                "scribble-analysis-review-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var input = new ChatCompletionRequest
+                {
+                    model = "offline-test",
+                    messages = new List<object>
+                    {
+                        new ChatCompletionInputMessage
+                        { role = "user", content = "Review the analysis draft" }
+                    }
+                };
+                var store = new TaskCheckpointStore(checkpointRoot);
+                var task = new TaskContextManager(input, "excel",
+                    "Review the analysis draft", store);
+                task.PersistAnalysis(artifact);
+                var first = task.ReserveAnalysisReview(artifact, plan,
+                    context, true);
+                var resumed = new TaskContextManager(input, "excel",
+                    task.State.Objective, store, store.Load(task.State.Id));
+                var second = resumed.ReserveAnalysisReview(artifact, plan,
+                    context, true);
+                Check(AnalysisRepairBudget.Read(first.BudgetReceipt).ModelCalls == 1 &&
+                    AnalysisRepairBudget.Read(second.BudgetReceipt).ModelCalls == 2 &&
+                    resumed.State.HostData["analysis_repair_budget"] ==
+                        second.BudgetReceipt,
+                    "A resumed task reset or failed to persist the review call budget.");
+                Reject(() => resumed.ReserveAnalysisReview(artifact, plan,
+                    context, false), "REPAIR_BUDGET_TASK_MODE_CHANGED");
+            }
+            finally
+            {
+                if (Directory.Exists(checkpointRoot))
+                    Directory.Delete(checkpointRoot, true);
+            }
             var json = new JavaScriptSerializer();
             Func<bool, object[], string> verdict = (approved, findings) =>
                 json.Serialize(new Dictionary<string, object>

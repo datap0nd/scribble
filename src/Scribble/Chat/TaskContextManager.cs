@@ -245,6 +245,35 @@ namespace Scribble.Chat
                 _state.AnalysisArtifactEvidenceId));
         }
 
+        // Reserve the call before inference. A resumed task cannot acquire a
+        // fresh budget after a timeout or spend the same call twice.
+        public AnalysisReviewRequest ReserveAnalysisReview(
+            AnalysisArtifact artifact, AnalysisDocumentPlan plan,
+            AnalysisReviewContext context, bool crossApp,
+            int maxResponseTokens = 2048)
+        {
+            var persisted = LoadAnalysis();
+            if (persisted == null || artifact == null ||
+                persisted.AnalysisId != artifact.AnalysisId)
+                throw new InvalidOperationException(
+                    "REVIEW_TASK_ANALYSIS_CHANGED");
+            const string key = "analysis_repair_budget";
+            string receipt;
+            if (!_state.HostData.TryGetValue(key, out receipt))
+                receipt = crossApp ? AnalysisRepairBudget.CrossApp().Serialize() :
+                    new AnalysisRepairBudget().Serialize();
+            var budget = AnalysisRepairBudget.Read(receipt);
+            if (budget.CallLimit != (crossApp ? 12 :
+                AnalysisRepairBudget.MaxModelCalls))
+                throw new InvalidOperationException(
+                    "REPAIR_BUDGET_TASK_MODE_CHANGED");
+            var request = AnalysisReviewContract.PrepareRequest(artifact,
+                plan, context, receipt, maxResponseTokens);
+            _state.HostData[key] = request.BudgetReceipt;
+            Checkpoint();
+            return request;
+        }
+
         public void PrepareExchange(ChatCompletionResponseMessage response, ChatCompletionRequest request)
         {
             // The request's assistant message retains this list. Clearing the
