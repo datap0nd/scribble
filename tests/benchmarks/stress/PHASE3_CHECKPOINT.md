@@ -147,13 +147,43 @@ passed, and the architectural-feasibility pilot is not authorized yet.
   correct: the slide content is still hand-authored fixture content, and the
   active PowerPoint tool has not migrated. The full Windows CI run passed,
   including guardrails and installer smoke checks.
+- `bc76b95` adds a fact-referenced schema under the existing
+  `send_to_powerpoint` tool name. Each native review image is captured in the
+  same export used for its page fingerprint. The CI-built harness from
+  [run 35857648842](https://github.com/datap0nd/scribble/actions/runs/35857648842)
+  passed in disposable local Office: verified workbook formulas, four editable
+  slides, source preservation, isolated retry, typed review, and renderer
+  repair. The new image/hash assertion passed. The full Windows CI run passed.
+- `231b3f5` routes a bound Excel analysis through the typed deck plan and
+  task-tagged new PowerPoint destination. It reserves typed native review and
+  task-level geometry repairs, then withholds completion on a rejected verdict.
+  `7fde9c1` scopes the task's write receipt per analysis destination, allowing
+  one Excel draft and one deck in the same authorized task while blocking a
+  duplicate output. [CI run 35858756158](https://github.com/datap0nd/scribble/actions/runs/35858756158)
+  passed. These commits are development-flagged; a CI compile and guardrail
+  pass alone do not establish native end-to-end acceptance.
+- `3e645e6` and `88ee554` add an offline native test of the active deck
+  handoff, with a loopback fake reviewer that checks all four image hashes and
+  a stale-source preflight case. The full Windows
+  [CI run 35860033826](https://github.com/datap0nd/scribble/actions/runs/35860033826)
+  passed, including guardrails and installer smoke checks. Its CI-built
+  harness was attempted on the local Office workstation, but PowerPoint's COM
+  server was unavailable (`0x800706BA`) at the test's presentation-count read
+  before the typed handoff. The report says `typed_deck_handoff_passed=false`
+  and `full_acceptance_passed=false`; it cannot validate this route. The
+  interrupted disposable run left an empty automation Excel process, which
+  was inspected and closed. A clean native rerun and failure-path review are
+  required before the Phase 3 gate can pass.
 
 ## Still required for the Phase 3 exit gate
 
-- Migrate the active Samsung review and repair route in
-  `DocumentDraftHost.PowerPoint` and `DocumentDraftHost.SlideRepair` to the
-  typed analysis contract for supported capabilities, then retire the old
-  brief/number/native regex finding filters on that route.
+- Validate and finish the development-only analysis-bound PowerPoint handoff
+  through a clean native run and offline failure injection. Its typed review
+  path is present, but content findings still need targeted corrective
+  operations and recovery receipts before the route can pass. Migrate the
+  remaining supported Samsung capabilities in `DocumentDraftHost.PowerPoint`
+  and `DocumentDraftHost.SlideRepair`, then retire their old brief/number/native
+  regex finding filters as each capability moves.
 - Extend collision ownership beyond the pilot's central content canvas or
   return an explicit unsupported capability for other geometry. Continue
   testing source-bound facts, page continuations, and retry receipts against
