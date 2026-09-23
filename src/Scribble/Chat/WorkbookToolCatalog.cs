@@ -349,6 +349,27 @@ namespace Scribble.Chat
             };
         }
 
+        public static ChatToolDefinition AnalysisDraftDefinition()
+        {
+            return new ChatToolDefinition
+            {
+                type = "function",
+                function = new ChatToolFunctionDefinition
+                {
+                    name = WriteDraftSheet,
+                    description = "Create a new marked Excel draft from the retained verified analysis. Supply its host-issued analysis_id and a concise title. Scribble generates all source-bound live formulas and verifies their native results; do not supply rows or formulas. The source sheet is never changed.",
+                    parameters = ToolSchema.Build(
+                        new Dictionary<string, object>
+                        {
+                            { "analysis_id", ToolSchema.String(
+                                "Exact analysis_id returned by the typed read_cells result.") },
+                            { "title", ToolSchema.String(
+                                "Concise report title without unverified numeric claims.") }
+                        }, "analysis_id")
+                }
+            };
+        }
+
         public static bool IsApproved(string name)
         {
             foreach (var approved in ApprovedNames)

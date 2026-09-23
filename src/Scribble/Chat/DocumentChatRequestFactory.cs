@@ -13,6 +13,30 @@ namespace Scribble.Chat
     // latest prompt.
     public static class DocumentChatRequestFactory
     {
+        // After a typed Excel read, replace only the draft schema for the
+        // next model turn. The existing tool name keeps the guardrail allowlist
+        // stable, while the host ignores any model-authored rows or formulas.
+        public static void ApplyAnalysisPilot(ChatCompletionRequest request,
+            AnalysisArtifact artifact, string hostKind)
+        {
+            if (request?.tools == null || artifact == null ||
+                hostKind != "excel" ||
+                !string.Equals(Environment.GetEnvironmentVariable(
+                    AnalysisDocumentPilot.FeatureFlag), "1",
+                    StringComparison.Ordinal)) return;
+            AnalysisContract.Serialize(artifact);
+            var index = request.tools.FindIndex(tool =>
+                tool.function.name == WorkbookToolCatalog.WriteDraftSheet);
+            if (index < 0) return;
+            request.tools[index] =
+                WorkbookToolCatalog.AnalysisDraftDefinition();
+            // A fact-referenced deck tool is introduced with its typed review
+            // route. Do not offer the legacy number-authoring path for this
+            // bound analysis in the interim.
+            request.tools.RemoveAll(tool => tool.function.name ==
+                CrossAppToolCatalog.SendToPowerPoint);
+        }
+
         public const int TrimmedHistoryCharacters = 1500;
         public const int MaxActiveContextCharacters = 4000;
 

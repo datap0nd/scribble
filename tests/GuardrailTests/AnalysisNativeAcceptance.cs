@@ -4,10 +4,12 @@ using System.Globalization;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Threading;
 using System.Web.Script.Serialization;
 using System.Xml.Linq;
 using Scribble.Chat;
 using Scribble.Office;
+using Scribble.Security;
 
 namespace GuardrailTests
 {
@@ -85,6 +87,13 @@ namespace GuardrailTests
                 var readInput = new ChatCompletionRequest
                 {
                     model = "offline-test",
+                    tools = new List<ChatToolDefinition>
+                    {
+                        WorkbookToolCatalog.DraftDefinition(),
+                        CrossAppToolCatalog.CreateDefinitions("excel")
+                            .Single(tool => tool.function.name ==
+                                CrossAppToolCatalog.SendToPowerPoint)
+                    },
                     messages = new List<object>
                     {
                         new ChatCompletionInputMessage
@@ -106,6 +115,15 @@ namespace GuardrailTests
                     readStore.Load(readTask.State.Id).AnalysisArtifactEvidenceId ==
                         readTask.State.AnalysisArtifactEvidenceId,
                     "The task did not durably retain facts from native Excel cells.");
+                DocumentChatRequestFactory.ApplyAnalysisPilot(readInput,
+                    bound, "excel");
+                Check(readInput.tools.Any(tool =>
+                        tool.function.name == WorkbookToolCatalog.WriteDraftSheet &&
+                        new JavaScriptSerializer().Serialize(
+                            tool.function.parameters).Contains("analysis_id")) &&
+                    readInput.tools.All(tool => tool.function.name !=
+                        CrossAppToolCatalog.SendToPowerPoint),
+                    "The active request did not switch to the typed draft contract.");
                 var fixture = Fixture(bound);
                 stage = "excel_model_plan_boundary";
                 var planJson = new JavaScriptSerializer().Serialize(new
@@ -135,25 +153,52 @@ namespace GuardrailTests
                 fixture = Tuple.Create(fixture.Item1, parsedPlan);
                 var compiled = AnalysisDocumentCompiler.Compile(
                     fixture.Item1, fixture.Item2);
-                stage = "excel_source_freshness";
-                ledger.Range("I2").Value2 = 85520d;
-                var staleRejected = false;
-                try
+                var draftCall = new ChatToolCall
                 {
-                    AnalysisDocumentPilot.WriteWorkbook((object)excel,
-                        fixture.Item1, fixture.Item2);
-                }
-                catch (InvalidOperationException error)
+                    id = "native-analysis-draft",
+                    type = "function",
+                    function = new ChatToolCallFunction
+                    {
+                        name = WorkbookToolCatalog.WriteDraftSheet,
+                        arguments = new JavaScriptSerializer().Serialize(new
+                        {
+                            analysis_id = fixture.Item1.AnalysisId,
+                            title = fixture.Item2.WorkbookTitle
+                        })
+                    }
+                };
+                Check(ToolContractValidator.Validate(draftCall,
+                    readInput.tools.Single(tool => tool.function.name ==
+                        WorkbookToolCatalog.WriteDraftSheet)).Count == 0,
+                    "The typed draft call does not match the model-facing schema.");
+                var draftAuthorization = new OneShotDraftAuthorization(true);
+                using (var draftHost = new DocumentDraftHost("excel",
+                    (object)excel))
                 {
-                    staleRejected = error.Message.Contains(
-                        "ANALYSIS_SOURCE_CHANGED");
+                    draftHost.BindTaskAsync(readTask,
+                        CancellationToken.None).GetAwaiter().GetResult();
+                    stage = "excel_source_freshness";
+                    ledger.Range("I2").Value2 = 85520d;
+                    MailboxToolResult staleResult = null;
+                    try { staleResult = draftHost.Execute(draftCall,
+                        draftAuthorization, true,
+                        "Create a verified Excel report"); }
+                    finally { ledger.Range("I2").Value2 = 85519d; }
+                    Check(staleResult != null && staleResult.Outcome.Failed &&
+                        staleResult.Content.Contains("ANALYSIS_SOURCE_CHANGED") &&
+                        !draftAuthorization.IsConsumed &&
+                        (int)workbook.Worksheets.Count == 1,
+                        "A changed source cell created a draft before freshness validation.");
+                    stage = "excel_write_and_readback";
+                    var draftResult = draftHost.Execute(draftCall,
+                        draftAuthorization, true,
+                        "Create a verified Excel report");
+                    Check(!draftResult.Outcome.Failed &&
+                        draftAuthorization.IsCreated &&
+                        draftResult.Content.Contains(
+                            fixture.Item1.AnalysisId),
+                        "The model-facing typed draft did not write a verified report.");
                 }
-                finally { ledger.Range("I2").Value2 = 85519d; }
-                Check(staleRejected && (int)workbook.Worksheets.Count == 1,
-                    "A changed source cell created a draft before freshness validation.");
-                stage = "excel_write_and_readback";
-                AnalysisDocumentPilot.WriteWorkbook((object)excel,
-                    fixture.Item1, fixture.Item2);
                 dynamic draft = workbook.Worksheets["Scribble Draft"];
                 Check(compiled.ExpectedFormulaFacts.ContainsKey("B4") &&
                     compiled.ExpectedFormulaFacts.ContainsKey("C4"),

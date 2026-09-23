@@ -40,7 +40,8 @@ namespace Scribble.Office
             {
                 "title",
                 "rows",
-                "chart"
+                "chart",
+                "analysis_id"
             };
 
         private static readonly HashSet<string> CellsArguments =
@@ -232,6 +233,11 @@ namespace Scribble.Office
                         exception,
                         "DRAFT_ARGUMENTS_INVALID"));
             }
+
+            if (name == WorkbookToolCatalog.WriteDraftSheet &&
+                arguments.ContainsKey("analysis_id"))
+                return ExecuteAnalysisWorkbookDraft(call.id, arguments,
+                    authorization);
 
             if (string.Equals(
                 name,

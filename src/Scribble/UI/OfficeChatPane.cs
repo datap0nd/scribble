@@ -2121,6 +2121,13 @@ namespace Scribble.UI
                 if (_draftHost.RecoveryNote.Length > 0) request.messages.Add(new ChatCompletionInputMessage { role = "user", content = _draftHost.RecoveryNote });
                 taskContext.SaveRequest(request);
             }
+            var restoredAnalysis = taskContext.LoadAnalysis();
+            if (restoredAnalysis != null)
+            {
+                DocumentChatRequestFactory.ApplyAnalysisPilot(request,
+                    restoredAnalysis, _hostKind);
+                taskContext.SaveRequest(request);
+            }
             _resumeRecovery = null;
             var exchangeStart = request.messages.Count;
             var completedToolSteps = new HashSet<string>(
@@ -2367,6 +2374,8 @@ namespace Scribble.UI
                     response,
                     results,
                     activeModel);
+                DocumentChatRequestFactory.ApplyAnalysisPilot(request,
+                    taskContext.LoadAnalysis(), _hostKind);
                 taskContext.FinishExchange(request);
 
                 if (selectionRequest != null ||
