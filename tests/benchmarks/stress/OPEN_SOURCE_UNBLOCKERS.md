@@ -20,9 +20,11 @@ fallbacks, so its image output cannot replace PowerPoint's native render oracle
 without comparison. The source deck may contain objects that a library can
 preserve but not safely edit.
 
-**Trial before adding a production dependency:** pin one version in an
-isolated test project, check that it loads under Scribble's .NET Framework
-target, and run the existing synthetic and a PP01-like disposable deck through
+**Trial before adding a production dependency:** pin the verified
+[NuGet 3.4.2 package](https://www.nuget.org/packages/OfficeIMO.PowerPoint/3.4.2)
+in an isolated test project, check that it loads under Scribble's .NET
+Framework 4.8 target (NuGet lists a 4.7.2 asset), and run the existing
+synthetic and a PP01-like disposable deck through
 `InspectFeatures()`. Make one local text edit and one chart-data edit in copies.
 Compare slide and shape identities, notes, charts, embedded workbook data,
 relationships, media, artwork, and untouched package parts before and after.
@@ -38,7 +40,7 @@ unsupported feature as a capability refusal, not a silent conversion.
 | [ShapeCrawler](https://github.com/ShapeCrawler/ShapeCrawler) | C# API for existing PowerPoint shapes, tables, and charts | Rendering and preservation breadth still need the same native trial | Reserve if OfficeIMO fails a bounded edit |
 | [office-kit/pptx](https://github.com/office-kit/pptx) | Reads and writes decks, native charts, notes, previews, and unknown-part retention | Adds a JavaScript runtime boundary to the .NET Framework add-in; pre-1.0 API | Keep as a second engine candidate |
 | [hands-on-deck](https://github.com/EveryInc/hands-on-deck) | Atomic JSON patches, inspect/diff/lint/render workflow, layout measurement | Python command-line runtime; native chart creation is outside its stated scope | Borrow its patch and verification workflow, not the whole runtime |
-| [pptx-automizer](https://github.com/singerla/pptx-automizer) | Existing-template composition and modifications | Its documented modification path can require rebuilding a slide, a poor match for preserving unrelated PP01 content | Lower priority |
+| [pptx-automizer](https://github.com/singerla/pptx-automizer) | Existing-template composition and modifications | Its [limitations](https://singerla.github.io/pptx-automizer/limitations) say an edit to one element requires including all other slides in the output process; poor fit for preserving unrelated PP01 content | Lower priority |
 | [SlideForge](https://github.com/UIUC-MONET/SLIDEFORGE) | Localized deck-state graph and visual diff ideas | Heavy vision/runtime and inference cost relative to this pilot's remaining budget | Borrow inspection ideas only |
 
 The [Open XML SDK](https://learn.microsoft.com/en-us/office/open-xml/about-the-open-xml-sdk)

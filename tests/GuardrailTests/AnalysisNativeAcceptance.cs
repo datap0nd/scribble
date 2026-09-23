@@ -193,6 +193,23 @@ namespace GuardrailTests
                     (Convert.ToString(folio.TextFrame.TextRange.Text) ??
                         string.Empty).Trim() == "- 1 -",
                     "The renderer did not correct and read back a native folio defect.");
+                folio.Left = -10f;
+                var displacedPages =
+                    AnalysisDocumentPilot.CapturePresentationPages(
+                        (object)deck, fixture.Item1, fixture.Item2);
+                var displaced = AnalysisDocumentPilot.CaptureNativeMeasurements(
+                    (object)deck, displacedPages).Single(item =>
+                        item.Code == "OUT_OF_BOUNDS" &&
+                        item.NativeSlideId == displacedPages[0].NativeSlideId &&
+                        item.TargetId == "shape:" + (int)folio.Id);
+                AnalysisDocumentPilot.RepairNativeMeasurement((object)deck,
+                    displacedPages, displaced);
+                var placedPages = AnalysisDocumentPilot.CapturePresentationPages(
+                    (object)deck, fixture.Item1, fixture.Item2);
+                Check(AnalysisDocumentPilot.CaptureNativeMeasurements(
+                    (object)deck, placedPages).Count == 0 &&
+                    (float)folio.Left >= 0f,
+                    "The renderer did not correct and read back an out-of-bounds shape.");
                 rendererRepairPassed = true;
                 stage = "powerpoint_save_copy";
                 var deckCopy = Path.Combine(output, "analysis-deck.pptx");
@@ -254,7 +271,8 @@ namespace GuardrailTests
             File.WriteAllText(reportPath, json);
             Console.WriteLine(json);
             return workbookPassed && slidesPassed && sourcePreserved &&
-                recoveryPassed ? 0 : 1;
+                recoveryPassed && typedReviewPassed && rendererRepairPassed
+                ? 0 : 1;
         }
 
         private static string SourceFingerprint(dynamic sheet)

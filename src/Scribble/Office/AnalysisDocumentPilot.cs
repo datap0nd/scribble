@@ -297,6 +297,53 @@ namespace Scribble.Office
                 }
                 return;
             }
+            if (measurement.Code == "OUT_OF_BOUNDS")
+            {
+                if (!measurement.TargetId.StartsWith("shape:",
+                    StringComparison.Ordinal))
+                    throw new InvalidOperationException(
+                        "RENDERER_REPAIR_TARGET_INVALID");
+                int shapeId;
+                if (!int.TryParse(measurement.TargetId.Substring(6),
+                    out shapeId))
+                    throw new InvalidOperationException(
+                        "RENDERER_REPAIR_TARGET_INVALID");
+                dynamic target = null;
+                for (var index = 1; index <= (int)slide.Shapes.Count; index++)
+                    if ((int)slide.Shapes[index].Id == shapeId)
+                        target = slide.Shapes[index];
+                if (target == null)
+                    throw new InvalidOperationException(
+                        "RENDERER_REPAIR_TARGET_INVALID");
+                var left = (float)target.Left;
+                var top = (float)target.Top;
+                var width = (float)target.Width;
+                var height = (float)target.Height;
+                var slideWidth = (float)deck.PageSetup.SlideWidth;
+                var slideHeight = (float)deck.PageSetup.SlideHeight;
+                if (width > slideWidth || height > slideHeight ||
+                    width <= 0 || height <= 0)
+                    throw new InvalidOperationException(
+                        "RENDERER_BOUNDS_UNSUPPORTED: Shape is larger than the canvas.");
+                try
+                {
+                    target.Left = Math.Max(0f, Math.Min(left, slideWidth - width));
+                    target.Top = Math.Max(0f, Math.Min(top, slideHeight - height));
+                    if ((float)target.Left < -.5f || (float)target.Top < -.5f ||
+                        (float)target.Left + (float)target.Width > slideWidth + .5f ||
+                        (float)target.Top + (float)target.Height > slideHeight + .5f)
+                        throw new InvalidOperationException(
+                            "RENDERER_BOUNDS_READBACK_FAILED");
+                }
+                catch
+                {
+                    try { target.Left = left; target.Top = top; }
+                    catch { throw new InvalidOperationException(
+                        "RENDERER_REPAIR_RECOVERY_REQUIRED"); }
+                    throw;
+                }
+                return;
+            }
             throw new InvalidOperationException(
                 "RENDERER_REPAIR_UNSUPPORTED: " + measurement.Code);
         }
