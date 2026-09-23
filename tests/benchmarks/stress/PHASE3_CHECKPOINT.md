@@ -130,8 +130,9 @@ passed, and the architectural-feasibility pilot is not authorized yet.
   injected `=1` formula value. The CI-built harness from
   [run 35852563754](https://github.com/datap0nd/scribble/actions/runs/35852563754)
   passed one fresh disposable Office run through this boundary, with all six
-  structural result fields true and `full_acceptance_passed=false`. The
-  slides remain hand-authored fixture content, not a model-generated plan.
+  structural result fields true and `full_acceptance_passed=false`. Full
+  Windows CI passed. The slides remain hand-authored fixture content, not a
+  model-generated plan.
 
 ## Still required for the Phase 3 exit gate
 
