@@ -122,9 +122,12 @@ namespace GuardrailTests
                         tool.function.name == WorkbookToolCatalog.WriteDraftSheet &&
                         new JavaScriptSerializer().Serialize(
                             tool.function.parameters).Contains("analysis_id")) &&
-                    readInput.tools.All(tool => tool.function.name !=
-                        CrossAppToolCatalog.SendToPowerPoint),
-                    "The active request did not switch to the typed draft contract.");
+                    readInput.tools.Any(tool =>
+                        tool.function.name ==
+                            CrossAppToolCatalog.SendToPowerPoint &&
+                        new JavaScriptSerializer().Serialize(
+                            tool.function.parameters).Contains("AnalysisId")),
+                    "The active request did not switch to typed workbook and deck contracts.");
                 var fixture = Fixture(bound);
                 stage = "excel_model_plan_boundary";
                 var planJson = new JavaScriptSerializer().Serialize(new

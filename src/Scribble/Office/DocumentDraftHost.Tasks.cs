@@ -135,7 +135,18 @@ namespace Scribble.Office
             if (name == PresentationToolCatalog.ReviseSlides || name == PresentationToolCatalog.RevertSlides)
                 return await ExecuteRevisionAsync(call, authorization, exclusive, prompt, client, settings, token, progress);
             if (name == PresentationToolCatalog.AddDraftSlides || name == CrossAppToolCatalog.SendToPowerPoint)
+            {
+                if (name == CrossAppToolCatalog.SendToPowerPoint &&
+                    _hostKind == "excel" && _taskContext != null &&
+                    !string.IsNullOrWhiteSpace(
+                        _taskContext.State.AnalysisArtifactEvidenceId) &&
+                    string.Equals(Environment.GetEnvironmentVariable(
+                        AnalysisDocumentPilot.FeatureFlag), "1",
+                        StringComparison.Ordinal))
+                    return await ExecuteAnalysisDeckAsync(call, authorization,
+                        exclusive, client, settings, token);
                 return await ExecuteSamsungAsync(call, authorization, exclusive, prompt, client, settings, token, progress);
+            }
             if (_durableExcel == null || (name != WorkbookToolCatalog.WriteSelectionOutput && name != WorkbookToolCatalog.WriteKoreanTranslations))
                 return Execute(call, authorization, exclusive, prompt);
             // Keep the original host argument and permission preflights; a review

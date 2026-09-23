@@ -30,11 +30,12 @@ namespace Scribble.Chat
             if (index < 0) return;
             request.tools[index] =
                 WorkbookToolCatalog.AnalysisDraftDefinition();
-            // A fact-referenced deck tool is introduced with its typed review
-            // route. Do not offer the legacy number-authoring path for this
-            // bound analysis in the interim.
-            request.tools.RemoveAll(tool => tool.function.name ==
+            var deckIndex = request.tools.FindIndex(tool =>
+                tool.function.name ==
                 CrossAppToolCatalog.SendToPowerPoint);
+            if (deckIndex >= 0)
+                request.tools[deckIndex] =
+                    CrossAppToolCatalog.AnalysisDeckDefinition();
         }
 
         public const int TrimmedHistoryCharacters = 1500;
