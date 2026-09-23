@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Web.Script.Serialization;
 using Scribble.Chat;
@@ -47,6 +48,65 @@ namespace GuardrailTests
             Check(ToolContractValidator.Validate(injected, definition)
                     .Any(error => error.Contains("Formula")),
                 "The model-facing deck schema accepted an authored formula.");
+        }
+
+        public static void SharedAnalysisAllowsOneDraftPerDestination()
+        {
+            var prior = Environment.GetEnvironmentVariable(
+                AnalysisDocumentPilot.FeatureFlag);
+            var root = Path.Combine(Path.GetTempPath(),
+                "scribble-analysis-write-scope-" +
+                Guid.NewGuid().ToString("N"));
+            try
+            {
+                Environment.SetEnvironmentVariable(
+                    AnalysisDocumentPilot.FeatureFlag, "1");
+                var request = new ChatCompletionRequest
+                {
+                    model = "offline-test",
+                    messages = new List<object>()
+                };
+                var task = new TaskContextManager(request, "excel",
+                    "Create a workbook and deck from this analysis",
+                    new TaskCheckpointStore(root));
+                task.State.AnalysisContractVersion =
+                    AnalysisContract.Version;
+                task.State.AnalysisArtifactEvidenceId =
+                    "host-owned-evidence-id";
+                Func<string, string, ChatToolCall> call = (id, name) =>
+                    new ChatToolCall
+                    {
+                        id = id, type = "function",
+                        function = new ChatToolCallFunction
+                        {
+                            name = name, arguments = "{}"
+                        }
+                    };
+                var workbook = call("workbook", 
+                    WorkbookToolCatalog.WriteDraftSheet);
+                task.BeforeTool(workbook, true);
+                task.AfterTool(workbook, new MailboxToolResult(
+                    workbook.id, "{\"ok\":true}", "Workbook draft"));
+                var deck = call("deck",
+                    CrossAppToolCatalog.SendToPowerPoint);
+                task.BeforeTool(deck, true);
+                task.AfterTool(deck, new MailboxToolResult(
+                    deck.id, "{\"ok\":true}", "Deck draft"));
+                var duplicateRejected = false;
+                try { task.BeforeTool(call("duplicate",
+                    WorkbookToolCatalog.WriteDraftSheet), true); }
+                catch (InvalidOperationException error)
+                { duplicateRejected = error.Message.Contains(
+                    "already completed"); }
+                Check(duplicateRejected,
+                    "A second analysis workbook bypassed its write receipt.");
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(
+                    AnalysisDocumentPilot.FeatureFlag, prior);
+                if (Directory.Exists(root)) Directory.Delete(root, true);
+            }
         }
 
         public static void PilotRequiresExplicitFeatureFlag()

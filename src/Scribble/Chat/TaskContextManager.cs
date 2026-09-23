@@ -365,10 +365,30 @@ namespace Scribble.Chat
             if (name == WorkbookToolCatalog.WriteSelectionOutput || name == WorkbookToolCatalog.WriteKoreanTranslations) return false;
             if (!(Scribble.Office.DocumentDraftHost.IsDraftTool(_state.Host, name) || name == "open_excel_table" || name == "open_outlook_draft")) return false;
             string spent;
-            var key = _state.Host == "chrome" ? "generic_write_spent:" + name : "generic_write_spent";
+            var key = DocumentWritePermissionKey(name);
             var continuing = name == PresentationToolCatalog.ReviseSlides || name == PresentationToolCatalog.RevertSlides || name == "add_draft_slides" ||
-                (name == "send_to_powerpoint" && _state.HostData.ContainsKey("samsung_destination"));
+                (name == "send_to_powerpoint" && _state.HostData.ContainsKey("samsung_destination") && !IsAnalysisOutput(name));
             return !continuing && _state.HostData.TryGetValue(key, out spent) && spent == "true" && _state.Writes.All(w => w.Status == "verified");
+        }
+
+        private bool IsAnalysisOutput(string name)
+        {
+            return _state.Host == "excel" &&
+                _state.AnalysisContractVersion == AnalysisContract.Version &&
+                !string.IsNullOrWhiteSpace(_state.AnalysisArtifactEvidenceId) &&
+                string.Equals(Environment.GetEnvironmentVariable(
+                    AnalysisDocumentPilot.FeatureFlag), "1",
+                    StringComparison.Ordinal) &&
+                (name == WorkbookToolCatalog.WriteDraftSheet ||
+                 name == CrossAppToolCatalog.SendToPowerPoint);
+        }
+
+        private string DocumentWritePermissionKey(string name)
+        {
+            if (IsAnalysisOutput(name))
+                return "analysis_write_spent:" + name;
+            return _state.Host == "chrome" ?
+                "generic_write_spent:" + name : "generic_write_spent";
         }
 
         public const int MaxWriteRecoveryRedirects = 3;
@@ -433,9 +453,10 @@ namespace Scribble.Chat
             Diagnostics.Record("tool_start", new { call.id, call.function, changesDocument });
             if (!changesDocument) return;
             string spent;
-            var permissionKey = _state.Host == "chrome" ? "generic_write_spent:" + call.function.name : "generic_write_spent";
+            var permissionKey = DocumentWritePermissionKey(
+                call.function.name);
             var continuingPresentation = call.function.name == PresentationToolCatalog.ReviseSlides || call.function.name == PresentationToolCatalog.RevertSlides || call.function.name == "add_draft_slides" ||
-                (call.function.name == "send_to_powerpoint" && _state.HostData.ContainsKey("samsung_destination"));
+                (call.function.name == "send_to_powerpoint" && _state.HostData.ContainsKey("samsung_destination") && !IsAnalysisOutput(call.function.name));
             if (!continuingPresentation && _state.HostData.TryGetValue(permissionKey, out spent) && spent == "true" && _state.Writes.All(w => w.Status == "verified"))
                 throw new InvalidOperationException("This task's document write already completed. Its saved receipt is authoritative; a second draft was not created.");
             if (_state.Writes.Any(w => w.Status != "verified" && w.Id.StartsWith("tool:")) && !Scribble.Office.SamsungGenerationJournal.CanResume(_state, call) && !Scribble.Office.PresentationRevision.CanResume(_state, call))
@@ -461,7 +482,8 @@ namespace Scribble.Chat
                 write.Status = knownIncompleteDraft || !result.Outcome.Failed || result.Outcome.PermissionConsumed == false ? "verified" : "uncertain";
                 write.AfterFingerprint = TaskCheckpointStore.Fingerprint(result.Content);
                 if (result.Outcome.PermissionConsumed != false && !knownIncompleteDraft)
-                    _state.HostData[_state.Host == "chrome" ? "generic_write_spent:" + call.function.name : "generic_write_spent"] = "true";
+                    _state.HostData[DocumentWritePermissionKey(
+                        call.function.name)] = "true";
             }
             Checkpoint();
         }

@@ -190,7 +190,8 @@ namespace Scribble.Office
                 ordinals.TryGetValue(logicalId, out ordinal);
                 ordinals[logicalId] = ordinal + 1;
                 string pageImage;
-                var rendered = RenderFingerprint(native, out pageImage);
+                var rendered = RenderFingerprint(native,
+                    pageImages != null, out pageImage);
                 pageImages?.Add(pageImage);
                 pages.Add(new AnalysisReviewPage
                 {
@@ -529,7 +530,7 @@ namespace Scribble.Office
         }
 
         private static string RenderFingerprint(dynamic slide,
-            out string dataUrl)
+            bool includeImage, out string dataUrl)
         {
             var temporary = Path.Combine(Path.GetTempPath(),
                 "scribble-analysis-review-" + Guid.NewGuid().ToString("N") +
@@ -538,8 +539,8 @@ namespace Scribble.Office
             {
                 slide.Export(temporary, "PNG", 1600, 900);
                 var bytes = File.ReadAllBytes(temporary);
-                dataUrl = "data:image/png;base64," +
-                    Convert.ToBase64String(bytes);
+                dataUrl = includeImage ? "data:image/png;base64," +
+                    Convert.ToBase64String(bytes) : null;
                 using (var digest = SHA256.Create())
                     return BitConverter.ToString(digest.ComputeHash(bytes))
                         .Replace("-", "").ToLowerInvariant();

@@ -94,8 +94,6 @@ namespace Scribble.Office
                     if (!resuming && !authorization.TryConsume())
                         throw new InvalidOperationException(
                             "DRAFT_PERMISSION_NOT_AVAILABLE");
-                    _taskContext.State.HostData[
-                        "analysis_deck_authorized"] = "true";
                     _taskContext.State.PresentationReviewRequired = true;
                     _taskContext.State.PresentationReviewReceipt = null;
                     foreach (var id in plan.Slides.Select(slide =>
