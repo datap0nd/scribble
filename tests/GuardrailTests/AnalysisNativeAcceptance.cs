@@ -140,7 +140,8 @@ namespace GuardrailTests
                     pages.Select(page => page.ExpectedPageNumber)
                         .SequenceEqual(new[] { 1, 2, 3, 4 }) &&
                     pages.All(page => page.PageOrdinal == 0 &&
-                        page.RenderFingerprint.Length == 64),
+                        page.RenderFingerprint.Length == 64 &&
+                        page.NativeStateFingerprint.Length == 64),
                     "The review contract lost native identity, page number or rendered fingerprint.");
                 var measurements = AnalysisDocumentPilot.CaptureNativeMeasurements(
                     (object)deck, pages);

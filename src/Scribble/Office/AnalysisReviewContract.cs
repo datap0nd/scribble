@@ -17,6 +17,7 @@ namespace Scribble.Office
         public int ExpectedPageNumber { get; set; }
         public int PageOrdinal { get; set; }
         public string RenderFingerprint { get; set; }
+        public string NativeStateFingerprint { get; set; }
     }
 
     public sealed class AnalysisReviewMeasurement
@@ -174,6 +175,7 @@ namespace Scribble.Office
             if (result.Pages.Any(page => page == null || page.ExpectedPageNumber < 1 ||
                 page.PageOrdinal < 0 || page.NativeSlideId < 1 ||
                 string.IsNullOrWhiteSpace(page.RenderFingerprint) ||
+                string.IsNullOrWhiteSpace(page.NativeStateFingerprint) ||
                 !result.FactIdsBySlide.ContainsKey(page.LogicalSlideId)) ||
                 result.FactIdsBySlide.Keys.Any(id => !result.Pages.Any(page => page.LogicalSlideId == id)) ||
                 result.Pages.GroupBy(page => page.ExpectedPageNumber).Any(group => group.Count() != 1) ||
@@ -196,7 +198,8 @@ namespace Scribble.Office
                 string.Join("|", result.Pages.OrderBy(page =>
                     page.ExpectedPageNumber).Select(page => page.LogicalSlideId + ":" +
                     page.NativeSlideId + ":" + page.ExpectedPageNumber + ":" +
-                    page.PageOrdinal + ":" + page.RenderFingerprint)) + "|" +
+                    page.PageOrdinal + ":" + page.RenderFingerprint + ":" +
+                    page.NativeStateFingerprint)) + "|" +
                 string.Join("|", result.FactIdsBySlide.OrderBy(item => item.Key,
                     StringComparer.Ordinal).Select(item => item.Key + ":" +
                     string.Join(",", item.Value.OrderBy(id => id, StringComparer.Ordinal)) + ":" +

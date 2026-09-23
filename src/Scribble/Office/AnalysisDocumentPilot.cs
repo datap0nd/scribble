@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace Scribble.Office
@@ -127,7 +128,8 @@ namespace Scribble.Office
                     NativeSlideId = (int)native.SlideID,
                     ExpectedPageNumber = index,
                     PageOrdinal = ordinal,
-                    RenderFingerprint = RenderFingerprint(native)
+                    RenderFingerprint = RenderFingerprint(native),
+                    NativeStateFingerprint = NativeStateFingerprint(native)
                 });
             }
             return pages;
@@ -204,7 +206,7 @@ namespace Scribble.Office
             dynamic deck = presentation;
             dynamic slide = deck.Slides[page.ExpectedPageNumber];
             if ((int)slide.SlideID != page.NativeSlideId ||
-                RenderFingerprint(slide) != page.RenderFingerprint)
+                NativeStateFingerprint(slide) != page.NativeStateFingerprint)
                 throw new InvalidOperationException("RENDERER_REPAIR_PAGE_CHANGED");
             var current = CaptureNativeMeasurements(presentation, pages)
                 .SingleOrDefault(item => item.MeasurementId ==
@@ -364,6 +366,54 @@ namespace Scribble.Office
                         .ToLowerInvariant();
             }
             finally { if (File.Exists(temporary)) File.Delete(temporary); }
+        }
+
+        // Native repair identity uses stable editable state. PowerPoint can
+        // export different PNG bytes for the same live slide; rendered bytes
+        // remain review evidence but cannot safely authorize a COM mutation.
+        private static string NativeStateFingerprint(dynamic slide)
+        {
+            var state = new StringBuilder();
+            AppendState(state, (int)slide.SlideID);
+            AppendState(state, (int)slide.Shapes.Count);
+            for (var index = 1; index <= (int)slide.Shapes.Count; index++)
+            {
+                dynamic shape = slide.Shapes[index];
+                AppendState(state, (int)shape.Id);
+                AppendState(state, (int)shape.Type);
+                AppendState(state, Convert.ToDouble(shape.Left,
+                    CultureInfo.InvariantCulture));
+                AppendState(state, Convert.ToDouble(shape.Top,
+                    CultureInfo.InvariantCulture));
+                AppendState(state, Convert.ToDouble(shape.Width,
+                    CultureInfo.InvariantCulture));
+                AppendState(state, Convert.ToDouble(shape.Height,
+                    CultureInfo.InvariantCulture));
+                AppendState(state, Convert.ToDouble(shape.Rotation,
+                    CultureInfo.InvariantCulture));
+                var hasText = (int)shape.HasTextFrame != 0;
+                AppendState(state, hasText ? 1 : 0);
+                if (hasText)
+                {
+                    dynamic range = shape.TextFrame.TextRange;
+                    AppendState(state, Convert.ToString(range.Text) ?? string.Empty);
+                    AppendState(state, Convert.ToDouble(range.Font.Size,
+                        CultureInfo.InvariantCulture));
+                }
+            }
+            using (var digest = SHA256.Create())
+                return BitConverter.ToString(digest.ComputeHash(
+                    Encoding.UTF8.GetBytes(state.ToString()))).Replace("-", "")
+                    .ToLowerInvariant();
+        }
+
+        private static void AppendState(StringBuilder state, object value)
+        {
+            var text = value is double
+                ? ((double)value).ToString("R", CultureInfo.InvariantCulture)
+                : Convert.ToString(value, CultureInfo.InvariantCulture) ??
+                    string.Empty;
+            state.Append(text.Length).Append(':').Append(text);
         }
 
         private static AnalysisReviewMeasurement Measure(string code,

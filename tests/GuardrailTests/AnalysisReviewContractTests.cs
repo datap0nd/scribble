@@ -77,7 +77,8 @@ namespace GuardrailTests
             {
                 LogicalSlideId = "june", NativeSlideId = 412,
                 ExpectedPageNumber = 1, PageOrdinal = 0,
-                RenderFingerprint = "sha256:rendered"
+                RenderFingerprint = "sha256:rendered",
+                NativeStateFingerprint = "sha256:native"
             };
             var context = AnalysisReviewContract.Context(artifact, plan,
                 new[] { page });
