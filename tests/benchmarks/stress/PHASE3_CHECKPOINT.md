@@ -1,0 +1,47 @@
+# Phase 3 checkpoint: typed review and bounded repairs
+
+Recorded 23 September 2026. Phase 3 is **in progress**; its exit gate has not
+passed, and the architectural-feasibility pilot is not authorized yet.
+
+## Verified so far
+
+- The development-only `AnalysisReviewContract` binds findings to host-issued
+  fact IDs, field targets, logical slide IDs, native slide IDs, page order, and
+  rendered fingerprints. It refuses value/citation overrides, unsupported
+  route combinations, and contradictory verdicts. Host geometry measurements
+  become blockers even when a model omits them.
+- `AnalysisRepairBudget` persists model-call and patch-target counts across
+  retries: 12 calls for cross-app analysis, 18 for PP01, 8 distinct patch
+  targets, bounded prompt size and response tokens.
+- A narrative repair changes one plan field, recompiles, and verifies that
+  facts, citations, native chart/table bindings, and page count remain stable.
+  Renderer-owned operations fix an exact native folio, text overflow within a
+  minimum font size, or a shape outside the canvas in a disposable deck.
+- [CI run 35837118421](https://github.com/datap0nd/scribble/actions/runs/35837118421)
+  built the native harness. On the Windows Office workstation, that harness
+  created one synthetic Excel draft and four editable PowerPoint slides,
+  verified native formulas and chart values, preserved the source ledger,
+  recovered with an isolated new draft after a deliberate mismatch, then
+  deliberately damaged and repaired a native folio and an out-of-bounds shape.
+  The harness reported `typed_review_contract_passed=true`,
+  `renderer_repair_passed=true`, and `full_acceptance_passed=false`.
+- The isolated [OfficeIMO evaluation](OPEN_SOURCE_UNBLOCKERS.md) is promising
+  on the synthetic deck. It is not a PP01 or production-dependency gate.
+
+## Still required for the Phase 3 exit gate
+
+- Migrate the active Samsung review and repair route in
+  `DocumentDraftHost.PowerPoint` and `DocumentDraftHost.SlideRepair` to the
+  typed analysis contract for supported capabilities, then retire the old
+  brief/number/native regex finding filters on that route.
+- Handle collision measurements with a bounded renderer operation or return
+  an explicit unsupported capability before a model is allowed to approve.
+  Continue testing source-bound facts, page continuations, and retry receipts
+  against native outputs and context limits.
+- Finish and record the current full CI result, then freeze Phase 3 code for
+  the offline gate. Only after Phases 0–3 pass offline may the pinned hosted
+  OpenRouter `qwen/qwen3.8-27b` run the small paid architectural pilot.
+
+No paid model call was made for this checkpoint. The last independently
+verified balance remains $14.47 of the $40 key cap at 19:35 UTC on
+22 September 2026; it must be refreshed immediately before any paid run.

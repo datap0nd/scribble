@@ -23,9 +23,7 @@ namespace OfficeImoProbe
             {
                 var features = deck.InspectFeatures();
                 File.WriteAllText(Path.Combine(output, "feature-report.txt"),
-                    string.Join(Environment.NewLine, features.GetType()
-                        .GetProperties().Select(property => property.Name + "=" +
-                            Convert.ToString(property.GetValue(features, null)))));
+                    string.Join(Environment.NewLine, FeatureLines(features)));
                 deck.SaveCopy(noOp);
             }
             using (var deck = PowerPointPresentation.Load(input))
@@ -70,6 +68,30 @@ namespace OfficeImoProbe
                         using (var memory = new MemoryStream())
                         { stream.CopyTo(memory); return Hash(memory.ToArray()); }
                     }, StringComparer.Ordinal);
+        }
+
+        private static IEnumerable<string> FeatureLines(object report)
+        {
+            foreach (var property in report.GetType().GetProperties())
+            {
+                var value = property.GetValue(report, null);
+                var items = value as System.Collections.IEnumerable;
+                if (items == null || value is string)
+                {
+                    yield return property.Name + "=" + Convert.ToString(value);
+                    continue;
+                }
+                foreach (var item in items)
+                {
+                    if (item == null) continue;
+                    var type = item.GetType();
+                    var name = type.GetProperty("Name");
+                    var count = type.GetProperty("Count");
+                    yield return property.Name + ":" +
+                        (name == null ? type.Name : Convert.ToString(name.GetValue(item, null))) +
+                        ":" + (count == null ? "" : Convert.ToString(count.GetValue(item, null)));
+                }
+            }
         }
 
         private static string Hash(byte[] bytes)

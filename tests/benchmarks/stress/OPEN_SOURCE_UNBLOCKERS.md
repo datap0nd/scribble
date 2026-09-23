@@ -36,6 +36,21 @@ reviewed images. Accept it for a narrow operation only if it passes the same
 readback and preservation checks as the current COM writer. Record any
 unsupported feature as a capability refusal, not a silent conversion.
 
+**First trial result.** [CI run 35837501877](https://github.com/datap0nd/scribble/actions/runs/35837501877)
+built and ran OfficeIMO.PowerPoint 3.4.2 on `net48` against the four-slide
+synthetic deck. Both the no-op save and one-title edit retained all 97 package
+parts. OfficeIMO reserialized 40 parts on the no-op save, including slide,
+chart, note and relationship XML; that is why package-byte equality is not
+the preservation oracle. PowerPoint opened all three files read-only. Its
+native 1920×1080 PNG exports for the no-op copy were byte-identical to the
+original on all four slides. The edit changed only slide 2's native render.
+Extracted slide text, note text, and chart cache values were identical between
+the original and no-op copies; the edit changed only slide 2's text sequence.
+This is a promising **synthetic** result. It does not cover a dense PP01-like
+source deck, animations, embedded objects, or an in-place edit of an unsaved
+Office session. The next trial needs those cases and the feature report's
+individual findings, not just part counts.
+
 ## Alternatives and ideas worth borrowing
 
 | Candidate | Useful part | Limit for Scribble | Decision |
