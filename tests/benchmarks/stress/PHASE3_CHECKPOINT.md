@@ -53,7 +53,14 @@ passed, and the architectural-feasibility pilot is not authorized yet.
   `68682ed` patch also reserves a native repair against an exact measurement
   and native-state fingerprint before mutation. Resume leaves an interrupted
   patch pending until a saved deck is reopened and the defect is measured
-  clear. Its Windows CI/native gate remains pending at this checkpoint.
+  clear. [CI run 35842974961](https://github.com/datap0nd/scribble/actions/runs/35842974961)
+  passed for the initial reservation implementation. The CI-built harness artifact from
+  [run 35843324667](https://github.com/datap0nd/scribble/actions/runs/35843324667)
+  passed one fresh disposable Office trial: native formulas, four slides,
+  source preservation, isolated retry, typed review and renderer repair all
+  reported true with no failure. `full_acceptance_passed=false` remains the
+  correct status because this was hand-authored, without model or visual
+  attestation. The full Windows CI job was still running when recorded.
 - The four-slide native output is an accuracy/structure fixture, not an
   approved visual baseline. Visual inspection found repeated data on slides
   2 and 3, a small chart beside an oversized table, and a fourth page with
