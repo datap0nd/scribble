@@ -318,6 +318,25 @@ namespace GuardrailTests
                     };
                     var deckAuthorization =
                         new OneShotDraftAuthorization(true);
+                    var beforeDecks =
+                        (int)powerPoint.Presentations.Count;
+                    ledger.Range("I2").Value2 = 85520d;
+                    MailboxToolResult staleDeckResult;
+                    try
+                    {
+                        staleDeckResult = deckHost.ExecuteAsync(deckCall,
+                            deckAuthorization, true,
+                            "Create a verified four-slide deck",
+                            client, settings, CancellationToken.None, null)
+                            .GetAwaiter().GetResult();
+                    }
+                    finally { ledger.Range("I2").Value2 = 85519d; }
+                    Check(staleDeckResult.Outcome.Failed &&
+                        staleDeckResult.Content.Contains(
+                            "ANALYSIS_SOURCE_CHANGED") &&
+                        !deckAuthorization.IsConsumed &&
+                        (int)powerPoint.Presentations.Count == beforeDecks,
+                        "A stale source created a native PowerPoint draft.");
                     var routeResult = deckHost.ExecuteAsync(deckCall,
                         deckAuthorization, true,
                         "Create a verified four-slide deck",
