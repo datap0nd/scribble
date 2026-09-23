@@ -189,6 +189,36 @@ namespace GuardrailTests
                 Check(AnalysisDocumentPilot.CompleteNativeReview((object)deck,
                     nativeReview, cleanVerdict).Approved,
                     "A native page-bound typed review could not be parsed.");
+                dynamic reviewedTable = null;
+                dynamic reviewedSlide = deck.Slides[2];
+                for (var shapeIndex = 1;
+                    shapeIndex <= (int)reviewedSlide.Shapes.Count; shapeIndex++)
+                    if ((int)reviewedSlide.Shapes[shapeIndex].HasTable != 0)
+                        reviewedTable = reviewedSlide.Shapes[shapeIndex].Table;
+                Check(reviewedTable != null,
+                    "The reviewed comparison slide lost its native table.");
+                dynamic reviewedCell = reviewedTable.Cell(2, 2).Shape
+                    .TextFrame.TextRange;
+                var originalCellText = Convert.ToString(reviewedCell.Text);
+                var originalCellFontSize = (float)reviewedCell.Font.Size;
+                reviewedCell.Text = originalCellText + " edited";
+                var staleTableReviewRejected = false;
+                try
+                {
+                    AnalysisDocumentPilot.CompleteNativeReview((object)deck,
+                        nativeReview, cleanVerdict);
+                }
+                catch (InvalidOperationException error)
+                {
+                    staleTableReviewRejected = error.Message.Contains(
+                        "REVIEW_NATIVE_STATE_CHANGED");
+                }
+                reviewedCell.Text = originalCellText;
+                reviewedCell.Font.Size = originalCellFontSize;
+                Check(staleTableReviewRejected &&
+                    AnalysisDocumentPilot.CompleteNativeReview((object)deck,
+                        nativeReview, cleanVerdict).Approved,
+                    "A native table-cell edit inherited an earlier review approval.");
                 typedReviewPassed = true;
                 stage = "powerpoint_renderer_repair";
                 dynamic firstSlide = deck.Slides[1];

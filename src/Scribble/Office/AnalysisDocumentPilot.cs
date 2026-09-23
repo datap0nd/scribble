@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -566,6 +567,43 @@ namespace Scribble.Office
                     AppendState(state, Convert.ToDouble(range.Font.Size,
                         CultureInfo.InvariantCulture));
                 }
+                var hasTable = (int)shape.HasTable != 0;
+                AppendState(state, hasTable ? 1 : 0);
+                if (hasTable)
+                {
+                    dynamic table = shape.Table;
+                    AppendState(state, (int)table.Rows.Count);
+                    AppendState(state, (int)table.Columns.Count);
+                    for (var row = 1; row <= (int)table.Rows.Count; row++)
+                        for (var column = 1;
+                            column <= (int)table.Columns.Count; column++)
+                        {
+                            dynamic cell = table.Cell(row, column).Shape;
+                            dynamic range = cell.TextFrame.TextRange;
+                            AppendState(state, Convert.ToString(range.Text) ??
+                                string.Empty);
+                            AppendState(state, Convert.ToDouble(range.Font.Size,
+                                CultureInfo.InvariantCulture));
+                        }
+                }
+                var hasChart = (int)shape.HasChart != 0;
+                AppendState(state, hasChart ? 1 : 0);
+                if (hasChart)
+                {
+                    dynamic chart = shape.Chart;
+                    AppendState(state, (int)chart.ChartType);
+                    var series = chart.SeriesCollection();
+                    AppendState(state, (int)series.Count);
+                    for (var itemIndex = 1;
+                        itemIndex <= (int)series.Count; itemIndex++)
+                    {
+                        dynamic item = chart.SeriesCollection(itemIndex);
+                        AppendState(state, Convert.ToString(item.Name) ??
+                            string.Empty);
+                        AppendNativeValues(state, (object)item.Values);
+                        AppendNativeValues(state, (object)item.XValues);
+                    }
+                }
             }
             using (var digest = SHA256.Create())
                 return BitConverter.ToString(digest.ComputeHash(
@@ -580,6 +618,21 @@ namespace Scribble.Office
                 : Convert.ToString(value, CultureInfo.InvariantCulture) ??
                     string.Empty;
             state.Append(text.Length).Append(':').Append(text);
+        }
+
+        private static void AppendNativeValues(StringBuilder state,
+            object values)
+        {
+            var sequence = values as IEnumerable;
+            if (sequence == null || values is string)
+            {
+                AppendState(state, values);
+                return;
+            }
+            var entries = sequence.Cast<object>().ToArray();
+            AppendState(state, entries.Length);
+            foreach (var entry in entries)
+                AppendNativeValues(state, entry);
         }
 
         private sealed class NativeBounds
