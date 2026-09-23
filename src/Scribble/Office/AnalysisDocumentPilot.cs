@@ -214,7 +214,8 @@ namespace Scribble.Office
         // ask the model to rewrite the slide nor modify a bound fact.
         public static string RepairNativeMeasurement(object presentation,
             IReadOnlyList<AnalysisReviewPage> pages,
-            AnalysisReviewMeasurement measurement, string budgetReceipt)
+            AnalysisReviewMeasurement measurement, string budgetReceipt,
+            AnalysisPatchReservation reservation = null)
         {
             RequireEnabled();
             if (measurement == null || pages == null)
@@ -238,8 +239,17 @@ namespace Scribble.Office
                 current.Observed != measurement.Observed ||
                 current.Expected != measurement.Expected)
                 throw new InvalidOperationException("RENDERER_REPAIR_MEASUREMENT_CHANGED");
-            var nextReceipt = AnalysisRepairBudget.Read(budgetReceipt)
-                .ConsumePatch(page.LogicalSlideId, measurement.TargetId);
+            var budget = AnalysisRepairBudget.Read(budgetReceipt);
+            if (reservation != null)
+            {
+                reservation.Validate(page, measurement);
+                if (reservation.BudgetReceipt != budgetReceipt)
+                    throw new InvalidOperationException(
+                        "REPAIR_RESERVATION_CHANGED");
+            }
+            var nextReceipt = reservation != null ? budgetReceipt :
+                budget.ConsumePatch(page.LogicalSlideId,
+                    measurement.TargetId);
             if (measurement.Code == "PAGE_NUMBER")
             {
                 var candidates = new List<object>();

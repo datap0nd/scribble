@@ -184,9 +184,22 @@ namespace GuardrailTests
                 var folioDefect = damagedMeasurements.Single(item =>
                     item.Code == "PAGE_NUMBER" &&
                     item.NativeSlideId == damagedPages[0].NativeSlideId);
+                var reservedFolio = AnalysisRepairBudget.CrossApp()
+                    .ConsumePatch(damagedPages[0].LogicalSlideId,
+                        folioDefect.TargetId);
+                var folioReservation = new AnalysisPatchReservation
+                {
+                    LogicalSlideId = damagedPages[0].LogicalSlideId,
+                    NativeSlideId = damagedPages[0].NativeSlideId,
+                    TargetId = folioDefect.TargetId,
+                    MeasurementId = folioDefect.MeasurementId,
+                    NativeStateFingerprint =
+                        damagedPages[0].NativeStateFingerprint,
+                    BudgetReceipt = reservedFolio
+                };
                 var repairReceipt = AnalysisDocumentPilot.RepairNativeMeasurement(
                     (object)deck, damagedPages, folioDefect,
-                    AnalysisRepairBudget.CrossApp().Serialize());
+                    reservedFolio, folioReservation);
                 var correctedPages =
                     AnalysisDocumentPilot.CapturePresentationPages(
                         (object)deck, fixture.Item1, fixture.Item2);

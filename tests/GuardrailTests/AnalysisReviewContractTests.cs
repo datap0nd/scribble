@@ -118,6 +118,49 @@ namespace GuardrailTests
                     resumed.State.HostData["analysis_repair_budget"] ==
                         second.BudgetReceipt,
                     "A resumed task reset or failed to persist the review call budget.");
+                var defect = new AnalysisReviewMeasurement
+                {
+                    MeasurementId = "folio-412", Code = "PAGE_NUMBER",
+                    LogicalSlideId = "june", NativeSlideId = 412,
+                    TargetId = "shape:10", Observed = "2", Expected = "1"
+                };
+                var reservedPatch = resumed.ReserveAnalysisPatch(page,
+                    defect, true);
+                resumed = new TaskContextManager(input, "excel",
+                    task.State.Objective, store, store.Load(task.State.Id));
+                Check(AnalysisRepairBudget.Read(reservedPatch.BudgetReceipt)
+                    .PatchedTargets
+                    .SequenceEqual(new[] { "june/shape:10" }) &&
+                    resumed.State.HostData["analysis_repair_budget"] ==
+                        reservedPatch.BudgetReceipt &&
+                    resumed.State.HostData.ContainsKey(
+                        "analysis_pending_patch"),
+                    "A resumed task lost its write-ahead patch reservation.");
+                Reject(() => resumed.ReserveAnalysisPatch(page,
+                    defect, true), "REPAIR_PENDING_RECONCILIATION");
+                Reject(() => resumed.ReserveAnalysisReview(artifact, plan,
+                    context, true), "REPAIR_PENDING_RECONCILIATION");
+                var savedPage = new AnalysisReviewPage
+                {
+                    LogicalSlideId = "june", NativeSlideId = 412,
+                    ExpectedPageNumber = 1, PageOrdinal = 0,
+                    RenderFingerprint = "sha256:repaired",
+                    NativeStateFingerprint = "sha256:repaired-native"
+                };
+                Reject(() => resumed.ReconcileAnalysisPatch(reservedPatch,
+                    page, new[] { defect }), "REPAIR_PENDING_RECONCILIATION");
+                Reject(() => resumed.ReconcileAnalysisPatch(reservedPatch,
+                    savedPage, new[] { defect }),
+                    "REPAIR_PENDING_RECONCILIATION");
+                resumed.ReconcileAnalysisPatch(reservedPatch, savedPage,
+                    new AnalysisReviewMeasurement[0]);
+                resumed = new TaskContextManager(input, "excel",
+                    task.State.Objective, store, store.Load(task.State.Id));
+                Check(!resumed.State.HostData.ContainsKey(
+                    "analysis_pending_patch"),
+                    "A completed native repair remained pending after resume.");
+                Reject(() => resumed.ReserveAnalysisPatch(page,
+                    defect, true), "REPAIR_TARGET_ALREADY_PATCHED");
                 Reject(() => resumed.ReserveAnalysisReview(artifact, plan,
                     context, false), "REPAIR_BUDGET_TASK_MODE_CHANGED");
                 resumed.State.HostData["analysis_repair_budget"] = "";

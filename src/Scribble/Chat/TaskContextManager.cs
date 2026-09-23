@@ -252,14 +252,87 @@ namespace Scribble.Chat
             AnalysisReviewContext context, bool crossApp,
             int maxResponseTokens = 2048)
         {
+            if (_state.HostData.ContainsKey("analysis_pending_patch"))
+                throw new InvalidOperationException("REPAIR_PENDING_RECONCILIATION");
             var persisted = LoadAnalysis();
             if (persisted == null || artifact == null ||
                 persisted.AnalysisId != artifact.AnalysisId)
                 throw new InvalidOperationException(
                     "REVIEW_TASK_ANALYSIS_CHANGED");
-            const string key = "analysis_repair_budget";
+            var receipt = AnalysisBudgetReceipt(crossApp);
+            var request = AnalysisReviewContract.PrepareRequest(artifact,
+                plan, context, receipt, maxResponseTokens);
+            _state.HostData["analysis_repair_budget"] = request.BudgetReceipt;
+            Checkpoint();
+            return request;
+        }
+
+        public AnalysisPatchReservation ReserveAnalysisPatch(
+            AnalysisReviewPage page, AnalysisReviewMeasurement measurement,
+            bool crossApp)
+        {
+            if (LoadAnalysis() == null)
+                throw new InvalidOperationException(
+                    "REVIEW_TASK_ANALYSIS_CHANGED");
+            if (page == null || measurement == null ||
+                page.LogicalSlideId != measurement.LogicalSlideId ||
+                page.NativeSlideId != measurement.NativeSlideId ||
+                string.IsNullOrWhiteSpace(page.NativeStateFingerprint) ||
+                string.IsNullOrWhiteSpace(measurement.MeasurementId))
+                throw new InvalidOperationException("REPAIR_RESERVATION_CHANGED");
+            if (_state.HostData.ContainsKey("analysis_pending_patch"))
+                throw new InvalidOperationException("REPAIR_PENDING_RECONCILIATION");
+            var next = AnalysisRepairBudget.Read(AnalysisBudgetReceipt(crossApp))
+                .ConsumePatch(page.LogicalSlideId, measurement.TargetId);
+            var reservation = new AnalysisPatchReservation
+            {
+                LogicalSlideId = page.LogicalSlideId,
+                NativeSlideId = page.NativeSlideId,
+                TargetId = measurement.TargetId,
+                MeasurementId = measurement.MeasurementId,
+                NativeStateFingerprint = page.NativeStateFingerprint,
+                BudgetReceipt = next
+            };
+            _state.HostData["analysis_repair_budget"] = next;
+            _state.HostData["analysis_pending_patch"] =
+                _json.Serialize(reservation);
+            Checkpoint();
+            return reservation;
+        }
+
+        // Call only after reopening and measuring the saved native deck. A
+        // crash between reservation and save leaves this pending, rather than
+        // silently treating the patch as either applied or available again.
+        public void ReconcileAnalysisPatch(AnalysisPatchReservation reservation,
+            AnalysisReviewPage savedPage,
+            IEnumerable<AnalysisReviewMeasurement> savedMeasurements)
+        {
+            string pending;
+            if (reservation == null || savedPage == null ||
+                savedMeasurements == null ||
+                !_state.HostData.TryGetValue("analysis_pending_patch",
+                    out pending) ||
+                pending != _json.Serialize(reservation) ||
+                _state.HostData["analysis_repair_budget"] !=
+                    reservation.BudgetReceipt ||
+                savedPage.LogicalSlideId != reservation.LogicalSlideId ||
+                savedPage.NativeSlideId != reservation.NativeSlideId)
+                throw new InvalidOperationException("REPAIR_RESERVATION_CHANGED");
+            if (savedPage.NativeStateFingerprint ==
+                reservation.NativeStateFingerprint ||
+                savedMeasurements.Any(item => item != null &&
+                    item.MeasurementId == reservation.MeasurementId))
+                throw new InvalidOperationException(
+                    "REPAIR_PENDING_RECONCILIATION");
+            _state.HostData.Remove("analysis_pending_patch");
+            Checkpoint();
+        }
+
+        private string AnalysisBudgetReceipt(bool crossApp)
+        {
             string receipt;
-            if (!_state.HostData.TryGetValue(key, out receipt))
+            if (!_state.HostData.TryGetValue("analysis_repair_budget",
+                out receipt))
                 receipt = crossApp ? AnalysisRepairBudget.CrossApp().Serialize() :
                     new AnalysisRepairBudget().Serialize();
             else if (string.IsNullOrWhiteSpace(receipt))
@@ -270,11 +343,7 @@ namespace Scribble.Chat
                 AnalysisRepairBudget.MaxModelCalls))
                 throw new InvalidOperationException(
                     "REPAIR_BUDGET_TASK_MODE_CHANGED");
-            var request = AnalysisReviewContract.PrepareRequest(artifact,
-                plan, context, receipt, maxResponseTokens);
-            _state.HostData[key] = request.BudgetReceipt;
-            Checkpoint();
-            return request;
+            return receipt;
         }
 
         public void PrepareExchange(ChatCompletionResponseMessage response, ChatCompletionRequest request)

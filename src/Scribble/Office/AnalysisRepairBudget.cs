@@ -5,6 +5,34 @@ using System.Web.Script.Serialization;
 
 namespace Scribble.Office
 {
+    // A write-ahead reservation identifies the exact native state that may be
+    // changed. A task with a pending reservation must reconcile it on resume.
+    public sealed class AnalysisPatchReservation
+    {
+        public string LogicalSlideId { get; set; }
+        public int NativeSlideId { get; set; }
+        public string TargetId { get; set; }
+        public string MeasurementId { get; set; }
+        public string NativeStateFingerprint { get; set; }
+        public string BudgetReceipt { get; set; }
+
+        public void Validate(AnalysisReviewPage page,
+            AnalysisReviewMeasurement measurement)
+        {
+            if (page == null || measurement == null ||
+                LogicalSlideId != page.LogicalSlideId ||
+                NativeSlideId != page.NativeSlideId ||
+                TargetId != measurement.TargetId ||
+                MeasurementId != measurement.MeasurementId ||
+                NativeStateFingerprint != page.NativeStateFingerprint ||
+                measurement.LogicalSlideId != page.LogicalSlideId ||
+                measurement.NativeSlideId != page.NativeSlideId ||
+                !AnalysisRepairBudget.Read(BudgetReceipt).PatchedTargets.Contains(
+                    LogicalSlideId + "/" + TargetId, StringComparer.Ordinal))
+                throw new InvalidOperationException("REPAIR_RESERVATION_CHANGED");
+        }
+    }
+
     // One serialized task-level counter survives every review and repair stage.
     // Nested loops may consume it but cannot reset it.
     public sealed class AnalysisRepairBudget
