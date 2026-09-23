@@ -219,6 +219,32 @@ namespace GuardrailTests
                     AnalysisDocumentPilot.CompleteNativeReview((object)deck,
                         nativeReview, cleanVerdict).Approved,
                     "A native table-cell edit inherited an earlier review approval.");
+                dynamic reviewedChart = null;
+                for (var shapeIndex = 1;
+                    shapeIndex <= (int)reviewedSlide.Shapes.Count; shapeIndex++)
+                    if ((int)reviewedSlide.Shapes[shapeIndex].HasChart != 0)
+                        reviewedChart = reviewedSlide.Shapes[shapeIndex].Chart;
+                Check(reviewedChart != null,
+                    "The reviewed comparison slide lost its native chart.");
+                dynamic reviewedSeries = reviewedChart.SeriesCollection(1);
+                var originalSeriesName = Convert.ToString(reviewedSeries.Name);
+                reviewedSeries.Name = originalSeriesName + " edited";
+                var staleChartReviewRejected = false;
+                try
+                {
+                    AnalysisDocumentPilot.CompleteNativeReview((object)deck,
+                        nativeReview, cleanVerdict);
+                }
+                catch (InvalidOperationException error)
+                {
+                    staleChartReviewRejected = error.Message.Contains(
+                        "REVIEW_NATIVE_STATE_CHANGED");
+                }
+                reviewedSeries.Name = originalSeriesName;
+                Check(staleChartReviewRejected &&
+                    AnalysisDocumentPilot.CompleteNativeReview((object)deck,
+                        nativeReview, cleanVerdict).Approved,
+                    "A native chart-series edit inherited an earlier review approval.");
                 typedReviewPassed = true;
                 stage = "powerpoint_renderer_repair";
                 dynamic firstSlide = deck.Slides[1];
