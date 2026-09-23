@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "candidate_commit": "a5b0702854f9acabeed55677d265eaede3a5d43d",
+  "ci_run_id": 35832192069,
+  "assembly_sha256": "5f71cf09975862d7eabfb4f883a8d49224f0093ddab8953f2f87afb4b8a30d0c",
+  "execution_kind": "native_disposable_analysis_pilot",
+  "workbook_passed": true,
+  "four_slides_passed": true,
+  "source_preserved": true,
+  "isolated_retry_passed": true,
+  "rendered_images": [
+    "analysis-slide-01.png",
+    "analysis-slide-02.png",
+    "analysis-slide-03.png",
+    "analysis-slide-04.png"
+  ],
+  "full_acceptance_passed": false,
+  "visual_status": "candidate_not_approved",
+  "note": "Hand-authored structural pilot only; no model, visual attestation, or recovery qualification.",
+  "failure": ""
+}
