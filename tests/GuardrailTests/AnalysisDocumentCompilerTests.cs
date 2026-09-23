@@ -177,7 +177,8 @@ namespace GuardrailTests
                 ((string[])rows[0])[2] == "82,992" &&
                 Convert.ToDouble(values[0]) == 85519d &&
                 Convert.ToDouble(values[1]) == 82992d &&
-                (string)periodSlide["sources"] == "WB01 / Ledger!A1:L145",
+                (string)periodSlide["sources"] == "WB01 / Ledger!A1:L145" &&
+                !periodSlide.ContainsKey("footnote"),
                 "Workbook, table, chart, and citations did not resolve from the same facts.");
             Check(((string)compiled.Slides[0]["subtitle"]).Contains("82,992") &&
                 ((string)compiled.Slides[0]["sources"]).Contains("WB01"),

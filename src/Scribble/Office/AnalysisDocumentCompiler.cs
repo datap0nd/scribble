@@ -190,8 +190,6 @@ namespace Scribble.Office
                 if (sources.Length > 2000)
                     throw new InvalidOperationException("ANALYSIS_SLIDE_CITATIONS_TOO_LARGE");
                 map["sources"] = sources;
-                map["footnote"] = sources.Length <= 200 ? sources :
-                    sources.Substring(0, 197) + "...";
                 map["evidence"] = string.Join("\n", used.Select(id =>
                     facts[id].Metric + " [" + id + "] = " +
                     facts[id].Value + " (" + Citation(facts[id].Locators == null

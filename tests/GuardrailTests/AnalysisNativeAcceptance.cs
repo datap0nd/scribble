@@ -1,10 +1,11 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Web.Script.Serialization;
+using System.Xml.Linq;
 using Scribble.Office;
 
 namespace GuardrailTests
@@ -84,8 +85,6 @@ namespace GuardrailTests
                 deck = powerPoint.ActivePresentation;
                 Check((int)deck.Slides.Count == 4,
                     "The native deck did not contain exactly four slides.");
-                var chartCount = 0;
-                var captured = new List<Dictionary<string, object>>();
                 for (var index = 1; index <= 4; index++)
                 {
                     dynamic slide = deck.Slides[index];
@@ -96,35 +95,37 @@ namespace GuardrailTests
                     Check(File.Exists(path) && new FileInfo(path).Length > 1000,
                         "A native slide image was not rendered.");
                     images.Add(path);
-                    stage = "powerpoint_capture_" + index;
-                    captured.Add(PresentationInspection.Capture((object)slide));
-                    foreach (dynamic shape in slide.Shapes)
-                        if (Convert.ToInt32(shape.HasChart) != 0)
-                            chartCount++;
                 }
-                Check(chartCount >= 1,
-                    "The comparison slide did not contain a native chart.");
-                stage = "powerpoint_oracle";
-                var headline = PresentationInspection.CitationTextFromCaptured(
-                    captured[0]);
-                var comparison = PresentationInspection.CitationTextFromCaptured(
-                    captured[1]);
-                Check(headline.Contains("82,992") &&
-                    headline.Contains("36,714") &&
-                    comparison.Contains("85,519") &&
-                    comparison.Contains("82,992"),
-                    "The rendered slide content differed from the independent fact oracle.");
-                var nativeCharts = ((IEnumerable)captured[1]["shapes"])
-                    .Cast<object>().OfType<Dictionary<string, object>>()
-                    .Where(shape => shape.ContainsKey("chart"))
-                    .Select(shape => new JavaScriptSerializer().Serialize(
-                        shape["chart"])).ToArray();
-                Check(nativeCharts.Any(chart => chart.Contains("85519") &&
-                    chart.Contains("82992")),
-                    "The native chart data did not match the verified periods.");
-                var firstNotes = PresentationInspection.Notes((object)deck.Slides[1]);
-                Check(firstNotes.Contains("WB01"),
-                    "The rendered slide lost its host-derived citation.");
+                stage = "powerpoint_save_copy";
+                var deckCopy = Path.Combine(output, "analysis-deck.pptx");
+                deck.SaveCopyAs(deckCopy);
+                stage = "powerpoint_package_oracle";
+                Check(File.Exists(deckCopy) && new FileInfo(deckCopy).Length > 1000,
+                    "PowerPoint did not create a native draft package.");
+                using (var package = ZipFile.OpenRead(deckCopy))
+                {
+                    var headline = PackageText(package, "ppt/slides/slide1.xml");
+                    var comparison = PackageText(package, "ppt/slides/slide2.xml");
+                    var chartParts = package.Entries.Where(entry =>
+                        entry.FullName.StartsWith("ppt/charts/chart",
+                            StringComparison.OrdinalIgnoreCase) &&
+                        entry.FullName.EndsWith(".xml",
+                            StringComparison.OrdinalIgnoreCase))
+                        .Select(PackageText).ToArray();
+                    Check(chartParts.Any(chart => chart.Contains("85519") &&
+                        chart.Contains("82992")),
+                        "The native chart cache did not match the verified periods.");
+                    Check(HasChartRelationship(package,
+                        "ppt/slides/_rels/slide2.xml.rels"),
+                        "The comparison slide lost its native chart relationship.");
+                    Check(headline.Contains("82,992") &&
+                        headline.Contains("36,714") &&
+                        comparison.Contains("85,519") &&
+                        comparison.Contains("82,992"),
+                        "The native slide content differed from the independent fact oracle.");
+                    Check(headline.Contains("WB01"),
+                        "The rendered slide lost its host-derived citation.");
+                }
                 slidesPassed = true;
             }
             catch (Exception error) { failure = stage + ": " + error; }
@@ -159,6 +160,38 @@ namespace GuardrailTests
             return string.Join("|", new[] { "B2", "I2", "J2", "B3", "I3", "J3" }
                 .Select(cell => Convert.ToString(sheet.Range(cell).Value2,
                     CultureInfo.InvariantCulture)));
+        }
+
+        private static string PackageText(ZipArchive package,
+            string path)
+        {
+            var entry = package.GetEntry(path);
+            Check(entry != null, "Native PowerPoint package is missing " + path);
+            return PackageText(entry);
+        }
+
+        private static bool HasChartRelationship(ZipArchive package,
+            string path)
+        {
+            var entry = package.GetEntry(path);
+            Check(entry != null, "Native PowerPoint package is missing " + path);
+            using (var stream = entry.Open())
+                return XDocument.Load(stream).Descendants().Any(node =>
+                    node.Name.LocalName == "Relationship" &&
+                    ((string)node.Attribute("Target") ?? string.Empty)
+                        .Contains("charts/"));
+        }
+
+        private static string PackageText(ZipArchiveEntry entry)
+        {
+            using (var stream = entry.Open())
+            {
+                var document = XDocument.Load(stream);
+                return string.Join("|", document.Descendants()
+                    .Where(node => node.Name.LocalName == "t" ||
+                        node.Name.LocalName == "v")
+                    .Select(node => node.Value));
+            }
         }
 
         private static Tuple<AnalysisArtifact, AnalysisDocumentPlan> Fixture()
