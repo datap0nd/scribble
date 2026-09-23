@@ -56,10 +56,10 @@ namespace GuardrailTests
                 var sourceBefore = SourceFingerprint(ledger);
                 stage = "excel_typed_capture";
                 dynamic sourceRange = ledger.Range("B1:J3");
-                var table = WorkbookTypedCapture.Capture("ledger", "Ledger",
+                var sourceTable = WorkbookTypedCapture.Capture("ledger", "Ledger",
                     (object)sourceRange.Value2, (object)sourceRange.Formula,
                     (object)sourceRange.NumberFormat, null, 3, 9, 1, 2);
-                var fixture = Fixture(table);
+                var fixture = Fixture(sourceTable);
                 var compiled = AnalysisDocumentCompiler.Compile(
                     fixture.Item1, fixture.Item2);
                 stage = "excel_write_and_readback";
