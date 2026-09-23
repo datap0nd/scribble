@@ -6,9 +6,16 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using Scribble.Chat;
 
 namespace Scribble.Office
 {
+    public sealed class AnalysisNativeReviewSession
+    {
+        public AnalysisReviewContext Context { get; set; }
+        public AnalysisReviewRequest Request { get; set; }
+    }
+
     // Development-only bridge to the existing Office writers. A caller must
     // provide a new, disposable destination; no model-facing tool uses this
     // bridge until the native, review and recovery gates have passed.
@@ -98,6 +105,32 @@ namespace Scribble.Office
             var context = AnalysisReviewContract.Context(artifact, plan,
                 pages, measurements);
             return AnalysisReviewContract.Parse(reviewerJson, context);
+        }
+
+        // Capture once: the exact rendered/native page state in the request is
+        // the state against which the reviewer response must be parsed. The
+        // task checkpoints the call budget before any model request is sent.
+        public static AnalysisNativeReviewSession ReserveNativeReview(
+            TaskContextManager task, object presentation,
+            AnalysisArtifact artifact, AnalysisDocumentPlan plan,
+            bool crossApp, int maxResponseTokens = 2048)
+        {
+            RequireEnabled();
+            if (task == null)
+                throw new InvalidOperationException("REVIEW_TASK_REQUIRED");
+            var pages = CapturePresentationPages(presentation, artifact,
+                plan);
+            var measurements = CaptureNativeMeasurements(presentation,
+                pages);
+            var context = AnalysisReviewContract.Context(artifact, plan,
+                pages, measurements);
+            var request = task.ReserveAnalysisReview(artifact, plan,
+                context, crossApp, maxResponseTokens);
+            return new AnalysisNativeReviewSession
+            {
+                Context = context,
+                Request = request
+            };
         }
 
         public static IReadOnlyList<AnalysisReviewPage> CapturePresentationPages(

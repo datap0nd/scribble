@@ -6,6 +6,7 @@ using System.IO.Compression;
 using System.Linq;
 using System.Web.Script.Serialization;
 using System.Xml.Linq;
+using Scribble.Chat;
 using Scribble.Office;
 
 namespace GuardrailTests
@@ -133,8 +134,28 @@ namespace GuardrailTests
                     images.Add(path);
                 }
                 stage = "powerpoint_review_metadata";
-                var pages = AnalysisDocumentPilot.CapturePresentationPages(
-                    (object)deck, fixture.Item1, fixture.Item2);
+                var taskInput = new ChatCompletionRequest
+                {
+                    model = "offline-test",
+                    messages = new List<object>
+                    {
+                        new ChatCompletionInputMessage
+                        {
+                            role = "user", content =
+                                "Review the disposable analysis deck"
+                        }
+                    }
+                };
+                var taskStore = new TaskCheckpointStore(Path.Combine(output,
+                    "review-checkpoint"));
+                var reviewTask = new TaskContextManager(taskInput,
+                    "excel", "Review the disposable analysis deck",
+                    taskStore);
+                reviewTask.PersistAnalysis(fixture.Item1);
+                var nativeReview = AnalysisDocumentPilot.ReserveNativeReview(
+                    reviewTask, (object)deck, fixture.Item1,
+                    fixture.Item2, true);
+                var pages = nativeReview.Context.Pages;
                 Check(pages.Count == 4 && pages.Select(page =>
                     page.NativeSlideId).Distinct().Count() == 4 &&
                     pages.Select(page => page.ExpectedPageNumber)
@@ -143,13 +164,21 @@ namespace GuardrailTests
                         page.RenderFingerprint.Length == 64 &&
                         page.NativeStateFingerprint.Length == 64),
                     "The review contract lost native identity, page number or rendered fingerprint.");
-                var measurements = AnalysisDocumentPilot.CaptureNativeMeasurements(
-                    (object)deck, pages);
+                var measurements = nativeReview.Context.Measurements;
                 Check(measurements.Count == 0,
                     "The native output has a measured page or text geometry defect: " +
                     string.Join(", ", measurements.Select(item => item.MeasurementId)));
-                var reviewContext = AnalysisReviewContract.Context(fixture.Item1,
-                    fixture.Item2, pages, measurements);
+                var reviewContext = nativeReview.Context;
+                var resumedReviewTask = new TaskContextManager(taskInput,
+                    "excel", "Review the disposable analysis deck",
+                    taskStore, taskStore.Load(reviewTask.State.Id));
+                Check(AnalysisRepairBudget.Read(nativeReview.Request.BudgetReceipt)
+                    .ModelCalls == 1 &&
+                    resumedReviewTask.State.HostData["analysis_repair_budget"]
+                        == nativeReview.Request.BudgetReceipt &&
+                    nativeReview.Request.Content.Contains(
+                        reviewContext.ContextId),
+                    "The native review request was not checkpointed before inference.");
                 var cleanVerdict = new JavaScriptSerializer().Serialize(new
                 {
                     contract_version = AnalysisReviewContract.Version,
