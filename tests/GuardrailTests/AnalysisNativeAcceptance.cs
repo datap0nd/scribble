@@ -54,38 +54,6 @@ namespace GuardrailTests
                 ledger.Cells[3, 9].Value2 = 82992d;
                 ledger.Cells[3, 10].Value2 = 36714d;
                 var sourceBefore = SourceFingerprint(ledger);
-                stage = "excel_typed_capture";
-                dynamic sourceRange = ledger.Range("B1:J3");
-                var sourceTable = WorkbookTypedCapture.Capture("ledger", "Ledger",
-                    (object)sourceRange.Value2, (object)sourceRange.Formula,
-                    (object)sourceRange.NumberFormat, null, 3, 9, 1, 2);
-                var fixture = Fixture(sourceTable);
-                stage = "excel_model_plan_boundary";
-                var planJson = new JavaScriptSerializer().Serialize(new
-                {
-                    AnalysisId = fixture.Item1.AnalysisId,
-                    WorkbookTitle = fixture.Item2.WorkbookTitle,
-                    Slides = fixture.Item2.Slides
-                });
-                var parsedPlan = AnalysisSlidePlanContract.Parse(
-                    fixture.Item1, planJson);
-                var injectedFormula = planJson.Replace("\"Formula\":null",
-                    "\"Formula\":\"=1\"");
-                Check(injectedFormula != planJson,
-                    "The native fixture did not contain a table cell for the formula-injection check.");
-                var formulaRejected = false;
-                try { AnalysisSlidePlanContract.Parse(fixture.Item1,
-                    injectedFormula); }
-                catch (InvalidOperationException error)
-                { formulaRejected = error.Message.Contains(
-                    "ANALYSIS_PLAN_FORMULA_FORBIDDEN"); }
-                Check(formulaRejected,
-                    "A model-authored formula crossed the plan boundary.");
-                Check(parsedPlan.WorkbookRows.Count == 3 &&
-                    parsedPlan.WorkbookRows[1].Cells[1].Formula
-                        .StartsWith("=SUMIF(", StringComparison.Ordinal),
-                    "Model plan parsing did not supply host-owned workbook formulas.");
-                fixture = Tuple.Create(fixture.Item1, parsedPlan);
                 stage = "excel_task_analysis_binding";
                 var readCall = new ChatToolCall
                 {
@@ -138,8 +106,51 @@ namespace GuardrailTests
                     readStore.Load(readTask.State.Id).AnalysisArtifactEvidenceId ==
                         readTask.State.AnalysisArtifactEvidenceId,
                     "The task did not durably retain facts from native Excel cells.");
+                var fixture = Fixture(bound);
+                stage = "excel_model_plan_boundary";
+                var planJson = new JavaScriptSerializer().Serialize(new
+                {
+                    AnalysisId = fixture.Item1.AnalysisId,
+                    WorkbookTitle = fixture.Item2.WorkbookTitle,
+                    Slides = fixture.Item2.Slides
+                });
+                var parsedPlan = AnalysisSlidePlanContract.Parse(
+                    fixture.Item1, planJson);
+                var injectedFormula = planJson.Replace("\"Formula\":null",
+                    "\"Formula\":\"=1\"");
+                Check(injectedFormula != planJson,
+                    "The native fixture did not contain a table cell for the formula-injection check.");
+                var formulaRejected = false;
+                try { AnalysisSlidePlanContract.Parse(fixture.Item1,
+                    injectedFormula); }
+                catch (InvalidOperationException error)
+                { formulaRejected = error.Message.Contains(
+                    "ANALYSIS_PLAN_FORMULA_FORBIDDEN"); }
+                Check(formulaRejected,
+                    "A model-authored formula crossed the plan boundary.");
+                Check(parsedPlan.WorkbookRows.Count == 3 &&
+                    parsedPlan.WorkbookRows[1].Cells[1].Formula
+                        .StartsWith("=SUMIF(", StringComparison.Ordinal),
+                    "Model plan parsing did not supply host-owned workbook formulas.");
+                fixture = Tuple.Create(fixture.Item1, parsedPlan);
                 var compiled = AnalysisDocumentCompiler.Compile(
                     fixture.Item1, fixture.Item2);
+                stage = "excel_source_freshness";
+                ledger.Range("I2").Value2 = 85520d;
+                var staleRejected = false;
+                try
+                {
+                    AnalysisDocumentPilot.WriteWorkbook((object)excel,
+                        fixture.Item1, fixture.Item2);
+                }
+                catch (InvalidOperationException error)
+                {
+                    staleRejected = error.Message.Contains(
+                        "ANALYSIS_SOURCE_CHANGED");
+                }
+                finally { ledger.Range("I2").Value2 = 85519d; }
+                Check(staleRejected && (int)workbook.Worksheets.Count == 1,
+                    "A changed source cell created a draft before freshness validation.");
                 stage = "excel_write_and_readback";
                 AnalysisDocumentPilot.WriteWorkbook((object)excel,
                     fixture.Item1, fixture.Item2);
@@ -462,7 +473,8 @@ namespace GuardrailTests
                         comparison.Contains("85,519") &&
                         comparison.Contains("82,992"),
                         "The native slide content differed from the independent fact oracle.");
-                    Check(headline.Contains("WB01"),
+                    Check(headline.Contains(
+                            fixture.Item1.Snapshots[0].SourceInstanceId),
                         "The rendered slide lost its host-derived citation.");
                 }
                 slidesPassed = true;
@@ -539,30 +551,8 @@ namespace GuardrailTests
         }
 
         private static Tuple<AnalysisArtifact, AnalysisDocumentPlan> Fixture(
-            TableDataset table)
+            AnalysisArtifact artifact)
         {
-            var locator = new SourceLocator
-            {
-                Kind = "excel_range", SourceInstanceId = "WB01",
-                WorksheetIdentity = "Ledger", Range = "B1:J3"
-            };
-            var snapshot = AnalysisContract.CreateSnapshot("WB01",
-                "excel_workbook", "native-pilot-1", "complete_range",
-                "literal_values", new[] { locator }, new[] { table });
-            var artifact = AnalysisTableArtifactBuilder.Build(snapshot,
-                new AnalysisTableBinding
-                {
-                    TableId = "ledger", PeriodHeader = "Period",
-                    Metrics = new List<AnalysisMetricColumnBinding>
-                    {
-                        new AnalysisMetricColumnBinding {
-                            Header = "RevenueEUR", Metric = "RevenueEUR",
-                            Unit = "currency", Currency = "EUR" },
-                        new AnalysisMetricColumnBinding {
-                            Header = "CostEUR", Metric = "CostEUR",
-                            Unit = "currency", Currency = "EUR" }
-                    }
-                });
             var mayRevenue = artifact.Facts.Single(fact =>
                 fact.Metric == "RevenueEUR" && fact.Period == "2026-05");
             var juneRevenue = artifact.Facts.Single(fact =>
