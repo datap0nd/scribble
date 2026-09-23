@@ -66,6 +66,22 @@ passed, and the architectural-feasibility pilot is not authorized yet.
   2 and 3, a small chart beside an oversized table, and a fourth page with
   little decision content. Source preservation and editable shapes do not
   establish the design quality requested for Scribble 2.0.
+- `2f9f148` joins native page capture, task-checkpointed review-call
+  reservation, and typed verdict parsing in the development pilot. The
+  checkpoint is reloaded before the verdict. Native review completion now
+  refuses an approval after a page edit; its state fingerprint includes table
+  cell text and native chart series data as well as shape text and geometry.
+  The CI-built harness from
+  [run 35845406941](https://github.com/datap0nd/scribble/actions/runs/35845406941)
+  passed one disposable Office trial, including deliberate native table-cell
+  and folio edits that invalidated an earlier approval. Full CI was still
+  running when the native result was recorded. This is not yet the active
+  Samsung model-facing path or a general authored-deck edit guarantee.
+- The CI-built `cc0b760` harness from
+  [run 35845849719](https://github.com/datap0nd/scribble/actions/runs/35845849719)
+  passed a second disposable Office trial after adding a native chart-series
+  edit and restore to the review-freshness test. All six structural result
+  fields remained true, with `full_acceptance_passed=false` as expected.
 
 ## Still required for the Phase 3 exit gate
 
