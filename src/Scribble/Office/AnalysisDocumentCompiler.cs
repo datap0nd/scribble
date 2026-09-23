@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using Scribble.Security;
 
 namespace Scribble.Office
 {
@@ -217,7 +218,11 @@ namespace Scribble.Office
             if (cell.FactId != null)
             {
                 used?.Add(cell.FactId);
-                return Display(Fact(facts, cell.FactId));
+                var fact = Fact(facts, cell.FactId);
+                // Workbook cells carry invariant raw values; presentation
+                // cells carry display formatting. This keeps native Excel
+                // values numeric across locales.
+                return expected == null ? Display(fact) : fact.Value;
             }
             if (cell.Formula != null)
             {
