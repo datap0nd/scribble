@@ -120,6 +120,9 @@ namespace GuardrailTests
                     "A resumed task reset or failed to persist the review call budget.");
                 Reject(() => resumed.ReserveAnalysisReview(artifact, plan,
                     context, false), "REPAIR_BUDGET_TASK_MODE_CHANGED");
+                resumed.State.HostData["analysis_repair_budget"] = "";
+                Reject(() => resumed.ReserveAnalysisReview(artifact, plan,
+                    context, true), "REPAIR_BUDGET_RECEIPT_INVALID");
             }
             finally
             {

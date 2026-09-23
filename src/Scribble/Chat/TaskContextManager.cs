@@ -262,6 +262,9 @@ namespace Scribble.Chat
             if (!_state.HostData.TryGetValue(key, out receipt))
                 receipt = crossApp ? AnalysisRepairBudget.CrossApp().Serialize() :
                     new AnalysisRepairBudget().Serialize();
+            else if (string.IsNullOrWhiteSpace(receipt))
+                throw new InvalidOperationException(
+                    "REPAIR_BUDGET_RECEIPT_INVALID");
             var budget = AnalysisRepairBudget.Read(receipt);
             if (budget.CallLimit != (crossApp ? 12 :
                 AnalysisRepairBudget.MaxModelCalls))
