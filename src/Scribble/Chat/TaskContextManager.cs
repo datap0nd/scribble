@@ -155,7 +155,10 @@ namespace Scribble.Chat
                 }
                 return null;
             }
-            var repair = call.function.name == PresentationToolCatalog.AddDraftSlides || call.function.name == CrossAppToolCatalog.SendToPowerPoint
+            var repair = IsAnalysisOutput(call.function.name) &&
+                    call.function.name == CrossAppToolCatalog.SendToPowerPoint
+                ? "No slides were written by this call. Correct the listed fields using the exposed AnalysisId and Slides schema. Reference host-issued FactIds; do not supply numeric values, citations or formulas. Keep the full requested slide count and retry as one exclusive call."
+                : call.function.name == PresentationToolCatalog.AddDraftSlides || call.function.name == CrossAppToolCatalog.SendToPowerPoint
                 ? "No slides were written by this call. Retry this tool as the only tool call, with no assistant prose and never {}. Supply plan and concise briefs for the full requested deck on the first batch, plus exactly one complete content object in the nonempty slides array; later batches may add the next slides. Each slide needs its planned id, title, layout and source-backed content using the exposed schema. Do not repeat a plan-only or briefs-only payload. Keep the original requested slide count and do not invent content."
                 : "Correct the listed fields using this tool's exposed parameter schema, then retry. No write permission was consumed.";
             Diagnostics.Record("argument_validation_failed", new { call.id, tool = call.function.name, arguments = call.function.arguments, errors });

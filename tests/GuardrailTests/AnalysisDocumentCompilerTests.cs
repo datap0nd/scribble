@@ -82,7 +82,7 @@ namespace GuardrailTests
                             name = name, arguments = "{}"
                         }
                     };
-                var workbook = call("workbook", 
+                var workbook = call("workbook",
                     WorkbookToolCatalog.WriteDraftSheet);
                 task.BeforeTool(workbook, true);
                 task.AfterTool(workbook, new MailboxToolResult(

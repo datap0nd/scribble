@@ -1,11 +1,16 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Net;
+using System.Net.Sockets;
 using System.Security.Cryptography;
+using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 using System.Xml.Linq;
 using Scribble.Chat;
@@ -23,7 +28,8 @@ namespace GuardrailTests
 
         internal static int Run(string reportPath)
         {
-            dynamic excel = null, workbook = null, powerPoint = null, deck = null;
+            dynamic excel = null, workbook = null, powerPoint = null,
+                deck = null, typedDeck = null;
             var failure = string.Empty;
             var workbookPassed = false;
             var slidesPassed = false;
@@ -31,6 +37,7 @@ namespace GuardrailTests
             var recoveryPassed = false;
             var typedReviewPassed = false;
             var rendererRepairPassed = false;
+            var typedDeckHandoffPassed = false;
             var images = new List<string>();
             var stage = "setup";
             var output = Path.GetDirectoryName(Path.GetFullPath(reportPath));
@@ -278,6 +285,74 @@ namespace GuardrailTests
                     Check(File.Exists(path) && new FileInfo(path).Length > 1000,
                         "A native slide image was not rendered.");
                     images.Add(path);
+                }
+                stage = "active_typed_deck_handoff";
+                var deckCall = new ChatToolCall
+                {
+                    id = "native-analysis-deck",
+                    type = "function",
+                    function = new ChatToolCallFunction
+                    {
+                        name = CrossAppToolCatalog.SendToPowerPoint,
+                        arguments = new JavaScriptSerializer().Serialize(
+                            ModelPlanValue(new JavaScriptSerializer()
+                                .DeserializeObject(planJson)))
+                    }
+                };
+                Check(ToolContractValidator.Validate(deckCall,
+                    readInput.tools.Single(tool => tool.function.name ==
+                        CrossAppToolCatalog.SendToPowerPoint)).Count == 0,
+                    "The typed deck payload failed its model-facing schema.");
+                using (var endpoint = new AnalysisReviewEndpoint())
+                using (var client = new OpenAiCompatibleClient())
+                using (var deckHost = new DocumentDraftHost("excel",
+                    (object)excel))
+                {
+                    deckHost.BindTaskAsync(readTask,
+                        CancellationToken.None).GetAwaiter().GetResult();
+                    var settings = new Scribble.Configuration.AppSettings
+                    {
+                        BaseUrl = endpoint.BaseUrl,
+                        ApiKey = "offline-test",
+                        Model = "qwen/qwen3.8-27b"
+                    };
+                    var deckAuthorization =
+                        new OneShotDraftAuthorization(true);
+                    var routeResult = deckHost.ExecuteAsync(deckCall,
+                        deckAuthorization, true,
+                        "Create a verified four-slide deck",
+                        client, settings, CancellationToken.None, null)
+                        .GetAwaiter().GetResult();
+                    for (var p = 1; p <=
+                        (int)powerPoint.Presentations.Count; p++)
+                    {
+                        dynamic candidate = powerPoint.Presentations[p];
+                        if ((string)candidate.Tags["ScribbleTask"] ==
+                            readTask.State.Id)
+                            typedDeck = candidate;
+                    }
+                    Check(!routeResult.Outcome.Failed,
+                        "The active typed handoff failed offline review: " +
+                        routeResult.Content);
+                    endpoint.Wait();
+                    Check(deckAuthorization.IsCreated &&
+                        endpoint.ImageCount == 4 &&
+                        endpoint.AnalysisId == fixture.Item1.AnalysisId &&
+                        routeResult.Content.Contains(
+                            fixture.Item1.AnalysisId),
+                        "The active typed handoff failed offline review: " +
+                        routeResult.Content);
+                    Check((object)typedDeck != null,
+                        "The handoff created no task-owned draft deck.");
+                    Check((int)typedDeck.Slides.Count == 4 &&
+                        (string)typedDeck.Tags["ScribbleTask"] ==
+                            readTask.State.Id &&
+                        readTask.State.HostData.ContainsKey(
+                            "analysis_deck_complete"),
+                        "The typed handoff lost its task-owned native deck.");
+                    typedDeck.Close();
+                    typedDeck = null;
+                    typedDeckHandoffPassed = true;
                 }
                 stage = "powerpoint_review_metadata";
                 var taskInput = new ChatCompletionRequest
@@ -551,6 +626,8 @@ namespace GuardrailTests
                 Environment.SetEnvironmentVariable(
                     AnalysisDocumentPilot.FeatureFlag, priorFlag);
                 if ((object)deck != null) try { deck.Close(); } catch { }
+                if ((object)typedDeck != null)
+                    try { typedDeck.Close(); } catch { }
                 if ((object)workbook != null) try { workbook.Close(false); } catch { }
                 if ((object)excel != null) try { excel.Quit(); } catch { }
                 // PowerPoint can be a shared singleton, so close only our deck.
@@ -564,16 +641,18 @@ namespace GuardrailTests
                 isolated_retry_passed = recoveryPassed,
                 typed_review_contract_passed = typedReviewPassed,
                 renderer_repair_passed = rendererRepairPassed,
+                typed_deck_handoff_passed = typedDeckHandoffPassed,
                 rendered_images = images,
                 full_acceptance_passed = false,
-                note = "Hand-authored structural pilot only; no model, visual attestation, or recovery qualification.",
+                note = "Hand-authored structural pilot and offline fake reviewer only; no model, visual attestation, or recovery qualification.",
                 failure
             };
             var json = new JavaScriptSerializer().Serialize(report);
             File.WriteAllText(reportPath, json);
             Console.WriteLine(json);
             return workbookPassed && slidesPassed && sourcePreserved &&
-                recoveryPassed && typedReviewPassed && rendererRepairPassed
+                recoveryPassed && typedReviewPassed && rendererRepairPassed &&
+                typedDeckHandoffPassed
                 ? 0 : 1;
         }
 
@@ -582,6 +661,166 @@ namespace GuardrailTests
             return string.Join("|", new[] { "B2", "I2", "J2", "B3", "I3", "J3" }
                 .Select(cell => Convert.ToString(sheet.Range(cell).Value2,
                     CultureInfo.InvariantCulture)));
+        }
+
+        private static object ModelPlanValue(object value)
+        {
+            var map = value as IDictionary<string, object>;
+            if (map != null)
+            {
+                var result = new Dictionary<string, object>(
+                    StringComparer.Ordinal);
+                foreach (var item in map)
+                {
+                    if (item.Key == "Formula" ||
+                        item.Key == "ExpectedFactId" || item.Value == null)
+                        continue;
+                    var child = ModelPlanValue(item.Value);
+                    var array = child as object[];
+                    if (array != null && array.Length == 0) continue;
+                    result.Add(item.Key, child);
+                }
+                return result;
+            }
+            var list = value as IList;
+            return list == null ? value : list.Cast<object>()
+                .Select(ModelPlanValue).ToArray();
+        }
+
+        // The native route sends its rendered pages to a loopback endpoint.
+        // It accepts only an exact image/hash pairing and replies with one
+        // typed approval for the supplied context. No paid model is involved.
+        private sealed class AnalysisReviewEndpoint : IDisposable
+        {
+            private readonly TcpListener _listener = new TcpListener(
+                IPAddress.Loopback, 0);
+            private readonly Task _worker;
+
+            public AnalysisReviewEndpoint()
+            {
+                _listener.Start();
+                BaseUrl = "http://127.0.0.1:" +
+                    ((IPEndPoint)_listener.LocalEndpoint).Port + "/v1";
+                _worker = Task.Run((Action)Handle);
+            }
+
+            public string BaseUrl { get; }
+            public string AnalysisId { get; private set; }
+            public int ImageCount { get; private set; }
+
+            public void Wait()
+            {
+                if (!_worker.Wait(TimeSpan.FromSeconds(30)))
+                    throw new InvalidOperationException(
+                        "The offline reviewer received no request.");
+                if (_worker.IsFaulted)
+                    throw _worker.Exception.GetBaseException();
+            }
+
+            public void Dispose()
+            {
+                _listener.Stop();
+                try { _worker.Wait(TimeSpan.FromSeconds(1)); }
+                catch { }
+            }
+
+            private void Handle()
+            {
+                using (var client = _listener.AcceptTcpClient())
+                using (var stream = client.GetStream())
+                using (var reader = new StreamReader(stream,
+                    Encoding.ASCII, false, 4096, true))
+                {
+                    var requestLine = reader.ReadLine() ?? string.Empty;
+                    Check(requestLine.Contains("/chat/completions"),
+                        "The native reviewer used an unexpected endpoint.");
+                    var contentLength = 0;
+                    string line;
+                    while (!string.IsNullOrEmpty(line = reader.ReadLine()))
+                    {
+                        if (line.StartsWith("Content-Length:",
+                            StringComparison.OrdinalIgnoreCase))
+                            int.TryParse(line.Substring(15).Trim(),
+                                out contentLength);
+                    }
+                    Check(contentLength > 0 && contentLength < 16000000,
+                        "The native reviewer request size is invalid.");
+                    var buffer = new char[contentLength];
+                    var offset = 0;
+                    while (offset < buffer.Length)
+                    {
+                        var read = reader.Read(buffer, offset,
+                            buffer.Length - offset);
+                        if (read <= 0) break;
+                        offset += read;
+                    }
+                    Check(offset == buffer.Length,
+                        "The native reviewer request was truncated.");
+                    var json = new JavaScriptSerializer
+                        { MaxJsonLength = 16000000 };
+                    var request = (IDictionary<string, object>)
+                        json.DeserializeObject(new string(buffer));
+                    var messages = (IList)request["messages"];
+                    var user = (IDictionary<string, object>)
+                        messages[messages.Count - 1];
+                    var parts = (IList)user["content"];
+                    var textPart = (IDictionary<string, object>)parts[0];
+                    var content = (IDictionary<string, object>)
+                        json.DeserializeObject((string)textPart["text"]);
+                    AnalysisId = (string)content["analysis_id"];
+                    var pages = (IList)content["pages"];
+                    ImageCount = parts.Count - 1;
+                    Check(ImageCount == pages.Count && ImageCount == 4,
+                        "The typed reviewer did not receive four pages.");
+                    for (var index = 0; index < ImageCount; index++)
+                    {
+                        var part = (IDictionary<string, object>)
+                            parts[index + 1];
+                        var image = (IDictionary<string, object>)
+                            part["image_url"];
+                        var url = (string)image["url"];
+                        const string prefix = "data:image/png;base64,";
+                        Check(url.StartsWith(prefix,
+                            StringComparison.Ordinal),
+                            "The reviewer image is not an inline PNG.");
+                        var bytes = Convert.FromBase64String(
+                            url.Substring(prefix.Length));
+                        var page = (IDictionary<string, object>)pages[index];
+                        using (var sha = SHA256.Create())
+                            Check(BitConverter.ToString(
+                                sha.ComputeHash(bytes)).Replace("-", "")
+                                .ToLowerInvariant() ==
+                                (string)page["RenderFingerprint"],
+                                "The reviewer image changed after capture.");
+                    }
+                    var decision = json.Serialize(new
+                    {
+                        contract_version = AnalysisReviewContract.Version,
+                        context_id = (string)content["context_id"],
+                        approved = true,
+                        findings = new object[0]
+                    });
+                    var response = json.Serialize(new
+                    {
+                        choices = new[] { new
+                        {
+                            message = new
+                            {
+                                role = "assistant", content = decision
+                            }
+                        } }
+                    });
+                    var bytesOut = Encoding.UTF8.GetBytes(response);
+                    var headers = Encoding.ASCII.GetBytes(
+                        "HTTP/1.1 200 OK\r\n" +
+                        "Content-Type: application/json\r\n" +
+                        "Content-Length: " + bytesOut.Length +
+                        "\r\nConnection: close\r\n\r\n");
+                    stream.Write(headers, 0, headers.Length);
+                    stream.Write(bytesOut, 0, bytesOut.Length);
+                    stream.Flush();
+                }
+            }
         }
 
         private static string PackageText(ZipArchive package,

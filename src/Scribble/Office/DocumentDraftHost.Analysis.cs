@@ -28,7 +28,9 @@ namespace Scribble.Office
             {
                 artifact = _taskContext.LoadAnalysis();
                 if (_taskContext.State.HostData.ContainsKey(
-                    "analysis_deck_complete"))
+                        "analysis_deck_complete") &&
+                    !_taskContext.State.HostData.ContainsKey(
+                        "samsung_pending"))
                     throw new InvalidOperationException(
                         "ANALYSIS_DECK_ALREADY_COMPLETE");
                 plan = AnalysisSlidePlanContract.Parse(artifact,
@@ -144,12 +146,12 @@ namespace Scribble.Office
                     var remaining = AnalysisDocumentPilot
                         .CaptureNativeMeasurements((object)deck,
                             repairedPages);
+                    journal.Record(outputs[page.ExpectedPageNumber - 1],
+                        page.ExpectedPageNumber - 1);
                     _taskContext.ReconcileAnalysisPatch(reservation,
                         repairedPages.Single(value =>
                             value.NativeSlideId == defect.NativeSlideId),
                         remaining);
-                    journal.Record(outputs[page.ExpectedPageNumber - 1],
-                        page.ExpectedPageNumber - 1);
                 }
                 var review = AnalysisDocumentPilot.ReserveNativeReview(
                     _taskContext, (object)deck, artifact, plan, true);
@@ -198,12 +200,14 @@ namespace Scribble.Office
                 _taskContext.State.HostData["analysis_deck_complete"] =
                     review.Context.ContextId;
                 foreach (var id in plan.Slides.Select(slide => slide.Id))
-                    _taskContext.State.Batches.Add(new TaskBatchResult
-                    {
-                        Id = "ppt:" + id,
-                        CoveredSourceIds = new List<string> { "ppt:" + id },
-                        Output = "Typed native review passed"
-                    });
+                    if (!_taskContext.State.Batches.Any(batch =>
+                            batch.Id == "ppt:" + id))
+                        _taskContext.State.Batches.Add(new TaskBatchResult
+                        {
+                            Id = "ppt:" + id,
+                            CoveredSourceIds = new List<string> { "ppt:" + id },
+                            Output = "Typed native review passed"
+                        });
                 _taskContext.Checkpoint();
                 journal.Complete();
                 authorization.MarkCreated();
