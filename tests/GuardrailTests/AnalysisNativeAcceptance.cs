@@ -24,6 +24,7 @@ namespace GuardrailTests
             var slidesPassed = false;
             var sourcePreserved = false;
             var images = new List<string>();
+            var stage = "setup";
             var output = Path.GetDirectoryName(Path.GetFullPath(reportPath));
             Directory.CreateDirectory(output);
             var priorFlag = Environment.GetEnvironmentVariable(
@@ -35,6 +36,7 @@ namespace GuardrailTests
                 var fixture = Fixture();
                 var compiled = AnalysisDocumentCompiler.Compile(
                     fixture.Item1, fixture.Item2);
+                stage = "excel_start";
                 excel = Activator.CreateInstance(Type.GetTypeFromProgID(
                     "Excel.Application", true));
                 workbook = excel.Workbooks.Add();
@@ -50,6 +52,7 @@ namespace GuardrailTests
                 ledger.Cells[3, 9].Value2 = 82992d;
                 ledger.Cells[3, 10].Value2 = 36714d;
                 var sourceBefore = SourceFingerprint(ledger);
+                stage = "excel_write_and_readback";
                 AnalysisDocumentPilot.WriteWorkbook((object)excel,
                     fixture.Item1, fixture.Item2);
                 dynamic draft = workbook.Worksheets["Scribble Draft"];
@@ -67,12 +70,15 @@ namespace GuardrailTests
                 sourcePreserved = SourceFingerprint(ledger) == sourceBefore;
                 Check(sourcePreserved, "The source ledger changed while adding the draft.");
                 workbookPassed = true;
+                stage = "excel_export";
                 draft.ExportAsFixedFormat(0,
                     Path.Combine(output, "analysis-workbook.pdf"));
 
+                stage = "powerpoint_start";
                 powerPoint = Activator.CreateInstance(Type.GetTypeFromProgID(
                     "PowerPoint.Application", true));
                 powerPoint.Visible = -1;
+                stage = "powerpoint_write";
                 AnalysisDocumentPilot.WritePresentation((object)powerPoint,
                     fixture.Item1, fixture.Item2);
                 deck = powerPoint.ActivePresentation;
@@ -83,12 +89,14 @@ namespace GuardrailTests
                 for (var index = 1; index <= 4; index++)
                 {
                     dynamic slide = deck.Slides[index];
+                    stage = "powerpoint_export_" + index;
                     var path = Path.Combine(output,
                         "analysis-slide-" + index.ToString("00") + ".png");
                     slide.Export(path, "PNG", 1920, 1080);
                     Check(File.Exists(path) && new FileInfo(path).Length > 1000,
                         "A native slide image was not rendered.");
                     images.Add(path);
+                    stage = "powerpoint_capture_" + index;
                     captured.Add(PresentationInspection.Capture((object)slide));
                     foreach (dynamic shape in slide.Shapes)
                         if (Convert.ToInt32(shape.HasChart) != 0)
@@ -96,6 +104,7 @@ namespace GuardrailTests
                 }
                 Check(chartCount >= 1,
                     "The comparison slide did not contain a native chart.");
+                stage = "powerpoint_oracle";
                 var headline = PresentationInspection.CitationTextFromCaptured(
                     captured[0]);
                 var comparison = PresentationInspection.CitationTextFromCaptured(
@@ -118,14 +127,14 @@ namespace GuardrailTests
                     "The rendered slide lost its host-derived citation.");
                 slidesPassed = true;
             }
-            catch (Exception error) { failure = error.ToString(); }
+            catch (Exception error) { failure = stage + ": " + error; }
             finally
             {
                 Environment.SetEnvironmentVariable(
                     AnalysisDocumentPilot.FeatureFlag, priorFlag);
-                if (deck != null) try { deck.Close(); } catch { }
-                if (workbook != null) try { workbook.Close(false); } catch { }
-                if (excel != null) try { excel.Quit(); } catch { }
+                if ((object)deck != null) try { deck.Close(); } catch { }
+                if ((object)workbook != null) try { workbook.Close(false); } catch { }
+                if ((object)excel != null) try { excel.Quit(); } catch { }
                 // PowerPoint can be a shared singleton, so close only our deck.
             }
             var report = new
