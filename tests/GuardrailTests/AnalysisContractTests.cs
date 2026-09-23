@@ -117,6 +117,20 @@ namespace GuardrailTests
                     task.State.AnalysisArtifactEvidenceId == evidenceId &&
                     loaded != null && loaded.AnalysisId == artifact.AnalysisId,
                     "Task persistence did not bind the typed analysis version and protected evidence.");
+
+                var sources = new TaskSources(task);
+                var firstText = sources.Add("Attached document", "Same source text", "attachment:0");
+                var secondText = sources.Add("Attached document", "Same source text", "attachment:1");
+                var repeatedFirst = sources.Add("Attached document", "Same source text", "attachment:0");
+                var changedFirst = sources.Add("Attached document", "Changed source text", "attachment:0");
+                Check(firstText.Count == 1 && secondText.Count == 1 &&
+                    firstText[0] != secondText[0] &&
+                    repeatedFirst.SequenceEqual(firstText) &&
+                    changedFirst[0] != firstText[0] &&
+                    sources.Resolve(firstText) == "Same source text" &&
+                    sources.Resolve(secondText) == "Same source text" &&
+                    sources.Spans().Count == 3,
+                    "Identical attachments lost distinct provenance, or changed content reused an old source span.");
             }
             finally
             {
