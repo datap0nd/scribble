@@ -14,6 +14,11 @@ families, feature inspection, and image export. This overlaps work in
 Its feature report separates editable, partially editable, preserved, and
 unsupported package content. It could be especially useful as a preflight for
 PP01's source-preserving edits. The library's own
+[visual proof and designer APIs](https://github.com/EvotecIT/OfficeIMO/blob/master/OfficeIMO.PowerPoint/README.md#designer-composition)
+also expose semantic deck plans, rhythm inspection, corporate-template
+inventory, and an opt-in PowerPoint Desktop reference render. These could
+replace some custom layout bookkeeping if their output meets Scribble's native
+quality bar. The library's
 [image-export matrix](https://github.com/EvotecIT/OfficeIMO/blob/master/Docs/officeimo.image-export-capability-matrix.md)
 describes incomplete representative authored-deck baselines and rendering
 fallbacks, so its image output cannot replace PowerPoint's native render oracle
@@ -46,6 +51,11 @@ native 1920×1080 PNG exports for the no-op copy were byte-identical to the
 original on all four slides. The edit changed only slide 2's native render.
 Extracted slide text, note text, and chart cache values were identical between
 the original and no-op copies; the edit changed only slide 2's text sequence.
+The enhanced feature report in
+[CI run 35837988465](https://github.com/datap0nd/scribble/actions/runs/35837988465)
+classified 39 text boxes, two tables, and four speaker notes as editable, but
+the one imported chart as **partially editable**. Chart-data mutation therefore
+needs a separate operation-specific test before adoption.
 This is a promising **synthetic** result. It does not cover a dense PP01-like
 source deck, animations, embedded objects, or an in-place edit of an unsaved
 Office session. The next trial needs those cases and the feature report's
