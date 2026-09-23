@@ -213,25 +213,25 @@ namespace GuardrailTests
                     (float)folio.Left >= 0f &&
                     AnalysisRepairBudget.Read(repairReceipt).PatchedTargets.Count == 2,
                     "The renderer did not correct and read back an out-of-bounds shape.");
-                dynamic comparison = deck.Slides[2];
-                dynamic chart = null, table = null;
+                dynamic comparisonSlide = deck.Slides[2];
+                dynamic nativeChart = null, table = null;
                 for (var shapeIndex = 1;
-                    shapeIndex <= (int)comparison.Shapes.Count; shapeIndex++)
+                    shapeIndex <= (int)comparisonSlide.Shapes.Count; shapeIndex++)
                 {
-                    dynamic shape = comparison.Shapes[shapeIndex];
-                    if ((int)shape.HasChart != 0) chart = shape;
+                    dynamic shape = comparisonSlide.Shapes[shapeIndex];
+                    if ((int)shape.HasChart != 0) nativeChart = shape;
                     if ((int)shape.HasTable != 0) table = shape;
                 }
-                Check(chart != null && table != null,
+                Check(nativeChart != null && table != null,
                     "The comparison slide lost its native chart or table.");
-                chart.Left = (float)table.Left + (float)table.Width - 40f;
+                nativeChart.Left = (float)table.Left + (float)table.Width - 40f;
                 var collidedPages = AnalysisDocumentPilot.CapturePresentationPages(
                     (object)deck, fixture.Item1, fixture.Item2);
                 var collision = AnalysisDocumentPilot.CaptureNativeMeasurements(
                     (object)deck, collidedPages).Single(item =>
                         item.Code == "COLLISION" &&
                         item.NativeSlideId == collidedPages[1].NativeSlideId &&
-                        item.TargetId == "shape:" + (int)chart.Id &&
+                        item.TargetId == "shape:" + (int)nativeChart.Id &&
                         item.OtherTargetId == "shape:" + (int)table.Id);
                 repairReceipt = AnalysisDocumentPilot.RepairNativeMeasurement(
                     (object)deck, collidedPages, collision, repairReceipt);
