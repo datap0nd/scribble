@@ -152,6 +152,13 @@ namespace GuardrailTests
                 Reject(() => resumed.ReconcileAnalysisPatch(reservedPatch,
                     savedPage, new[] { defect }),
                     "REPAIR_PENDING_RECONCILIATION");
+                Reject(() => resumed.ReconcileAnalysisPatch(reservedPatch,
+                    savedPage, new[] { new AnalysisReviewMeasurement
+                    {
+                        MeasurementId = "different-defect", Code =
+                            "OUT_OF_BOUNDS", LogicalSlideId = "june",
+                        NativeSlideId = 412, TargetId = "shape:10"
+                    } }), "REPAIR_PENDING_RECONCILIATION");
                 resumed.ReconcileAnalysisPatch(reservedPatch, savedPage,
                     new AnalysisReviewMeasurement[0]);
                 resumed = new TaskContextManager(input, "excel",

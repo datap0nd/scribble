@@ -321,7 +321,10 @@ namespace Scribble.Chat
             if (savedPage.NativeStateFingerprint ==
                 reservation.NativeStateFingerprint ||
                 savedMeasurements.Any(item => item != null &&
-                    item.MeasurementId == reservation.MeasurementId))
+                    item.LogicalSlideId == reservation.LogicalSlideId &&
+                    item.NativeSlideId == reservation.NativeSlideId &&
+                    (item.MeasurementId == reservation.MeasurementId ||
+                        item.TargetId == reservation.TargetId)))
                 throw new InvalidOperationException(
                     "REPAIR_PENDING_RECONCILIATION");
             _state.HostData.Remove("analysis_pending_patch");
