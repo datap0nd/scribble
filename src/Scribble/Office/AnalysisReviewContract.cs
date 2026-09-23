@@ -72,7 +72,7 @@ namespace Scribble.Office
         public const int Version = 1;
         public const string ModelInstructions =
             "Return JSON only: {\"contract_version\":1,\"context_id\":\"supplied host context ID\",\"approved\":true|false," +
-            "\"findings\":[{\"code\":\"BINDING_CHALLENGE|UNSUPPORTED_CLAIM|VISUAL_HIERARCHY|TEXT_OVERFLOW|COLLISION|PAGE_NUMBER\"," +
+            "\"findings\":[{\"code\":\"BINDING_CHALLENGE|UNSUPPORTED_CLAIM|VISUAL_HIERARCHY|TEXT_OVERFLOW|COLLISION|OUT_OF_BOUNDS|PAGE_NUMBER\"," +
             "\"owner\":\"analysis|content|renderer\",\"logical_slide_id\":\"id\"," +
             "\"native_slide_id\":0,\"target_id\":\"field or block id\",\"fact_id\":\"host fact id or empty\"," +
             "\"measurement_id\":\"host measurement id or empty\",\"severity\":\"blocker|warning\"," +
@@ -91,6 +91,7 @@ namespace Scribble.Office
                 { "VISUAL_HIERARCHY", new[] { "content", "revise_layout" } },
                 { "TEXT_OVERFLOW", new[] { "renderer", "fit_text" } },
                 { "COLLISION", new[] { "renderer", "adjust_layout" } },
+                { "OUT_OF_BOUNDS", new[] { "renderer", "adjust_layout" } },
                 { "PAGE_NUMBER", new[] { "renderer", "fix_page_number" } }
             };
 
@@ -138,10 +139,12 @@ namespace Scribble.Office
                 !result.FactIdsBySlide.ContainsKey(page.LogicalSlideId)) ||
                 result.FactIdsBySlide.Keys.Any(id => !result.Pages.Any(page => page.LogicalSlideId == id)) ||
                 result.Pages.GroupBy(page => page.ExpectedPageNumber).Any(group => group.Count() != 1) ||
+                result.Pages.GroupBy(page => page.NativeSlideId).Any(group => group.Count() != 1) ||
                 result.Pages.GroupBy(page => new { page.LogicalSlideId, page.PageOrdinal }).Any(group => group.Count() != 1))
                 throw new InvalidOperationException("REVIEW_PAGE_METADATA_INVALID");
             if (result.Measurements.Any(measure => measure == null ||
                 string.IsNullOrWhiteSpace(measure.MeasurementId) ||
+                string.IsNullOrWhiteSpace(measure.Code) ||
                 string.IsNullOrWhiteSpace(measure.TargetId) ||
                 !Routes.ContainsKey(measure.Code) || Routes[measure.Code][0] != "renderer" ||
                 !result.Pages.Any(page => page.LogicalSlideId == measure.LogicalSlideId &&

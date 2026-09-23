@@ -193,6 +193,19 @@ namespace GuardrailTests
                 "A valid fact reference laundered an unsupported numeric claim.");
             plan.Slides[0].Subtitle.RemoveAt(plan.Slides[0].Subtitle.Count - 1);
 
+            plan.Slides[0].Subtitle.Add(Word(" up 9 units"));
+            RejectNumericProse(() => AnalysisDocumentCompiler.Compile(artifact, plan),
+                "A one-digit number in authored slide prose bypassed fact binding.");
+            plan.Slides[0].Subtitle.RemoveAt(plan.Slides[0].Subtitle.Count - 1);
+            plan.Slides[0].Title = "June 82992 audit";
+            RejectNumericProse(() => AnalysisDocumentCompiler.Compile(artifact, plan),
+                "A numerical title bypassed fact binding.");
+            plan.Slides[0].Title = "June sales audit";
+            plan.Slides[0].Cards[0].Heading = "Revenue 82992";
+            RejectNumericProse(() => AnalysisDocumentCompiler.Compile(artifact, plan),
+                "A numerical card heading bypassed fact binding.");
+            plan.Slides[0].Cards[0].Heading = "Revenue EUR";
+
             plan.Slides[1].TableRows[0].Cells[1] = Text("85,519");
             var numericTableRejected = false;
             try { AnalysisDocumentCompiler.Compile(artifact, plan); }
@@ -261,5 +274,15 @@ namespace GuardrailTests
 
         private static void Check(bool value, string message)
         { if (!value) throw new Exception(message); }
+
+        private static void RejectNumericProse(Action action, string message)
+        {
+            try { action(); }
+            catch (InvalidOperationException error)
+            {
+                if (error.Message.Contains("NUMERIC_LITERAL_UNVERIFIED")) return;
+            }
+            throw new Exception(message);
+        }
     }
 }

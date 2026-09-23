@@ -25,6 +25,7 @@ namespace GuardrailTests
             var slidesPassed = false;
             var sourcePreserved = false;
             var recoveryPassed = false;
+            var typedReviewPassed = false;
             var images = new List<string>();
             var stage = "setup";
             var output = Path.GetDirectoryName(Path.GetFullPath(reportPath));
@@ -130,6 +131,35 @@ namespace GuardrailTests
                         "A native slide image was not rendered.");
                     images.Add(path);
                 }
+                stage = "powerpoint_review_metadata";
+                var pages = AnalysisDocumentPilot.CapturePresentationPages(
+                    (object)deck, fixture.Item1, fixture.Item2);
+                Check(pages.Count == 4 && pages.Select(page =>
+                    page.NativeSlideId).Distinct().Count() == 4 &&
+                    pages.Select(page => page.ExpectedPageNumber)
+                        .SequenceEqual(new[] { 1, 2, 3, 4 }) &&
+                    pages.All(page => page.PageOrdinal == 0 &&
+                        page.RenderFingerprint.Length == 64),
+                    "The review contract lost native identity, page number or rendered fingerprint.");
+                var measurements = AnalysisDocumentPilot.CaptureNativeMeasurements(
+                    (object)deck, pages);
+                Check(measurements.Count == 0,
+                    "The native output has a measured page or text geometry defect: " +
+                    string.Join(", ", measurements.Select(item => item.MeasurementId)));
+                var reviewContext = AnalysisReviewContract.Context(fixture.Item1,
+                    fixture.Item2, pages, measurements);
+                var cleanVerdict = new JavaScriptSerializer().Serialize(new
+                {
+                    contract_version = AnalysisReviewContract.Version,
+                    context_id = reviewContext.ContextId,
+                    approved = true,
+                    findings = new object[0]
+                });
+                Check(AnalysisDocumentPilot.ReviewPresentation(fixture.Item1,
+                    fixture.Item2, pages, measurements,
+                    cleanVerdict).Approved,
+                    "A native page-bound typed review could not be parsed.");
+                typedReviewPassed = true;
                 stage = "powerpoint_save_copy";
                 var deckCopy = Path.Combine(output, "analysis-deck.pptx");
                 deck.SaveCopyAs(deckCopy);
@@ -179,6 +209,7 @@ namespace GuardrailTests
                 four_slides_passed = slidesPassed,
                 source_preserved = sourcePreserved,
                 isolated_retry_passed = recoveryPassed,
+                typed_review_contract_passed = typedReviewPassed,
                 rendered_images = images,
                 full_acceptance_passed = false,
                 note = "Hand-authored structural pilot only; no model, visual attestation, or recovery qualification.",

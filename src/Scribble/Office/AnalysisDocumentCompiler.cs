@@ -146,6 +146,7 @@ namespace Scribble.Office
                 if (slide == null || string.IsNullOrWhiteSpace(slide.Id) ||
                     !ids.Add(slide.Id) || string.IsNullOrWhiteSpace(slide.Title))
                     throw new InvalidOperationException("ANALYSIS_SLIDE_ID_INVALID");
+                RejectNumericLiteral(slide.Title);
                 var used = new HashSet<string>(StringComparer.Ordinal);
                 var map = new Dictionary<string, object>
                 {
@@ -156,6 +157,8 @@ namespace Scribble.Office
                 };
                 if (slide.TableHeaders != null && slide.TableHeaders.Count > 0)
                 {
+                    foreach (var header in slide.TableHeaders)
+                        RejectNumericLiteral(header);
                     var tableRows = new List<object>();
                     foreach (var row in slide.TableRows ?? new List<AnalysisPlanRow>())
                     {
@@ -178,7 +181,7 @@ namespace Scribble.Office
                     map["cards"] = slide.Cards.Select(card =>
                         (object)new Dictionary<string, object>
                         {
-                            { "heading", card.Heading ?? string.Empty },
+                            { "heading", CheckedProse(card.Heading) },
                             { "points", (card.Points ??
                                 new List<AnalysisPlanText>()).Select(point =>
                                     Text(new[] { point }, facts, used)).ToArray() }
@@ -273,21 +276,28 @@ namespace Scribble.Office
         // qualitative claims still require the Phase 3 evidence review.
         private static void RejectNumericLiteral(string value)
         {
-            if (Regex.IsMatch(value ?? string.Empty,
-                @"(?:[$€£]\s*\d|(?<![\p{L}\d])[-+]?\d+(?:[.,]\d+)?\s*%|(?<![\p{L}\d])[-+]?\d{2,}(?:[.,]\d+)*)"))
+            if (Regex.IsMatch(value ?? string.Empty, @"\d"))
                 throw new InvalidOperationException(
                     "ANALYSIS_NUMERIC_LITERAL_UNVERIFIED: Use a verified fact reference for numbers in slide prose and tables.");
+        }
+
+        private static string CheckedProse(string value)
+        {
+            RejectNumericLiteral(value);
+            return value ?? string.Empty;
         }
 
         private static object Chart(AnalysisPlanChart chart,
             IDictionary<string, VerifiedFact> facts, ISet<string> used)
         {
+            RejectNumericLiteral(chart.Title);
             if (chart.Categories == null || chart.Series == null ||
                 chart.Categories.Count == 0 || chart.Series.Count == 0)
                 throw new InvalidOperationException("ANALYSIS_CHART_EMPTY");
             var series = new List<object>();
             foreach (var item in chart.Series)
             {
+                if (item != null) RejectNumericLiteral(item.Name);
                 if (item == null || item.FactIds == null ||
                     item.FactIds.Count != chart.Categories.Count)
                     throw new InvalidOperationException("ANALYSIS_CHART_ALIGNMENT_INVALID");
