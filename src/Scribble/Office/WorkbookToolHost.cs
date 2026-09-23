@@ -755,7 +755,8 @@ namespace Scribble.Office
                 nextRowOffset = rowOffset + rows;
             }
             var complete = nextRowOffset >= totalRows;
-            var typed = CaptureTypedPage(page, rows, columns);
+            WorkbookTypedRead typed = CaptureTypedPage((object)page,
+                rows, columns);
             AnalysisArtifact analysis = null;
             if (bindAnalysis)
             {
