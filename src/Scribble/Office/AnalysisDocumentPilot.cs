@@ -22,12 +22,13 @@ namespace Scribble.Office
             if (workbook == null)
                 throw new InvalidOperationException(
                     "ANALYSIS_PILOT_DESTINATION_MISSING: Open a disposable source workbook first.");
-            var before = SheetNames(workbook);
+            string[] before = SheetNames((object)workbook);
             var rows = compiled.WorkbookRows.Select(row =>
                 (IReadOnlyList<string>)row).ToList();
             var status = WorkbookDraftWriter.WriteDraftSheet(excelApplication,
                 compiled.WorkbookTitle, rows, null, false, (object)workbook);
-            var added = SheetNames(workbook).Except(before,
+            string[] after = SheetNames((object)workbook);
+            var added = after.Except(before,
                 StringComparer.OrdinalIgnoreCase).ToArray();
             if (added.Length != 1 || !added[0].StartsWith(
                 WorkbookDraftWriter.DraftSheetName, StringComparison.OrdinalIgnoreCase))
