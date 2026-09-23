@@ -42,7 +42,7 @@ namespace Scribble.Office
                 var formula = Convert.ToString(cell.Formula,
                     CultureInfo.InvariantCulture) ?? string.Empty;
                 object native = cell.Value2;
-                decimal actual;
+                decimal actual = 0m;
                 if (!formula.StartsWith("=", StringComparison.Ordinal) ||
                     native == null ||
                     !decimal.TryParse(Convert.ToString(native,
