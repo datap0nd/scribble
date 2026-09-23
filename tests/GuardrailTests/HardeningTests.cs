@@ -158,6 +158,31 @@ namespace GuardrailTests
                 "Formula validation no longer exposes the pre-existing partial marked sheet; update the phase-0 mechanism test.");
         }
 
+        public static void BoundDraftIgnoresActiveWorkbook()
+        {
+            var events = new List<string>();
+            var application = new CrossAppFixture("excel", events);
+            var bound = new CrossAppFixture("bound-workbook", events);
+            var rows = new List<IReadOnlyList<string>>
+            {
+                new List<string> { "Metric", "Value" },
+                new List<string> { "Revenue", "42" }
+            };
+            var writer = typeof(DraftFormulaPolicy).Assembly.GetType(
+                "Scribble.Office.WorkbookDraftWriter");
+            var method = writer.GetMethods(System.Reflection.BindingFlags.Static |
+                System.Reflection.BindingFlags.NonPublic).Single(item =>
+                    item.Name == "WriteDraftSheet" &&
+                    item.GetParameters().Length == 6);
+            method.Invoke(null, new object[] {
+                application, "Analysis", rows, null, false, bound });
+            Check(events.Any(item => item.StartsWith(
+                "bound-workbook.Worksheets", StringComparison.Ordinal)) &&
+                !events.Any(item => item.StartsWith(
+                    "excel.ActiveWorkbook", StringComparison.Ordinal)),
+                "A focus change redirected the bound draft write.");
+        }
+
         public static void PowerPointArgumentsGiveRepair()
         {
             var root = Path.Combine(Path.GetTempPath(), "scribble-slide-contract-" + Guid.NewGuid().ToString("N"));

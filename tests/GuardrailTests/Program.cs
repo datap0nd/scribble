@@ -82,6 +82,7 @@ namespace GuardrailTests
                 Run("Duplicate document writes return a recoverable result", HardeningTests.DuplicateDraftIsRecoverable);
                 Run("Known invalid Excel draft formulas permit a fresh marked sheet", HardeningTests.RejectedDraftFormulaAllowsFreshMarkedSheet);
                 Run("Excel formula rejection occurs after a native grid write", HardeningTests.FormulaRejectionFollowsNativeGridWrite);
+                Run("Bound Excel draft ignores an active workbook change", HardeningTests.BoundDraftIgnoresActiveWorkbook);
                 Run("PowerPoint outline-only calls get a concrete repair before any write", HardeningTests.PowerPointArgumentsGiveRepair);
                 Run("Test Bench extracts the actual operations PDF filters", TestBenchRegressionTests.OperationsPdf);
                 Run("Test Bench detects work-PC Excel error representations", TestBenchRegressionTests.ExcelErrors);
