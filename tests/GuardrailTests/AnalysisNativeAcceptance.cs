@@ -24,6 +24,7 @@ namespace GuardrailTests
             var workbookPassed = false;
             var slidesPassed = false;
             var sourcePreserved = false;
+            var recoveryPassed = false;
             var images = new List<string>();
             var stage = "setup";
             var output = Path.GetDirectoryName(Path.GetFullPath(reportPath));
@@ -74,6 +75,39 @@ namespace GuardrailTests
                 stage = "excel_export";
                 draft.ExportAsFixedFormat(0,
                     Path.Combine(output, "analysis-workbook.pdf"));
+
+                stage = "excel_failure_and_retry";
+                var formulaCell = fixture.Item2.WorkbookRows[1].Cells[1];
+                var correctFactId = formulaCell.ExpectedFactId;
+                formulaCell.ExpectedFactId = fixture.Item1.Facts.Single(fact =>
+                    fact.Metric == "CostEUR" && fact.Period == "2026-05")
+                    .FactId;
+                var mismatchRejected = false;
+                try
+                {
+                    AnalysisDocumentPilot.WriteWorkbook((object)excel,
+                        fixture.Item1, fixture.Item2);
+                }
+                catch (InvalidOperationException error)
+                {
+                    mismatchRejected = error.Message.Contains(
+                        "ANALYSIS_PILOT_FORMULA_MISMATCH");
+                }
+                finally { formulaCell.ExpectedFactId = correctFactId; }
+                string failedName = Convert.ToString((object)workbook
+                    .Worksheets["Scribble Draft 2"].Name);
+                Check(mismatchRejected && failedName == "Scribble Draft 2",
+                    "A wrong expected formula was not retained as an isolated failed draft.");
+                AnalysisDocumentPilot.WriteWorkbook((object)excel,
+                    fixture.Item1, fixture.Item2);
+                double corrected = Convert.ToDouble((object)workbook
+                    .Worksheets["Scribble Draft 3"].Range("B4").Value2);
+                double original = Convert.ToDouble((object)draft
+                    .Range("B4").Value2);
+                Check(corrected == 85519d && original == 85519d &&
+                    SourceFingerprint(ledger) == sourceBefore,
+                    "A corrected retry changed the source or the earlier draft.");
+                recoveryPassed = true;
 
                 stage = "powerpoint_start";
                 powerPoint = Activator.CreateInstance(Type.GetTypeFromProgID(
@@ -144,6 +178,7 @@ namespace GuardrailTests
                 workbook_passed = workbookPassed,
                 four_slides_passed = slidesPassed,
                 source_preserved = sourcePreserved,
+                isolated_retry_passed = recoveryPassed,
                 rendered_images = images,
                 full_acceptance_passed = false,
                 note = "Hand-authored structural pilot only; no model, visual attestation, or recovery qualification.",
@@ -152,7 +187,8 @@ namespace GuardrailTests
             var json = new JavaScriptSerializer().Serialize(report);
             File.WriteAllText(reportPath, json);
             Console.WriteLine(json);
-            return workbookPassed && slidesPassed && sourcePreserved ? 0 : 1;
+            return workbookPassed && slidesPassed && sourcePreserved &&
+                recoveryPassed ? 0 : 1;
         }
 
         private static string SourceFingerprint(dynamic sheet)
