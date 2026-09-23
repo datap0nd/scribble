@@ -60,7 +60,7 @@ passed, and the architectural-feasibility pilot is not authorized yet.
   source preservation, isolated retry, typed review and renderer repair all
   reported true with no failure. `full_acceptance_passed=false` remains the
   correct status because this was hand-authored, without model or visual
-  attestation. The full Windows CI job was still running when recorded.
+  attestation. The full Windows CI job for that commit passed.
 - The four-slide native output is an accuracy/structure fixture, not an
   approved visual baseline. Visual inspection found repeated data on slides
   2 and 3, a small chart beside an oversized table, and a fourth page with
