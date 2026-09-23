@@ -961,10 +961,23 @@ namespace Scribble.Office
                 for (var column = 1; column <= columnCount; column++)
                 {
                     dynamic draftColumn = sheet.Columns[column];
-                    if (Convert.ToDouble(draftColumn.ColumnWidth) <= 36d)
-                        continue;
-                    draftColumn.ColumnWidth = 36d;
-                    draftColumn.WrapText = true;
+                    var width = Convert.ToDouble(draftColumn.ColumnWidth);
+                    if (width > 36d)
+                    {
+                        draftColumn.ColumnWidth = 36d;
+                        draftColumn.WrapText = true;
+                        width = 36d;
+                    }
+                    // Excel can AutoFit a formula column against its short
+                    // header before the recalculated value is displayed.
+                    // Reserve enough space for separators and decimals in
+                    // numeric output columns, including formula results.
+                    var numeric = column > 1 && rows != null &&
+                        rows.Skip(1).Any(row => row != null &&
+                            row.Count >= column &&
+                            IsChartValue(row[column - 1]));
+                    if (numeric && width < 14d)
+                        draftColumn.ColumnWidth = 14d;
                 }
                 target.EntireRow.AutoFit();
             }

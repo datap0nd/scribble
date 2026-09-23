@@ -7894,6 +7894,8 @@ namespace GuardrailTests
                             var finalAutoFit = events.FindLastIndex(e => e.EndsWith(".AutoFit()", StringComparison.Ordinal));
                             Assert(numberFormat >= 0 && finalAutoFit > numberFormat,
                                 source + " -> Excel did not size columns against the final displayed number format.");
+                            Assert(events.Count(e => e.Contains(".ColumnWidth=14")) >= 2,
+                                source + " -> Excel left numeric result columns too narrow for displayed values.");
                         }
                         if (target == "word")
                             Assert(!events.Any(e => e.EndsWith(".Text=Draft\r", StringComparison.Ordinal)),
