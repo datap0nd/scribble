@@ -20,7 +20,10 @@ fallbacks, so its image output cannot replace PowerPoint's native render oracle
 without comparison. The source deck may contain objects that a library can
 preserve but not safely edit.
 
-**Trial before adding a production dependency:** pin the verified
+An isolated `tests/OfficeImoProbe` project and optional PR CI job perform the
+first synthetic no-op and one-text-edit package round trip. They do not add
+OfficeIMO to the add-in or certify visual fidelity. The broader trial before
+adding a production dependency is to pin the verified
 [NuGet 3.4.2 package](https://www.nuget.org/packages/OfficeIMO.PowerPoint/3.4.2)
 in an isolated test project, check that it loads under Scribble's .NET
 Framework 4.8 target (NuGet lists a 4.7.2 asset), and run the existing
