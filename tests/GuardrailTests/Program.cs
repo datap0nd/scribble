@@ -79,6 +79,7 @@ namespace GuardrailTests
                 Run("Typed analysis calculations preserve source authority", AnalysisContractTests.DeterministicCalculationsPreserveAuthority);
                 Run("OpenXML typed capture retains formulas formats dates and blanks", AnalysisContractTests.OpenXmlCaptureRetainsTypedCells);
                 Run("One verified analysis compiles workbook formulas and four slides", AnalysisDocumentCompilerTests.OneAnalysisSuppliesWorkbookAndFourSlides);
+                Run("Typed deck tool accepts only fact references", AnalysisDocumentCompilerTests.DeckToolAcceptsOnlyFactReferencedPlan);
                 Run("Analysis native writer requires an explicit development flag", AnalysisDocumentCompilerTests.PilotRequiresExplicitFeatureFlag);
                 Run("Typed review findings cannot override facts or pages", AnalysisReviewContractTests.FindingsCannotOverrideVerifiedFactsOrPages);
                 Run("One repair budget spans review and patch stages", AnalysisReviewContractTests.SharedBudgetSurvivesEveryStage);

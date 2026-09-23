@@ -15,6 +15,8 @@ namespace Scribble.Office
     {
         public AnalysisReviewContext Context { get; set; }
         public AnalysisReviewRequest Request { get; set; }
+        // Images and RenderFingerprint values come from the same exports.
+        public List<string> PageImages { get; set; } = new List<string>();
     }
 
     // Development-only bridge to the existing Office writers. A caller must
@@ -121,8 +123,9 @@ namespace Scribble.Office
             RequireEnabled();
             if (task == null)
                 throw new InvalidOperationException("REVIEW_TASK_REQUIRED");
+            var images = new List<string>();
             var pages = CapturePresentationPages(presentation, artifact,
-                plan);
+                plan, images);
             var measurements = CaptureNativeMeasurements(presentation,
                 pages);
             var context = AnalysisReviewContract.Context(artifact, plan,
@@ -132,7 +135,8 @@ namespace Scribble.Office
             return new AnalysisNativeReviewSession
             {
                 Context = context,
-                Request = request
+                Request = request,
+                PageImages = images
             };
         }
 
@@ -165,7 +169,7 @@ namespace Scribble.Office
 
         public static IReadOnlyList<AnalysisReviewPage> CapturePresentationPages(
             object presentation, AnalysisArtifact artifact,
-            AnalysisDocumentPlan plan)
+            AnalysisDocumentPlan plan, List<string> pageImages = null)
         {
             RequireEnabled();
             var compiled = AnalysisDocumentCompiler.Compile(artifact, plan);
@@ -185,13 +189,16 @@ namespace Scribble.Office
                 int ordinal;
                 ordinals.TryGetValue(logicalId, out ordinal);
                 ordinals[logicalId] = ordinal + 1;
+                string pageImage;
+                var rendered = RenderFingerprint(native, out pageImage);
+                pageImages?.Add(pageImage);
                 pages.Add(new AnalysisReviewPage
                 {
                     LogicalSlideId = logicalId,
                     NativeSlideId = (int)native.SlideID,
                     ExpectedPageNumber = index,
                     PageOrdinal = ordinal,
-                    RenderFingerprint = RenderFingerprint(native),
+                    RenderFingerprint = rendered,
                     NativeStateFingerprint = NativeStateFingerprint(native)
                 });
             }
@@ -521,7 +528,8 @@ namespace Scribble.Office
                 "RENDERER_REPAIR_UNSUPPORTED: " + measurement.Code);
         }
 
-        private static string RenderFingerprint(dynamic slide)
+        private static string RenderFingerprint(dynamic slide,
+            out string dataUrl)
         {
             var temporary = Path.Combine(Path.GetTempPath(),
                 "scribble-analysis-review-" + Guid.NewGuid().ToString("N") +
@@ -529,10 +537,12 @@ namespace Scribble.Office
             try
             {
                 slide.Export(temporary, "PNG", 1600, 900);
+                var bytes = File.ReadAllBytes(temporary);
+                dataUrl = "data:image/png;base64," +
+                    Convert.ToBase64String(bytes);
                 using (var digest = SHA256.Create())
-                    return BitConverter.ToString(digest.ComputeHash(
-                        File.ReadAllBytes(temporary))).Replace("-", "")
-                        .ToLowerInvariant();
+                    return BitConverter.ToString(digest.ComputeHash(bytes))
+                        .Replace("-", "").ToLowerInvariant();
             }
             finally { if (File.Exists(temporary)) File.Delete(temporary); }
         }

@@ -2,12 +2,53 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Web.Script.Serialization;
+using Scribble.Chat;
 using Scribble.Office;
 
 namespace GuardrailTests
 {
     internal static class AnalysisDocumentCompilerTests
     {
+        public static void DeckToolAcceptsOnlyFactReferencedPlan()
+        {
+            var definition = CrossAppToolCatalog.AnalysisDeckDefinition();
+            var json = new JavaScriptSerializer();
+            var valid = new ChatToolCall
+            {
+                id = "typed-deck", type = "function",
+                function = new ChatToolCallFunction
+                {
+                    name = CrossAppToolCatalog.SendToPowerPoint,
+                    arguments = json.Serialize(new
+                    {
+                        AnalysisId = "host-issued-id",
+                        Slides = new[] { new
+                        {
+                            Id = "headline", Layout = "scorecard",
+                            Title = "Verified trend",
+                            Subtitle = new[] { new { FactId = "fact-id" } }
+                        } }
+                    })
+                }
+            };
+            Check(ToolContractValidator.Validate(valid, definition).Count == 0,
+                "The fact-referenced deck schema rejected its minimal plan.");
+            var injected = new ChatToolCall
+            {
+                id = "typed-deck-injection", type = "function",
+                function = new ChatToolCallFunction
+                {
+                    name = CrossAppToolCatalog.SendToPowerPoint,
+                    arguments = valid.function.arguments.Replace(
+                        "\"FactId\":\"fact-id\"",
+                        "\"FactId\":\"fact-id\",\"Formula\":\"=1\"")
+                }
+            };
+            Check(ToolContractValidator.Validate(injected, definition)
+                    .Any(error => error.Contains("Formula")),
+                "The model-facing deck schema accepted an authored formula.");
+        }
+
         public static void PilotRequiresExplicitFeatureFlag()
         {
             var prior = Environment.GetEnvironmentVariable(

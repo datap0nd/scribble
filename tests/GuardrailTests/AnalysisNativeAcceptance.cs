@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Threading;
 using System.Web.Script.Serialization;
 using System.Xml.Linq;
@@ -298,6 +299,20 @@ namespace GuardrailTests
                     reviewTask, (object)deck, fixture.Item1,
                     fixture.Item2, true);
                 var pages = nativeReview.Context.Pages;
+                Check(nativeReview.PageImages.Count == pages.Count &&
+                    nativeReview.PageImages.Select((image, index) =>
+                    {
+                        const string prefix = "data:image/png;base64,";
+                        if (!image.StartsWith(prefix, StringComparison.Ordinal))
+                            return false;
+                        var bytes = Convert.FromBase64String(
+                            image.Substring(prefix.Length));
+                        using (var sha = SHA256.Create())
+                            return BitConverter.ToString(sha.ComputeHash(bytes))
+                                .Replace("-", "").ToLowerInvariant() ==
+                                pages[index].RenderFingerprint;
+                    }).All(matches => matches),
+                    "Review images did not match their page fingerprints.");
                 Check(pages.Count == 4 && pages.Select(page =>
                     page.NativeSlideId).Distinct().Count() == 4 &&
                     pages.Select(page => page.ExpectedPageNumber)
