@@ -78,6 +78,7 @@ namespace GuardrailTests
                 Run("Typed analysis calculations preserve source authority", AnalysisContractTests.DeterministicCalculationsPreserveAuthority);
                 Run("OpenXML typed capture retains formulas formats dates and blanks", AnalysisContractTests.OpenXmlCaptureRetainsTypedCells);
                 Run("One verified analysis compiles workbook formulas and four slides", AnalysisDocumentCompilerTests.OneAnalysisSuppliesWorkbookAndFourSlides);
+                Run("Analysis native writer requires an explicit development flag", AnalysisDocumentCompilerTests.PilotRequiresExplicitFeatureFlag);
                 Run("Duplicate document writes return a recoverable result", HardeningTests.DuplicateDraftIsRecoverable);
                 Run("Known invalid Excel draft formulas permit a fresh marked sheet", HardeningTests.RejectedDraftFormulaAllowsFreshMarkedSheet);
                 Run("Excel formula rejection occurs after a native grid write", HardeningTests.FormulaRejectionFollowsNativeGridWrite);

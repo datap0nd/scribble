@@ -25,9 +25,15 @@ namespace GuardrailTests
             var images = new List<string>();
             var output = Path.GetDirectoryName(Path.GetFullPath(reportPath));
             Directory.CreateDirectory(output);
+            var priorFlag = Environment.GetEnvironmentVariable(
+                AnalysisDocumentPilot.FeatureFlag);
             try
             {
-                var compiled = Fixture();
+                Environment.SetEnvironmentVariable(
+                    AnalysisDocumentPilot.FeatureFlag, "1");
+                var fixture = Fixture();
+                var compiled = AnalysisDocumentCompiler.Compile(
+                    fixture.Item1, fixture.Item2);
                 excel = Activator.CreateInstance(Type.GetTypeFromProgID(
                     "Excel.Application", true));
                 workbook = excel.Workbooks.Add();
@@ -43,10 +49,8 @@ namespace GuardrailTests
                 ledger.Cells[3, 9].Value2 = 82992d;
                 ledger.Cells[3, 10].Value2 = 36714d;
                 var sourceBefore = SourceFingerprint(ledger);
-                var rows = compiled.WorkbookRows.Select(row =>
-                    (IReadOnlyList<string>)row).ToList();
-                WorkbookDraftWriter.WriteDraftSheet((object)excel,
-                    compiled.WorkbookTitle, rows);
+                AnalysisDocumentPilot.WriteWorkbook((object)excel,
+                    fixture.Item1, fixture.Item2);
                 dynamic draft = workbook.Worksheets["Scribble Draft"];
                 Check(compiled.ExpectedFormulaFacts.ContainsKey("B4") &&
                     compiled.ExpectedFormulaFacts.ContainsKey("C4"),
@@ -68,10 +72,8 @@ namespace GuardrailTests
                 powerPoint = Activator.CreateInstance(Type.GetTypeFromProgID(
                     "PowerPoint.Application", true));
                 powerPoint.Visible = -1;
-                var parsed = PresentationDraftWriter.ParseSlides(
-                    compiled.Slides.Cast<object>().ToArray());
-                PresentationDraftWriter.AddDraftSlides((object)powerPoint,
-                    parsed, null, true);
+                AnalysisDocumentPilot.WritePresentation((object)powerPoint,
+                    fixture.Item1, fixture.Item2);
                 deck = powerPoint.ActivePresentation;
                 Check((int)deck.Slides.Count == 4,
                     "The native deck did not contain exactly four slides.");
@@ -99,6 +101,8 @@ namespace GuardrailTests
             catch (Exception error) { failure = error.ToString(); }
             finally
             {
+                Environment.SetEnvironmentVariable(
+                    AnalysisDocumentPilot.FeatureFlag, priorFlag);
                 if (deck != null) try { deck.Close(); } catch { }
                 if (workbook != null) try { workbook.Close(false); } catch { }
                 if (excel != null) try { excel.Quit(); } catch { }
@@ -128,7 +132,7 @@ namespace GuardrailTests
                     CultureInfo.InvariantCulture)));
         }
 
-        private static CompiledAnalysisDocuments Fixture()
+        private static Tuple<AnalysisArtifact, AnalysisDocumentPlan> Fixture()
         {
             var locator = new SourceLocator
             {
@@ -206,7 +210,7 @@ namespace GuardrailTests
                                 new AnalysisPlanText { Text = "Verified workbook range and live formulas" } } } } }
                 }
             };
-            return AnalysisDocumentCompiler.Compile(artifact, plan);
+            return Tuple.Create(artifact, plan);
         }
     }
 }

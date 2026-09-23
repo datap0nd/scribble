@@ -8,6 +8,27 @@ namespace GuardrailTests
 {
     internal static class AnalysisDocumentCompilerTests
     {
+        public static void PilotRequiresExplicitFeatureFlag()
+        {
+            var prior = Environment.GetEnvironmentVariable(
+                AnalysisDocumentPilot.FeatureFlag);
+            try
+            {
+                Environment.SetEnvironmentVariable(
+                    AnalysisDocumentPilot.FeatureFlag, null);
+                var blocked = false;
+                try { AnalysisDocumentPilot.WriteWorkbook(null, null, null); }
+                catch (InvalidOperationException error)
+                { blocked = error.Message.Contains("ANALYSIS_PILOT_DISABLED"); }
+                Check(blocked, "The development pilot writer was available by default.");
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(
+                    AnalysisDocumentPilot.FeatureFlag, prior);
+            }
+        }
+
         public static void OneAnalysisSuppliesWorkbookAndFourSlides()
         {
             var locator = new SourceLocator
