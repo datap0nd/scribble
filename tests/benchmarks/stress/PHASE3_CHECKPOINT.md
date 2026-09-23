@@ -119,8 +119,19 @@ passed, and the architectural-feasibility pilot is not authorized yet.
   [run 35851458827](https://github.com/datap0nd/scribble/actions/runs/35851458827)
   passed one disposable Excel/PowerPoint run with native formula readback,
   four slides, source preservation, isolated retry, typed review and renderer
-  repair. `full_acceptance_passed=false` remains correct. The full CI job was
-  still running when this result was recorded.
+  repair. `full_acceptance_passed=false` remains correct. The full Windows
+  CI run passed.
+- `9e39f0f` adds a strict slide-plan intake boundary. It accepts a bounded
+  fact-referenced narrative/layout plan, rejects unsupported fields and
+  model-supplied formula values, then supplies the workbook rows from the
+  host-generated formula builder. The first parser harness run at `b05f3bf`
+  rejected null formula fields emitted by the C# fixture serializer before
+  any Office write; the corrected parser accepts nulls while rejecting an
+  injected `=1` formula value. The CI-built harness from
+  [run 35852563754](https://github.com/datap0nd/scribble/actions/runs/35852563754)
+  passed one fresh disposable Office run through this boundary, with all six
+  structural result fields true and `full_acceptance_passed=false`. The
+  slides remain hand-authored fixture content, not a model-generated plan.
 
 ## Still required for the Phase 3 exit gate
 
