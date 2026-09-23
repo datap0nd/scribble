@@ -7,6 +7,7 @@ using System.IO.Compression;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
@@ -38,6 +39,8 @@ namespace GuardrailTests
             var typedReviewPassed = false;
             var rendererRepairPassed = false;
             var typedDeckHandoffPassed = false;
+            var nativeDateColumnPassed = false;
+            var powerpointExited = false;
             var images = new List<string>();
             var stage = "setup";
             var output = Path.GetDirectoryName(Path.GetFullPath(reportPath));
@@ -51,6 +54,40 @@ namespace GuardrailTests
                 stage = "excel_start";
                 excel = Activator.CreateInstance(Type.GetTypeFromProgID(
                     "Excel.Application", true));
+                stage = "excel_real_date_column";
+                dynamic dateWorkbook = excel.Workbooks.Add();
+                try
+                {
+                    dynamic dateSheet = dateWorkbook.Worksheets[1];
+                    dateSheet.Range("A1").Value2 = "Date";
+                    dateSheet.Range("B1").Value2 = "Amount";
+                    dateSheet.Range("A2").Value2 = 45808d;
+                    dateSheet.Range("A2").NumberFormat = "m/d/yy";
+                    dateSheet.Range("B2").Value2 = 120d;
+                    dateSheet.Range("B2").NumberFormat = "#,##0";
+                    dynamic dateRange = dateSheet.Range("A1:B2");
+                    object mixed = dateRange.NumberFormat;
+                    Check(mixed == DBNull.Value,
+                        "Native Excel did not return DBNull for mixed formats.");
+                    var formats = WorkbookTypedCapture.ResolveMixedNumberFormats(
+                        mixed, 2, 2,
+                        column => (object)dateRange.Columns[column + 1].NumberFormat,
+                        (row, column) => (object)dateRange.Cells[row + 1,
+                            column + 1].NumberFormat);
+                    var dateTable = WorkbookTypedCapture.Capture(
+                        "native_date", "Dates", (object)dateRange.Value2,
+                        (object)dateRange.Formula, formats, null,
+                        2, 2, 1, 1);
+                    Check(dateTable.Cells.Single(cell =>
+                            cell.Reference == "A2").ValueType ==
+                            AnalysisContract.DateValue &&
+                        dateTable.Cells.Single(cell =>
+                            cell.Reference == "B2").ValueType ==
+                            AnalysisContract.DecimalValue,
+                        "The real Excel date serial was typed as a number.");
+                    nativeDateColumnPassed = true;
+                }
+                finally { dateWorkbook.Close(false); }
                 workbook = excel.Workbooks.Add();
                 dynamic ledger = workbook.Worksheets[1];
                 ledger.Name = "Ledger";
@@ -278,6 +315,8 @@ namespace GuardrailTests
                 for (var index = 1; index <= 4; index++)
                 {
                     dynamic slide = deck.Slides[index];
+                    if (PresentationInspection.ContainsNativeChart(
+                            (object)slide)) continue;
                     stage = "powerpoint_export_" + index;
                     var path = Path.Combine(output,
                         "analysis-slide-" + index.ToString("00") + ".png");
@@ -639,7 +678,12 @@ namespace GuardrailTests
                 }
                 slidesPassed = true;
             }
-            catch (Exception error) { failure = stage + ": " + error; }
+            catch (Exception error)
+            {
+                powerpointExited = PowerPointExited(error);
+                failure = (powerpointExited ? "POWERPOINT_EXITED at " +
+                    stage + ": " : stage + ": ") + error;
+            }
             finally
             {
                 Environment.SetEnvironmentVariable(
@@ -661,6 +705,10 @@ namespace GuardrailTests
                 typed_review_contract_passed = typedReviewPassed,
                 renderer_repair_passed = rendererRepairPassed,
                 typed_deck_handoff_passed = typedDeckHandoffPassed,
+                native_date_column_passed = nativeDateColumnPassed,
+                powerpoint_exited = powerpointExited,
+                visual_review_unavailable = failure.Contains(
+                    "ANALYSIS_VISUAL_REVIEW_UNAVAILABLE"),
                 rendered_images = images,
                 full_acceptance_passed = false,
                 note = "Hand-authored structural pilot and offline fake reviewer only; no model, visual attestation, or recovery qualification.",
@@ -680,6 +728,18 @@ namespace GuardrailTests
             return string.Join("|", new[] { "B2", "I2", "J2", "B3", "I3", "J3" }
                 .Select(cell => Convert.ToString(sheet.Range(cell).Value2,
                     CultureInfo.InvariantCulture)));
+        }
+
+        private static bool PowerPointExited(Exception error)
+        {
+            for (var current = error; current != null;
+                current = current.InnerException)
+                if (current is COMException &&
+                    (unchecked((uint)current.HResult) == 0x800706BA ||
+                     unchecked((uint)current.HResult) == 0x800706BE ||
+                     unchecked((uint)current.HResult) == 0x80010108))
+                    return true;
+            return false;
         }
 
         private static object ModelPlanValue(object value)

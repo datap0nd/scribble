@@ -12,27 +12,6 @@ permissions:
   contents: read
 
 jobs:
-  officeimo-probe:
-    if: github.event_name == 'pull_request' && github.head_ref == 'codex/reliability-phase3'
-    runs-on: windows-latest
-    continue-on-error: true
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-      - name: Probe .NET Framework round trip of synthetic deck
-        shell: pwsh
-        run: |
-          dotnet run --project tests/OfficeImoProbe/OfficeImoProbe.csproj --configuration Release -- `
-            tests/benchmarks/stress/evidence/phase2-native-candidate/analysis-deck.pptx `
-            "$env:RUNNER_TEMP/officeimo-probe"
-      - name: Upload probe report and decks
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: OfficeImoProbe
-          path: ${{ runner.temp }}/officeimo-probe/
-          if-no-files-found: ignore
-
   build:
     needs: browser-extension-e2e
     runs-on: windows-latest

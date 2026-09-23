@@ -15,7 +15,8 @@ namespace Scribble.Office
     {
         public AnalysisReviewContext Context { get; set; }
         public AnalysisReviewRequest Request { get; set; }
-        // Images and RenderFingerprint values come from the same exports.
+        // Exportable pages pair images with render fingerprints. A native
+        // chart page has no image and cannot enter model visual review.
         public List<string> PageImages { get; set; } = new List<string>();
     }
 
@@ -126,6 +127,9 @@ namespace Scribble.Office
             var images = new List<string>();
             var pages = CapturePresentationPages(presentation, artifact,
                 plan, images);
+            if (images.Any(image => string.IsNullOrEmpty(image)))
+                throw new InvalidOperationException(
+                    "ANALYSIS_VISUAL_REVIEW_UNAVAILABLE: A native chart slide cannot be safely exported on this Office build. The draft remains pending for visual inspection; no model approval or review receipt was issued.");
             var measurements = CaptureNativeMeasurements(presentation,
                 pages);
             var context = AnalysisReviewContract.Context(artifact, plan,
@@ -190,8 +194,9 @@ namespace Scribble.Office
                 ordinals.TryGetValue(logicalId, out ordinal);
                 ordinals[logicalId] = ordinal + 1;
                 string pageImage;
+                var nativeState = NativeStateFingerprint(native);
                 var rendered = RenderFingerprint(native,
-                    pageImages != null, out pageImage);
+                    nativeState, pageImages != null, out pageImage);
                 pageImages?.Add(pageImage);
                 pages.Add(new AnalysisReviewPage
                 {
@@ -200,7 +205,7 @@ namespace Scribble.Office
                     ExpectedPageNumber = index,
                     PageOrdinal = ordinal,
                     RenderFingerprint = rendered,
-                    NativeStateFingerprint = NativeStateFingerprint(native)
+                    NativeStateFingerprint = nativeState
                 });
             }
             return pages;
@@ -530,8 +535,19 @@ namespace Scribble.Office
         }
 
         private static string RenderFingerprint(dynamic slide,
-            bool includeImage, out string dataUrl)
+            string nativeState, bool includeImage, out string dataUrl)
         {
+            // PowerPoint chart.dll can terminate the host during Slide.Export.
+            // Keep native identity for geometry/repair, but never present it as
+            // visual evidence or send a model a partial set of page images.
+            if (PresentationInspection.ContainsNativeChart((object)slide))
+            {
+                dataUrl = null;
+                using (var digest = SHA256.Create())
+                    return BitConverter.ToString(digest.ComputeHash(
+                        Encoding.UTF8.GetBytes("preview-unavailable:" +
+                            nativeState))).Replace("-", "").ToLowerInvariant();
+            }
             var temporary = Path.Combine(Path.GetTempPath(),
                 "scribble-analysis-review-" + Guid.NewGuid().ToString("N") +
                 ".png");

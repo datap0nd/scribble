@@ -224,6 +224,12 @@ namespace Scribble.Office
             catch (OperationCanceledException) { throw; }
             catch (Exception exception)
             {
+                if (exception.Message.StartsWith(
+                        "ANALYSIS_VISUAL_REVIEW_UNAVAILABLE:",
+                        StringComparison.Ordinal))
+                    return Error(call.id, authorization,
+                        "ANALYSIS_VISUAL_REVIEW_UNAVAILABLE",
+                        exception.Message);
                 return Error(call.id, authorization,
                     "ANALYSIS_DECK_FAILED", exception.Message);
             }
