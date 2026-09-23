@@ -200,6 +200,8 @@
     <Compile Include="Office\WorkbookGroupedTotals.cs" />
     <Compile Include="Office\AnalysisContracts.cs" />
     <Compile Include="Office\AnalysisDocumentCompiler.cs" />
+    <Compile Include="Office\AnalysisReviewContract.cs" />
+    <Compile Include="Office\AnalysisRepairBudget.cs" />
     <Compile Include="Office\AnalysisDocumentPilot.cs" />
     <Compile Include="Office\OpenXmlWorkbookSnapshotReader.cs" />
     <Compile Include="Office\DraftTextLayout.cs" />

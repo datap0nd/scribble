@@ -81,6 +81,21 @@ namespace Scribble.Office
                 slides, null, true);
         }
 
+        // After native write, the caller supplies actual slide identities and
+        // render fingerprints. The typed verdict is bound to exactly that
+        // analysis and page set; this method performs no model inference.
+        public static AnalysisReviewDecision ReviewPresentation(
+            AnalysisArtifact artifact, AnalysisDocumentPlan plan,
+            IEnumerable<AnalysisReviewPage> pages,
+            IEnumerable<AnalysisReviewMeasurement> measurements,
+            string reviewerJson)
+        {
+            RequireEnabled();
+            var context = AnalysisReviewContract.Context(artifact, plan,
+                pages, measurements);
+            return AnalysisReviewContract.Parse(reviewerJson, context);
+        }
+
         private static void RequireEnabled()
         {
             if (!string.Equals(Environment.GetEnvironmentVariable(FeatureFlag),
