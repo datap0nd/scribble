@@ -101,7 +101,8 @@ namespace Scribble.Office
     {
         public static CompiledAnalysisDocuments Compile(
             AnalysisArtifact artifact,
-            AnalysisDocumentPlan plan)
+            AnalysisDocumentPlan plan,
+            bool requireSlides = true)
         {
             // Validate the host-issued identity as well as the schema. A
             // mutated in-memory artifact must never retain its old revision.
@@ -199,7 +200,8 @@ namespace Scribble.Office
                         ? null : facts[id].Locators.FirstOrDefault()) + ")"));
                 result.Slides.Add(map);
             }
-            if (result.Slides.Count == 0 || result.Slides.Count >
+            if ((requireSlides && result.Slides.Count == 0) ||
+                result.Slides.Count >
                 PresentationDraftWriter.MaxDraftSlides)
                 throw new InvalidOperationException("ANALYSIS_SLIDE_COUNT_INVALID");
             // Let the current writer validate all layout, density, chart and

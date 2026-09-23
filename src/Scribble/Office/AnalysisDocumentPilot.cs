@@ -28,7 +28,8 @@ namespace Scribble.Office
             AnalysisArtifact artifact, AnalysisDocumentPlan plan)
         {
             RequireEnabled();
-            var compiled = AnalysisDocumentCompiler.Compile(artifact, plan);
+            var compiled = AnalysisDocumentCompiler.Compile(artifact, plan,
+                false);
             AnalysisWorkbookSourceGuard.Validate(excelApplication, artifact);
             dynamic application = excelApplication;
             dynamic workbook = application.ActiveWorkbook;

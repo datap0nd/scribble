@@ -55,7 +55,7 @@ namespace Scribble.Office
                         artifact)
                 };
                 formulaCount = AnalysisDocumentCompiler.Compile(artifact,
-                    plan).ExpectedFormulaFacts.Count;
+                    plan, false).ExpectedFormulaFacts.Count;
                 OfficeTaskBinding.Validate(_taskContext.State, "excel",
                     _hostApplication);
                 AnalysisWorkbookSourceGuard.Validate(_hostApplication,
