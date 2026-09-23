@@ -95,6 +95,22 @@ passed, and the architectural-feasibility pilot is not authorized yet.
   retry, typed review and renderer-repair checks. Full Windows CI for that
   commit passed. No model generated the plan, and
   `full_acceptance_passed=false`.
+- `e329b79` connects the same typed table binding to the pilot's actual
+  `read_cells` tool route. With `SCRIBBLE_ANALYSIS_PILOT=1`, a complete
+  single-page range of at most 500 cells can specify exact period, metric,
+  currency and dimension headers. The Office host captures the typed cells,
+  rejects unverified values, issues source-cell fact IDs, and passes the full
+  artifact to the task evidence store through a host-only payload. The model
+  sees fact IDs and source cells; it cannot supply numeric facts. The normal
+  read schema and behavior remain unchanged with the pilot flag off. The
+  Windows solution build in
+  [CI run 35849873136](https://github.com/datap0nd/scribble/actions/runs/35849873136)
+  passed. Its CI-built harness passed one fresh disposable Office run,
+  including task-checkpointed retention of four live-cell facts, native Excel
+  formulas, four slides, source preservation, isolated retry, typed review,
+  and renderer repair. `full_acceptance_passed=false` remains correct. The
+  full Windows CI run passed, including guardrails, installer construction,
+  and installer smoke checks.
 
 ## Still required for the Phase 3 exit gate
 
@@ -106,8 +122,8 @@ passed, and the architectural-feasibility pilot is not authorized yet.
   return an explicit unsupported capability for other geometry. Continue
   testing source-bound facts, page continuations, and retry receipts against
   native outputs and context limits.
-- Finish and record the current full CI and native results, then freeze Phase 3 code for
-  the offline gate. Only after Phases 0–3 pass offline may the pinned hosted
+- Freeze Phase 3 code after the active-route and geometry gaps close, then
+  complete the offline gate. Only after Phases 0–3 pass offline may the pinned hosted
   OpenRouter `qwen/qwen3.8-27b` run the small paid architectural pilot.
 
 No paid model call was made for this checkpoint. The last independently
