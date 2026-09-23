@@ -27,6 +27,16 @@ passed, and the architectural-feasibility pilot is not authorized yet.
   `renderer_repair_passed=true`, and `full_acceptance_passed=false`.
 - The isolated [OfficeIMO evaluation](OPEN_SOURCE_UNBLOCKERS.md) is promising
   on the synthetic deck. It is not a PP01 or production-dependency gate.
+- A new reliability defect surfaced while testing the shared native patch
+  budget: the first `f4b8413` native run refused a repair because PowerPoint's
+  second PNG export had a different byte fingerprint; the next run passed.
+  `e7756bf` keeps the PNG hash as exact review evidence but authorizes repair
+  against a separate hash of native slide ID, shape IDs, geometry, text, and
+  font sizes. The CI-built harness from
+  [run 35838835743](https://github.com/datap0nd/scribble/actions/runs/35838835743)
+  passed three fresh, sequential disposable Office trials (3/3) with budgeted
+  folio and out-of-bounds repair. This is a narrow repeatability check, not
+  a full repair/recovery qualification.
 
 ## Still required for the Phase 3 exit gate
 

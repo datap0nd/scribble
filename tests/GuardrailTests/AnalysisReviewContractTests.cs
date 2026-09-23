@@ -100,6 +100,12 @@ namespace GuardrailTests
                 new object[0]), context);
             Check(clean.Approved, "A clean review was rejected.");
             var oldApproval = verdict(true, new object[0]);
+            page.NativeStateFingerprint = "sha256:changed-native-state";
+            var changedNative = AnalysisReviewContract.Context(artifact, plan,
+                new[] { page });
+            Reject(() => AnalysisReviewContract.Parse(oldApproval, changedNative),
+                "REVIEW_CONTEXT_CHANGED");
+            page.NativeStateFingerprint = "sha256:native";
             var claim = Finding("UNSUPPORTED_CLAIM", "content", "june",
                 412, "title", "", "", "blocker", "revise_text",
                 "The title implies a wider audit than this ledger supports.");
