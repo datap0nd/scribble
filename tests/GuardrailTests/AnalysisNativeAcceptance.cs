@@ -186,9 +186,8 @@ namespace GuardrailTests
                     approved = true,
                     findings = new object[0]
                 });
-                Check(AnalysisDocumentPilot.ReviewPresentation(fixture.Item1,
-                    fixture.Item2, pages, measurements,
-                    cleanVerdict).Approved,
+                Check(AnalysisDocumentPilot.CompleteNativeReview((object)deck,
+                    nativeReview, cleanVerdict).Approved,
                     "A native page-bound typed review could not be parsed.");
                 typedReviewPassed = true;
                 stage = "powerpoint_renderer_repair";
@@ -205,6 +204,19 @@ namespace GuardrailTests
                 }
                 Check(folio != null, "The native slide has no editable folio.");
                 folio.TextFrame.TextRange.Text = "- 9 -";
+                var staleReviewRejected = false;
+                try
+                {
+                    AnalysisDocumentPilot.CompleteNativeReview((object)deck,
+                        nativeReview, cleanVerdict);
+                }
+                catch (InvalidOperationException error)
+                {
+                    staleReviewRejected = error.Message.Contains(
+                        "REVIEW_NATIVE_STATE_CHANGED");
+                }
+                Check(staleReviewRejected,
+                    "A native edit inherited an earlier review approval.");
                 var damagedPages = AnalysisDocumentPilot.CapturePresentationPages(
                     (object)deck, fixture.Item1, fixture.Item2);
                 var damagedMeasurements =

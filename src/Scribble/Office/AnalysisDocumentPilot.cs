@@ -133,6 +133,33 @@ namespace Scribble.Office
             };
         }
 
+        public static AnalysisReviewDecision CompleteNativeReview(
+            object presentation, AnalysisNativeReviewSession session,
+            string reviewerJson)
+        {
+            RequireEnabled();
+            if (session?.Context == null || session.Request == null)
+                throw new InvalidOperationException("REVIEW_SESSION_INVALID");
+            var pages = session.Context.Pages.OrderBy(page =>
+                page.ExpectedPageNumber).ToArray();
+            dynamic deck = presentation;
+            if (deck == null || (int)deck.Slides.Count != pages.Length ||
+                pages.Where((page, index) =>
+                    page.ExpectedPageNumber != index + 1).Any())
+                throw new InvalidOperationException("REVIEW_NATIVE_STATE_CHANGED");
+            for (var index = 1; index <= pages.Length; index++)
+            {
+                dynamic slide = deck.Slides[index];
+                if ((int)slide.SlideID != pages[index - 1].NativeSlideId ||
+                    NativeStateFingerprint(slide) !=
+                        pages[index - 1].NativeStateFingerprint)
+                    throw new InvalidOperationException(
+                        "REVIEW_NATIVE_STATE_CHANGED");
+            }
+            return AnalysisReviewContract.Parse(reviewerJson,
+                session.Context);
+        }
+
         public static IReadOnlyList<AnalysisReviewPage> CapturePresentationPages(
             object presentation, AnalysisArtifact artifact,
             AnalysisDocumentPlan plan)
