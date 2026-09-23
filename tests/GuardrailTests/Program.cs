@@ -75,6 +75,7 @@ namespace GuardrailTests
                 if (args.Length == 2 && args[0] == "--filter") _filter = args[1];
                 Run("Native report readback retains scalar cell formulas", HardeningTests.NativeReportReadback);
                 Run("Typed analysis snapshots preserve identity and serialization", AnalysisContractTests.SnapshotIdentityInvalidationAndSerialization);
+                Run("Explicit typed table bindings issue only verified facts", AnalysisContractTests.ExplicitTableBindingsIssueOnlyVerifiedFacts);
                 Run("Typed analysis calculations preserve source authority", AnalysisContractTests.DeterministicCalculationsPreserveAuthority);
                 Run("OpenXML typed capture retains formulas formats dates and blanks", AnalysisContractTests.OpenXmlCaptureRetainsTypedCells);
                 Run("One verified analysis compiles workbook formulas and four slides", AnalysisDocumentCompilerTests.OneAnalysisSuppliesWorkbookAndFourSlides);

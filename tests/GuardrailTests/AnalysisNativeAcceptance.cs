@@ -38,9 +38,6 @@ namespace GuardrailTests
             {
                 Environment.SetEnvironmentVariable(
                     AnalysisDocumentPilot.FeatureFlag, "1");
-                var fixture = Fixture();
-                var compiled = AnalysisDocumentCompiler.Compile(
-                    fixture.Item1, fixture.Item2);
                 stage = "excel_start";
                 excel = Activator.CreateInstance(Type.GetTypeFromProgID(
                     "Excel.Application", true));
@@ -57,6 +54,14 @@ namespace GuardrailTests
                 ledger.Cells[3, 9].Value2 = 82992d;
                 ledger.Cells[3, 10].Value2 = 36714d;
                 var sourceBefore = SourceFingerprint(ledger);
+                stage = "excel_typed_capture";
+                dynamic sourceRange = ledger.Range("B1:J3");
+                var table = WorkbookTypedCapture.Capture("ledger", "Ledger",
+                    (object)sourceRange.Value2, (object)sourceRange.Formula,
+                    (object)sourceRange.NumberFormat, null, 3, 9, 1, 2);
+                var fixture = Fixture(table);
+                var compiled = AnalysisDocumentCompiler.Compile(
+                    fixture.Item1, fixture.Item2);
                 stage = "excel_write_and_readback";
                 AnalysisDocumentPilot.WriteWorkbook((object)excel,
                     fixture.Item1, fixture.Item2);
@@ -455,7 +460,8 @@ namespace GuardrailTests
             }
         }
 
-        private static Tuple<AnalysisArtifact, AnalysisDocumentPlan> Fixture()
+        private static Tuple<AnalysisArtifact, AnalysisDocumentPlan> Fixture(
+            TableDataset table)
         {
             var locator = new SourceLocator
             {
@@ -464,19 +470,29 @@ namespace GuardrailTests
             };
             var snapshot = AnalysisContract.CreateSnapshot("WB01",
                 "excel_workbook", "native-pilot-1", "complete_range",
-                "recalculated", new[] { locator }, new TableDataset[0]);
-            Func<string, string, string, VerifiedFact> fact = (metric, value, period) =>
-                AnalysisContract.CreateObservedFact(snapshot.SnapshotId,
-                    metric, AnalysisContract.DecimalValue, value, value,
-                    "currency", "EUR", period, new Dictionary<string, string>(),
-                    new[] { locator }, AnalysisContract.Verified);
-            var mayRevenue = fact("RevenueEUR", "85519", "2026-05");
-            var juneRevenue = fact("RevenueEUR", "82992", "2026-06");
-            var mayCost = fact("CostEUR", "36702", "2026-05");
-            var juneCost = fact("CostEUR", "36714", "2026-06");
-            var artifact = AnalysisContract.CreateArtifact(new[] { snapshot },
-                new[] { mayRevenue, juneRevenue, mayCost, juneCost },
-                new AnalysisCalculation[0], new string[0], new string[0]);
+                "literal_values", new[] { locator }, new[] { table });
+            var artifact = AnalysisTableArtifactBuilder.Build(snapshot,
+                new AnalysisTableBinding
+                {
+                    TableId = "ledger", PeriodHeader = "Period",
+                    Metrics = new List<AnalysisMetricColumnBinding>
+                    {
+                        new AnalysisMetricColumnBinding {
+                            Header = "RevenueEUR", Metric = "RevenueEUR",
+                            Unit = "currency", Currency = "EUR" },
+                        new AnalysisMetricColumnBinding {
+                            Header = "CostEUR", Metric = "CostEUR",
+                            Unit = "currency", Currency = "EUR" }
+                    }
+                });
+            var mayRevenue = artifact.Facts.Single(fact =>
+                fact.Metric == "RevenueEUR" && fact.Period == "2026-05");
+            var juneRevenue = artifact.Facts.Single(fact =>
+                fact.Metric == "RevenueEUR" && fact.Period == "2026-06");
+            var mayCost = artifact.Facts.Single(fact =>
+                fact.Metric == "CostEUR" && fact.Period == "2026-05");
+            var juneCost = artifact.Facts.Single(fact =>
+                fact.Metric == "CostEUR" && fact.Period == "2026-06");
             Func<string, AnalysisPlanCell> label = value =>
                 new AnalysisPlanCell { Text = value };
             Func<VerifiedFact, AnalysisPlanCell> reference = value =>

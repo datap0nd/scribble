@@ -17,6 +17,116 @@ namespace GuardrailTests
             if (!condition) throw new Exception(message);
         }
 
+        public static void ExplicitTableBindingsIssueOnlyVerifiedFacts()
+        {
+            Func<TableDataset, SourceSnapshot> snapshot = table =>
+                AnalysisContract.CreateSnapshot("workbook-a",
+                    "excel_workbook", "revision-1", "complete_range",
+                    "literal_values", new[] { Locator("workbook-a",
+                        "Ledger", "A1:D3", "") }, new[] { table });
+            var binding = new AnalysisTableBinding
+            {
+                TableId = "ledger", PeriodHeader = "Period",
+                DimensionHeaders = new List<string> { "Group" },
+                Metrics = new List<AnalysisMetricColumnBinding>
+                {
+                    new AnalysisMetricColumnBinding { Header = "RevenueEUR",
+                        Metric = "Revenue", Unit = "currency",
+                        Currency = "EUR" },
+                    new AnalysisMetricColumnBinding { Header = "CostEUR",
+                        Metric = "Cost", Unit = "currency",
+                        Currency = "EUR" }
+                }
+            };
+            var artifact = AnalysisTableArtifactBuilder.Build(
+                snapshot(MappedTable()), binding);
+            Check(artifact.Facts.Count == 4 &&
+                artifact.Facts.Single(fact => fact.Metric == "Revenue" &&
+                    fact.Period == "2026-06").Value == "82992" &&
+                artifact.Facts.Single(fact => fact.Metric == "Cost" &&
+                    fact.Period == "2026-05").Locators.Single().Cell == "D2" &&
+                artifact.Facts.All(fact => fact.Status ==
+                    AnalysisContract.Verified &&
+                    fact.Dimensions["Group"] == "North"),
+                "Typed table binding lost period, dimension, source cell, or value.");
+            var zero = MappedTable();
+            var zeroCell = zero.Cells.Single(cell => cell.Reference == "C3");
+            zeroCell.Value = "0";
+            zeroCell.RawValue = "0";
+            zeroCell.DisplayText = "0";
+            Check(AnalysisTableArtifactBuilder.Build(snapshot(zero), binding)
+                .Facts.Single(fact => fact.Metric == "Revenue" &&
+                    fact.Period == "2026-06").Value == "0",
+                "A verified zero was treated as a missing metric.");
+            var duplicate = MappedTable();
+            duplicate.Cells.Single(cell => cell.Reference == "A3").Value =
+                "2026-05";
+            RejectTableBinding(() => AnalysisTableArtifactBuilder.Build(
+                snapshot(duplicate), binding), "ANALYSIS_TABLE_FACT_DUPLICATE");
+            var cachedFormula = MappedTable();
+            var formulaCell = cachedFormula.Cells.Single(cell =>
+                cell.Reference == "C3");
+            formulaCell.Formula = "=SUM(C2:C2)";
+            formulaCell.Status = AnalysisContract.Unresolved;
+            RejectTableBinding(() => AnalysisTableArtifactBuilder.Build(
+                snapshot(cachedFormula), binding),
+                "ANALYSIS_TABLE_VALUE_UNVERIFIED");
+            var blank = MappedTable();
+            var blankCell = blank.Cells.Single(cell => cell.Reference == "D3");
+            blankCell.ValueType = AnalysisContract.MissingValue;
+            blankCell.Value = string.Empty;
+            blankCell.Status = AnalysisContract.Unresolved;
+            RejectTableBinding(() => AnalysisTableArtifactBuilder.Build(
+                snapshot(blank), binding),
+                "ANALYSIS_TABLE_VALUE_UNVERIFIED");
+            var ambiguous = MappedTable();
+            ambiguous.Cells.Single(cell => cell.Reference == "D1").Value =
+                "RevenueEUR";
+            RejectTableBinding(() => AnalysisTableArtifactBuilder.Build(
+                snapshot(ambiguous), binding),
+                "ANALYSIS_TABLE_HEADER_AMBIGUOUS");
+            var partial = AnalysisContract.CreateSnapshot("workbook-a",
+                "excel_workbook", "revision-1", "partial_page",
+                "literal_values", new[] { Locator("workbook-a",
+                    "Ledger", "A1:D3", "") }, new[] { MappedTable() });
+            RejectTableBinding(() => AnalysisTableArtifactBuilder.Build(
+                partial, binding), "ANALYSIS_TABLE_SOURCE_UNSUPPORTED");
+        }
+
+        private static void RejectTableBinding(Action action, string code)
+        {
+            try { action(); }
+            catch (InvalidOperationException error)
+            {
+                if (error.Message.Contains(code)) return;
+                throw;
+            }
+            throw new Exception("Expected table binding failure " + code);
+        }
+
+        private static TableDataset MappedTable()
+        {
+            return new TableDataset
+            {
+                TableId = "ledger", Name = "Ledger", Rows = 3,
+                Columns = 4, Cells = new List<DatasetCell>
+                {
+                    Cell(0, 0, "A1", AnalysisContract.TextValue, "Period"),
+                    Cell(0, 1, "B1", AnalysisContract.TextValue, "Group"),
+                    Cell(0, 2, "C1", AnalysisContract.TextValue, "RevenueEUR"),
+                    Cell(0, 3, "D1", AnalysisContract.TextValue, "CostEUR"),
+                    Cell(1, 0, "A2", AnalysisContract.TextValue, "2026-05"),
+                    Cell(1, 1, "B2", AnalysisContract.TextValue, "North"),
+                    Cell(1, 2, "C2", AnalysisContract.DecimalValue, "85519"),
+                    Cell(1, 3, "D2", AnalysisContract.DecimalValue, "36702"),
+                    Cell(2, 0, "A3", AnalysisContract.TextValue, "2026-06"),
+                    Cell(2, 1, "B3", AnalysisContract.TextValue, "North"),
+                    Cell(2, 2, "C3", AnalysisContract.DecimalValue, "82992"),
+                    Cell(2, 3, "D3", AnalysisContract.DecimalValue, "36714")
+                }
+            };
+        }
+
         public static void SnapshotIdentityInvalidationAndSerialization()
         {
             var table = Table();

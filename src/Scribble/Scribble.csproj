@@ -199,6 +199,7 @@
     <Compile Include="Office\DraftFormulaAssociation.cs" />
     <Compile Include="Office\WorkbookGroupedTotals.cs" />
     <Compile Include="Office\AnalysisContracts.cs" />
+    <Compile Include="Office\AnalysisTableArtifactBuilder.cs" />
     <Compile Include="Office\AnalysisDocumentCompiler.cs" />
     <Compile Include="Office\AnalysisReviewContract.cs" />
     <Compile Include="Office\AnalysisRepairBudget.cs" />
