@@ -555,16 +555,7 @@ namespace GuardrailTests
             {
                 AnalysisId = artifact.AnalysisId,
                 WorkbookTitle = "Revenue and cost audit",
-                WorkbookRows = new List<AnalysisPlanRow>
-                {
-                    row(new[] { label("Metric"), label("May"), label("June") }),
-                    row(new[] { label("Revenue EUR"),
-                        new AnalysisPlanCell { Formula = "=SUMIF(Ledger!$B$2:$B$3,\"2026-05\",Ledger!$I$2:$I$3)", ExpectedFactId = mayRevenue.FactId },
-                        new AnalysisPlanCell { Formula = "=SUMIF(Ledger!$B$2:$B$3,\"2026-06\",Ledger!$I$2:$I$3)", ExpectedFactId = juneRevenue.FactId } }),
-                    row(new[] { label("Cost EUR"),
-                        new AnalysisPlanCell { Formula = "=SUMIF(Ledger!$B$2:$B$3,\"2026-05\",Ledger!$J$2:$J$3)", ExpectedFactId = mayCost.FactId },
-                        new AnalysisPlanCell { Formula = "=SUMIF(Ledger!$B$2:$B$3,\"2026-06\",Ledger!$J$2:$J$3)", ExpectedFactId = juneCost.FactId } })
-                },
+                WorkbookRows = AnalysisWorkbookPlanBuilder.Build(artifact),
                 Slides = new List<AnalysisPlanSlide>
                 {
                     new AnalysisPlanSlide { Id = "headline", Layout = "scorecard",

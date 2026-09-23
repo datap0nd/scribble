@@ -49,6 +49,8 @@ namespace GuardrailTests
                     AnalysisContract.Verified &&
                     fact.Dimensions["Group"] == "North"),
                 "Typed table binding lost period, dimension, source cell, or value.");
+            RejectTableBinding(() => AnalysisWorkbookPlanBuilder.Build(artifact),
+                "ANALYSIS_WORKBOOK_FACTS_UNSUPPORTED");
             var zero = MappedTable();
             var zeroCell = zero.Cells.Single(cell => cell.Reference == "C3");
             zeroCell.Value = "0";
