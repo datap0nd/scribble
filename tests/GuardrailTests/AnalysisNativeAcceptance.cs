@@ -188,7 +188,10 @@ namespace GuardrailTests
                         staleResult.Content.Contains("ANALYSIS_SOURCE_CHANGED") &&
                         !draftAuthorization.IsConsumed &&
                         (int)workbook.Worksheets.Count == 1,
-                        "A changed source cell created a draft before freshness validation.");
+                        "A changed source cell did not fail preflight cleanly: " +
+                        (staleResult == null ? "no result" : staleResult.Content) +
+                        "; consumed=" + draftAuthorization.IsConsumed +
+                        "; sheets=" + (int)workbook.Worksheets.Count);
                     stage = "excel_write_and_readback";
                     var draftResult = draftHost.Execute(draftCall,
                         draftAuthorization, true,
