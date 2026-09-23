@@ -183,8 +183,9 @@ namespace GuardrailTests
                 var folioDefect = damagedMeasurements.Single(item =>
                     item.Code == "PAGE_NUMBER" &&
                     item.NativeSlideId == damagedPages[0].NativeSlideId);
-                AnalysisDocumentPilot.RepairNativeMeasurement((object)deck,
-                    damagedPages, folioDefect);
+                var repairReceipt = AnalysisDocumentPilot.RepairNativeMeasurement(
+                    (object)deck, damagedPages, folioDefect,
+                    AnalysisRepairBudget.CrossApp().Serialize());
                 var correctedPages =
                     AnalysisDocumentPilot.CapturePresentationPages(
                         (object)deck, fixture.Item1, fixture.Item2);
@@ -202,13 +203,14 @@ namespace GuardrailTests
                         item.Code == "OUT_OF_BOUNDS" &&
                         item.NativeSlideId == displacedPages[0].NativeSlideId &&
                         item.TargetId == "shape:" + (int)folio.Id);
-                AnalysisDocumentPilot.RepairNativeMeasurement((object)deck,
-                    displacedPages, displaced);
+                repairReceipt = AnalysisDocumentPilot.RepairNativeMeasurement(
+                    (object)deck, displacedPages, displaced, repairReceipt);
                 var placedPages = AnalysisDocumentPilot.CapturePresentationPages(
                     (object)deck, fixture.Item1, fixture.Item2);
                 Check(AnalysisDocumentPilot.CaptureNativeMeasurements(
                     (object)deck, placedPages).Count == 0 &&
-                    (float)folio.Left >= 0f,
+                    (float)folio.Left >= 0f &&
+                    AnalysisRepairBudget.Read(repairReceipt).PatchedTargets.Count == 2,
                     "The renderer did not correct and read back an out-of-bounds shape.");
                 rendererRepairPassed = true;
                 stage = "powerpoint_save_copy";

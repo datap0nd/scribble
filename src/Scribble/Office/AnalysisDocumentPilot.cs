@@ -189,9 +189,9 @@ namespace Scribble.Office
 
         // Renderer-owned fixes are finite native operations. They neither
         // ask the model to rewrite the slide nor modify a bound fact.
-        public static void RepairNativeMeasurement(object presentation,
+        public static string RepairNativeMeasurement(object presentation,
             IReadOnlyList<AnalysisReviewPage> pages,
-            AnalysisReviewMeasurement measurement)
+            AnalysisReviewMeasurement measurement, string budgetReceipt)
         {
             RequireEnabled();
             if (measurement == null || pages == null)
@@ -214,6 +214,8 @@ namespace Scribble.Office
                 current.Observed != measurement.Observed ||
                 current.Expected != measurement.Expected)
                 throw new InvalidOperationException("RENDERER_REPAIR_MEASUREMENT_CHANGED");
+            var nextReceipt = AnalysisRepairBudget.Read(budgetReceipt)
+                .ConsumePatch(page.LogicalSlideId, measurement.TargetId);
             if (measurement.Code == "PAGE_NUMBER")
             {
                 var candidates = new List<object>();
@@ -246,7 +248,7 @@ namespace Scribble.Office
                         "RENDERER_REPAIR_RECOVERY_REQUIRED"); }
                     throw;
                 }
-                return;
+                return nextReceipt;
             }
             if (measurement.Code == "TEXT_OVERFLOW")
             {
@@ -295,7 +297,7 @@ namespace Scribble.Office
                         "RENDERER_REPAIR_RECOVERY_REQUIRED"); }
                     throw;
                 }
-                return;
+                return nextReceipt;
             }
             if (measurement.Code == "OUT_OF_BOUNDS")
             {
@@ -342,7 +344,7 @@ namespace Scribble.Office
                         "RENDERER_REPAIR_RECOVERY_REQUIRED"); }
                     throw;
                 }
-                return;
+                return nextReceipt;
             }
             throw new InvalidOperationException(
                 "RENDERER_REPAIR_UNSUPPORTED: " + measurement.Code);
