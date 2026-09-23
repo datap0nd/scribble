@@ -92,8 +92,9 @@ passed, and the architectural-feasibility pilot is not authorized yet.
   from [run 35847770074](https://github.com/datap0nd/scribble/actions/runs/35847770074)
   read actual disposable Excel cells into that artifact, then passed the
   live-formula report, four native slides, source-preservation, isolated
-  retry, typed review and renderer-repair checks. Full CI was running when
-  recorded. No model generated the plan, and `full_acceptance_passed=false`.
+  retry, typed review and renderer-repair checks. Full Windows CI for that
+  commit passed. No model generated the plan, and
+  `full_acceptance_passed=false`.
 
 ## Still required for the Phase 3 exit gate
 
