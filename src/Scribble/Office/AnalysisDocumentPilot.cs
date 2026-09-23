@@ -185,7 +185,7 @@ namespace Scribble.Office
                 if (pageNumbers.Count != 1 || pageNumbers[0] != expected)
                     findings.Add(Measure("PAGE_NUMBER", page, "page",
                         string.Join("; ", pageNumbers), expected));
-                var content = ContentBounds(slide, height);
+                var content = ContentBounds((object)slide, height);
                 for (var first = 0; first < content.Count; first++)
                     for (var second = first + 1; second < content.Count;
                         second++)
@@ -372,7 +372,7 @@ namespace Scribble.Office
             }
             if (measurement.Code == "COLLISION")
             {
-                var content = ContentBounds(slide,
+                var content = ContentBounds((object)slide,
                     (double)deck.PageSetup.SlideHeight);
                 var target = content.SingleOrDefault(item =>
                     "shape:" + item.Id == measurement.TargetId);
@@ -424,7 +424,7 @@ namespace Scribble.Office
                 {
                     native.Left = viable.Left;
                     native.Top = viable.Top;
-                    var updated = ContentBounds(slide, slideHeight);
+                    var updated = ContentBounds((object)slide, slideHeight);
                     var moved = updated.SingleOrDefault(item => item.Id == target.Id);
                     if (moved == null || updated.Where(item => item.Id != target.Id)
                         .Any(item =>
@@ -523,9 +523,10 @@ namespace Scribble.Office
                 Width = Width, Height = Height }; }
         }
 
-        private static List<NativeBounds> ContentBounds(dynamic slide,
+        private static List<NativeBounds> ContentBounds(object slideObject,
             double slideHeight)
         {
+            dynamic slide = slideObject;
             var result = new List<NativeBounds>();
             for (var index = 1; index <= (int)slide.Shapes.Count; index++)
             {
