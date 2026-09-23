@@ -111,6 +111,16 @@ passed, and the architectural-feasibility pilot is not authorized yet.
   and renderer repair. `full_acceptance_passed=false` remains correct. The
   full Windows CI run passed, including guardrails, installer construction,
   and installer smoke checks.
+- `56bc6a0` removes model-authored workbook formulas from the structural
+  pilot. `AnalysisWorkbookPlanBuilder` derives report rows, source worksheet
+  ranges, `SUMIF` formulas and expected fact IDs from the verified typed
+  table. It refuses dimensioned or otherwise unsupported fact sets rather
+  than guessing an aggregation. The CI-built harness from
+  [run 35851458827](https://github.com/datap0nd/scribble/actions/runs/35851458827)
+  passed one disposable Excel/PowerPoint run with native formula readback,
+  four slides, source preservation, isolated retry, typed review and renderer
+  repair. `full_acceptance_passed=false` remains correct. The full CI job was
+  still running when this result was recorded.
 
 ## Still required for the Phase 3 exit gate
 

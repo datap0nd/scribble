@@ -60,6 +60,20 @@ namespace GuardrailTests
                     (object)sourceRange.Value2, (object)sourceRange.Formula,
                     (object)sourceRange.NumberFormat, null, 3, 9, 1, 2);
                 var fixture = Fixture(sourceTable);
+                stage = "excel_model_plan_boundary";
+                var planJson = new JavaScriptSerializer().Serialize(new
+                {
+                    AnalysisId = fixture.Item1.AnalysisId,
+                    WorkbookTitle = fixture.Item2.WorkbookTitle,
+                    Slides = fixture.Item2.Slides
+                });
+                var parsedPlan = AnalysisSlidePlanContract.Parse(
+                    fixture.Item1, planJson);
+                Check(parsedPlan.WorkbookRows.Count == 3 &&
+                    parsedPlan.WorkbookRows[1].Cells[1].Formula
+                        .StartsWith("=SUMIF(", StringComparison.Ordinal),
+                    "Model plan parsing did not supply host-owned workbook formulas.");
+                fixture = Tuple.Create(fixture.Item1, parsedPlan);
                 stage = "excel_task_analysis_binding";
                 var readCall = new ChatToolCall
                 {

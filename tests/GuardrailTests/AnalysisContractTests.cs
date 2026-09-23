@@ -51,6 +51,24 @@ namespace GuardrailTests
                 "Typed table binding lost period, dimension, source cell, or value.");
             RejectTableBinding(() => AnalysisWorkbookPlanBuilder.Build(artifact),
                 "ANALYSIS_WORKBOOK_FACTS_UNSUPPORTED");
+            var plainBinding = new AnalysisTableBinding
+            {
+                TableId = "ledger", PeriodHeader = "Period",
+                Metrics = binding.Metrics
+            };
+            var plainArtifact = AnalysisTableArtifactBuilder.Build(
+                snapshot(MappedTable()), plainBinding);
+            var workbookRows = AnalysisWorkbookPlanBuilder.Build(
+                plainArtifact);
+            Check(workbookRows.Count == 3 &&
+                workbookRows[0].Cells[1].Text == "2026-05" &&
+                workbookRows[1].Cells[1].Formula ==
+                    "=SUMIF('Ledger'!$A$2:$A$3,B$3,'Ledger'!$C$2:$C$3)" &&
+                workbookRows[1].Cells[1].ExpectedFactId ==
+                    plainArtifact.Facts.Single(fact =>
+                        fact.Metric == "RevenueEUR" &&
+                        fact.Period == "2026-05").FactId,
+                "Host formula plan lost the source range, period header, or fact binding.");
             var zero = MappedTable();
             var zeroCell = zero.Cells.Single(cell => cell.Reference == "C3");
             zeroCell.Value = "0";

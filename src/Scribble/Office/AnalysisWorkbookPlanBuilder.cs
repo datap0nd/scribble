@@ -28,8 +28,7 @@ namespace Scribble.Office
             var table = snapshot.Tables[0];
             if (snapshot.Coverage != "complete_range" ||
                 table.Rows < 2 || table.Columns < 2 ||
-                table.Rows > WorkbookDraftWriter.MaxDraftColumns ||
-                table.Columns > WorkbookDraftWriter.MaxDraftColumns)
+                table.Rows > WorkbookDraftWriter.MaxDraftColumns)
                 throw new InvalidOperationException(
                     "ANALYSIS_WORKBOOK_SOURCE_UNSUPPORTED");
             var headerCells = table.Cells.Where(cell => cell.Row == 0 &&
