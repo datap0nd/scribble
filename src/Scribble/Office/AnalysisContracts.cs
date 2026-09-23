@@ -581,6 +581,32 @@ namespace Scribble.Office
 
     public static class WorkbookTypedCapture
     {
+        // Excel returns DBNull.Value for a range containing mixed formats.
+        // Resolve only a bounded page; callers must treat null as incomplete.
+        public static object ResolveMixedNumberFormats(object bulk,
+            int rows, int columns, Func<int, object> readColumn,
+            Func<int, int, object> readCell, int maxCells = 500)
+        {
+            if (bulk != null && bulk != DBNull.Value) return bulk;
+            if (bulk == null || rows < 1 || columns < 1 ||
+                (long)rows * columns > maxCells ||
+                readColumn == null || readCell == null) return null;
+            var formats = new object[rows, columns];
+            for (var column = 0; column < columns; column++)
+            {
+                var columnFormat = readColumn(column);
+                for (var row = 0; row < rows; row++)
+                {
+                    var format = columnFormat == DBNull.Value
+                        ? readCell(row, column) : columnFormat;
+                    if (format == null || format == DBNull.Value)
+                        return null;
+                    formats[row, column] = format;
+                }
+            }
+            return formats;
+        }
+
         public static TableDataset Capture(
             string tableId,
             string name,
@@ -611,6 +637,9 @@ namespace Scribble.Office
                     var raw = Matrix(values, row, column, rows, columns, false);
                     var formulaRaw = Matrix(formulas, row, column, rows, columns, false);
                     var formatRaw = Matrix(numberFormats, row, column, rows, columns, true);
+                    if (formatRaw == DBNull.Value)
+                        throw new InvalidOperationException(
+                            "ANALYSIS_NUMBER_FORMAT_INCOMPLETE: Excel returned mixed formats without per-cell resolution.");
                     var shown = Matrix(displayText, row, column, rows, columns, false);
                     var format = Convert.ToString(formatRaw,
                         CultureInfo.InvariantCulture) ?? string.Empty;

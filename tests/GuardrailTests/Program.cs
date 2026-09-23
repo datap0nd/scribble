@@ -76,6 +76,7 @@ namespace GuardrailTests
                 Run("Typed analysis snapshots preserve identity and serialization", AnalysisContractTests.SnapshotIdentityInvalidationAndSerialization);
                 Run("Typed analysis calculations preserve source authority", AnalysisContractTests.DeterministicCalculationsPreserveAuthority);
                 Run("OpenXML typed capture retains formulas formats dates and blanks", AnalysisContractTests.OpenXmlCaptureRetainsTypedCells);
+                Run("Excel DBNull mixed formats resolve a date column", AnalysisContractTests.MixedExcelFormatsResolveDates);
                 Run("Duplicate document writes return a recoverable result", HardeningTests.DuplicateDraftIsRecoverable);
                 Run("Known invalid Excel draft formulas permit a fresh marked sheet", HardeningTests.RejectedDraftFormulaAllowsFreshMarkedSheet);
                 Run("Excel formula rejection occurs after a native grid write", HardeningTests.FormulaRejectionFollowsNativeGridWrite);
@@ -3980,12 +3981,16 @@ namespace GuardrailTests
                         "<row r=\"2\"><c r=\"A2\" t=\"inlineStr\"><is><t>R1</t></is></c>" +
                         "<c r=\"B2\"/><c r=\"C2\"><v>0</v></c>" +
                         "<c r=\"D2\" t=\"inlineStr\"><is><t>2026-06</t></is></c></row>" +
+                        "<row r=\"3\"><c r=\"A3\" s=\"1\"/><c r=\"D3\" s=\"1\"/></row>" +
                         "</sheetData></worksheet>"
                     });
                 var sparse = EmailAttachmentReader.LoadLocalFile(sparsePath);
                 Assert(sparse.Text.Contains("RowID\t\tRevenue\tPeriod") &&
                     sparse.Text.Contains("R1\t\t0\t2026-06"),
                     "Blank XLSX cells shifted values under the wrong header: " + sparse.Text);
+                Assert(!sparse.Text.Contains("2026-06\n\t") &&
+                    !sparse.Text.Contains("2026-06\r\n\t"),
+                    "Styled empty cells emitted a blank ledger row: " + sparse.Text);
             }
             finally
             {

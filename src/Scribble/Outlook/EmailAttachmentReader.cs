@@ -1984,14 +1984,15 @@ namespace Scribble.Outlook
                                      .EndElement &&
                              reader.LocalName == "row")
                     {
-                        if (rowValues.Count > 0)
+                        if (rowValues.Any(value =>
+                                !string.IsNullOrEmpty(value)))
                         {
                             builder.AppendLine(
                                 string.Join(
                                     "\t",
                                     rowValues));
-                            rowValues.Clear();
                         }
+                        rowValues.Clear();
 
                         if (builder.Length >
                             ScaledCharactersPerAttachment)
