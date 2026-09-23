@@ -774,7 +774,7 @@ namespace Scribble.Office
                     { "cells_tsv", text }
                 };
             if (string.Equals(Environment.GetEnvironmentVariable(
-                    AnalysisDocumentPilot.FeatureFlag), "1",
+                    "SCRIBBLE_ANALYSIS_PILOT"), "1",
                     StringComparison.Ordinal))
             {
                 var typed = CaptureTypedPage(page, rows, columns);
