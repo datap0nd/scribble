@@ -199,6 +199,7 @@
     <Compile Include="Office\DraftFormulaAssociation.cs" />
     <Compile Include="Office\WorkbookGroupedTotals.cs" />
     <Compile Include="Office\AnalysisContracts.cs" />
+    <Compile Include="Office\AnalysisDocumentCompiler.cs" />
     <Compile Include="Office\OpenXmlWorkbookSnapshotReader.cs" />
     <Compile Include="Office\DraftTextLayout.cs" />
     <Compile Include="Office\DraftChartTypes.cs" />

@@ -57,6 +57,7 @@
     <Compile Include="ScaleTaskTests.cs" />
     <Compile Include="HardeningTests.cs" />
     <Compile Include="AnalysisContractTests.cs" />
+    <Compile Include="AnalysisDocumentCompilerTests.cs" />
     <Compile Include="TestBenchRegressionTests.cs" />
     <Compile Include="StressKitTests.cs" />
     <Compile Include="StressGradingTests.cs" />
