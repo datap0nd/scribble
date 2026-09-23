@@ -52,6 +52,16 @@ jobs:
       - name: Build solution
         run: msbuild Scribble.sln /m /p:Configuration=Release
 
+      # Native Office is unavailable on the hosted runner. Retain the built
+      # binary early so an explicit workstation pilot can run while CI checks.
+      - name: Upload native acceptance harness
+        if: github.head_ref == 'codex/reliability-phase2'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Phase2NativeHarness
+          path: tests/GuardrailTests/bin/Release/
+          if-no-files-found: error
+
       - name: Verify runtime payload in build output
         shell: pwsh
         run: |
@@ -278,16 +288,6 @@ jobs:
 
       - name: Run guardrail tests
         run: tests\GuardrailTests\bin\Release\GuardrailTests.exe
-
-      # Native Office is unavailable on the hosted runner. Retain the exact
-      # tested binary for an explicit, disposable workstation pilot.
-      - name: Upload native acceptance harness
-        if: always() && github.head_ref == 'codex/reliability-phase2'
-        uses: actions/upload-artifact@v4
-        with:
-          name: Phase2NativeHarness
-          path: tests/GuardrailTests/bin/Release/
-          if-no-files-found: error
 
       - name: Upload interconnectivity test matrix
         uses: actions/upload-artifact@v4
