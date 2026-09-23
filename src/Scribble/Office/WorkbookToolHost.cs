@@ -616,6 +616,15 @@ namespace Scribble.Office
             string callId,
             IDictionary<string, object> arguments)
         {
+            object rawAnalysisBinding;
+            var bindAnalysis = arguments.TryGetValue("analysis_binding",
+                out rawAnalysisBinding);
+            if (bindAnalysis && !string.Equals(
+                    Environment.GetEnvironmentVariable(
+                        AnalysisDocumentPilot.FeatureFlag), "1",
+                    StringComparison.Ordinal))
+                return Error(callId, "ANALYSIS_PILOT_DISABLED",
+                    "Typed analysis binding is only available in the development pilot.");
             dynamic application = _excelApplication;
             dynamic workbook = application.ActiveWorkbook;
             if (workbook == null)
@@ -747,9 +756,53 @@ namespace Scribble.Office
             }
             var complete = nextRowOffset >= totalRows;
             var typed = CaptureTypedPage(page, rows, columns);
-            return Success(
-                callId,
-                new Dictionary<string, object>
+            AnalysisArtifact analysis = null;
+            if (bindAnalysis)
+            {
+                if (rowOffset != 0 || columnOffset != 0 || !complete ||
+                    (long)totalRows * totalColumns > 500 ||
+                    !typed.Complete || !typed.NumberFormatsComplete)
+                    return Error(callId, "ANALYSIS_RANGE_INCOMPLETE",
+                        "Bind a complete single-page range of at most 500 cells with full typed metadata and formats.");
+                try
+                {
+                    var source = OfficeTaskBinding.Capture("excel",
+                        _excelApplication);
+                    if (source == null)
+                        throw new InvalidOperationException(
+                            "ANALYSIS_SOURCE_MISSING");
+                    var address = Convert.ToString(
+                        range.Address(false, false),
+                        CultureInfo.InvariantCulture);
+                    var worksheet = Convert.ToString(sheet.Name,
+                        CultureInfo.InvariantCulture);
+                    var table = typed.Table;
+                    table.TableId = AnalysisContract.HostId("table",
+                        source.Id + "|" + worksheet + "|" + address);
+                    var locator = new SourceLocator
+                    {
+                        Kind = "excel_range",
+                        SourceInstanceId = source.Id,
+                        WorksheetIdentity = worksheet,
+                        Range = address
+                    };
+                    var snapshot = AnalysisContract.CreateSnapshot(
+                        source.Id, "excel_workbook",
+                        source.Fingerprint + "|" + worksheet + "|" + address,
+                        "complete_range", typed.CalculationState,
+                        new[] { locator }, new[] { table });
+                    var binding = ParseAnalysisBinding(rawAnalysisBinding,
+                        table.TableId);
+                    analysis = AnalysisTableArtifactBuilder.Build(snapshot,
+                        binding);
+                }
+                catch (Exception exception)
+                {
+                    return Error(callId, "ANALYSIS_BINDING_INVALID",
+                        exception.Message);
+                }
+            }
+            var payload = new Dictionary<string, object>
                 {
                     { "untrusted_document_data", true },
                     {
@@ -780,16 +833,97 @@ namespace Scribble.Office
                     { "typed_capture_complete", typed.Complete },
                     { "number_formats_complete", typed.NumberFormatsComplete },
                     { "calculation_state", typed.CalculationState }
-                },
+                };
+            if (analysis != null)
+            {
+                payload["analysis_id"] = analysis.AnalysisId;
+                payload["fact_count"] = analysis.Facts.Count;
+                payload["facts"] = analysis.Facts.Select(fact => new
+                {
+                    fact_id = fact.FactId, metric = fact.Metric,
+                    period = fact.Period, value = fact.Value,
+                    currency = fact.Currency,
+                    dimensions = fact.Dimensions,
+                    source_cell = fact.Locators[0].Cell
+                }).ToArray();
+            }
+            var result = Success(callId, payload,
                 "Read cells from " +
                 TextBoundary.SingleLine(
                     Convert.ToString(sheet.Name),
                     120) +
                 ".");
+            if (analysis != null && !result.Outcome.Failed)
+                result.AttachAnalysisArtifact(analysis);
+            return result;
         }
 
         public const int MaxGroupedTotalRows = 20000;
         public const int MaxTypedMetadataCells = 24;
+
+        private static AnalysisTableBinding ParseAnalysisBinding(
+            object raw, string tableId)
+        {
+            var map = raw as IDictionary<string, object>;
+            if (map == null || map.Keys.Except(new[] {
+                    "period_header", "dimension_headers", "metrics" },
+                    StringComparer.Ordinal).Any())
+                throw new InvalidOperationException(
+                    "ANALYSIS_TABLE_BINDING_INVALID");
+            object period;
+            object metricsValue;
+            if (!map.TryGetValue("period_header", out period) ||
+                !(period is string) ||
+                !map.TryGetValue("metrics", out metricsValue))
+                throw new InvalidOperationException(
+                    "ANALYSIS_TABLE_BINDING_INVALID");
+            var rawMetrics = metricsValue as object[];
+            if (rawMetrics == null || rawMetrics.Length == 0 ||
+                rawMetrics.Length > 12)
+                throw new InvalidOperationException(
+                    "ANALYSIS_TABLE_BINDING_INVALID");
+            var binding = new AnalysisTableBinding
+            {
+                TableId = tableId,
+                PeriodHeader = (string)period
+            };
+            object dimensionsValue;
+            if (map.TryGetValue("dimension_headers", out dimensionsValue))
+            {
+                var dimensions = dimensionsValue as object[];
+                if (dimensions == null || dimensions.Length > 4 ||
+                    dimensions.Any(item => !(item is string)))
+                    throw new InvalidOperationException(
+                        "ANALYSIS_TABLE_BINDING_INVALID");
+                binding.DimensionHeaders = dimensions.Cast<string>().ToList();
+            }
+            foreach (var rawMetric in rawMetrics)
+            {
+                var metric = rawMetric as IDictionary<string, object>;
+                object header;
+                object currencyValue;
+                if (metric == null || metric.Keys.Except(new[] {
+                        "header", "currency" },
+                        StringComparer.Ordinal).Any() ||
+                    !metric.TryGetValue("header", out header) ||
+                    !(header is string))
+                    throw new InvalidOperationException(
+                        "ANALYSIS_TABLE_BINDING_INVALID");
+                var currency = metric.TryGetValue("currency",
+                    out currencyValue) ? currencyValue as string : null;
+                if (currencyValue != null && currency == null)
+                    throw new InvalidOperationException(
+                        "ANALYSIS_TABLE_BINDING_INVALID");
+                binding.Metrics.Add(new AnalysisMetricColumnBinding
+                {
+                    Header = (string)header,
+                    Metric = (string)header,
+                    Unit = string.IsNullOrEmpty(currency) ? "" : "currency",
+                    Currency = currency ?? ""
+                });
+            }
+            return binding;
+        }
 
         private static WorkbookTypedRead CaptureTypedPage(
             dynamic range,
@@ -879,6 +1013,7 @@ namespace Scribble.Office
                 }).ToArray();
             return new WorkbookTypedRead
             {
+                Table = table,
                 TypesTsv = types.ToString(),
                 Cells = selected,
                 Complete = complete,
@@ -903,6 +1038,7 @@ namespace Scribble.Office
 
         private sealed class WorkbookTypedRead
         {
+            public TableDataset Table { get; set; }
             public string TypesTsv { get; set; }
             public object[] Cells { get; set; }
             public bool Complete { get; set; }

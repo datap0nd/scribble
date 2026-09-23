@@ -8,6 +8,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Web.Script.Serialization;
+using Scribble.Office;
 using Scribble.Outlook;
 
 namespace Scribble.Chat
@@ -139,6 +140,15 @@ namespace Scribble.Chat
 
         public IReadOnlyList<string> CaptureRead(ChatToolCall call, MailboxToolResult result)
         {
+            var analysis = result.TakeAnalysisArtifact();
+            if (analysis != null)
+            {
+                if (call.function.name != WorkbookToolCatalog.ReadCells ||
+                    result.Outcome.Failed)
+                    throw new InvalidOperationException(
+                        "ANALYSIS_READ_RESULT_INVALID");
+                _task.PersistAnalysis(analysis);
+            }
             var name = call.function.name;
             if (result.Outcome.Failed || name == TaskContextManager.ReadEvidenceTool ||
                 name == ReadSourcesTool || name == ReadDocumentTool ||

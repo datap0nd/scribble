@@ -60,6 +60,58 @@ namespace GuardrailTests
                     (object)sourceRange.Value2, (object)sourceRange.Formula,
                     (object)sourceRange.NumberFormat, null, 3, 9, 1, 2);
                 var fixture = Fixture(sourceTable);
+                stage = "excel_task_analysis_binding";
+                var readCall = new ChatToolCall
+                {
+                    id = "native-analysis-read",
+                    type = "function",
+                    function = new ChatToolCallFunction
+                    {
+                        name = WorkbookToolCatalog.ReadCells,
+                        arguments = new JavaScriptSerializer().Serialize(new
+                        {
+                            sheet = "Ledger", range = "B1:J3",
+                            analysis_binding = new
+                            {
+                                period_header = "Period",
+                                metrics = new[]
+                                {
+                                    new { header = "RevenueEUR", currency = "EUR" },
+                                    new { header = "CostEUR", currency = "EUR" }
+                                }
+                            }
+                        })
+                    }
+                };
+                var readResult = new WorkbookToolHost((object)excel)
+                    .Execute(readCall);
+                Check(!readResult.Outcome.Failed &&
+                    readResult.Content.Contains("analysis_id"),
+                    "The model-facing native read did not bind typed facts.");
+                var readInput = new ChatCompletionRequest
+                {
+                    model = "offline-test",
+                    messages = new List<object>
+                    {
+                        new ChatCompletionInputMessage
+                        {
+                            role = "user", content = "Analyze the disposable ledger"
+                        }
+                    }
+                };
+                var readStore = new TaskCheckpointStore(Path.Combine(output,
+                    "read-checkpoint"));
+                var readTask = new TaskContextManager(readInput, "excel",
+                    "Analyze the disposable ledger", readStore);
+                readTask.AfterTool(readCall, readResult);
+                var bound = readTask.LoadAnalysis();
+                Check(bound != null && bound.Facts.Count == 4 &&
+                    bound.Facts.Any(fact => fact.Metric == "RevenueEUR" &&
+                        fact.Period == "2026-05" && fact.Value == "85519" &&
+                        fact.Locators[0].Cell == "I2") &&
+                    readStore.Load(readTask.State.Id).AnalysisArtifactEvidenceId ==
+                        readTask.State.AnalysisArtifactEvidenceId,
+                    "The task did not durably retain facts from native Excel cells.");
                 var compiled = AnalysisDocumentCompiler.Compile(
                     fixture.Item1, fixture.Item2);
                 stage = "excel_write_and_readback";

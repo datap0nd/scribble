@@ -210,6 +210,21 @@ namespace Scribble.Chat
 
         public int ContentCharacterLimit { get; }
 
+        // Host-only payload. It never enters model-visible JSON.
+        private Scribble.Office.AnalysisArtifact _analysisArtifact;
+
+        internal void AttachAnalysisArtifact(Scribble.Office.AnalysisArtifact artifact)
+        {
+            _analysisArtifact = artifact;
+        }
+
+        internal Scribble.Office.AnalysisArtifact TakeAnalysisArtifact()
+        {
+            var artifact = _analysisArtifact;
+            _analysisArtifact = null;
+            return artifact;
+        }
+
         [System.Web.Script.Serialization.ScriptIgnore]
         public ToolOutcome Outcome { get { return ToolOutcome.Parse(Content); } }
 
