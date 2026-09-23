@@ -103,7 +103,9 @@ namespace Scribble.Office
             AnalysisArtifact artifact,
             AnalysisDocumentPlan plan)
         {
-            AnalysisContract.Validate(artifact);
+            // Validate the host-issued identity as well as the schema. A
+            // mutated in-memory artifact must never retain its old revision.
+            AnalysisContract.Serialize(artifact);
             if (plan == null || plan.AnalysisId != artifact.AnalysisId)
                 throw new InvalidOperationException(
                     "ANALYSIS_PLAN_BINDING_INVALID: The document plan must name the current analysis revision.");

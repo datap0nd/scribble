@@ -33,6 +33,7 @@ namespace GuardrailTests
         private static int Main(string[] args)
         {
             if (args.Length == 2 && args[0] == "--native-powerpoint") return SamsungNativeAcceptance.Run(args[1]);
+            if (args.Length == 2 && args[0] == "--native-analysis-pilot") return AnalysisNativeAcceptance.Run(args[1]);
             // The MCP round-trip test relaunches this same exe as a
             // scripted stdio MCP server, so the test needs no
             // external interpreter and stays deterministic. The

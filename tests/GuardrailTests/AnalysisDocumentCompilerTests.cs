@@ -195,6 +195,15 @@ namespace GuardrailTests
             catch (InvalidOperationException error)
             { rejected = error.Message.Contains("PLAN_BINDING_INVALID"); }
             Check(rejected, "A stale plan was reused against another analysis revision.");
+
+            plan.AnalysisId = artifact.AnalysisId;
+            artifact.Assumptions.Add("source revision changed after planning");
+            var changedArtifactRejected = false;
+            try { AnalysisDocumentCompiler.Compile(artifact, plan); }
+            catch (InvalidOperationException error)
+            { changedArtifactRejected = error.Message.Contains("ANALYSIS_ID_MISMATCH"); }
+            Check(changedArtifactRejected,
+                "A mutated analysis retained a stale host-issued identity.");
         }
 
         private static VerifiedFact Fact(SourceSnapshot snapshot,
