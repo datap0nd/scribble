@@ -85,6 +85,20 @@ namespace Scribble.Office
             DraftSheetChart chart,
             bool inNewWorkbook)
         {
+            return WriteDraftSheet(excelApplication, title, rows, chart,
+                inNewWorkbook, null);
+        }
+
+        // The analysis pilot captures its disposable workbook before writing.
+        // A focus change cannot redirect the native write to another workbook.
+        internal static string WriteDraftSheet(
+            object excelApplication,
+            string title,
+            IReadOnlyList<IReadOnlyList<string>> rows,
+            DraftSheetChart chart,
+            bool inNewWorkbook,
+            object boundWorkbook)
+        {
             if (rows == null || rows.Count == 0)
             {
                 throw new InvalidOperationException(
@@ -94,7 +108,7 @@ namespace Scribble.Office
             dynamic application = excelApplication;
             dynamic workbook = inNewWorkbook
                 ? null
-                : application.ActiveWorkbook;
+                : boundWorkbook ?? application.ActiveWorkbook;
             if (workbook == null)
             {
                 workbook = application.Workbooks.Add();
