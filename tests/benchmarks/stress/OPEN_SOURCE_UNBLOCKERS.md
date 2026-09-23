@@ -90,3 +90,12 @@ work after it passes the preservation trial; it does not replace that contract.
 Record the trial outcome in a later gate with the pinned version, input/output
 hashes, feature report, native readback, and images. Until then, do not add the
 dependency or claim that it solves PP01.
+
+For Phase 4's visual-quality goal, render the same verified fact plan through
+the current Samsung layouts and an isolated OfficeIMO designer composition.
+Judge both as PowerPoint native output against the frozen rubric: hierarchy,
+chart emphasis, useful density, typography, and editable content. The
+`hands-on-deck` HTML-to-patch measurement approach is a third design experiment
+if neither layout engine reaches the bar. Keep those experiments separate from
+the source and repair contracts so a visually striking slide cannot bypass
+fact or preservation checks.
