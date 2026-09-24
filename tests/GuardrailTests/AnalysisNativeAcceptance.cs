@@ -1298,17 +1298,23 @@ namespace GuardrailTests
                         backupHasTitle = true;
                 }
                 var persistedFault = faultStore.Load(faultTask.State.Id);
-                Check(partialLayoutRejected &&
-                    (int)faultDeck.Slides[
-                        faultPage.ExpectedPageNumber].Shapes.Count == 0 &&
-                    (int)recoveryDeck.Slides.Count == 2 &&
+                var faultSlideBlank = (int)faultDeck.Slides[
+                    faultPage.ExpectedPageNumber].Shapes.Count == 0;
+                var twoRecoverySlides = (int)recoveryDeck.Slides.Count == 2;
+                var backupOwnerMatches =
                     (string)backupSlide.Tags["ScribbleTask"] ==
-                        (string)faultDeck.Tags["ScribbleTask"] &&
-                    backupHasTitle &&
-                    persistedFault.HostData.ContainsKey(
-                        "analysis_pending_content_patch"),
+                    (string)faultDeck.Tags["ScribbleTask"];
+                var pendingFaultReceipt = persistedFault.HostData.ContainsKey(
+                    "analysis_pending_content_patch");
+                Check(partialLayoutRejected && faultSlideBlank &&
+                    twoRecoverySlides && backupOwnerMatches &&
+                    backupHasTitle && pendingFaultReceipt,
                     "A partial native layout write lost its original " +
-                    "slide or the pending repair receipt.");
+                    "slide or the pending repair receipt: rejected=" +
+                    partialLayoutRejected + ", blank=" + faultSlideBlank +
+                    ", two_recovery_slides=" + twoRecoverySlides +
+                    ", owner=" + backupOwnerMatches + ", title=" +
+                    backupHasTitle + ", receipt=" + pendingFaultReceipt);
                 partialLayoutRecoveryPassed = true;
             }
             catch (Exception error)
