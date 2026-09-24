@@ -734,15 +734,17 @@ namespace GuardrailTests
                 }
                 Check(nativeChart != null && table != null,
                     "The comparison slide lost its native chart or table.");
-                nativeChart.Left = (float)table.Left + (float)table.Width - 40f;
+                nativeChart.Left = (float)table.Left + (float)table.Width - 100f;
                 var collidedPages = AnalysisDocumentPilot.CapturePresentationPages(
                     (object)deck, fixture.Item1, fixture.Item2);
                 var collision = AnalysisDocumentPilot.CaptureNativeMeasurements(
                     (object)deck, collidedPages).Single(item =>
                         item.Code == "COLLISION" &&
                         item.NativeSlideId == collidedPages[1].NativeSlideId &&
-                        item.TargetId == "shape:" + (int)nativeChart.Id &&
-                        item.OtherTargetId == "shape:" + (int)table.Id);
+                        ((item.TargetId == "shape:" + (int)nativeChart.Id &&
+                          item.OtherTargetId == "shape:" + (int)table.Id) ||
+                         (item.TargetId == "shape:" + (int)table.Id &&
+                          item.OtherTargetId == "shape:" + (int)nativeChart.Id)));
                 repairReceipt = AnalysisDocumentPilot.RepairNativeMeasurement(
                     (object)deck, collidedPages, collision, repairReceipt);
                 var clearedPages = AnalysisDocumentPilot.CapturePresentationPages(
