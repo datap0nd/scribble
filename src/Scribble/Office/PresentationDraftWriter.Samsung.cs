@@ -549,13 +549,13 @@ namespace Scribble.Office
                         ? card.Points.Select(point => StripHeroClauses(point,
                             evidenceHeroes[i], compactHero ? null :
                                 secondaryHero[i]))
-                            .Where(point => point.Length > 0)
-                        : card.Points;
-                    var body = string.Join("\n", bodyPoints);
+                            .Where(point => point.Length > 0).ToArray()
+                        : card.Points.ToArray();
                     if (compactHero && !string.IsNullOrWhiteSpace(
                         heroLabels[i, 0]))
-                        body = heroLabels[i, 0] + (body.Length == 0 ?
-                            "" : "\n" + body);
+                        bodyPoints = new[] { heroLabels[i, 0] }
+                            .Concat(bodyPoints).ToArray();
+                    var body = string.Join("\n", bodyPoints);
                     if (body.Length > 0 || (!compact && heroMode && !string.IsNullOrEmpty(evidenceHeroes[i])))
                     {
                         var bodyStart = compact ? 45f : 64f;
@@ -589,8 +589,8 @@ namespace Scribble.Office
                                 null, SamsungSlideDesign.Blue));
                             continue;
                         }
-                        var lead = card.Points.FirstOrDefault() ?? "";
-                        var supporting = string.Join("\n", card.Points.Skip(1));
+                        var lead = bodyPoints.FirstOrDefault() ?? "";
+                        var supporting = string.Join("\n", bodyPoints.Skip(1));
                         var leadHeight = MeasureEvidenceBody(lead, bodyWidth, 18f, true) + 5f;
                         var supportingHeight = supporting.Length == 0 ? 0f :
                             MeasureEvidenceBody(supporting, bodyWidth) + 5f;
