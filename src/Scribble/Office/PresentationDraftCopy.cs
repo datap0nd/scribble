@@ -350,8 +350,25 @@ namespace Scribble.Office
             }
             _shapeIds[sourceSlideId][sourceShapeId] =
                 replacementId;
-            _draftFingerprints[draftSlideId] =
-                PresentationInspection.Fingerprint((object)slide);
+            var first = PresentationInspection.Fingerprint((object)slide);
+            var second = PresentationInspection.Fingerprint((object)slide);
+            if (first != second)
+            {
+                var contentFirst = PresentationInspection
+                    .ContentFingerprint((object)slide);
+                var contentSecond = PresentationInspection
+                    .ContentFingerprint((object)slide);
+                var packageFirst = PresentationInspection
+                    .PackageSlideFingerprint((object)slide);
+                var packageSecond = PresentationInspection
+                    .PackageSlideFingerprint((object)slide);
+                throw new InvalidOperationException(
+                    "REVISION_CHART_FINGERPRINT_UNSTABLE: " + first +
+                    "/" + second + " content=" + contentFirst +
+                    "/" + contentSecond + " package=" +
+                    packageFirst + "/" + packageSecond);
+            }
+            _draftFingerprints[draftSlideId] = second;
             VerifySource();
             VerifyDraft();
             return facts;
