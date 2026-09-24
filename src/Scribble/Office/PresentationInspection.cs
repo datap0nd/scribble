@@ -325,8 +325,10 @@ namespace Scribble.Office
             dynamic deck = page.Parent;
             if (requireOwnedDraft &&
                 (!string.IsNullOrEmpty((string)deck.Path) ||
-                string.IsNullOrWhiteSpace(Convert.ToString(
-                    page.Tags["ScribbleTask"]))))
+                (string.IsNullOrWhiteSpace(Convert.ToString(
+                    page.Tags["ScribbleTask"])) &&
+                 string.IsNullOrWhiteSpace(Convert.ToString(
+                    deck.Tags["ScribbleRevisionDraft"])))))
                 throw new InvalidOperationException(
                     "CHART_PACKAGE_UNSAVED_DRAFT_REQUIRED");
             var nameBefore = (string)deck.FullName;
