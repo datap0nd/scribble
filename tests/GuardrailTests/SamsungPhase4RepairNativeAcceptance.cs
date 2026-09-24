@@ -192,6 +192,10 @@ namespace GuardrailTests
                 });
                 var bound = (object[])Invoke(copy, CopyType,
                     "BindOperations", (object)operations.ToArray());
+                var boundPackage = Path.Combine(output,
+                    "chart-package-trace-after-bind.pptx");
+                draft.SaveCopyAs(boundPackage);
+                chartPackageTrace.Add(boundPackage);
                 for (var sample = 0; sample < 2; sample++)
                 {
                     chartFingerprintTrace.Add(PresentationInspection
@@ -270,7 +274,18 @@ namespace GuardrailTests
                 Invoke(copy, CopyType, "VerifySource");
                 passed = true;
             }
-            catch (Exception error) { failure = error.ToString(); }
+            catch (Exception error)
+            {
+                failure = error.ToString();
+                if (chartRecreated && draft != null) try
+                {
+                    var failedPackage = Path.Combine(output,
+                        "chart-package-trace-after-failure.pptx");
+                    draft.SaveCopyAs(failedPackage);
+                    chartPackageTrace.Add(failedPackage);
+                }
+                catch { }
+            }
             finally
             {
                 if (revision != null) try
