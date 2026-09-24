@@ -19,6 +19,8 @@ namespace Scribble.Office
             new Dictionary<int, Dictionary<int, int>>();
         private readonly Dictionary<int, string> _sourceContent =
             new Dictionary<int, string>();
+        private readonly Dictionary<int, string> _draftFingerprints =
+            new Dictionary<int, string>();
         private string _owner;
         private string _draftId;
         private string _sourceName;
@@ -26,7 +28,7 @@ namespace Scribble.Office
 
         internal sealed class State
         {
-            public int Version { get; set; } = 1;
+            public int Version { get; set; } = 2;
             public string Owner { get; set; }
             public string DraftId { get; set; }
             public string SourceName { get; set; }
@@ -35,6 +37,7 @@ namespace Scribble.Office
             public Dictionary<string, string> SourceContent { get; set; }
             public Dictionary<string, int> SlideIds { get; set; }
             public Dictionary<string, Dictionary<string, int>> ShapeIds { get; set; }
+            public Dictionary<string, string> DraftFingerprints { get; set; }
         }
 
         private PresentationDraftCopy(object source, object draft,
@@ -91,7 +94,14 @@ namespace Scribble.Office
                         (object)copy.Shapes, shapes);
                     result._shapeIds[originalId] = shapes;
                 }
+                for (var index = 1; index <= 6; index++)
+                {
+                    dynamic page = draft.Slides[index];
+                    result._draftFingerprints[(int)page.SlideID] =
+                        PresentationInspection.Fingerprint((object)page);
+                }
                 result.VerifySource();
+                result.VerifyDraft();
                 return result;
             }
             catch
@@ -104,6 +114,7 @@ namespace Scribble.Office
         internal string Snapshot()
         {
             VerifySource();
+            VerifyDraft();
             return new JavaScriptSerializer { MaxJsonLength = 16000000 }
                 .Serialize(new State
                 {
@@ -118,7 +129,9 @@ namespace Scribble.Office
                     ShapeIds = _shapeIds.ToDictionary(pair =>
                         pair.Key.ToString(), pair => pair.Value.ToDictionary(
                             shape => shape.Key.ToString(),
-                            shape => shape.Value))
+                            shape => shape.Value)),
+                    DraftFingerprints = _draftFingerprints.ToDictionary(
+                        pair => pair.Key.ToString(), pair => pair.Value)
                 });
         }
 
@@ -136,7 +149,7 @@ namespace Scribble.Office
                 throw new InvalidOperationException(
                     "REVISION_COPY_RECEIPT_INVALID");
             }
-            if (state == null || state.Version != 1 ||
+            if (state == null || state.Version != 2 ||
                 string.IsNullOrWhiteSpace(state.Owner) ||
                 string.IsNullOrWhiteSpace(state.DraftId) ||
                 string.IsNullOrWhiteSpace(state.SourceFullName) ||
@@ -145,12 +158,18 @@ namespace Scribble.Office
                 state.SourceContent.Count != 6 ||
                 state.SlideIds == null || state.SlideIds.Count != 6 ||
                 state.ShapeIds == null || state.ShapeIds.Count != 6 ||
+                state.DraftFingerprints == null ||
+                state.DraftFingerprints.Count != 6 ||
                 state.SourceOrder.Distinct().Count() != 6 ||
                 state.SourceOrder.Any(id =>
                     !state.SourceContent.ContainsKey(id.ToString()) ||
                     !state.SlideIds.ContainsKey(id.ToString()) ||
                     !state.ShapeIds.ContainsKey(id.ToString())) ||
-                state.ShapeIds.Values.Any(shapes => shapes == null))
+                state.ShapeIds.Values.Any(shapes => shapes == null) ||
+                state.SlideIds.Values.Any(id =>
+                    !state.DraftFingerprints.ContainsKey(id.ToString()) ||
+                    string.IsNullOrWhiteSpace(
+                        state.DraftFingerprints[id.ToString()])))
                 throw new InvalidOperationException(
                     "REVISION_COPY_RECEIPT_INVALID");
             dynamic app = application;
@@ -203,13 +222,18 @@ namespace Scribble.Office
                 result._shapeIds.Add(int.Parse(pair.Key),
                     pair.Value.ToDictionary(shape => int.Parse(shape.Key),
                         shape => shape.Value));
+            foreach (var pair in state.DraftFingerprints)
+                result._draftFingerprints.Add(int.Parse(pair.Key),
+                    pair.Value);
             result.VerifySource();
+            result.VerifyDraft();
             return result;
         }
 
         internal object[] BindOperations(object[] operations)
         {
             VerifySource();
+            VerifyDraft();
             if (operations == null || operations.Length == 0 ||
                 operations.Length > 24)
                 throw new InvalidOperationException(
@@ -258,6 +282,7 @@ namespace Scribble.Office
             float left, float top, float width, float height)
         {
             VerifySource();
+            VerifyDraft();
             var facts = WorkbookMonthlyChartFacts.ReadSalesLedger(
                 workbookPath, CancellationToken.None);
             if (facts.Categories.Length != 6 ||
@@ -325,8 +350,37 @@ namespace Scribble.Office
             }
             _shapeIds[sourceSlideId][sourceShapeId] =
                 replacementId;
+            _draftFingerprints[draftSlideId] =
+                PresentationInspection.Fingerprint((object)slide);
             VerifySource();
+            VerifyDraft();
             return facts;
+        }
+
+        internal void VerifyDraft()
+        {
+            dynamic draft = Draft;
+            if (Convert.ToString(draft.Tags["ScribbleRevisionDraft"]) !=
+                    _owner ||
+                Convert.ToString(draft.Tags["ScribblePresentationId"]) !=
+                    _draftId ||
+                !string.IsNullOrEmpty(Convert.ToString(draft.Path)) ||
+                (int)draft.Slides.Count != _sourceOrder.Length ||
+                _draftFingerprints.Count != _sourceOrder.Length)
+                throw new InvalidOperationException(
+                    "REVISION_COPY_DRAFT_CHANGED");
+            for (var index = 1; index <= _sourceOrder.Length; index++)
+            {
+                dynamic slide = draft.Slides[index];
+                var id = (int)slide.SlideID;
+                string expected;
+                if (_slideIds[_sourceOrder[index - 1]] != id ||
+                    !_draftFingerprints.TryGetValue(id, out expected) ||
+                    PresentationInspection.Fingerprint((object)slide) !=
+                        expected)
+                    throw new InvalidOperationException(
+                        "REVISION_COPY_DRAFT_CHANGED");
+            }
         }
 
         internal void VerifySource()

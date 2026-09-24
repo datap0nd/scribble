@@ -36,6 +36,7 @@ namespace GuardrailTests
             var failure = string.Empty;
             var passed = false;
             var chartRecreated = false;
+            var draftConflictRejected = false;
             var candidate = Path.Combine(output,
                 "phase4-pp01-copy.pptx");
             var pdf = Path.Combine(output,
@@ -75,6 +76,36 @@ namespace GuardrailTests
                 draft = CopyType.GetField("Draft",
                     BindingFlags.Instance | BindingFlags.NonPublic)
                     .GetValue(copy);
+                var beforeTamper = Convert.ToString(Invoke(copy,
+                    CopyType, "Snapshot"));
+                dynamic draftTitle = OnlyShape((object)draft.Slides[1],
+                    shape => (int)shape.HasTextFrame != 0 &&
+                        Convert.ToString(shape.TextFrame.TextRange.Text)
+                            .Contains("Atlas Components: sales review"));
+                var titleSize = (float)draftTitle.TextFrame.TextRange
+                    .Font.Size;
+                try
+                {
+                    draftTitle.TextFrame.TextRange.Font.Size =
+                        titleSize + 1f;
+                    try
+                    {
+                        InvokeStatic(CopyType, "Recover", (object)app,
+                            beforeTamper);
+                    }
+                    catch (InvalidOperationException error) when
+                        (error.Message == "REVISION_COPY_DRAFT_CHANGED")
+                    { draftConflictRejected = true; }
+                }
+                finally
+                {
+                    draftTitle.TextFrame.TextRange.Font.Size = titleSize;
+                }
+                if (!draftConflictRejected)
+                    throw new InvalidOperationException(
+                        "PP01_DRAFT_CONFLICT_NOT_REJECTED");
+                copy = InvokeStatic(CopyType, "Recover", (object)app,
+                    beforeTamper);
                 var chartFacts = (WorkbookMonthlyChartFacts.Result)
                     Invoke(copy, CopyType,
                         "RecreateSalesChartFromWorkbook",
@@ -278,6 +309,7 @@ namespace GuardrailTests
                 native_artifact = passed ? candidate : null,
                 pdf_review_artifact = passed ? pdf : null,
                 chart_recreated_from_workbook = chartRecreated,
+                draft_conflict_rejected = draftConflictRejected,
                 independent_grader_passed = false,
                 visual_approved = false,
                 full_acceptance_passed = false,
