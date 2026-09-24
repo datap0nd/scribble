@@ -350,42 +350,29 @@ namespace Scribble.Office
             }
             _shapeIds[sourceSlideId][sourceShapeId] =
                 replacementId;
-            var first = PresentationInspection.Fingerprint((object)slide);
-            var second = PresentationInspection.Fingerprint((object)slide);
-            if (first != second)
+            // Office can finish updating the saved chart cache after the
+            // embedded workbook closes. Seal only a state that stays the
+            // same across several spaced package snapshots. A later change
+            // still fails the ordinary exact draft verification.
+            string stable = null;
+            string previous = null;
+            var consecutive = 0;
+            for (var attempt = 0; attempt < 8; attempt++)
             {
-                var contentFirst = PresentationInspection
-                    .ContentFingerprint((object)slide);
-                var contentSecond = PresentationInspection
-                    .ContentFingerprint((object)slide);
-                var packageFirst = PresentationInspection
-                    .PackageSlideFingerprint((object)slide);
-                var packageSecond = PresentationInspection
-                    .PackageSlideFingerprint((object)slide);
+                var current = PresentationInspection.Fingerprint(
+                    (object)slide);
+                consecutive = current == previous ? consecutive + 1 : 1;
+                previous = current;
+                if (attempt >= 4 && consecutive >= 3)
+                { stable = current; break; }
+                if (attempt < 7) Thread.Sleep(300);
+            }
+            if (stable == null)
                 throw new InvalidOperationException(
-                    "REVISION_CHART_FINGERPRINT_UNSTABLE: " + first +
-                    "/" + second + " content=" + contentFirst +
-                    "/" + contentSecond + " package=" +
-                    packageFirst + "/" + packageSecond);
-            }
-            _draftFingerprints[draftSlideId] = second;
-            var sealedContent = PresentationInspection
-                .ContentFingerprint((object)slide);
-            var sealedPackage = PresentationInspection
-                .PackageSlideFingerprint((object)slide);
+                    "REVISION_CHART_FINGERPRINT_UNSTABLE");
+            _draftFingerprints[draftSlideId] = stable;
             VerifySource();
-            try { VerifyDraft(); }
-            catch (InvalidOperationException error) when (error.Message
-                .StartsWith("REVISION_COPY_DRAFT_CHANGED: slide " +
-                    draftSlideId, StringComparison.Ordinal))
-            {
-                throw new InvalidOperationException(error.Message +
-                    " sealed=" + second + " content=" + sealedContent +
-                    "/" + PresentationInspection.ContentFingerprint(
-                        (object)slide) + " package=" + sealedPackage +
-                    "/" + PresentationInspection.PackageSlideFingerprint(
-                        (object)slide), error);
-            }
+            VerifyDraft();
             return facts;
         }
 
@@ -405,15 +392,13 @@ namespace Scribble.Office
             {
                 dynamic slide = draft.Slides[index];
                 var id = (int)slide.SlideID;
-                string expected = null;
-                var actual = PresentationInspection.Fingerprint(
-                    (object)slide);
+                string expected;
                 if (_slideIds[_sourceOrder[index - 1]] != id ||
                     !_draftFingerprints.TryGetValue(id, out expected) ||
-                    actual != expected)
+                    PresentationInspection.Fingerprint((object)slide) !=
+                        expected)
                     throw new InvalidOperationException(
-                        "REVISION_COPY_DRAFT_CHANGED: slide " + id +
-                        " expected=" + expected + " actual=" + actual);
+                        "REVISION_COPY_DRAFT_CHANGED: slide " + id);
             }
         }
 
