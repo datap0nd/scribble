@@ -146,6 +146,8 @@ namespace Scribble.Office
             // Read the actual collection mutation, including when native Paste
             // returns no range. Never blindly repeat a clipboard write.
             object copy = deck.Slides[beforeCount + 1];
+            ((dynamic)copy).FollowMasterBackground =
+                original.FollowMasterBackground;
             if (PresentationInspection.ContentFingerprint(slide) != PresentationInspection.ContentFingerprint(copy))
                 throw new InvalidOperationException("REVISION_COPY_PRESERVATION: Native staging did not preserve the source content and formatting.");
             return copy;

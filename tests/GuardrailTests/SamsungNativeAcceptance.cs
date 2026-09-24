@@ -82,7 +82,18 @@ namespace GuardrailTests
                 if ((int)chart.Chart.SeriesCollection().Count == 0) chart.Chart.SeriesCollection().NewSeries();
                 chart.Chart.SeriesCollection(1).Name = "Sales";
                 chart.Chart.ChartData.Activate();
-                dynamic dataWorkbook = chart.Chart.ChartData.Workbook;
+                dynamic dataWorkbook = null;
+                for (var attempt = 0; attempt < 5 && dataWorkbook == null;
+                    attempt++)
+                {
+                    try { dataWorkbook = chart.Chart.ChartData.Workbook; }
+                    catch (System.Runtime.InteropServices.COMException)
+                    {
+                        if (attempt == 4) throw;
+                        System.Threading.Thread.Sleep(350 * (attempt + 1));
+                        try { chart.Chart.ChartData.Activate(); } catch { }
+                    }
+                }
                 dynamic sourceSheet = dataWorkbook.Worksheets[1];
                 sourceSheet.Cells[1, 1].Value2 = "Period"; sourceSheet.Cells[1, 2].Value2 = "Sales";
                 sourceSheet.Cells[2, 1].Value2 = "Q1"; sourceSheet.Cells[2, 2].Value2 = 100d;
@@ -146,6 +157,11 @@ namespace GuardrailTests
             {
                 foreach (dynamic temp in temps) try { temp.Close(); } catch { }
                 if (deck != null) try { deck.Close(); } catch { }
+                if (app != null) try
+                {
+                    if ((int)app.Presentations.Count == 0) app.Quit();
+                }
+                catch { }
             }
             var report = new { execution_kind = "native", policy = SamsungAuthoringPolicy.Version, assembly_sha256 = PresentationRevisionAcceptance.AssemblyHash(),
                 revision_passed = passed, preservation_passed = passed, rollback_passed = passed, all_operations_passed = passed, full_acceptance_passed = false,

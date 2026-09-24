@@ -55,6 +55,10 @@ namespace Scribble.Office
                         throw new InvalidOperationException(
                             "REVISION_COPY_INCOMPLETE: Native paste changed the page count.");
                     dynamic copy = draft.Slides[index];
+                    // PowerPoint may flip this flag to inherited on paste
+                    // even when the displayed fill happens to look the same.
+                    copy.FollowMasterBackground =
+                        original.FollowMasterBackground;
                     if (PresentationInspection.CopyContentFingerprint(
                             (object)copy) != fingerprint)
                         throw new InvalidOperationException(
