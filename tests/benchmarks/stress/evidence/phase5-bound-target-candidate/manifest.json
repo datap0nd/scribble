@@ -31,6 +31,16 @@
     "native_syntax_failure_rollback_passed": true,
     "restart_reconciliation_passed": false
   },
+  "formula_error_rollback_candidate": {
+    "commit": "e2a7d84175ac35e7a41fd79f1a57ee4b76bcc0c7",
+    "ci_run": 36008735048,
+    "assembly_sha256": "64e1f6b2dd432b33a29801a8e2b553846ffa08cdfca4b6336f67a98ea863d721",
+    "target_binding_passed": true,
+    "merged_preflight_passed": true,
+    "native_syntax_failure_rollback_passed": true,
+    "native_formula_error_rollback_passed": true,
+    "restart_reconciliation_passed": false
+  },
   "before_image_recovery_passed": false,
   "full_acceptance_passed": false,
   "note": "Disposable native workbooks only. The cell edit and draft sheet stayed on the request-bound workbook after an active-window switch; a renamed bound sheet failed before write permission was consumed."
