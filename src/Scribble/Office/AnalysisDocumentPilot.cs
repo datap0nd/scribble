@@ -173,6 +173,126 @@ namespace Scribble.Office
                 session.Context);
         }
 
+        public static string CompiledNativeText(AnalysisArtifact artifact,
+            AnalysisDocumentPlan plan, string logicalSlideId,
+            string targetId)
+        {
+            RequireEnabled();
+            if (targetId != "title" && targetId != "subtitle" &&
+                targetId != "takeaway")
+                throw new InvalidOperationException(
+                    "REPAIR_NATIVE_TEXT_TARGET_UNSUPPORTED");
+            var compiled = AnalysisDocumentCompiler.Compile(artifact, plan);
+            var index = plan.Slides.FindIndex(slide =>
+                slide.Id == logicalSlideId);
+            if (index < 0)
+                throw new InvalidOperationException("REPAIR_SLIDE_CHANGED");
+            return Convert.ToString(compiled.Slides[index][targetId]) ??
+                string.Empty;
+        }
+
+        public static string ReadNativePatchText(object presentation,
+            AnalysisReviewPage page, string expectedText)
+        {
+            RequireEnabled();
+            dynamic deck = presentation;
+            if (page == null || page.PageOrdinal != 0 ||
+                page.ExpectedPageNumber < 1 ||
+                page.ExpectedPageNumber > (int)deck.Slides.Count)
+                throw new InvalidOperationException(
+                    "REPAIR_NATIVE_PAGE_UNSUPPORTED");
+            dynamic slide = deck.Slides[page.ExpectedPageNumber];
+            if ((int)slide.SlideID != page.NativeSlideId)
+                throw new InvalidOperationException("REPAIR_NATIVE_PAGE_CHANGED");
+            dynamic match = null;
+            for (var index = 1; index <= (int)slide.Shapes.Count;
+                index++)
+            {
+                dynamic shape = slide.Shapes[index];
+                if ((int)shape.HasTextFrame == 0 ||
+                    (int)shape.HasChart != 0 ||
+                    (int)shape.HasTable != 0 ||
+                    Convert.ToString(shape.TextFrame.TextRange.Text) !=
+                        expectedText) continue;
+                if (match != null)
+                    throw new InvalidOperationException(
+                        "REPAIR_NATIVE_TEXT_AMBIGUOUS");
+                match = shape;
+            }
+            if (match == null)
+                throw new InvalidOperationException(
+                    "REPAIR_NATIVE_TEXT_CHANGED");
+            return Convert.ToString(match.TextFrame.TextRange.Text) ??
+                string.Empty;
+        }
+
+        public static void ApplyNativeContentPatch(object presentation,
+            AnalysisReviewPage page,
+            AnalysisContentPatchReservation reservation)
+        {
+            RequireEnabled();
+            dynamic deck = presentation;
+            if (page == null || reservation == null ||
+                page.LogicalSlideId != reservation.LogicalSlideId ||
+                page.NativeSlideId != reservation.NativeSlideId ||
+                page.NativeStateFingerprint !=
+                    reservation.NativeStateFingerprint ||
+                page.PageOrdinal != 0)
+                throw new InvalidOperationException(
+                    "REPAIR_RESERVATION_CHANGED");
+            dynamic slide = deck.Slides[page.ExpectedPageNumber];
+            if ((int)slide.SlideID != page.NativeSlideId ||
+                NativeStateFingerprint(slide) !=
+                    page.NativeStateFingerprint)
+                throw new InvalidOperationException(
+                    "REPAIR_NATIVE_PAGE_CHANGED");
+            // Uniqueness is checked before mutation; the same exact match is
+            // located again to keep this operation limited to one text shape.
+            ReadNativePatchText(presentation, page,
+                reservation.NativeBeforeText);
+            for (var index = 1; index <= (int)slide.Shapes.Count;
+                index++)
+            {
+                dynamic shape = slide.Shapes[index];
+                if ((int)shape.HasTextFrame != 0 &&
+                    (int)shape.HasChart == 0 &&
+                    (int)shape.HasTable == 0 &&
+                    Convert.ToString(shape.TextFrame.TextRange.Text) ==
+                        reservation.NativeAfterText)
+                    throw new InvalidOperationException(
+                        "REPAIR_NATIVE_TEXT_AMBIGUOUS");
+            }
+            dynamic target = null;
+            for (var index = 1; index <= (int)slide.Shapes.Count;
+                index++)
+            {
+                dynamic shape = slide.Shapes[index];
+                if ((int)shape.HasTextFrame != 0 &&
+                    (int)shape.HasChart == 0 &&
+                    (int)shape.HasTable == 0 &&
+                    Convert.ToString(shape.TextFrame.TextRange.Text) ==
+                        reservation.NativeBeforeText)
+                    target = shape;
+            }
+            try
+            {
+                target.TextFrame.TextRange.Text =
+                    reservation.NativeAfterText;
+                if (Convert.ToString(target.TextFrame.TextRange.Text) !=
+                    reservation.NativeAfterText)
+                    throw new InvalidOperationException(
+                        "REPAIR_NATIVE_TEXT_READBACK_FAILED");
+            }
+            catch
+            {
+                try { target.TextFrame.TextRange.Text =
+                    reservation.NativeBeforeText; }
+                catch { throw new InvalidOperationException(
+                    "REPAIR_NATIVE_RECOVERY_REQUIRED"); }
+                throw;
+            }
+        }
+
         public static IReadOnlyList<AnalysisReviewPage> CapturePresentationPages(
             object presentation, AnalysisArtifact artifact,
             AnalysisDocumentPlan plan, List<string> pageImages = null)

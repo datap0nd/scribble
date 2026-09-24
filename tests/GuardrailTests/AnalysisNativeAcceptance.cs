@@ -391,6 +391,22 @@ namespace GuardrailTests
                         readTask.State.HostData.ContainsKey(
                             "analysis_deck_complete"),
                         "The typed handoff lost its task-owned native deck.");
+                    var savedPlan = new JavaScriptSerializer()
+                        .Deserialize<AnalysisDocumentPlan>(readTask.State
+                            .HostData["analysis_deck_plan"]);
+                    var repairBudget = AnalysisRepairBudget.Read(readTask.State
+                        .HostData["analysis_repair_budget"]);
+                    Check(savedPlan.Slides[0].Title ==
+                            "Verified June revenue from ledger" &&
+                        (string)typedDeck.Slides[1].Shapes[1]
+                            .TextFrame.TextRange.Text ==
+                            "Verified June revenue from ledger" &&
+                        repairBudget.ModelCalls == 3 &&
+                        repairBudget.PatchedTargets.Contains(
+                            savedPlan.Slides[0].Id + "/title") &&
+                        !readTask.State.HostData.ContainsKey(
+                            "analysis_pending_content_patch"),
+                        "The typed content repair lost its native readback or recovery receipt.");
                     typedDeck.Close();
                     typedDeck = null;
                     typedDeckHandoffPassed = true;
@@ -940,6 +956,12 @@ namespace GuardrailTests
 
             private void Handle()
             {
+                for (var round = 0; round < 3; round++)
+                    HandleOne(round);
+            }
+
+            private void HandleOne(int round)
+            {
                 using (var client = _listener.AcceptTcpClient())
                 using (var stream = client.GetStream())
                 using (var reader = new StreamReader(stream,
@@ -977,43 +999,102 @@ namespace GuardrailTests
                     var messages = (IList)request["messages"];
                     var user = (IDictionary<string, object>)
                         messages[messages.Count - 1];
-                    var parts = (IList)user["content"];
-                    var textPart = (IDictionary<string, object>)parts[0];
-                    var content = (IDictionary<string, object>)
-                        json.DeserializeObject((string)textPart["text"]);
-                    AnalysisId = (string)content["analysis_id"];
-                    var pages = (IList)content["pages"];
-                    ImageCount = parts.Count - 1;
-                    Check(ImageCount == pages.Count && ImageCount == 4,
-                        "The typed reviewer did not receive four pages.");
-                    for (var index = 0; index < ImageCount; index++)
+                    string decision;
+                    if (round == 1)
                     {
-                        var part = (IDictionary<string, object>)
-                            parts[index + 1];
-                        var image = (IDictionary<string, object>)
-                            part["image_url"];
-                        var url = (string)image["url"];
-                        const string prefix = "data:image/png;base64,";
-                        Check(url.StartsWith(prefix,
-                            StringComparison.Ordinal),
-                            "The reviewer image is not an inline PNG.");
-                        var bytes = Convert.FromBase64String(
-                            url.Substring(prefix.Length));
-                        var page = (IDictionary<string, object>)pages[index];
-                        using (var sha = SHA256.Create())
-                            Check(BitConverter.ToString(
-                                sha.ComputeHash(bytes)).Replace("-", "")
-                                .ToLowerInvariant() ==
-                                (string)page["RenderFingerprint"],
-                                "The reviewer image changed after capture.");
+                        var proposal = (IDictionary<string, object>)
+                            json.DeserializeObject((string)user["content"]);
+                        var segments = (IList)proposal[
+                            "editable_literals"];
+                        var segment = (IDictionary<string, object>)segments[0];
+                        Check((string)proposal["target_id"] == "title" &&
+                            (string)segment["text"] ==
+                                "June revenue at a glance",
+                            "The repair prompt lost its exact title literal.");
+                        decision = json.Serialize(new
+                        {
+                            context_id = (string)proposal["context_id"],
+                            logical_slide_id =
+                                (string)proposal["logical_slide_id"],
+                            target_id = "title", segment_index = 0,
+                            expected_text = (string)segment["text"],
+                            replacement_text =
+                                "Verified June revenue from ledger"
+                        });
                     }
-                    var decision = json.Serialize(new
+                    else
                     {
-                        contract_version = AnalysisReviewContract.Version,
-                        context_id = (string)content["context_id"],
-                        approved = true,
-                        findings = new object[0]
-                    });
+                        var parts = (IList)user["content"];
+                        var textPart = (IDictionary<string, object>)parts[0];
+                        var content = (IDictionary<string, object>)
+                            json.DeserializeObject((string)textPart["text"]);
+                        AnalysisId = (string)content["analysis_id"];
+                        var pages = (IList)content["pages"];
+                        ImageCount = parts.Count - 1;
+                        Check(ImageCount == pages.Count && ImageCount == 4,
+                            "The typed reviewer did not receive four pages.");
+                        for (var index = 0; index < ImageCount; index++)
+                        {
+                            var part = (IDictionary<string, object>)
+                                parts[index + 1];
+                            var image = (IDictionary<string, object>)
+                                part["image_url"];
+                            var url = (string)image["url"];
+                            const string prefix = "data:image/png;base64,";
+                            Check(url.StartsWith(prefix,
+                                StringComparison.Ordinal),
+                                "The reviewer image is not an inline PNG.");
+                            var bytes = Convert.FromBase64String(
+                                url.Substring(prefix.Length));
+                            var page = (IDictionary<string, object>)pages[index];
+                            using (var sha = SHA256.Create())
+                                Check(BitConverter.ToString(
+                                    sha.ComputeHash(bytes)).Replace("-", "")
+                                    .ToLowerInvariant() ==
+                                    (string)page["RenderFingerprint"],
+                                    "The reviewer image changed after capture.");
+                        }
+                        var firstPage = (IDictionary<string, object>)pages[0];
+                        if (round == 0)
+                            decision = json.Serialize(new
+                            {
+                                contract_version =
+                                    AnalysisReviewContract.Version,
+                                context_id = (string)content["context_id"],
+                                approved = false,
+                                findings = new[] { new
+                                {
+                                    code = "UNSUPPORTED_CLAIM",
+                                    owner = "content",
+                                    logical_slide_id = (string)
+                                        firstPage["LogicalSlideId"],
+                                    native_slide_id = Convert.ToInt32(
+                                        firstPage["NativeSlideId"]),
+                                    target_id = "title", fact_id = "",
+                                    measurement_id = "",
+                                    severity = "blocker",
+                                    action = "revise_text",
+                                    evidence = "Make ledger scope explicit."
+                                } }
+                            });
+                        else
+                        {
+                            var slides = (IList)content["logical_slides"];
+                            var firstSlide = (IDictionary<string, object>)
+                                slides[0];
+                            Check((string)firstSlide["title"] ==
+                                "Verified June revenue from ledger",
+                                "The corrected title did not reach review.");
+                            decision = json.Serialize(new
+                            {
+                                contract_version =
+                                    AnalysisReviewContract.Version,
+                                context_id = (string)content["context_id"],
+                                approved = true,
+                                findings = new object[0]
+                            });
+                        }
+                    }
                     var response = json.Serialize(new
                     {
                         choices = new[] { new

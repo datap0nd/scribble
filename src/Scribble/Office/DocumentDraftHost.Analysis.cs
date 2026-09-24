@@ -36,6 +36,25 @@ namespace Scribble.Office
                         "ANALYSIS_DECK_ALREADY_COMPLETE");
                 plan = AnalysisSlidePlanContract.Parse(artifact,
                     call.function.arguments);
+                if (_taskContext.State.HostData.ContainsKey(
+                    "analysis_pending_content_patch"))
+                    throw new InvalidOperationException(
+                        "REPAIR_PENDING_RECONCILIATION: A native text patch needs inspection before retry.");
+                string savedPlan;
+                if (_taskContext.State.HostData.TryGetValue(
+                    "analysis_deck_plan", out savedPlan))
+                {
+                    string inputFingerprint;
+                    if (!_taskContext.State.HostData.TryGetValue(
+                            "analysis_deck_plan_input",
+                            out inputFingerprint) ||
+                        inputFingerprint != TaskCheckpointStore.Fingerprint(
+                            call.function.arguments))
+                        throw new InvalidOperationException(
+                            "ANALYSIS_DECK_PLAN_INPUT_CHANGED");
+                    plan = _serializer.Deserialize<AnalysisDocumentPlan>(
+                        savedPlan);
+                }
                 var compiled = AnalysisDocumentCompiler.Compile(artifact,
                     plan);
                 slides = PresentationDraftWriter.ParseSlides(
@@ -58,6 +77,12 @@ namespace Scribble.Office
             catch (Exception exception) when (!(exception is
                 OperationCanceledException))
             {
+                if (exception.Message.StartsWith(
+                        "REPAIR_PENDING_RECONCILIATION:",
+                        StringComparison.Ordinal))
+                    return Error(call.id, authorization,
+                        "ANALYSIS_DECK_RECOVERY_REQUIRED",
+                        exception.Message);
                 return Error(call.id, authorization,
                     "ANALYSIS_DECK_PREFLIGHT_FAILED", exception.Message);
             }
@@ -122,81 +147,160 @@ namespace Scribble.Office
                     throw new InvalidOperationException(
                         "ANALYSIS_DECK_OWNERSHIP_CHANGED");
 
-                // Native geometry belongs to the renderer. A measured repair
-                // consumes the shared task budget before touching its target.
-                for (var repairs = 0; repairs <
-                    AnalysisRepairBudget.MaxCorrectivePatches; repairs++)
+                AnalysisNativeReviewSession review = null;
+                for (var contentPatches = 0; ; contentPatches++)
                 {
-                    var nativePages = AnalysisDocumentPilot
-                        .CapturePresentationPages((object)deck, artifact,
-                            plan);
-                    var defects = AnalysisDocumentPilot
-                        .CaptureNativeMeasurements((object)deck,
-                            nativePages);
-                    if (defects.Count == 0) break;
-                    var defect = defects[0];
-                    var page = nativePages.Single(value =>
-                        value.NativeSlideId == defect.NativeSlideId);
-                    var reservation = _taskContext.ReserveAnalysisPatch(
-                        page, defect, true);
-                    AnalysisDocumentPilot.RepairNativeMeasurement(
-                        (object)deck, nativePages, defect,
-                        reservation.BudgetReceipt, reservation);
-                    var repairedPages = AnalysisDocumentPilot
-                        .CapturePresentationPages((object)deck, artifact,
-                            plan);
-                    var remaining = AnalysisDocumentPilot
-                        .CaptureNativeMeasurements((object)deck,
-                            repairedPages);
-                    journal.Record(outputs[page.ExpectedPageNumber - 1],
-                        page.ExpectedPageNumber - 1);
-                    _taskContext.ReconcileAnalysisPatch(reservation,
-                        repairedPages.Single(value =>
-                            value.NativeSlideId == defect.NativeSlideId),
-                        remaining);
-                }
-                var review = AnalysisDocumentPilot.ReserveNativeReview(
-                    _taskContext, (object)deck, artifact, plan, true);
-                if (review.Context.Measurements.Count != 0)
-                    throw new InvalidOperationException(
-                        "ANALYSIS_DECK_GEOMETRY_UNRESOLVED");
-                var parts = new List<object>
-                {
-                    new ChatMultimodalTextPart { type = "text",
-                        text = review.Request.Content }
-                };
-                foreach (var image in review.PageImages)
-                    parts.Add(new ChatMultimodalImagePart
+                    // Native geometry belongs to the renderer. A measured
+                    // repair consumes the shared budget before mutation.
+                    for (var repairs = 0; repairs <
+                        AnalysisRepairBudget.MaxCorrectivePatches; repairs++)
                     {
-                        type = "image_url",
-                        image_url = new ChatMultimodalImageUrl { url = image }
-                    });
-                var response = await client.CompleteAsync(settings,
-                    new ChatCompletionRequest
+                        var nativePages = AnalysisDocumentPilot
+                            .CapturePresentationPages((object)deck, artifact,
+                                plan);
+                        var defects = AnalysisDocumentPilot
+                            .CaptureNativeMeasurements((object)deck,
+                                nativePages);
+                        if (defects.Count == 0) break;
+                        var defect = defects[0];
+                        var page = nativePages.Single(value =>
+                            value.NativeSlideId == defect.NativeSlideId);
+                        var reservation = _taskContext.ReserveAnalysisPatch(
+                            page, defect, true);
+                        AnalysisDocumentPilot.RepairNativeMeasurement(
+                            (object)deck, nativePages, defect,
+                            reservation.BudgetReceipt, reservation);
+                        var repairedPages = AnalysisDocumentPilot
+                            .CapturePresentationPages((object)deck, artifact,
+                                plan);
+                        var remaining = AnalysisDocumentPilot
+                            .CaptureNativeMeasurements((object)deck,
+                                repairedPages);
+                        journal.Record(outputs[page.ExpectedPageNumber - 1],
+                            page.ExpectedPageNumber - 1);
+                        _taskContext.ReconcileAnalysisPatch(reservation,
+                            repairedPages.Single(value =>
+                                value.NativeSlideId == defect.NativeSlideId),
+                            remaining);
+                    }
+                    review = AnalysisDocumentPilot.ReserveNativeReview(
+                        _taskContext, (object)deck, artifact, plan, true);
+                    var parts = new List<object>
                     {
-                        Diagnostics = _taskContext.Diagnostics,
-                        model = settings.Model,
-                        max_tokens = review.Request.MaxResponseTokens,
-                        messages = new List<object>
+                        new ChatMultimodalTextPart { type = "text",
+                            text = review.Request.Content }
+                    };
+                    foreach (var image in review.PageImages)
+                        parts.Add(new ChatMultimodalImagePart
                         {
-                            new ChatCompletionInputMessage
+                            type = "image_url",
+                            image_url = new ChatMultimodalImageUrl
+                                { url = image }
+                        });
+                    var response = await client.CompleteAsync(settings,
+                        new ChatCompletionRequest
+                        {
+                            Diagnostics = _taskContext.Diagnostics,
+                            model = settings.Model,
+                            max_tokens = review.Request.MaxResponseTokens,
+                            messages = new List<object>
                             {
-                                role = "system",
-                                content = review.Request.Instructions
-                            },
-                            new ChatCompletionInputMessage
-                            {
-                                role = "user", content = parts.ToArray()
+                                new ChatCompletionInputMessage
+                                {
+                                    role = "system",
+                                    content = review.Request.Instructions
+                                },
+                                new ChatCompletionInputMessage
+                                {
+                                    role = "user", content = parts.ToArray()
+                                }
                             }
-                        }
-                    }, token);
-                var verdict = AnalysisDocumentPilot.CompleteNativeReview(
-                    (object)deck, review,
-                    (response.RawContent ?? response.content ?? "").Trim());
-                if (!verdict.Approved)
-                    throw new InvalidOperationException(
-                        "ANALYSIS_DECK_REVIEW_REJECTED: " +
-                        _serializer.Serialize(verdict.Findings));
+                        }, token);
+                    var reviewerJson = (response.RawContent ??
+                        response.content ?? "").Trim();
+                    var verdict = AnalysisDocumentPilot.CompleteNativeReview(
+                        (object)deck, review, reviewerJson);
+                    if (verdict.Approved) break;
+                    var blockers = verdict.Findings.Where(finding =>
+                        finding.Severity == "blocker").ToArray();
+                    if (contentPatches >=
+                            AnalysisRepairBudget.MaxCorrectivePatches ||
+                        blockers.Length != 1 ||
+                        blockers[0].Code != "UNSUPPORTED_CLAIM" ||
+                        blockers[0].Owner != "content")
+                        throw new InvalidOperationException(
+                            "ANALYSIS_DECK_REVIEW_REJECTED: " +
+                            _serializer.Serialize(verdict.Findings));
+                    var finding = blockers[0];
+                    var matchingPages = review.Context.Pages.Where(page =>
+                        page.LogicalSlideId == finding.LogicalSlideId)
+                        .ToArray();
+                    if (matchingPages.Length != 1 ||
+                        matchingPages[0].PageOrdinal != 0)
+                        throw new InvalidOperationException(
+                            "REPAIR_NATIVE_PAGE_UNSUPPORTED");
+                    var nativePage = matchingPages[0];
+                    var nativeBefore = AnalysisDocumentPilot
+                        .CompiledNativeText(artifact, plan,
+                            finding.LogicalSlideId, finding.TargetId);
+                    AnalysisDocumentPilot.ReadNativePatchText(
+                        (object)deck, nativePage, nativeBefore);
+                    var patchRequest = _taskContext
+                        .ReserveAnalysisContentPatchRequest(artifact, plan,
+                            review.Context, verdict, finding, true);
+                    var patchResponse = await client.CompleteAsync(settings,
+                        new ChatCompletionRequest
+                        {
+                            Diagnostics = _taskContext.Diagnostics,
+                            model = settings.Model,
+                            max_tokens = patchRequest.MaxResponseTokens,
+                            messages = new List<object>
+                            {
+                                new ChatCompletionInputMessage
+                                {
+                                    role = "system",
+                                    content = patchRequest.Instructions
+                                },
+                                new ChatCompletionInputMessage
+                                {
+                                    role = "user",
+                                    content = patchRequest.Content
+                                }
+                            }
+                        }, token);
+                    var patch = AnalysisDocumentRepair.ParsePatch(
+                        (patchResponse.RawContent ??
+                            patchResponse.content ?? "").Trim(),
+                        review.Context, finding);
+                    var repaired = AnalysisDocumentRepair.Apply(artifact,
+                        plan, review.Context, reviewerJson, patch,
+                        patchRequest.BudgetReceipt);
+                    var nativeAfter = AnalysisDocumentPilot
+                        .CompiledNativeText(artifact, repaired.Plan,
+                            finding.LogicalSlideId, finding.TargetId);
+                    var contentReservation = _taskContext
+                        .ReserveAnalysisContentPatch(nativePage, patch,
+                            repaired.Plan, nativeBefore, nativeAfter,
+                            TaskCheckpointStore.Fingerprint(
+                                call.function.arguments),
+                            repaired.BudgetReceipt, true);
+                    AnalysisDocumentPilot.ApplyNativeContentPatch(
+                        (object)deck, nativePage, contentReservation);
+                    var patchedPages = AnalysisDocumentPilot
+                        .CapturePresentationPages((object)deck, artifact,
+                            repaired.Plan);
+                    var patchedPage = patchedPages.Single(page =>
+                        page.NativeSlideId == nativePage.NativeSlideId);
+                    journal.Record(
+                        outputs[nativePage.ExpectedPageNumber - 1],
+                        nativePage.ExpectedPageNumber - 1);
+                    var nativeReadback = AnalysisDocumentPilot
+                        .ReadNativePatchText((object)deck, patchedPage,
+                            nativeAfter);
+                    _taskContext.ReconcileAnalysisContentPatch(
+                        contentReservation, patchedPage, nativeReadback);
+                    plan = repaired.Plan;
+                }
                 _taskContext.State.PresentationReviewReceipt =
                     review.Context.ContextId;
                 _taskContext.State.HostData["analysis_deck_complete"] =

@@ -201,6 +201,32 @@ namespace GuardrailTests
                 412, "title", "", "", "blocker", "revise_text",
                 "The title implies a wider audit than this ledger supports.");
             var claimReview = verdict(false, new object[] { claim });
+            var claimDecision = AnalysisReviewContract.Parse(claimReview,
+                context);
+            var patchRequest = AnalysisDocumentRepair.PreparePatchRequest(
+                artifact, plan, context, claimDecision,
+                claimDecision.Findings.Single());
+            Check(patchRequest.Content.Contains("June revenue") &&
+                patchRequest.Content.Contains(context.ContextId) &&
+                patchRequest.MaxResponseTokens <= 512,
+                "The content patch prompt lost its bound literal or context.");
+            var patchJson = json.Serialize(new Dictionary<string, object>
+            {
+                { "context_id", context.ContextId },
+                { "logical_slide_id", "june" },
+                { "target_id", "title" },
+                { "segment_index", 0 },
+                { "expected_text", "June revenue" },
+                { "replacement_text", "Verified June revenue" }
+            });
+            var parsedPatch = AnalysisDocumentRepair.ParsePatch(patchJson,
+                context, claimDecision.Findings.Single());
+            Check(parsedPatch.ReplacementText == "Verified June revenue",
+                "The exact content patch did not parse.");
+            Reject(() => AnalysisDocumentRepair.ParsePatch(
+                patchJson.Replace("\"title\"", "\"chart\""),
+                context, claimDecision.Findings.Single()),
+                "REPAIR_PATCH_SCHEMA_INVALID");
             var titlePatch = new AnalysisDocumentPatch
             {
                 ContextId = context.ContextId, LogicalSlideId = "june",

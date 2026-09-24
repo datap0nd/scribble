@@ -255,7 +255,8 @@ namespace Scribble.Chat
             AnalysisReviewContext context, bool crossApp,
             int maxResponseTokens = 2048)
         {
-            if (_state.HostData.ContainsKey("analysis_pending_patch"))
+            if (_state.HostData.ContainsKey("analysis_pending_patch") ||
+                _state.HostData.ContainsKey("analysis_pending_content_patch"))
                 throw new InvalidOperationException("REPAIR_PENDING_RECONCILIATION");
             var persisted = LoadAnalysis();
             if (persisted == null || artifact == null ||
@@ -283,7 +284,8 @@ namespace Scribble.Chat
                 string.IsNullOrWhiteSpace(page.NativeStateFingerprint) ||
                 string.IsNullOrWhiteSpace(measurement.MeasurementId))
                 throw new InvalidOperationException("REPAIR_RESERVATION_CHANGED");
-            if (_state.HostData.ContainsKey("analysis_pending_patch"))
+            if (_state.HostData.ContainsKey("analysis_pending_patch") ||
+                _state.HostData.ContainsKey("analysis_pending_content_patch"))
                 throw new InvalidOperationException("REPAIR_PENDING_RECONCILIATION");
             var next = AnalysisRepairBudget.Read(AnalysisBudgetReceipt(crossApp))
                 .ConsumePatch(page.LogicalSlideId, measurement.TargetId);
@@ -301,6 +303,101 @@ namespace Scribble.Chat
                 _json.Serialize(reservation);
             Checkpoint();
             return reservation;
+        }
+
+        public AnalysisReviewRequest ReserveAnalysisContentPatchRequest(
+            AnalysisArtifact artifact, AnalysisDocumentPlan plan,
+            AnalysisReviewContext context, AnalysisReviewDecision verdict,
+            AnalysisReviewFinding finding, bool crossApp)
+        {
+            if (_state.HostData.ContainsKey("analysis_pending_patch") ||
+                _state.HostData.ContainsKey("analysis_pending_content_patch"))
+                throw new InvalidOperationException(
+                    "REPAIR_PENDING_RECONCILIATION");
+            var persisted = LoadAnalysis();
+            if (persisted == null || artifact == null ||
+                persisted.AnalysisId != artifact.AnalysisId)
+                throw new InvalidOperationException(
+                    "REVIEW_TASK_ANALYSIS_CHANGED");
+            var request = AnalysisDocumentRepair.PreparePatchRequest(
+                artifact, plan, context, verdict, finding);
+            var next = AnalysisRepairBudget.Read(
+                AnalysisBudgetReceipt(crossApp)).ConsumeModelCall(
+                    request.Instructions.Length + request.Content.Length,
+                    request.MaxResponseTokens);
+            request.BudgetReceipt = next;
+            _state.HostData["analysis_repair_budget"] = next;
+            Checkpoint();
+            return request;
+        }
+
+        public AnalysisContentPatchReservation ReserveAnalysisContentPatch(
+            AnalysisReviewPage page, AnalysisDocumentPatch patch,
+            AnalysisDocumentPlan desiredPlan, string nativeBefore,
+            string nativeAfter, string inputFingerprint,
+            string expectedBudgetReceipt, bool crossApp)
+        {
+            if (LoadAnalysis() == null || page == null || patch == null ||
+                desiredPlan == null ||
+                _state.HostData.ContainsKey("analysis_pending_patch") ||
+                _state.HostData.ContainsKey("analysis_pending_content_patch") ||
+                page.LogicalSlideId != patch.LogicalSlideId ||
+                string.IsNullOrWhiteSpace(page.NativeStateFingerprint) ||
+                string.IsNullOrWhiteSpace(patch.ContextId) ||
+                string.IsNullOrWhiteSpace(inputFingerprint) ||
+                string.IsNullOrEmpty(nativeBefore) ||
+                string.IsNullOrEmpty(nativeAfter) ||
+                nativeBefore == nativeAfter)
+                throw new InvalidOperationException("REPAIR_RESERVATION_CHANGED");
+            var next = AnalysisRepairBudget.Read(
+                AnalysisBudgetReceipt(crossApp)).ConsumePatch(
+                    patch.LogicalSlideId, patch.TargetId);
+            if (next != expectedBudgetReceipt)
+                throw new InvalidOperationException("REPAIR_BUDGET_RECEIPT_INVALID");
+            var reservation = new AnalysisContentPatchReservation
+            {
+                ContextId = patch.ContextId,
+                LogicalSlideId = patch.LogicalSlideId,
+                NativeSlideId = page.NativeSlideId,
+                TargetId = patch.TargetId,
+                NativeStateFingerprint = page.NativeStateFingerprint,
+                NativeBeforeText = nativeBefore,
+                NativeAfterText = nativeAfter,
+                DesiredPlanJson = _json.Serialize(desiredPlan),
+                InputFingerprint = inputFingerprint,
+                BudgetReceipt = next
+            };
+            _state.HostData["analysis_repair_budget"] = next;
+            _state.HostData["analysis_pending_content_patch"] =
+                _json.Serialize(reservation);
+            Checkpoint();
+            return reservation;
+        }
+
+        public void ReconcileAnalysisContentPatch(
+            AnalysisContentPatchReservation reservation,
+            AnalysisReviewPage savedPage, string nativeText)
+        {
+            string pending;
+            if (reservation == null || savedPage == null ||
+                !_state.HostData.TryGetValue(
+                    "analysis_pending_content_patch", out pending) ||
+                pending != _json.Serialize(reservation) ||
+                _state.HostData["analysis_repair_budget"] !=
+                    reservation.BudgetReceipt ||
+                savedPage.LogicalSlideId != reservation.LogicalSlideId ||
+                savedPage.NativeSlideId != reservation.NativeSlideId ||
+                savedPage.NativeStateFingerprint ==
+                    reservation.NativeStateFingerprint ||
+                nativeText != reservation.NativeAfterText)
+                throw new InvalidOperationException(
+                    "REPAIR_PENDING_RECONCILIATION");
+            _state.HostData["analysis_deck_plan"] =
+                reservation.DesiredPlanJson;
+            _state.HostData["analysis_deck_plan_input"] =
+                reservation.InputFingerprint;
+            _state.HostData.Remove("analysis_pending_content_patch");
+            Checkpoint();
         }
 
         // Call only after reopening and measuring the saved native deck. A

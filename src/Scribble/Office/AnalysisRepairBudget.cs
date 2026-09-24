@@ -33,6 +33,22 @@ namespace Scribble.Office
         }
     }
 
+    // The desired plan is persisted before a native text mutation. A crash
+    // cannot silently turn that mutation into a fresh model proposal.
+    public sealed class AnalysisContentPatchReservation
+    {
+        public string ContextId { get; set; }
+        public string LogicalSlideId { get; set; }
+        public int NativeSlideId { get; set; }
+        public string TargetId { get; set; }
+        public string NativeStateFingerprint { get; set; }
+        public string NativeBeforeText { get; set; }
+        public string NativeAfterText { get; set; }
+        public string DesiredPlanJson { get; set; }
+        public string InputFingerprint { get; set; }
+        public string BudgetReceipt { get; set; }
+    }
+
     // One serialized task-level counter survives every review and repair stage.
     // Nested loops may consume it but cannot reset it.
     public sealed class AnalysisRepairBudget
