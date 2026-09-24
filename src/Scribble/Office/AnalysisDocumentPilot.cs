@@ -178,15 +178,51 @@ namespace Scribble.Office
             string targetId)
         {
             RequireEnabled();
-            if (targetId != "title" && targetId != "subtitle" &&
-                targetId != "takeaway")
-                throw new InvalidOperationException(
-                    "REPAIR_NATIVE_TEXT_TARGET_UNSUPPORTED");
             var compiled = AnalysisDocumentCompiler.Compile(artifact, plan);
             var index = plan.Slides.FindIndex(slide =>
                 slide.Id == logicalSlideId);
             if (index < 0)
                 throw new InvalidOperationException("REPAIR_SLIDE_CHANGED");
+            if (targetId != null &&
+                targetId.StartsWith("cards[", StringComparison.Ordinal) &&
+                targetId.EndsWith("]", StringComparison.Ordinal))
+            {
+                int cardIndex;
+                if (!int.TryParse(targetId.Substring(6,
+                        targetId.Length - 7), out cardIndex) ||
+                    cardIndex < 0 || plan.Slides[index].Cards == null ||
+                    cardIndex >= plan.Slides[index].Cards.Count)
+                    throw new InvalidOperationException(
+                        "REPAIR_NATIVE_TEXT_TARGET_UNSUPPORTED");
+                var points = plan.Slides[index].Cards[cardIndex].Points ??
+                    new List<AnalysisPlanText>();
+                var literalIndices = Enumerable.Range(0, points.Count)
+                    .Where(point => points[point] != null &&
+                        points[point].FactId == null).ToArray();
+                // The current review target names a card, not a point.
+                // Patch only when it identifies one literal unambiguously.
+                if (literalIndices.Length != 1)
+                    throw new InvalidOperationException(
+                        "REPAIR_NATIVE_TEXT_TARGET_UNSUPPORTED");
+                object rawCards;
+                if (!compiled.Slides[index].TryGetValue("cards",
+                        out rawCards))
+                    throw new InvalidOperationException(
+                        "REPAIR_NATIVE_TEXT_TARGET_UNSUPPORTED");
+                var card = ((object[])rawCards)[cardIndex] as
+                    Dictionary<string, object>;
+                var nativePoints = card == null ? null :
+                    card["points"] as string[];
+                if (nativePoints == null ||
+                    literalIndices[0] >= nativePoints.Length)
+                    throw new InvalidOperationException(
+                        "REPAIR_NATIVE_TEXT_TARGET_UNSUPPORTED");
+                return nativePoints[literalIndices[0]];
+            }
+            if (targetId != "title" && targetId != "subtitle" &&
+                targetId != "takeaway")
+                throw new InvalidOperationException(
+                    "REPAIR_NATIVE_TEXT_TARGET_UNSUPPORTED");
             return Convert.ToString(compiled.Slides[index][targetId]) ??
                 string.Empty;
         }

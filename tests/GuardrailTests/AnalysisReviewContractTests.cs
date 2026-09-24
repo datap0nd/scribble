@@ -307,6 +307,68 @@ namespace GuardrailTests
                 repaired.Plan.Slides[0].Title == "Verified June revenue" &&
                 repaired.Plan.Slides[0].Cards[0].Points[0].FactId == fact.FactId,
                 "A one-field repair altered its source plan or fact reference.");
+            var cardPlan = json.Deserialize<AnalysisDocumentPlan>(
+                json.Serialize(plan));
+            cardPlan.Slides[0].Cards[0].Points.Add(
+                new AnalysisPlanText { Text =
+                    "The regional mix is complete" });
+            var cardContext = AnalysisReviewContract.Context(artifact,
+                cardPlan, new[] { page });
+            var cardClaim = Finding("UNSUPPORTED_CLAIM", "content",
+                "june", 412, "cards[0]", "", "", "blocker",
+                "revise_text", "The card overstates the evidence.");
+            var cardReview = verdict(false, new object[] { cardClaim })
+                .Replace(context.ContextId, cardContext.ContextId);
+            var cardDecision = AnalysisReviewContract.Parse(cardReview,
+                cardContext);
+            var cardRequest = AnalysisDocumentRepair.PreparePatchRequest(
+                artifact, cardPlan, cardContext, cardDecision,
+                cardDecision.Findings.Single());
+            Check(cardRequest.Content.Contains(
+                    "The regional mix is complete"),
+                "The card literal was not available for bounded repair.");
+            var cardPatch = new AnalysisDocumentPatch
+            {
+                ContextId = cardContext.ContextId,
+                LogicalSlideId = "june", TargetId = "cards[0]",
+                SegmentIndex = 1,
+                ExpectedText = "The regional mix is complete",
+                ReplacementText = "The shown mix is limited to June"
+            };
+            var repairedCard = AnalysisDocumentRepair.Apply(artifact,
+                cardPlan, cardContext, cardReview, cardPatch,
+                new AnalysisRepairBudget().Serialize());
+            Check(repairedCard.Plan.Slides[0].Cards[0].Points[0].FactId ==
+                    fact.FactId &&
+                repairedCard.Plan.Slides[0].Cards[0].Points[1].Text ==
+                    "The shown mix is limited to June" &&
+                cardPlan.Slides[0].Cards[0].Points[1].Text ==
+                    "The regional mix is complete",
+                "A card-body repair changed a verified fact or its source plan.");
+            var priorPilot = Environment.GetEnvironmentVariable(
+                AnalysisDocumentPilot.FeatureFlag);
+            try
+            {
+                Environment.SetEnvironmentVariable(
+                    AnalysisDocumentPilot.FeatureFlag, "1");
+                Check(AnalysisDocumentPilot.CompiledNativeText(artifact,
+                        cardPlan, "june", "cards[0]") ==
+                        "The regional mix is complete" &&
+                    AnalysisDocumentPilot.CompiledNativeText(artifact,
+                        repairedCard.Plan, "june", "cards[0]") ==
+                        "The shown mix is limited to June",
+                    "The exact native card text could not be bound.");
+                cardPlan.Slides[0].Cards[0].Points.Add(
+                    new AnalysisPlanText { Text = "A second literal" });
+                Reject(() => AnalysisDocumentPilot.CompiledNativeText(
+                    artifact, cardPlan, "june", "cards[0]"),
+                    "REPAIR_NATIVE_TEXT_TARGET_UNSUPPORTED");
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(
+                    AnalysisDocumentPilot.FeatureFlag, priorPilot);
+            }
             var contentCheckpoint = Path.Combine(Path.GetTempPath(),
                 "scribble-analysis-content-" + Guid.NewGuid().ToString("N"));
             try

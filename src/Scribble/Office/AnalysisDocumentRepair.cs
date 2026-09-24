@@ -48,7 +48,11 @@ namespace Scribble.Office
                 item.Id == finding.LogicalSlideId);
             if (finding.TargetId != "title" &&
                 finding.TargetId != "subtitle" &&
-                finding.TargetId != "takeaway")
+                finding.TargetId != "takeaway" &&
+                !(finding.TargetId.StartsWith("cards[",
+                    StringComparison.Ordinal) &&
+                  finding.TargetId.EndsWith("]",
+                    StringComparison.Ordinal)))
                 throw new InvalidOperationException("REPAIR_TARGET_UNSUPPORTED");
             var literals = EditableLiterals(slide, finding.TargetId);
             if (literals.Count == 0 ||
