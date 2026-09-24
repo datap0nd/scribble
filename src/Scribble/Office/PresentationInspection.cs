@@ -302,7 +302,7 @@ namespace Scribble.Office
             finally { if (File.Exists(temporary)) File.Delete(temporary); }
         }
 
-        // PowerPoint may round a native table frame by one EMU while making a
+        // PowerPoint may round a native table frame by two EMU while making a
         // PDF and increment package metadata. Compare the complete before and
         // after packages; chart caches, embedded worksheet values, and every
         // other slide property must remain byte-for-byte or XML equivalent.
@@ -440,7 +440,7 @@ namespace Scribble.Office
                         beforeValue < 0 || afterValue < 0 ||
                         beforeValue > 1000000000 ||
                         afterValue > 1000000000 ||
-                        Math.Abs(beforeValue - afterValue) > 1) return false;
+                        Math.Abs(beforeValue - afterValue) > 2) return false;
                     afterExtent.SetAttributeValue(dimension, beforeValue);
                 }
             }

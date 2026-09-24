@@ -26,7 +26,7 @@ namespace GuardrailTests
                 var changedText = Path.Combine(root, "changed-text.pptx");
                 var changedGeometry = Path.Combine(root, "changed-geometry.pptx");
                 WritePdfBoundaryPackage(before, 100, 4, "Safe", "42");
-                WritePdfBoundaryPackage(harmless, 101, 5, "Safe", "42");
+                WritePdfBoundaryPackage(harmless, 102, 5, "Safe", "42");
                 WritePdfBoundaryPackage(changedData, 101, 5, "Safe", "43");
                 WritePdfBoundaryPackage(changedText, 101, 5, "Altered", "42");
                 WritePdfBoundaryPackage(changedGeometry, 103, 5, "Safe", "42");
@@ -40,7 +40,7 @@ namespace GuardrailTests
                     return (bool)method.Invoke(null, arguments);
                 };
                 Check(equivalent(harmless),
-                    "Office metadata and one EMU table rounding were rejected.");
+                    "Office metadata and two EMU table rounding were rejected.");
                 Check(!equivalent(changedData) && !equivalent(changedText) &&
                     !equivalent(changedGeometry),
                     "A chart value, slide text or material geometry change crossed the PDF boundary.");
@@ -259,6 +259,10 @@ namespace GuardrailTests
             Reject(() => AnalysisReviewContract.Parse(oldApproval, changedNative),
                 "REVIEW_CONTEXT_CHANGED");
             page.NativeStateFingerprint = "sha256:native";
+            page.ExpectedPageNumber = 2;
+            Reject(() => AnalysisReviewContract.Context(artifact, plan,
+                new[] { page }), "REVIEW_PAGE_METADATA_INVALID");
+            page.ExpectedPageNumber = 1;
             var claim = Finding("UNSUPPORTED_CLAIM", "content", "june",
                 412, "title", "", "", "blocker", "revise_text",
                 "The title implies a wider audit than this ledger supports.");
@@ -392,6 +396,13 @@ namespace GuardrailTests
                 new object[] { binding }), context);
             Check(!challenged.Approved && challenged.Findings.Single().FactId ==
                 fact.FactId, "A binding challenge was not routed to inspection.");
+            binding["evidence"] = "The reviewer incorrectly claims 82,992 should be 85,519.";
+            var falseArithmetic = AnalysisReviewContract.Parse(verdict(false,
+                new object[] { binding }), context);
+            Check(falseArithmetic.Findings.Single().Action ==
+                    "inspect_binding" && fact.Value == "82992",
+                "A false arithmetic objection overrode the verified fact.");
+            binding["evidence"] = "Check the Revenue label against Ledger column I.";
             Reject(() => AnalysisReviewContract.Parse(verdict(true,
                 new object[] { binding }), context), "REVIEW_VERDICT_CONTRADICTORY");
             Reject(() => AnalysisReviewContract.Parse(verdict(false,

@@ -180,6 +180,9 @@ namespace Scribble.Office
                 !result.FactIdsBySlide.ContainsKey(page.LogicalSlideId)) ||
                 result.FactIdsBySlide.Keys.Any(id => !result.Pages.Any(page => page.LogicalSlideId == id)) ||
                 result.Pages.GroupBy(page => page.ExpectedPageNumber).Any(group => group.Count() != 1) ||
+                !result.Pages.Select(page => page.ExpectedPageNumber)
+                    .OrderBy(number => number)
+                    .SequenceEqual(Enumerable.Range(1, result.Pages.Count)) ||
                 result.Pages.GroupBy(page => page.NativeSlideId).Any(group => group.Count() != 1) ||
                 result.Pages.GroupBy(page => new { page.LogicalSlideId, page.PageOrdinal }).Any(group => group.Count() != 1))
                 throw new InvalidOperationException("REVIEW_PAGE_METADATA_INVALID");
