@@ -77,23 +77,25 @@ namespace Scribble.Office
                 var unitCount = Decimal(at(row, units));
                 var unitPrice = Decimal(at(row, price));
                 var unitCost = Decimal(at(row, cost));
-                var signature = string.Join("|", new[] { month, grouping,
-                    product, unitCount.ToString(CultureInfo.InvariantCulture),
-                    unitPrice.ToString(CultureInfo.InvariantCulture),
-                    unitCost.ToString(CultureInfo.InvariantCulture) });
-                string prior;
-                if (seen.TryGetValue(rowId, out prior))
-                {
-                    if (prior != signature)
-                        throw new InvalidOperationException(
-                            "MONTHLY_LEDGER_DUPLICATE_CONFLICT: " + rowId);
-                    continue;
-                }
-                seen.Add(rowId, signature);
                 var amount = checked(unitCount * unitPrice);
                 var expense = checked(unitCount * unitCost);
                 VerifyCachedAmount(at(row, revenue), amount);
                 VerifyCachedAmount(at(row, costTotal), expense);
+                var signature = new StringBuilder();
+                for (var column = 0; column < table.Columns; column++)
+                {
+                    var value = at(row, column)?.RawValue ?? string.Empty;
+                    signature.Append(value.Length).Append(':').Append(value);
+                }
+                string prior;
+                if (seen.TryGetValue(rowId, out prior))
+                {
+                    if (prior != signature.ToString())
+                        throw new InvalidOperationException(
+                            "MONTHLY_LEDGER_DUPLICATE_CONFLICT: " + rowId);
+                    continue;
+                }
+                seen.Add(rowId, signature.ToString());
                 decimal[] totals;
                 if (!sums.TryGetValue(month, out totals))
                     sums[month] = totals = new decimal[2];
