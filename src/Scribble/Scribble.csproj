@@ -223,6 +223,7 @@
     <Compile Include="Office\AnalysisDocumentRepair.cs" />
     <Compile Include="Office\AnalysisDocumentPilot.cs" />
     <Compile Include="Office\OpenXmlWorkbookSnapshotReader.cs" />
+    <Compile Include="Office\WorkbookMonthlyChartFacts.cs" />
     <Compile Include="Office\DraftTextLayout.cs" />
     <Compile Include="Office\DraftChartTypes.cs" />
     <Compile Include="Office\MetoTheme.cs" />
