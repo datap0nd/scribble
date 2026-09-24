@@ -784,6 +784,7 @@ namespace Scribble.Office
         {
             dynamic slide = slideObject;
             var semantic = new List<NativeBounds>();
+            var chromeIds = new HashSet<int>();
             for (var index = 1; index <= (int)slide.Shapes.Count; index++)
             {
                 dynamic shape = slide.Shapes[index];
@@ -800,7 +801,17 @@ namespace Scribble.Office
                     Height = (double)shape.Height
                 };
                 if (bounds.Width > 0 && bounds.Height > 0)
+                {
                     semantic.Add(bounds);
+                    // The writer creates the title/action first and the
+                    // source/folio/draft marker last. Keep that identity even
+                    // if a later edit moves a body shape into their band.
+                    if (text && !table && !chart &&
+                        ((index <= 2 && bounds.Top < 120) ||
+                         (index > (int)slide.Shapes.Count - 3 &&
+                          bounds.Top >= slideHeight * .9)))
+                        chromeIds.Add(bounds.Id);
+                }
             }
             var centralIds = new HashSet<int>(central.Select(item => item.Id));
             for (var first = 0; first < semantic.Count; first++)
@@ -811,10 +822,10 @@ namespace Scribble.Office
                     var right = semantic[second];
                     if (centralIds.Contains(left.Id) &&
                         centralIds.Contains(right.Id)) continue;
-                    // The folio and draft marker intentionally share footer
-                    // space; they are not targets of central layout repair.
-                    if (left.Top >= slideHeight * .9 &&
-                        right.Top >= slideHeight * .9) continue;
+                    // Chrome-on-chrome layering is deliberate (for example,
+                    // the folio can sit over the draft footer marker).
+                    if (chromeIds.Contains(left.Id) &&
+                        chromeIds.Contains(right.Id)) continue;
                     var overlapX = Math.Min(left.Right, right.Right) -
                         Math.Max(left.Left, right.Left);
                     var overlapY = Math.Min(left.Bottom, right.Bottom) -

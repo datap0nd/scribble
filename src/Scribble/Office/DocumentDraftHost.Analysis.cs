@@ -239,6 +239,12 @@ namespace Scribble.Office
                     return Error(call.id, authorization,
                         "ANALYSIS_VISUAL_REVIEW_UNAVAILABLE",
                         exception.Message);
+                if (exception.Message.StartsWith(
+                        "ANALYSIS_PILOT_GEOMETRY_UNSUPPORTED:",
+                        StringComparison.Ordinal))
+                    return Error(call.id, authorization,
+                        "ANALYSIS_DECK_GEOMETRY_UNSUPPORTED",
+                        exception.Message);
                 return Error(call.id, authorization,
                     "ANALYSIS_DECK_FAILED", exception.Message);
             }

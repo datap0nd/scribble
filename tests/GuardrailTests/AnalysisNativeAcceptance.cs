@@ -736,6 +736,43 @@ namespace GuardrailTests
                     AnalysisDocumentPilot.CaptureNativeMeasurements(
                         (object)deck, clearedPages).Count == 0,
                     "A chart overlapping the title escaped geometry review.");
+                dynamic bodyLabel = null;
+                for (var shapeIndex = 1;
+                    shapeIndex <= (int)firstSlide.Shapes.Count; shapeIndex++)
+                {
+                    dynamic shape = firstSlide.Shapes[shapeIndex];
+                    if ((int)shape.HasTextFrame != 0 &&
+                        (Convert.ToString(shape.TextFrame.TextRange.Text) ??
+                            string.Empty).Trim() == "JUNE REVENUE")
+                        bodyLabel = shape;
+                }
+                Check(bodyLabel != null,
+                    "The scorecard lost its editable revenue label.");
+                var originalBodyLeft = (float)bodyLabel.Left;
+                var originalBodyTop = (float)bodyLabel.Top;
+                var footerOverlapRejected = false;
+                try
+                {
+                    bodyLabel.Left = 36f;
+                    bodyLabel.Top = (float)deck.PageSetup.SlideHeight * .91f;
+                    AnalysisDocumentPilot.CaptureNativeMeasurements(
+                        (object)deck, clearedPages);
+                }
+                catch (InvalidOperationException error)
+                {
+                    footerOverlapRejected = error.Message.StartsWith(
+                        "ANALYSIS_PILOT_GEOMETRY_UNSUPPORTED:",
+                        StringComparison.Ordinal);
+                }
+                finally
+                {
+                    bodyLabel.Left = originalBodyLeft;
+                    bodyLabel.Top = originalBodyTop;
+                }
+                Check(footerOverlapRejected &&
+                    AnalysisDocumentPilot.CaptureNativeMeasurements(
+                        (object)deck, clearedPages).Count == 0,
+                    "Body text overlapping the source footer escaped geometry review.");
                 rendererRepairPassed = true;
                 stage = "powerpoint_save_copy";
                 var deckCopy = Path.Combine(output, "analysis-deck.pptx");
