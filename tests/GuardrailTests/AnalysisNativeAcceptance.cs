@@ -421,6 +421,14 @@ namespace GuardrailTests
                         !readTask.State.HostData.ContainsKey(
                             "analysis_pending_content_patch"),
                         "The typed text/layout repairs lost native readback or recovery receipts.");
+                    var typedLayoutImage = Path.Combine(output,
+                        "analysis-typed-layout-reflow.png");
+                    typedDeck.Slides[1].Export(typedLayoutImage,
+                        "PNG", 1920, 1080);
+                    Check(File.Exists(typedLayoutImage) &&
+                        new FileInfo(typedLayoutImage).Length > 1000,
+                        "The reviewed layout reflow did not render.");
+                    images.Add(typedLayoutImage);
                     typedDeck.Close();
                     typedDeck = null;
                     typedDeckHandoffPassed = true;
@@ -1021,8 +1029,7 @@ namespace GuardrailTests
                     { MaxJsonLength = 16000000 }.Serialize(cardPlan));
                 layoutPlan.Slides.Single(slide => slide.Id == "headline")
                     .Layout = "cards";
-                var layoutTask = new TaskContextManager(
-                    new ChatCompletionRequest
+                var layoutInput = new ChatCompletionRequest
                     {
                         model = "offline-test",
                         messages = new List<object>
@@ -1030,9 +1037,11 @@ namespace GuardrailTests
                             new ChatCompletionInputMessage
                             { role = "user", content = "Reflow the KPI slide" }
                         }
-                    }, "excel", "Reflow the KPI slide",
-                    new TaskCheckpointStore(Path.Combine(output,
-                        "layout-recovery-checkpoint")));
+                    };
+                var layoutStore = new TaskCheckpointStore(Path.Combine(
+                    output, "layout-recovery-checkpoint"));
+                var layoutTask = new TaskContextManager(layoutInput,
+                    "excel", "Reflow the KPI slide", layoutStore);
                 layoutTask.PersistAnalysis(fixture.Item1);
                 var layoutPatch = new AnalysisDocumentPatch
                 {
@@ -1081,13 +1090,46 @@ namespace GuardrailTests
                     AnalysisDocumentPilot.ReadNativeLayoutPatch(
                         (object)deck, reflowedPage, "cards") == "cards",
                     "The native layout reflow lost its slide identity or readback.");
-                layoutTask.ReconcileAnalysisContentPatch(
+                var resumedLayoutTask = new TaskContextManager(layoutInput,
+                    "excel", layoutTask.State.Objective, layoutStore,
+                    layoutStore.Load(layoutTask.State.Id));
+                var pendingLayoutRejected = false;
+                try
+                {
+                    resumedLayoutTask.ReserveAnalysisReview(fixture.Item1,
+                        layoutPlan, AnalysisReviewContract.Context(
+                            fixture.Item1, layoutPlan,
+                            AnalysisDocumentPilot.CapturePresentationPages(
+                                (object)deck, fixture.Item1, layoutPlan)),
+                        true);
+                }
+                catch (InvalidOperationException error)
+                {
+                    pendingLayoutRejected = error.Message.Contains(
+                        "REPAIR_PENDING_RECONCILIATION");
+                }
+                Check(pendingLayoutRejected,
+                    "An unreceipted layout reflow resumed as approved.");
+                var wrongLayoutRejected = false;
+                try
+                {
+                    resumedLayoutTask.ReconcileAnalysisContentPatch(
+                        layoutReservation, reflowedPage, "scorecard");
+                }
+                catch (InvalidOperationException error)
+                {
+                    wrongLayoutRejected = error.Message.Contains(
+                        "REPAIR_PENDING_RECONCILIATION");
+                }
+                Check(wrongLayoutRejected,
+                    "A wrong layout readback cleared the pending receipt.");
+                resumedLayoutTask.ReconcileAnalysisContentPatch(
                     layoutReservation, reflowedPage,
                     AnalysisDocumentPilot.ReadNativeLayoutPatch(
                         (object)deck, reflowedPage, "cards"));
-                Check(!layoutTask.State.HostData.ContainsKey(
+                Check(!resumedLayoutTask.State.HostData.ContainsKey(
                         "analysis_pending_content_patch") &&
-                    layoutTask.State.HostData[
+                    resumedLayoutTask.State.HostData[
                         "analysis_deck_plan"].Contains("\"Layout\":\"cards\"") &&
                     cardPlan.Slides[0].Layout == "scorecard",
                     "The native layout receipt did not preserve and commit the plan.");
