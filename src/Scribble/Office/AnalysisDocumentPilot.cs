@@ -266,7 +266,8 @@ namespace Scribble.Office
 
         public static void ApplyNativeContentPatch(object presentation,
             AnalysisReviewPage page,
-            AnalysisContentPatchReservation reservation)
+            AnalysisContentPatchReservation reservation,
+            Action afterNativeWrite = null)
         {
             RequireEnabled();
             dynamic deck = presentation;
@@ -316,6 +317,9 @@ namespace Scribble.Office
             {
                 target.TextFrame.TextRange.Text =
                     reservation.NativeAfterText;
+                // The optional callback lets the native acceptance harness
+                // interrupt the operation after its first COM mutation.
+                afterNativeWrite?.Invoke();
                 if (Convert.ToString(target.TextFrame.TextRange.Text) !=
                     reservation.NativeAfterText)
                     throw new InvalidOperationException(
@@ -323,8 +327,15 @@ namespace Scribble.Office
             }
             catch
             {
-                try { target.TextFrame.TextRange.Text =
-                    reservation.NativeBeforeText; }
+                try
+                {
+                    target.TextFrame.TextRange.Text =
+                        reservation.NativeBeforeText;
+                    if (NativeStateFingerprint(slide) !=
+                        page.NativeStateFingerprint)
+                        throw new InvalidOperationException(
+                            "REPAIR_NATIVE_ROLLBACK_MISMATCH");
+                }
                 catch { throw new InvalidOperationException(
                     "REPAIR_NATIVE_RECOVERY_REQUIRED"); }
                 throw;

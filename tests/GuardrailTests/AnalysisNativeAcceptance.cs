@@ -39,6 +39,7 @@ namespace GuardrailTests
             var typedReviewPassed = false;
             var rendererRepairPassed = false;
             var contentRecoveryPassed = false;
+            var partialContentRollbackPassed = false;
             var cardContentRecoveryPassed = false;
             var layoutRecoveryPassed = false;
             var typedDeckHandoffPassed = false;
@@ -929,6 +930,28 @@ namespace GuardrailTests
                         (object)deck, recoveryPage, originalTitle) ==
                         originalTitle,
                     "A stale content reservation changed the native slide.");
+                var injectedRollbackPassed = false;
+                try
+                {
+                    AnalysisDocumentPilot.ApplyNativeContentPatch(
+                        (object)deck, recoveryPage, contentReservation,
+                        () => { throw new InvalidOperationException(
+                            "INJECT_AFTER_NATIVE_WRITE"); });
+                }
+                catch (InvalidOperationException error)
+                {
+                    injectedRollbackPassed = error.Message ==
+                        "INJECT_AFTER_NATIVE_WRITE";
+                }
+                Check(injectedRollbackPassed &&
+                    recoveryTask.State.HostData.ContainsKey(
+                        "analysis_pending_content_patch") &&
+                    AnalysisDocumentPilot.ReadNativePatchText(
+                        (object)deck, recoveryPage, originalTitle) ==
+                        originalTitle,
+                    "A partial native text write was not fully rolled back " +
+                    "with its pending receipt intact.");
+                partialContentRollbackPassed = true;
                 AnalysisDocumentPilot.ApplyNativeContentPatch(
                     (object)deck, recoveryPage, contentReservation);
                 var changedPages = AnalysisDocumentPilot
@@ -1242,6 +1265,8 @@ namespace GuardrailTests
                 typed_review_contract_passed = typedReviewPassed,
                 renderer_repair_passed = rendererRepairPassed,
                 content_recovery_passed = contentRecoveryPassed,
+                partial_content_rollback_passed =
+                    partialContentRollbackPassed,
                 card_content_recovery_passed = cardContentRecoveryPassed,
                 layout_recovery_passed = layoutRecoveryPassed,
                 typed_deck_handoff_passed = typedDeckHandoffPassed,
@@ -1260,6 +1285,7 @@ namespace GuardrailTests
             return workbookPassed && slidesPassed && sourcePreserved &&
                 recoveryPassed && typedReviewPassed && rendererRepairPassed &&
                 typedDeckHandoffPassed && contentRecoveryPassed &&
+                partialContentRollbackPassed &&
                 cardContentRecoveryPassed && layoutRecoveryPassed
                 ? 0 : 1;
         }
