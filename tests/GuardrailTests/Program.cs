@@ -36,6 +36,7 @@ namespace GuardrailTests
             if (args.Length == 2 && args[0] == "--native-analysis-pilot") return AnalysisNativeAcceptance.Run(args[1]);
             if (args.Length == 2 && args[0] == "--native-phase4-reference") return SamsungPhase4NativeAcceptance.Run(args[1]);
             if (args.Length == 2 && args[0] == "--native-phase4-defects") return SamsungPhase4NativeAcceptance.RunDefects(args[1]);
+            if (args.Length == 4 && args[0] == "--native-phase4-pp01-copy") return SamsungPhase4RepairNativeAcceptance.Run(args[1], args[2], args[3]);
             // The MCP round-trip test relaunches this same exe as a
             // scripted stdio MCP server, so the test needs no
             // external interpreter and stays deterministic. The

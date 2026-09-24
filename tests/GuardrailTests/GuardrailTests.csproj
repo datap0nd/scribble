@@ -75,6 +75,7 @@
     <Compile Include="PowerPointRecoveryBoundaryTests.cs" />
     <Compile Include="SamsungNativeAcceptance.cs" />
     <Compile Include="SamsungPhase4NativeAcceptance.cs" />
+    <Compile Include="SamsungPhase4RepairNativeAcceptance.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Scribble\Scribble.csproj">

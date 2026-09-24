@@ -210,7 +210,20 @@ namespace Scribble.Office
         { var sequence = value as IEnumerable; return sequence == null || value is string ? new[] { value } : sequence.Cast<object>().ToArray(); }
         internal static string ContentFingerprint(object slide)
         {
-            return Scribble.Chat.TaskCheckpointStore.Fingerprint(new JavaScriptSerializer { MaxJsonLength = int.MaxValue }.Serialize(Normalized(Capture(slide))));
+            // Index-independent preservation checks never activate a native
+            // chart. Exact same-slide identity also includes package parts in
+            // Fingerprint, which catches chart/workbook edits.
+            return Scribble.Chat.TaskCheckpointStore.Fingerprint(
+                new JavaScriptSerializer { MaxJsonLength = int.MaxValue }
+                    .Serialize(Normalized(Capture(slide,
+                        !ContainsNativeChart(slide)))));
+        }
+        internal static string CopyContentFingerprint(object slide)
+        {
+            // Copy preservation must not activate the source chart workbook.
+            return Scribble.Chat.TaskCheckpointStore.Fingerprint(
+                new JavaScriptSerializer { MaxJsonLength = int.MaxValue }
+                    .Serialize(Normalized(Capture(slide, false))));
         }
         private static object Normalized(object value)
         {
@@ -224,12 +237,14 @@ namespace Scribble.Office
         public static string Fingerprint(object slide)
         {
             var json = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
-            var content = json.Serialize(Capture(slide));
-            // Some Office builds terminate POWERPNT in chart.dll while exporting a
-            // slide that contains a native chart. Structured capture includes chart
-            // data and geometry, so retain the stronger rendered fingerprint only
-            // for slides that PowerPoint can safely export.
-            return TaskCheckpointStore.Fingerprint(content + (ContainsNativeChart(slide) ? string.Empty : Preview(slide)));
+            var chart = ContainsNativeChart(slide);
+            // Chart COM getters and Slide.Export can terminate POWERPNT on
+            // affected builds. The native package includes chart XML and its
+            // embedded workbook without activating either object.
+            var content = json.Serialize(Capture(slide, !chart));
+            return TaskCheckpointStore.Fingerprint(content +
+                (chart ? PackageSlideFingerprintCore(slide, false) :
+                    Preview(slide)));
         }
         // The native chart COM getter can terminate some PowerPoint builds
         // after a chart workbook closes. Journal receipts use the exact slide
@@ -247,12 +262,17 @@ namespace Scribble.Office
         }
 
         internal static string PackageSlideFingerprint(object slide)
+        { return PackageSlideFingerprintCore(slide, true); }
+
+        private static string PackageSlideFingerprintCore(object slide,
+            bool requireOwnedDraft)
         {
             dynamic page = slide;
             dynamic deck = page.Parent;
-            if (!string.IsNullOrEmpty((string)deck.Path) ||
+            if (requireOwnedDraft &&
+                (!string.IsNullOrEmpty((string)deck.Path) ||
                 string.IsNullOrWhiteSpace(Convert.ToString(
-                    page.Tags["ScribbleTask"])))
+                    page.Tags["ScribbleTask"]))))
                 throw new InvalidOperationException(
                     "CHART_PACKAGE_UNSAVED_DRAFT_REQUIRED");
             var nameBefore = (string)deck.FullName;

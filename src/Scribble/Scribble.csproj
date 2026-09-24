@@ -245,6 +245,7 @@
     <Compile Include="Office\SamsungRepairPolicy.cs" />
     <Compile Include="Office\PresentationInspection.cs" />
     <Compile Include="Office\PresentationRevision.cs" />
+    <Compile Include="Office\PresentationDraftCopy.cs" />
     <Compile Include="Office\PresentationRevision.Recovery.cs" />
     <Compile Include="Office\PresentationChartEdit.cs" />
     <Compile Include="Office\PresentationRevisionAcceptance.cs" />
