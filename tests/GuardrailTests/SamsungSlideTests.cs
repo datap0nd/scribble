@@ -22,7 +22,7 @@ namespace GuardrailTests
             var defects = ((IEnumerable)json.DeserializeObject(File.ReadAllText(
                 Path.Combine(root, "phase4-defects.json"))))
                 .Cast<Dictionary<string, object>>().ToArray();
-            if (!(defects.Length == 18 &&
+            var valid = defects.Length == 18 && references.Length == 18 &&
                 defects.Select(item => Convert.ToString(item["id"]))
                     .Distinct(StringComparer.Ordinal).Count() == 18 &&
                 defects.Select((item, index) =>
@@ -31,7 +31,8 @@ namespace GuardrailTests
                 defects.All(item => new[] { "critical", "blocker" }
                     .Contains(Convert.ToString(item["severity"])) &&
                     !string.IsNullOrWhiteSpace(Convert.ToString(
-                        item["expected"]))))
+                        item["expected"])));
+            if (!valid)
                 throw new InvalidOperationException(
                     "Phase 4 defect calibration must seed one labeled variant per reference.");
         }
