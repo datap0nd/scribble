@@ -211,6 +211,14 @@ namespace GuardrailTests
                 .ToArray();
             Check(numericGridHeroes.Contains("144") && numericGridHeroes.Contains("85,519") && !numericGridHeroes.Contains("2026"),
                 "A four-card numeric evidence slide lacked two relevant metric anchors or promoted a year as a metric.");
+            Check(((IEnumerable)numericGridPage.GetType().GetField(
+                    "Elements", BindingFlags.Instance |
+                        BindingFlags.NonPublic).GetValue(numericGridPage))
+                .Cast<object>().Any(element => (string)element.GetType()
+                    .GetField("Text", BindingFlags.Instance |
+                        BindingFlags.NonPublic).GetValue(element) ==
+                            "unique RowIDs"),
+                "A promoted numeric card lost the source metric's full label.");
             var concentratedDraft = Invoke(Type("PresentationDraftWriter"), "ParseSlides", null,
                 (object)json.Deserialize<object[]>("[{\"id\":\"quality\",\"layout\":\"cards\",\"title\":\"Data-quality limits and method\",\"subtitle\":\"144 records counted once\",\"cards\":[{\"heading\":\"Coverage\",\"points\":[\"Every RowID counted once — WB01-0001 to WB01-0144\",\"24 observations per month: 4 groups × 6 products\",\"May 2026 and June 2026 both fully populated\"]},{\"heading\":\"Integrity\",\"points\":[\"No blank or non-numeric cells\",\"Original worksheets preserved\"]},{\"heading\":\"Methodology\",\"points\":[\"Rates at aggregate level\",\"Full precision in formulas\"]}]}]"));
             var concentratedPage = ((IEnumerable)Invoke(Type("PresentationDraftWriter"), "ComposeSamsung", null, concentratedDraft))

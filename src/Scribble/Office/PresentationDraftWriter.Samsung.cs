@@ -438,8 +438,13 @@ namespace Scribble.Office
                             tokens[tokenIndex].point.LastIndexOf(';', tokens[tokenIndex].match.Index) + 1,
                             tokens[tokenIndex].match.Index - tokens[tokenIndex].point.LastIndexOf(';', tokens[tokenIndex].match.Index) - 1)
                             .Trim().TrimEnd(':', '=');
-                        heroLabels[cardIndex, tokenIndex] = preceding.Length > 0 && preceding.Length <= 24
-                            ? preceding : label.Success ? label.Groups["word"].Value : "";
+                        var standalone = StandaloneHeroLabel(
+                            tokens[tokenIndex].point, tokens[tokenIndex]
+                                .match.Value);
+                        heroLabels[cardIndex, tokenIndex] = standalone ??
+                            (preceding.Length > 0 && preceding.Length <= 24
+                                ? preceding : label.Success ?
+                                    label.Groups["word"].Value : "");
                     }
                 }
             }
@@ -637,14 +642,21 @@ namespace Scribble.Office
         }
 
         private static bool IsStandaloneHeroPoint(string point, string hero)
+        { return StandaloneHeroLabel(point, hero) != null; }
+
+        private static string StandaloneHeroLabel(string point, string hero)
         {
-            if (string.IsNullOrWhiteSpace(point) || string.IsNullOrWhiteSpace(hero)) return false;
+            if (string.IsNullOrWhiteSpace(point) ||
+                string.IsNullOrWhiteSpace(hero)) return null;
             var index = point.IndexOf(hero, StringComparison.Ordinal);
-            if (index < 0 || point.IndexOf(hero, index + hero.Length, StringComparison.Ordinal) >= 0) return false;
+            if (index < 0 || point.IndexOf(hero, index + hero.Length,
+                StringComparison.Ordinal) >= 0) return null;
             var label = point.Remove(index, hero.Length).Trim()
-                .TrimEnd('.', ':', '=').Trim().TrimEnd(':', '=');
+                .TrimEnd('.', ':', '=').Trim().TrimEnd(':', '=')
+                .Trim();
             return label.Length > 0 && label.Length <= 32 &&
-                Regex.IsMatch(label, @"^[\p{L}\s:/%=-]+$");
+                Regex.IsMatch(label, @"^[\p{L}\s:/%=-]+$") ?
+                    label : null;
         }
 
         private static string StripHeroClauses(string point, string primary, string secondary)
