@@ -224,7 +224,9 @@ def deck_spec(number: int, workbook: dict) -> tuple[dict, dict]:
     ident = f"PPT{number:02}"
     workbook_number = (number - 1) % 20 + 1
     slide_count = 6 + (number - 1) % 7
-    repair = number % 3 == 0
+    # PP01 is the development repair smoke case. Its source must actually
+    # contain repairable defects rather than match the clean reference.
+    repair = number == 1 or number % 3 == 0
     defects = []
     if repair:
         defects = [

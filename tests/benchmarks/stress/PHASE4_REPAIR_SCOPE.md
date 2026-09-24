@@ -2,6 +2,8 @@
 
 Status: design decision for the development pilot; native PP01 acceptance is pending.
 
+The PP01 development fixture now has three intentional source defects: an off-canvas native chart, overflowing commentary, and an incorrect table-header accent. Earlier generated PP01 inputs matched their clean reference byte-for-byte even though the prompt requested repair. Regenerate and reseal the kit before the next PP01 measurement; older PP01 results remain tied to their original kit hashes and are not comparable as repair evidence.
+
 PP01 requests one editable six-slide output in the Samsung MD visual language, a recreated monthly native chart, repaired period/category labels, readable text, and preserved useful tables and source notes. The original presentation and workbook remain source documents. A repair runs in a separate unsaved draft copy, verifies the copy against the source before writing, and exports a six-slide candidate only after native readback. An interrupted copy is reconciled by its own journal; it is never treated as the original deck.
 
 | Requested change | Allowed operation on the draft copy | Required evidence |

@@ -106,6 +106,16 @@ class CatalogContractTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             build_catalog.safe(self.root, "../outside.json")
 
+    def test_pp01_repair_smoke_has_defective_source(self):
+        source = self.office["presentations"][0]
+        private = build_catalog.read(self.root / ".build/office_payload.json")
+        case = next(item for item in self.cases if item["id"] == "PP01")
+        self.assertEqual(source["id"], "PPT01")
+        self.assertTrue(private["presentations"][0]["repair_case"])
+        self.assertEqual({item["kind"] for item in source["intentional_defects"]},
+                         {"out_of_bounds_chart", "text_overflow", "wrong_theme_accent"})
+        self.assertEqual(case["task_family"], "repair_preserve_and_reconcile")
+
     def test_chart_requirements_target_the_requested_output_host(self):
         charts = [(case_id, rule) for case_id, oracle in self.oracles.items()
                   for rule in oracle["checks"] if rule["kind"] == "native_chart"]
