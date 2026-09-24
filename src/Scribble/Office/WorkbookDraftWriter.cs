@@ -465,7 +465,32 @@ namespace Scribble.Office
             dynamic anchor = sheet.Range(anchorName);
             int startRow = anchor.Row;
             int startColumn = anchor.Column;
-            var rowCount = Math.Min(rows.Count, MaxDraftRows);
+            if (rows.Count > MaxDraftRows || rows.Any(row =>
+                    row != null && row.Count > MaxDraftColumns))
+                throw new InvalidOperationException(
+                    "DRAFT_GRID_LIMIT: The target grid exceeds the supported write size.");
+            var rowCount = rows.Count;
+            var largestRow = rows.Where(row => row != null)
+                .Select(row => row.Count).DefaultIfEmpty(0).Max();
+            if (startRow + rowCount - 1 >
+                    ExcelSelectionOutputPolicy.MaxExcelRows ||
+                startColumn + largestRow - 1 >
+                    ExcelSelectionOutputPolicy.MaxExcelColumns)
+                throw new InvalidOperationException(
+                    "DRAFT_TARGET_RANGE_INVALID: The requested cells extend past the worksheet bounds.");
+            if (Convert.ToBoolean(sheet.ProtectContents))
+                throw new InvalidOperationException(
+                    "DRAFT_TARGET_PROTECTED: The request-bound worksheet is protected.");
+            // Scan every destination before the first mutation. A late merged
+            // cell must not leave earlier rows partially written.
+            for (var row = 0; row < rowCount; row++)
+                for (var column = 0; column <
+                        (rows[row] == null ? 0 : rows[row].Count);
+                    column++)
+                    if (Convert.ToBoolean(sheet.Cells[startRow + row,
+                            startColumn + column].MergeCells))
+                        throw new InvalidOperationException(
+                            "DRAFT_TARGET_MERGED: The target grid contains a merged cell.");
             var written = 0;
             var formulaCount = 0;
             var brokenFormulas = 0;

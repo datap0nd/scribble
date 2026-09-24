@@ -120,6 +120,33 @@ namespace GuardrailTests
                             "other sentinel",
                         "EXCEL_BOUND_RENAME_DID_NOT_FAIL_CLOSED: " +
                         rejected.Content);
+
+                    originalSheet.Name = "Source";
+                    originalSheet.Range("D3:E3").Merge();
+                    source.Activate(); originalSheet.Activate();
+                    capture();
+                    other.Activate(); otherSheet.Activate();
+                    var mergeAuth = new OneShotDraftAuthorization(true);
+                    var merged = host.Execute(new ChatToolCall
+                    {
+                        id = "phase5-merged", type = "function",
+                        function = new ChatToolCallFunction
+                        {
+                            name = WorkbookToolCatalog.WriteCells,
+                            arguments = json.Serialize(new
+                            {
+                                start_cell = "C2",
+                                rows = new[] { new[] { "early", "safe" },
+                                    new[] { "later", "merged" } }
+                            })
+                        }
+                    }, mergeAuth, true, "Update C2:D3 in my sheet");
+                    Check(merged.Outcome.Failed &&
+                        merged.Content.Contains("DRAFT_TARGET_MERGED") &&
+                        originalSheet.Cells[2, 3].Value2 == null &&
+                        originalSheet.Cells[2, 4].Value2 == null,
+                        "EXCEL_MERGED_PREFLIGHT_LEFT_PARTIAL_WRITE: " +
+                        merged.Content);
                 }
                 passed = true;
             }
@@ -140,6 +167,7 @@ namespace GuardrailTests
             {
                 execution_kind = "native_disposable_phase5_excel_binding",
                 target_binding_passed = passed,
+                merged_preflight_passed = passed,
                 before_image_recovery_passed = false,
                 full_acceptance_passed = false,
                 failure
