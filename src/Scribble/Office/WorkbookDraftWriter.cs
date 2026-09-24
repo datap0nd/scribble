@@ -1087,12 +1087,12 @@ namespace Scribble.Office
                             MaxDraftColumns + " cells.");
                     }
 
-                    var value = Convert.ToString(cell) ?? string.Empty;
-                    if (value.Length > MaxCellCharacters)
+                    var cellText = Convert.ToString(cell) ?? string.Empty;
+                    if (cellText.Length > MaxCellCharacters)
                         throw new InvalidOperationException(
                             "DRAFT_CELL_LIMIT: A cell exceeds " +
                             MaxCellCharacters + " characters.");
-                    cells.Add(TextBoundary.SingleLine(value,
+                    cells.Add(TextBoundary.SingleLine(cellText,
                         MaxCellCharacters));
                 }
 
