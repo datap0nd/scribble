@@ -95,16 +95,22 @@ namespace GuardrailTests
                     var prefix = "phase4-reference-" + (batch + 1);
                     var pptx = Path.Combine(output, prefix + ".pptx");
                     var pdf = Path.Combine(output, prefix + ".pdf");
-                    deck.SaveAs(pptx, 24);
+                    var afterExport = Path.Combine(output,
+                        prefix + "-after-export.pptx");
+                    deck.SaveCopyAs(pptx);
                     deck.SaveAs(pdf, 32);
+                    deck.SaveCopyAs(afterExport);
                     if (!File.Exists(pptx) ||
                         new FileInfo(pptx).Length < 1000 ||
                         !File.Exists(pdf) ||
-                        new FileInfo(pdf).Length < 1000)
+                        new FileInfo(pdf).Length < 1000 ||
+                        !File.Exists(afterExport) ||
+                        new FileInfo(afterExport).Length < 1000)
                         throw new InvalidOperationException(
                             "PHASE4_NATIVE_EXPORT_MISSING");
                     files.Add(pptx);
                     files.Add(pdf);
+                    files.Add(afterExport);
                     deck.Close();
                     deck = null;
                 }

@@ -121,7 +121,7 @@ namespace Scribble.Office
             }
         }
 
-        // Chart series palette: brand blue leads, then neutral greys,
+        // Chart series palette: brand blue leads, then a visible dark neutral,
         // with amber reserved for the attention series. No chart ever
         // uses more colors than it has series.
         public static int[] ChartSeriesColors()
@@ -130,7 +130,7 @@ namespace Scribble.Office
             {
                 Rgb(BrandBlueHex),
                 Rgb("#5B9BD5"),
-                Rgb("#F2F2F2"),
+                Rgb("#596674"),
                 Rgb(WarningAmberHex),
                 Rgb(CharcoalHex)
             };

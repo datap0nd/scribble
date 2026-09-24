@@ -418,15 +418,21 @@ namespace Scribble.Office
                         metricWidth, metricHeight);
                     var value = card.Points.FirstOrDefault() ?? "";
                     var detail = string.Join("\n", card.Points.Skip(1));
-                    elements.Add(TextElement("", metricBox, fill: SamsungSlideDesign.Gray));
-                    elements.Add(TextElement("", new RectangleF(metricBox.X, metricBox.Y, metricBox.Width, 6f), fill: SamsungSlideDesign.Blue));
+                    var focal = i == 0;
+                    elements.Add(TextElement("", metricBox, fill: focal ?
+                        SamsungSlideDesign.Blue : SamsungSlideDesign.Gray));
+                    elements.Add(TextElement("", new RectangleF(metricBox.X, metricBox.Y, metricBox.Width, 6f),
+                        fill: focal ? SamsungSlideDesign.SoftBlue : SamsungSlideDesign.Blue));
                     elements.Add(TextElement(card.Heading.ToUpperInvariant(),
-                        new RectangleF(metricBox.X + 14f, metricBox.Y + 16f, metricBox.Width - 28f, 42f), 14, 14, "Arial", true, null, "#596674"));
+                        new RectangleF(metricBox.X + 14f, metricBox.Y + 16f, metricBox.Width - 28f, 42f), 14, 14, "Arial", true, null,
+                        focal ? "#FFFFFF" : "#596674"));
                     elements.Add(TextElement(value,
-                        new RectangleF(metricBox.X + 14f, metricBox.Y + 61f, metricBox.Width - 28f, 65f), 34, 24, MetoTheme.TitleFont, true, null, SamsungSlideDesign.Blue));
+                        new RectangleF(metricBox.X + 14f, metricBox.Y + 61f, metricBox.Width - 28f, 65f), 34, 24, MetoTheme.TitleFont, true, null,
+                        focal ? "#FFFFFF" : SamsungSlideDesign.Blue));
                     if (detail.Length > 0)
                         elements.Add(TextElement(detail,
-                            new RectangleF(metricBox.X + 14f, metricBox.Y + 134f, metricBox.Width - 28f, Math.Max(32f, metricBox.Height - 150f)), 15, 14, "Arial", false, null, "#202A35"));
+                            new RectangleF(metricBox.X + 14f, metricBox.Y + 134f, metricBox.Width - 28f, Math.Max(32f, metricBox.Height - 150f)), 15, 14, "Arial", false, null,
+                            focal ? "#FFFFFF" : "#202A35"));
                     continue;
                 }
                 if (draft.Layout == "action_list")
@@ -457,8 +463,10 @@ namespace Scribble.Office
                         // A dual metric needs a lower badge rail, but short
                         // evidence still should not become a full-height gray
                         // panel merely because two facts share one card.
-                        evidenceHeight = Math.Min(region.Height, Math.Max(218f,
-                            (heroMode ? 160f : 64f) + longestBody + (heroMode ? 14f : 30f)));
+                        evidenceHeight = Math.Min(region.Height, Math.Max(
+                            heroMode ? 218f : 178f,
+                            (heroMode ? 160f : 72f) + longestBody +
+                            (heroMode ? 14f : 20f)));
                     }
                     var rowInset = rows == 1 ? (region.Height - evidenceHeight) / 2f : 0f;
                     var evidenceBox = new RectangleF(

@@ -111,11 +111,18 @@ namespace GuardrailTests
                 throw new Exception("The scorecard recipe lost its prominent KPI hierarchy.");
             var scorecardPage = ((IEnumerable)json.DeserializeObject(scorecardJson)).Cast<Dictionary<string, object>>().Single();
             var scorecardElements = ((IEnumerable)scorecardPage["elements"]).Cast<Dictionary<string, object>>().ToArray();
+            if (scorecardElements.Count(e => Convert.ToString(e["fill"]) ==
+                    SamsungSlideDesign.Blue && Convert.ToDouble(e["height"]) > 150) != 1 ||
+                !scorecardElements.Any(e => Convert.ToString(e["text"]) ==
+                    "EUR 82,992" && Convert.ToString(e["color"]) == "#FFFFFF"))
+                throw new Exception("The scorecard needs one readable focal metric rather than equally weighted gray panels.");
             if (scorecardElements.Where(e => new[] { "JUNE REVENUE", "JUNE COST", "GROSS MARGIN" }.Contains(Convert.ToString(e["text"])))
                     .Any(e => Convert.ToDouble(e["size"]) < 14))
                 throw new Exception("Scorecard KPI labels must meet the native 14-point body minimum.");
             var palette = new HashSet<string>(new[] { "#4F81BD", "#5B9BD5", "#41719C", "#F2F2F2", "#C00000", "#00B050",
                 "#FFFFFF", "#000000", "#7F7F7F", "#A6A6A6", "#202A35", "#596674", "#D7DDE3", "#D4D4D4" }, StringComparer.OrdinalIgnoreCase);
+            if (MetoTheme.ChartSeriesColors()[2] != MetoTheme.Rgb("#596674"))
+                throw new Exception("The third chart series needs contrast against the white plot area.");
             if (scorecardElements.Any(e => new[] { Convert.ToString(e["fill"]), Convert.ToString(e["color"]) }
                     .Any(color => !string.IsNullOrEmpty(color) && !palette.Contains(color))))
                 throw new Exception("Scorecard colors must stay inside the supplied Samsung palette.");
