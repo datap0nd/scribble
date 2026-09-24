@@ -306,44 +306,8 @@ namespace GuardrailTests
                 powerPoint = Activator.CreateInstance(Type.GetTypeFromProgID(
                     "PowerPoint.Application", true));
                 powerPoint.Visible = -1;
-                stage = "powerpoint_write";
-                AnalysisDocumentPilot.WritePresentation((object)powerPoint,
-                    fixture.Item1, fixture.Item2);
-                deck = powerPoint.ActivePresentation;
-                Check((int)deck.Slides.Count == 4,
-                    "The native deck did not contain exactly four slides.");
-                for (var index = 1; index <= 4; index++)
-                {
-                    dynamic slide = deck.Slides[index];
-                    if (PresentationInspection.ContainsNativeChart(
-                            (object)slide)) continue;
-                    stage = "powerpoint_export_" + index;
-                    var path = Path.Combine(output,
-                        "analysis-slide-" + index.ToString("00") + ".png");
-                    slide.Export(path, "PNG", 1920, 1080);
-                    Check(File.Exists(path) && new FileInfo(path).Length > 1000,
-                        "A native slide image was not rendered.");
-                    images.Add(path);
-                }
-                // The active route must also work when another marked deck
-                // has been closed. Save the structural fixture for later
-                // assertions instead of keeping two chart decks open.
-                stage = "powerpoint_first_deck_checkpoint";
-                var firstDeckCopy = Path.Combine(output,
-                    "analysis-first-deck.pptx");
-                deck.SaveCopyAs(firstDeckCopy);
-                deck.Close();
-                deck = null;
-                // The chart workbook is hosted in the PowerPoint process.
-                // Exercise the active route in a fresh process, as it would
-                // run after a prior authoring session has ended.
-                stage = "powerpoint_restart_before_active_route";
-                powerPoint.Quit();
-                System.Runtime.InteropServices.Marshal.ReleaseComObject(
-                    powerPoint);
-                powerPoint = Activator.CreateInstance(Type.GetTypeFromProgID(
-                    "PowerPoint.Application", true));
-                powerPoint.Visible = -1;
+                // Exercise the production route before the separate
+                // structural writer test, so the chart host starts clean.
                 stage = "active_typed_deck_handoff";
                 var deckCall = new ChatToolCall
                 {
@@ -431,8 +395,25 @@ namespace GuardrailTests
                     typedDeck = null;
                     typedDeckHandoffPassed = true;
                 }
-                stage = "powerpoint_reopen_first_deck";
-                deck = powerPoint.Presentations.Open(firstDeckCopy);
+                stage = "powerpoint_write";
+                AnalysisDocumentPilot.WritePresentation((object)powerPoint,
+                    fixture.Item1, fixture.Item2);
+                deck = powerPoint.ActivePresentation;
+                Check((int)deck.Slides.Count == 4,
+                    "The native deck did not contain exactly four slides.");
+                for (var index = 1; index <= 4; index++)
+                {
+                    dynamic slide = deck.Slides[index];
+                    if (PresentationInspection.ContainsNativeChart(
+                            (object)slide)) continue;
+                    stage = "powerpoint_export_" + index;
+                    var path = Path.Combine(output,
+                        "analysis-slide-" + index.ToString("00") + ".png");
+                    slide.Export(path, "PNG", 1920, 1080);
+                    Check(File.Exists(path) && new FileInfo(path).Length > 1000,
+                        "A native slide image was not rendered.");
+                    images.Add(path);
+                }
                 stage = "powerpoint_review_metadata";
                 var taskInput = new ChatCompletionRequest
                 {

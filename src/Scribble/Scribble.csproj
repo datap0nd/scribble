@@ -77,6 +77,14 @@
       <HintPath>$(NuGetPackageRoot)pdfsharp-gdi\6.2.4\lib\net462\PdfSharp.System.dll</HintPath>
       <Private>true</Private>
     </Reference>
+    <Reference Include="PDFtoImage">
+      <HintPath>$(NuGetPackageRoot)pdftoimage\5.4.0\lib\net471\PDFtoImage.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="SkiaSharp">
+      <HintPath>$(NuGetPackageRoot)skiasharp\4.150.1\lib\net48\SkiaSharp.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
     <Reference Include="Microsoft.Extensions.Logging.Abstractions">
       <HintPath>$(NuGetPackageRoot)microsoft.extensions.logging.abstractions\8.0.3\lib\net462\Microsoft.Extensions.Logging.Abstractions.dll</HintPath>
       <Private>true</Private>
@@ -124,6 +132,8 @@
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
     <PackageReference Include="ExcelDataReader" Version="3.9.0" />
     <PackageReference Include="PDFsharp-GDI" Version="6.2.4" />
+    <PackageReference Include="PDFtoImage" Version="5.4.0" />
+    <PackageReference Include="SkiaSharp" Version="4.150.1" />
     <PackageReference Include="System.ValueTuple" Version="4.5.0" />
   </ItemGroup>
   <ItemGroup>

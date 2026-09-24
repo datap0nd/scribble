@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -15,8 +16,7 @@ namespace Scribble.Office
     {
         public AnalysisReviewContext Context { get; set; }
         public AnalysisReviewRequest Request { get; set; }
-        // Exportable pages pair images with render fingerprints. A native
-        // chart page has no image and cannot enter model visual review.
+        // Each page image is bound to its rendered fingerprint.
         public List<string> PageImages { get; set; } = new List<string>();
     }
 
@@ -184,6 +184,12 @@ namespace Scribble.Office
             if (deck == null || (int)deck.Slides.Count != composed.Count)
                 throw new InvalidOperationException(
                     "ANALYSIS_PILOT_NATIVE_PAGE_COUNT_CHANGED");
+            byte[][] pdfImages = null;
+            if (pageImages != null && Enumerable.Range(1, composed.Count)
+                .Any(index => PresentationInspection.ContainsNativeChart(
+                    (object)deck.Slides[index])))
+                pdfImages = RenderPresentationPdf(presentation,
+                    composed.Count);
             var pages = new List<AnalysisReviewPage>();
             var ordinals = new Dictionary<string, int>(StringComparer.Ordinal);
             for (var index = 1; index <= composed.Count; index++)
@@ -195,7 +201,17 @@ namespace Scribble.Office
                 ordinals[logicalId] = ordinal + 1;
                 string pageImage;
                 var nativeState = NativeStateFingerprint(native);
-                var rendered = RenderFingerprint(native,
+                string rendered;
+                if (pdfImages != null)
+                {
+                    var bytes = pdfImages[index - 1];
+                    pageImage = "data:image/png;base64," +
+                        Convert.ToBase64String(bytes);
+                    using (var digest = SHA256.Create())
+                        rendered = BitConverter.ToString(digest.ComputeHash(
+                            bytes)).Replace("-", "").ToLowerInvariant();
+                }
+                else rendered = RenderFingerprint(native,
                     nativeState, pageImages != null, out pageImage);
                 pageImages?.Add(pageImage);
                 pages.Add(new AnalysisReviewPage
@@ -209,6 +225,83 @@ namespace Scribble.Office
                 });
             }
             return pages;
+        }
+
+        private static byte[][] RenderPresentationPdf(object presentation,
+            int expectedPages)
+        {
+            if (expectedPages < 1 || expectedPages > 16)
+                throw new InvalidOperationException(
+                    "ANALYSIS_VISUAL_REVIEW_UNAVAILABLE: Page count exceeds the bounded native review limit.");
+            dynamic deck = presentation;
+            var nameBefore = (string)deck.FullName;
+            var savedBefore = (int)deck.Saved;
+            var nativeBefore = Enumerable.Range(1, expectedPages)
+                .Select(index => NativeStateFingerprint(deck.Slides[index]))
+                .ToArray();
+            var pdf = Path.Combine(Path.GetTempPath(),
+                "scribble-analysis-review-" + Guid.NewGuid().ToString("N") +
+                ".pdf");
+            try
+            {
+                // PDF uses PowerPoint's page renderer without Slide.Export,
+                // which terminates chart.dll on some Office builds. SaveAs
+                // format 32 leaves this unsaved native draft in place.
+                deck.SaveAs(pdf, 32);
+                if ((string)deck.FullName != nameBefore ||
+                    (int)deck.Saved != savedBefore ||
+                    Enumerable.Range(1, expectedPages).Where(index =>
+                        NativeStateFingerprint(deck.Slides[index]) !=
+                            nativeBefore[index - 1]).Any() ||
+                    !File.Exists(pdf) || new FileInfo(pdf).Length >
+                        30 * 1024 * 1024)
+                    throw new InvalidOperationException(
+                        "PDF export changed or exceeded the native draft boundary.");
+                using (var stream = File.OpenRead(pdf))
+                {
+                    var sizes = PDFtoImage.Conversion.GetPageSizes(stream,
+                        leaveOpen: true);
+                    if (sizes.Count != expectedPages)
+                        throw new InvalidOperationException(
+                            "PDF page count differs from the native draft.");
+                    stream.Position = 0;
+                    var images = new List<byte[]>(expectedPages);
+                    var totalBytes = 0;
+                    foreach (var bitmap in PDFtoImage.Conversion.ToImages(
+                        stream, Enumerable.Range(0, expectedPages),
+                        options: new PDFtoImage.RenderOptions(
+                            Width: 1600, Height: 900)))
+                    {
+                        using (bitmap)
+                        using (var encoded = bitmap.Encode(
+                            SkiaSharp.SKEncodedImageFormat.Png, 100))
+                        {
+                            var bytes = encoded.ToArray();
+                            if (bytes.Length < 1000 || bytes.Length >
+                                8 * 1024 * 1024)
+                                throw new InvalidOperationException(
+                                    "PDF review page is empty or too large.");
+                            totalBytes += bytes.Length;
+                            if (totalBytes > 24 * 1024 * 1024)
+                                throw new InvalidOperationException(
+                                    "PDF review images exceed the task limit.");
+                            images.Add(bytes);
+                        }
+                    }
+                    if (images.Count != expectedPages)
+                        throw new InvalidOperationException(
+                            "PDF renderer omitted a native page.");
+                    return images.ToArray();
+                }
+            }
+            catch (COMException) { throw; }
+            catch (Exception error)
+            {
+                throw new InvalidOperationException(
+                    "ANALYSIS_VISUAL_REVIEW_UNAVAILABLE: The PowerPoint PDF review export failed; the draft remains pending. " +
+                    error.Message, error);
+            }
+            finally { if (File.Exists(pdf)) File.Delete(pdf); }
         }
 
         public static IReadOnlyList<AnalysisReviewMeasurement> CaptureNativeMeasurements(
