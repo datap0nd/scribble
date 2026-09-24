@@ -37,7 +37,9 @@ namespace Scribble.Office
             dynamic draft = null;
             try
             {
-                draft = app.Presentations.Add(0);
+                // PowerPoint's native chart engine requires a presentation
+                // window, even when the application is driven through COM.
+                draft = app.Presentations.Add(-1);
                 draft.Tags.Add("ScribbleRevisionDraft", owner);
                 draft.PageSetup.SlideWidth = source.PageSetup.SlideWidth;
                 draft.PageSetup.SlideHeight = source.PageSetup.SlideHeight;
