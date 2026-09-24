@@ -18,6 +18,7 @@ namespace Scribble.Office
             internal bool Started, Applied, Deleted;
             internal string LastKnownContent;
             internal string BackupFingerprint;
+            internal string BackupContentFingerprint;
             internal readonly List<int> InsertedIds = new List<int>();
             internal readonly List<int> AddedShapeIds = new List<int>();
             internal readonly List<object> StagedInserts = new List<object>();
@@ -102,8 +103,12 @@ namespace Scribble.Office
             // Native chart packages can finish normalizing while later slides
             // are copied. Seal recovery after the complete staging deck exists.
             foreach (var item in Items)
+            {
+                item.BackupContentFingerprint = PresentationInspection
+                    .CopyContentFingerprint(item.Backup);
                 item.BackupFingerprint = PresentationInspection
                     .Fingerprint(item.Backup);
+            }
             var proposedOrder = ReviewedSlides();
             foreach (var item in Items)
                 foreach (var output in item.StagedInsertOutputs) PresentationDraftWriter.SetSamsungPageNumber(output, proposedOrder.IndexOf(output.Slide) + 1);
@@ -659,7 +664,10 @@ namespace Scribble.Office
                 if (PresentationInspection.Fingerprint(item.Backup) != item.BackupFingerprint)
                     throw new InvalidOperationException(
                         "REVISION_RECOVERY_ORIGINAL_CHANGED: slide " +
-                        item.Index);
+                        item.Index + "; " +
+                        (PresentationInspection.CopyContentFingerprint(
+                            item.Backup) == item.BackupContentFingerprint ?
+                            "package" : "native content"));
         }
         internal void Revert() { RevertWithJournal(null); }
         internal void RevertWithJournal(Action<string> journal)

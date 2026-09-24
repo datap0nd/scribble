@@ -118,7 +118,6 @@ namespace GuardrailTests
                     null, new[] { (object)draft }, null);
                 Invoke(revision, RevisionType, "Stage", (object)app,
                     bound);
-                Invoke(copy, CopyType, "VerifySource");
                 Invoke(revision, RevisionType, "Commit",
                     (Action<string>)(status => { }));
                 Invoke(copy, CopyType, "VerifySource");
