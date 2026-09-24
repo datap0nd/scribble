@@ -453,9 +453,19 @@ namespace GuardrailTests
                     "excel", "Review the disposable analysis deck",
                     taskStore);
                 reviewTask.PersistAnalysis(fixture.Item1);
-                var nativeReview = AnalysisDocumentPilot.ReserveNativeReview(
-                    reviewTask, (object)deck, fixture.Item1,
-                    fixture.Item2, true);
+                var reviewBefore = Path.Combine(output,
+                    "analysis-review-before-export.pptx");
+                var reviewAfter = Path.Combine(output,
+                    "analysis-review-after-export.pptx");
+                deck.SaveCopyAs(reviewBefore);
+                AnalysisNativeReviewSession nativeReview;
+                try
+                {
+                    nativeReview = AnalysisDocumentPilot.ReserveNativeReview(
+                        reviewTask, (object)deck, fixture.Item1,
+                        fixture.Item2, true);
+                }
+                finally { deck.SaveCopyAs(reviewAfter); }
                 var pages = nativeReview.Context.Pages;
                 Check(nativeReview.PageImages.Count == pages.Count &&
                     nativeReview.PageImages.Select((image, index) =>
