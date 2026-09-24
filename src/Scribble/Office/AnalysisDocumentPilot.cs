@@ -370,12 +370,28 @@ namespace Scribble.Office
             var pdf = Path.Combine(Path.GetTempPath(),
                 "scribble-analysis-review-" + Guid.NewGuid().ToString("N") +
                 ".pdf");
+            // The opt-in native harness can preserve the exact draft package
+            // on both sides of Office's export for a boundary failure audit.
+            var diagnosticDirectory = Environment.GetEnvironmentVariable(
+                "SCRIBBLE_ANALYSIS_PDF_DIAGNOSTIC_DIR");
+            var diagnosticStem = !string.IsNullOrWhiteSpace(
+                diagnosticDirectory) ? "analysis-pdf-" +
+                Guid.NewGuid().ToString("N") : null;
             try
             {
+                if (diagnosticStem != null)
+                {
+                    Directory.CreateDirectory(diagnosticDirectory);
+                    deck.SaveCopyAs(Path.Combine(diagnosticDirectory,
+                        diagnosticStem + "-before.pptx"));
+                }
                 // PDF uses PowerPoint's page renderer without Slide.Export,
                 // which terminates chart.dll on some Office builds. SaveAs
                 // format 32 leaves this unsaved native draft in place.
                 deck.SaveAs(pdf, 32);
+                if (diagnosticStem != null)
+                    deck.SaveCopyAs(Path.Combine(diagnosticDirectory,
+                        diagnosticStem + "-after.pptx"));
                 var nameChanged = (string)deck.FullName != nameBefore;
                 var savedChanged = (int)deck.Saved != savedBefore;
                 var changedPages = Enumerable.Range(1, expectedPages)

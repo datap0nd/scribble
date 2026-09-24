@@ -49,10 +49,15 @@ namespace GuardrailTests
             Directory.CreateDirectory(output);
             var priorFlag = Environment.GetEnvironmentVariable(
                 AnalysisDocumentPilot.FeatureFlag);
+            const string pdfDiagnosticFlag =
+                "SCRIBBLE_ANALYSIS_PDF_DIAGNOSTIC_DIR";
+            var priorPdfDiagnostic = Environment.GetEnvironmentVariable(
+                pdfDiagnosticFlag);
             try
             {
                 Environment.SetEnvironmentVariable(
                     AnalysisDocumentPilot.FeatureFlag, "1");
+                Environment.SetEnvironmentVariable(pdfDiagnosticFlag, output);
                 stage = "excel_start";
                 excel = Activator.CreateInstance(Type.GetTypeFromProgID(
                     "Excel.Application", true));
@@ -949,6 +954,8 @@ namespace GuardrailTests
             {
                 Environment.SetEnvironmentVariable(
                     AnalysisDocumentPilot.FeatureFlag, priorFlag);
+                Environment.SetEnvironmentVariable(pdfDiagnosticFlag,
+                    priorPdfDiagnostic);
                 if ((object)deck != null) try { deck.Close(); } catch { }
                 if ((object)typedDeck != null)
                     try { typedDeck.Close(); } catch { }
