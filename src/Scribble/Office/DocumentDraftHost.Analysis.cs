@@ -354,6 +354,18 @@ namespace Scribble.Office
                     return Error(call.id, authorization,
                         "ANALYSIS_DECK_GEOMETRY_UNSUPPORTED",
                         exception.Message);
+                if (exception.Message.StartsWith(
+                        "REPAIR_NATIVE_PAGE_UNSUPPORTED",
+                        StringComparison.Ordinal) ||
+                    exception.Message.StartsWith(
+                        "REPAIR_NATIVE_TEXT_TARGET_UNSUPPORTED",
+                        StringComparison.Ordinal) ||
+                    exception.Message.StartsWith(
+                        "REPAIR_TARGET_UNSUPPORTED",
+                        StringComparison.Ordinal))
+                    return Error(call.id, authorization,
+                        "ANALYSIS_DECK_CONTENT_UNSUPPORTED",
+                        exception.Message);
                 return Error(call.id, authorization,
                     "ANALYSIS_DECK_FAILED", exception.Message);
             }

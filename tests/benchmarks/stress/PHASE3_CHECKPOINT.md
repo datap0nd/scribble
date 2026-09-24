@@ -268,14 +268,32 @@ passed, and the architectural-feasibility pilot is not authorized yet.
   `ANALYSIS_DECK_GEOMETRY_UNSUPPORTED` for this unowned geometry instead of
   allowing model approval. Both runs preserved the date column, workbook,
   four slides, typed handoff, and chart review image; neither PowerPoint run
-  exited. The full CI run for `922288b` is still pending at this checkpoint.
+  exited. The superseded CI run for `922288b` was cancelled after the native
+  acceptance result; the current head still needs a complete CI pass.
+- CI-built `9f6bd8e` passed the active review correction loop in disposable
+  Office. The offline reviewer seeded one `UNSUPPORTED_CLAIM` on the first
+  title, returned one bounded literal patch, and approved only a fresh native
+  four-page review. The route recorded three model-call reservations, one
+  native text patch, source-fact preservation, and a persisted corrected plan.
+  The final source check retains the exact Excel workbook object selected at
+  preflight; chart creation can change `ActiveWorkbook` and a new COM wrapper
+  can give an unsaved workbook a different in-memory binding ID. The source
+  cells were unchanged in the failing probe, and the retained-object rerun
+  passed without bypassing the workbook content hash.
+- CI-built `8948304` passed another native run with an injected content-patch
+  receipt gap. A stale native state was rejected before mutation; after a
+  valid native text edit, a reloaded task refused a new review while the
+  patch remained pending. Reconciliation required changed native state and
+  exact text readback. The report added `content_recovery_passed=true` and
+  retained `full_acceptance_passed=false`. These are offline fake-model runs;
+  no hosted Qwen call or broad recovery/visual qualification followed.
 
 ## Still required for the Phase 3 exit gate
 
-- Finish the development-only analysis-bound PowerPoint handoff with
-  offline content-finding failure injection. Its typed native review path
-  passes the hand-authored harness, but content findings still need targeted
-  corrective operations and recovery receipts. Migrate the
+- Extend the development-only content correction path beyond unique native
+  title/subtitle/takeaway text. Card bodies and layout changes currently
+  return unsupported rather than attempting an unbounded rewrite. Continue
+  failure injection across journal receipt persistence and resume, then migrate the
   remaining supported Samsung capabilities in `DocumentDraftHost.PowerPoint`
   and `DocumentDraftHost.SlideRepair`, then retire their old brief/number/native
   regex finding filters as each capability moves.
