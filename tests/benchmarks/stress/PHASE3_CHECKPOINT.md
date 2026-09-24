@@ -208,6 +208,23 @@ passed, and the architectural-feasibility pilot is not authorized yet.
   making that extra COM call. No new PowerPoint Application Error event 1000
   accompanied the run. A further native check requires owner permission
   under the current workspace AGENTS.md instructions.
+- After the owner approved a native rerun, the CI-built harness from
+  `096f653` again passed the real date-column check but returned
+  `0x800706BA` inside the typed deck tool result. Windows Application Error
+  event 1000 at 11:16:57 on 24 September again identified the same
+  `POWERPNT.EXE`/`chart.dll` access violation and fault offset. This showed
+  that the writer's own chart preview export remained a crash path even
+  after the harness and review capture stopped exporting charts. Commit
+  `3184600` suppresses that writer export only in the development pilot,
+  including journal resume, and maps the RPC failure to an explicit
+  `POWERPOINT_EXITED` tool error. The CI-built `3184600` native rerun still
+  faulted in `chart.dll` at the same offset (Application Error event 1000,
+  11:22:26 on 24 September). Its report correctly recorded
+  `native_date_column_passed=true`, `powerpoint_exited=true`,
+  `full_acceptance_passed=false`, and an unapproved pending draft. Known
+  pilot preview exports are suppressed, but this Office build remains
+  unstable while creating a second native chart deck. The review path
+  therefore fails closed; no model approval or Phase 3 exit claim follows.
 
 ## Still required for the Phase 3 exit gate
 
