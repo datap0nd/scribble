@@ -374,24 +374,26 @@ namespace Scribble.Office
             // on both sides of Office's export for a boundary failure audit.
             var diagnosticDirectory = Environment.GetEnvironmentVariable(
                 "SCRIBBLE_ANALYSIS_PDF_DIAGNOSTIC_DIR");
-            var diagnosticStem = !string.IsNullOrWhiteSpace(
-                diagnosticDirectory) ? "analysis-pdf-" +
-                Guid.NewGuid().ToString("N") : null;
+            var preserveCopies = !string.IsNullOrWhiteSpace(
+                diagnosticDirectory);
+            var copyDirectory = preserveCopies ? diagnosticDirectory :
+                Path.GetTempPath();
+            var copyStem = "analysis-pdf-" +
+                Guid.NewGuid().ToString("N");
+            var beforeCopy = Path.Combine(copyDirectory,
+                copyStem + "-before.pptx");
+            var afterCopy = Path.Combine(copyDirectory,
+                copyStem + "-after.pptx");
             try
             {
-                if (diagnosticStem != null)
-                {
+                if (preserveCopies)
                     Directory.CreateDirectory(diagnosticDirectory);
-                    deck.SaveCopyAs(Path.Combine(diagnosticDirectory,
-                        diagnosticStem + "-before.pptx"));
-                }
+                deck.SaveCopyAs(beforeCopy);
                 // PDF uses PowerPoint's page renderer without Slide.Export,
                 // which terminates chart.dll on some Office builds. SaveAs
                 // format 32 leaves this unsaved native draft in place.
                 deck.SaveAs(pdf, 32);
-                if (diagnosticStem != null)
-                    deck.SaveCopyAs(Path.Combine(diagnosticDirectory,
-                        diagnosticStem + "-after.pptx"));
+                deck.SaveCopyAs(afterCopy);
                 var nameChanged = (string)deck.FullName != nameBefore;
                 var savedChanged = (int)deck.Saved != savedBefore;
                 var changedPages = Enumerable.Range(1, expectedPages)
@@ -403,7 +405,12 @@ namespace Scribble.Office
                 var pdfMissing = !File.Exists(pdf);
                 var pdfTooLarge = !pdfMissing && new FileInfo(pdf).Length >
                     30 * 1024 * 1024;
-                if (nameChanged || savedChanged || changedPages.Length > 0 ||
+                string changedPart;
+                var packageEquivalent = PresentationInspection
+                    .PdfExportPackageEquivalent(beforeCopy, afterCopy,
+                        out changedPart);
+                if (nameChanged || savedChanged ||
+                    changedEditablePages.Length > 0 || !packageEquivalent ||
                     pdfMissing || pdfTooLarge)
                     throw new InvalidOperationException(
                         "PDF export changed or exceeded the native draft boundary: " +
@@ -411,6 +418,7 @@ namespace Scribble.Office
                         ", pages=" + string.Join(",", changedPages) +
                         ", editable_pages=" + string.Join(",",
                             changedEditablePages) +
+                        ", package_part=" + changedPart +
                         ", missing=" + pdfMissing + ", too_large=" +
                         pdfTooLarge + ".");
                 using (var stream = File.OpenRead(pdf))
@@ -457,7 +465,15 @@ namespace Scribble.Office
                     "ANALYSIS_VISUAL_REVIEW_UNAVAILABLE: The PowerPoint PDF review export failed; the draft remains pending. " +
                     error.Message, error);
             }
-            finally { if (File.Exists(pdf)) File.Delete(pdf); }
+            finally
+            {
+                if (File.Exists(pdf)) File.Delete(pdf);
+                if (!preserveCopies)
+                {
+                    if (File.Exists(beforeCopy)) File.Delete(beforeCopy);
+                    if (File.Exists(afterCopy)) File.Delete(afterCopy);
+                }
+            }
         }
 
         public static IReadOnlyList<AnalysisReviewMeasurement> CaptureNativeMeasurements(

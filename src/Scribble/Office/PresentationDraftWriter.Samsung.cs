@@ -182,7 +182,9 @@ namespace Scribble.Office
             if (special)
             {
                 if (draft.Layout == "closing") page.Background = SamsungSlideDesign.Blue;
-                elements.Add(TextElement(draft.Title, regions[0], draft.Layout == "cover" ? 66 : 40, 28,
+                var coverTitleSize = draft.Layout == "cover" ?
+                    (draft.Title.Length > 64 ? 52 : 66) : 40;
+                elements.Add(TextElement(draft.Title, regions[0], coverTitleSize, 28,
                     MetoTheme.TitleFont, true, null, draft.Layout == "closing" ? "#FFFFFF" : "#000000"));
                 if (draft.Subtitle.Length > 0) elements.Add(TextElement(draft.Subtitle, SamsungSlideDesign.Percent(4.6f, 78, 84.4f, 8), 22, 18, color: draft.Layout == "closing" ? "#FFFFFF" : "#000000"));
                 if (draft.Layout == "cover") elements.Add(TextElement("", SamsungSlideDesign.Percent(0, 94.7f, 100, 2.1f), fill: SamsungSlideDesign.Blue));

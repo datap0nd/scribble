@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using Scribble.Security;
 
@@ -1499,23 +1500,49 @@ namespace Scribble.Office
                     (char)('A' + chart.Series.Count) + "$" + (chart.Categories.Count + 1), 2);
                 step = "series readback";
                 TraceNativeChartStage("before-chart-readback");
-                if ((int)slideChart.SeriesCollection().Count != chart.Series.Count) throw new InvalidOperationException("Chart source series were not applied.");
                 for (var s = 0; s < chart.Series.Count; s++)
-                {
-                    var actual = ComArrayItems((object)slideChart.SeriesCollection(s + 1), "Values").ToArray();
                     for (var point = 0; point < chart.Series[s].Values.Count; point++)
                     {
                         var expected = chart.Series[s].Values[point];
-                        // Native series may expose a blank as zero; verify the
-                        // embedded cell itself so a missing value is never written as zero.
                         object cellValue = dataSheet.Cells[point + 2, s + 2].Value2;
+                        // A native series may expose a blank as zero. The
+                        // embedded cell is the source of truth for missingness.
                         if (!expected.HasValue ? cellValue != null :
-                            point >= actual.Length || Convert.ToDouble(actual[point]) != expected.Value)
-                            throw new InvalidOperationException("Chart data readback failed.");
+                            cellValue == null || Convert.ToDouble(cellValue,
+                                CultureInfo.InvariantCulture) != expected.Value)
+                            throw new InvalidOperationException("Chart workbook data readback failed.");
                     }
-                    var labels = ComArrayItems((object)slideChart.SeriesCollection(s + 1), "XValues").Select(Convert.ToString).ToArray();
-                    if (!labels.SequenceEqual(chart.Categories)) throw new InvalidOperationException("Chart category readback failed.");
+                // SetSourceData may update the chart cache asynchronously.
+                // Retry only readback, never another write or chart creation.
+                var chartReadback = false;
+                for (var attempt = 0; attempt < 4 && !chartReadback; attempt++)
+                {
+                    chartReadback = (int)slideChart.SeriesCollection().Count ==
+                        chart.Series.Count;
+                    for (var s = 0; chartReadback && s < chart.Series.Count; s++)
+                    {
+                        var actual = ComArrayItems((object)slideChart.SeriesCollection(s + 1),
+                            "Values").ToArray();
+                        for (var point = 0; point < chart.Series[s].Values.Count; point++)
+                            if (chart.Series[s].Values[point].HasValue &&
+                                (point >= actual.Length || actual[point] == null ||
+                                Convert.ToDouble(actual[point],
+                                    CultureInfo.InvariantCulture) !=
+                                chart.Series[s].Values[point].Value))
+                            { chartReadback = false; break; }
+                        if (chartReadback)
+                        {
+                            var labels = ComArrayItems((object)slideChart.SeriesCollection(s + 1),
+                                "XValues").Select(Convert.ToString).ToArray();
+                            chartReadback = labels.SequenceEqual(chart.Categories);
+                        }
+                    }
+                    if (!chartReadback && attempt < 3)
+                        System.Threading.Thread.Sleep(250);
                 }
+                if (!chartReadback)
+                    throw new InvalidOperationException(
+                        "Chart data or category readback failed after bounded cache refresh.");
                 step = "style";
                 TraceNativeChartStage("before-chart-style");
                 slideChart.DisplayBlanksAs = 1; // xlNotPlotted: preserve gaps.

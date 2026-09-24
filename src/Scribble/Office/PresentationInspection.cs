@@ -302,6 +302,151 @@ namespace Scribble.Office
             finally { if (File.Exists(temporary)) File.Delete(temporary); }
         }
 
+        // PowerPoint may round a native table frame by one EMU while making a
+        // PDF and increment package metadata. Compare the complete before and
+        // after packages; chart caches, embedded worksheet values, and every
+        // other slide property must remain byte-for-byte or XML equivalent.
+        internal static bool PdfExportPackageEquivalent(string beforePath,
+            string afterPath, out string changedPart)
+        {
+            changedPart = string.Empty;
+            try
+            {
+                if (new FileInfo(beforePath).Length > 50 * 1024 * 1024 ||
+                    new FileInfo(afterPath).Length > 50 * 1024 * 1024)
+                    return false;
+                using (var before = ZipFile.OpenRead(beforePath))
+                using (var after = ZipFile.OpenRead(afterPath))
+                    return PdfArchiveEquivalent(before, after, false,
+                        out changedPart);
+            }
+            catch (Exception error) when (error is IOException ||
+                error is InvalidDataException || error is InvalidOperationException ||
+                error is System.Xml.XmlException || error is FormatException)
+            { changedPart = error.GetType().Name; return false; }
+        }
+
+        private static bool PdfArchiveEquivalent(ZipArchive before,
+            ZipArchive after, bool embeddedWorkbook, out string changedPart)
+        {
+            changedPart = string.Empty;
+            if (before.Entries.Count > 500 || after.Entries.Count > 500 ||
+                before.Entries.Sum(entry => entry.Length) > 150L * 1024 * 1024 ||
+                after.Entries.Sum(entry => entry.Length) > 150L * 1024 * 1024)
+                return false;
+            var original = before.Entries.ToDictionary(entry => entry.FullName,
+                StringComparer.Ordinal);
+            var exported = after.Entries.ToDictionary(entry => entry.FullName,
+                StringComparer.Ordinal);
+            if (!original.Keys.OrderBy(name => name, StringComparer.Ordinal)
+                .SequenceEqual(exported.Keys.OrderBy(name => name,
+                    StringComparer.Ordinal))) return false;
+            foreach (var part in original.Keys.OrderBy(name => name,
+                StringComparer.Ordinal))
+            {
+                changedPart = part;
+                var left = PdfPartBytes(original[part]);
+                var right = PdfPartBytes(exported[part]);
+                if (left.SequenceEqual(right)) continue;
+                if (part == "docProps/core.xml" &&
+                    PdfMetadataEquivalent(left, right)) continue;
+                if (!embeddedWorkbook &&
+                    part.StartsWith("ppt/slides/slide",
+                        StringComparison.Ordinal) &&
+                    part.EndsWith(".xml", StringComparison.Ordinal) &&
+                    PdfTableRoundoffEquivalent(left, right)) continue;
+                if (!embeddedWorkbook &&
+                    part.StartsWith("ppt/embeddings/",
+                        StringComparison.Ordinal) &&
+                    part.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+                {
+                    using (var leftStream = new MemoryStream(left))
+                    using (var rightStream = new MemoryStream(right))
+                    using (var leftZip = new ZipArchive(leftStream,
+                        ZipArchiveMode.Read))
+                    using (var rightZip = new ZipArchive(rightStream,
+                        ZipArchiveMode.Read))
+                    {
+                        string nestedPart;
+                        if (PdfArchiveEquivalent(leftZip, rightZip, true,
+                            out nestedPart)) continue;
+                        changedPart = part + "/" + nestedPart;
+                    }
+                }
+                return false;
+            }
+            changedPart = string.Empty;
+            return true;
+        }
+
+        private static byte[] PdfPartBytes(ZipArchiveEntry entry)
+        {
+            if (entry.Length > 30 * 1024 * 1024)
+                throw new InvalidDataException("Oversized PDF boundary part.");
+            using (var stream = entry.Open())
+            using (var buffer = new MemoryStream())
+            { stream.CopyTo(buffer); return buffer.ToArray(); }
+        }
+
+        private static bool PdfMetadataEquivalent(byte[] before,
+            byte[] after)
+        {
+            var left = XDocument.Load(new MemoryStream(before));
+            var right = XDocument.Load(new MemoryStream(after));
+            var revision = XName.Get("revision",
+                "http://schemas.openxmlformats.org/package/2006/metadata/core-properties");
+            var modified = XName.Get("modified",
+                "http://purl.org/dc/terms/");
+            foreach (var document in new[] { left, right })
+                foreach (var node in document.Descendants().Where(element =>
+                    element.Name == modified ||
+                    element.Name == revision).ToArray())
+                    node.Remove();
+            return XNode.DeepEquals(left, right);
+        }
+
+        private static bool PdfTableRoundoffEquivalent(byte[] before,
+            byte[] after)
+        {
+            var left = XDocument.Load(new MemoryStream(before));
+            var right = XDocument.Load(new MemoryStream(after));
+            Func<XDocument, XElement[]> tableFrames = document => document
+                .Descendants().Where(element => element.Name.LocalName ==
+                    "graphicFrame" && element.Descendants().Any(child =>
+                        child.Name.LocalName == "graphicData" &&
+                        (string)child.Attribute("uri") ==
+                        "http://schemas.openxmlformats.org/drawingml/2006/table"))
+                .ToArray();
+            var original = tableFrames(left);
+            var exported = tableFrames(right);
+            if (original.Length == 0 || original.Length != exported.Length)
+                return false;
+            for (var index = 0; index < original.Length; index++)
+            {
+                Func<XElement, XElement> extent = frame => frame.Elements()
+                    .Where(element => element.Name.LocalName == "xfrm")
+                    .SelectMany(element => element.Elements())
+                    .SingleOrDefault(element => element.Name.LocalName == "ext");
+                var beforeExtent = extent(original[index]);
+                var afterExtent = extent(exported[index]);
+                if (beforeExtent == null || afterExtent == null) return false;
+                foreach (var dimension in new[] { "cx", "cy" })
+                {
+                    long beforeValue, afterValue;
+                    if (!long.TryParse((string)beforeExtent.Attribute(dimension),
+                            out beforeValue) ||
+                        !long.TryParse((string)afterExtent.Attribute(dimension),
+                            out afterValue) ||
+                        beforeValue < 0 || afterValue < 0 ||
+                        beforeValue > 1000000000 ||
+                        afterValue > 1000000000 ||
+                        Math.Abs(beforeValue - afterValue) > 1) return false;
+                    afterExtent.SetAttributeValue(dimension, beforeValue);
+                }
+            }
+            return XNode.DeepEquals(left, right);
+        }
+
         private static XDocument LoadPackageXml(ZipArchive archive,
             string path)
         {

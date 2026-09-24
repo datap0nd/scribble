@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
+using System.Reflection;
+using System.Text;
 using System.Web.Script.Serialization;
 using Scribble.Chat;
 using Scribble.Office;
@@ -10,6 +13,65 @@ namespace GuardrailTests
 {
     internal static class AnalysisReviewContractTests
     {
+        public static void PdfExportOnlyPermitsMetadataAndTableRoundoff()
+        {
+            var root = Path.Combine(Path.GetTempPath(),
+                "scribble-pdf-boundary-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(root);
+            try
+            {
+                var before = Path.Combine(root, "before.pptx");
+                var harmless = Path.Combine(root, "harmless.pptx");
+                var changedData = Path.Combine(root, "changed-data.pptx");
+                var changedText = Path.Combine(root, "changed-text.pptx");
+                var changedGeometry = Path.Combine(root, "changed-geometry.pptx");
+                WritePdfBoundaryPackage(before, 100, 4, "Safe", "42");
+                WritePdfBoundaryPackage(harmless, 101, 5, "Safe", "42");
+                WritePdfBoundaryPackage(changedData, 101, 5, "Safe", "43");
+                WritePdfBoundaryPackage(changedText, 101, 5, "Altered", "42");
+                WritePdfBoundaryPackage(changedGeometry, 103, 5, "Safe", "42");
+                var method = typeof(PresentationInspection).GetMethod(
+                    "PdfExportPackageEquivalent", BindingFlags.NonPublic |
+                    BindingFlags.Static);
+                Check(method != null, "The PDF package boundary is missing.");
+                Func<string, bool> equivalent = candidate =>
+                {
+                    var arguments = new object[] { before, candidate, null };
+                    return (bool)method.Invoke(null, arguments);
+                };
+                Check(equivalent(harmless),
+                    "Office metadata and one EMU table rounding were rejected.");
+                Check(!equivalent(changedData) && !equivalent(changedText) &&
+                    !equivalent(changedGeometry),
+                    "A chart value, slide text or material geometry change crossed the PDF boundary.");
+            }
+            finally { Directory.Delete(root, true); }
+        }
+
+        private static void WritePdfBoundaryPackage(string path, int width,
+            int revision, string title, string chartValue)
+        {
+            using (var archive = new ZipArchive(File.Create(path),
+                ZipArchiveMode.Create))
+            {
+                Action<string, string> add = (name, value) =>
+                {
+                    using (var writer = new StreamWriter(
+                        archive.CreateEntry(name).Open(), new UTF8Encoding(false)))
+                        writer.Write(value);
+                };
+                add("docProps/core.xml",
+                    "<cp:coreProperties xmlns:cp='http://schemas.openxmlformats.org/package/2006/metadata/core-properties' xmlns:dcterms='http://purl.org/dc/terms/'><cp:revision>" +
+                    revision + "</cp:revision><dcterms:modified>2026-09-24</dcterms:modified></cp:coreProperties>");
+                add("ppt/slides/slide2.xml",
+                    "<p:sld xmlns:p='http://schemas.openxmlformats.org/presentationml/2006/main' xmlns:a='http://schemas.openxmlformats.org/drawingml/2006/main'><p:graphicFrame><p:xfrm><a:off x='0' y='0'/><a:ext cx='" +
+                    width + "' cy='200'/></p:xfrm><a:graphic><a:graphicData uri='http://schemas.openxmlformats.org/drawingml/2006/table'/></a:graphic></p:graphicFrame><p:sp><a:t>" +
+                    title + "</a:t></p:sp></p:sld>");
+                add("ppt/charts/chart1.xml", "<chart><value>" +
+                    chartValue + "</value></chart>");
+            }
+        }
+
         public static void SharedBudgetSurvivesEveryStage()
         {
             var receipt = new AnalysisRepairBudget().Serialize();
