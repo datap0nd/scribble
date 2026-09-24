@@ -199,6 +199,15 @@ passed, and the architectural-feasibility pilot is not authorized yet.
   inspection. This is an explicit incomplete gate, not visual approval.
 - The OfficeIMO source probe is parked for Phase 4 and its CI job is removed.
   No paid model run was made for these corrections.
+- A disposable local run of the CI-built harness from commit `39f2cf8`
+  reached the typed handoff. Its report recorded
+  `native_date_column_passed=true`, `powerpoint_exited=false`, and PNGs for
+  the three non-chart slides. A subsequent `POWERPNT` call returned
+  `RPC_E_CALL_REJECTED` after the route result, so this run cannot qualify the
+  handoff. Commit `952f086` makes the harness report the route result before
+  making that extra COM call. No new PowerPoint Application Error event 1000
+  accompanied the run. A further native check requires owner permission
+  under the current workspace AGENTS.md instructions.
 
 ## Still required for the Phase 3 exit gate
 
