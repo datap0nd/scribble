@@ -99,6 +99,24 @@ namespace Scribble.Office
             return new { inherited = (int)page.FollowMasterBackground, type = (int)fill.Type,
                 color = (int)fill.ForeColor.RGB, transparency = (float)fill.Transparency };
         }
+        internal static void RestoreCopiedBackground(object originalSlide,
+            object copiedSlide)
+        {
+            dynamic original = originalSlide;
+            dynamic copy = copiedSlide;
+            copy.FollowMasterBackground = original.FollowMasterBackground;
+            // Slides.Paste can replace an explicit solid fill with a
+            // transparent inherited fill. Restore the source's native fill
+            // before the preservation fingerprint is checked.
+            dynamic sourceFill = original.Background.Fill;
+            if ((int)sourceFill.Type == 1)
+            {
+                dynamic targetFill = copy.Background.Fill;
+                targetFill.Solid();
+                targetFill.ForeColor.RGB = sourceFill.ForeColor.RGB;
+                targetFill.Transparency = sourceFill.Transparency;
+            }
+        }
         internal static object[] Hyperlinks(object slide)
         {
             dynamic page = slide; var links = new List<object>();
