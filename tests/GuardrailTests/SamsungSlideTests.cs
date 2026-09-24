@@ -167,6 +167,34 @@ namespace GuardrailTests
                     Convert.ToString(element["color"]) == "#FFFFFF" &&
                     Convert.ToDouble(element["size"]) >= 26))
                 throw new Exception("A single evidence statement lost its readable focal panel.");
+            var numericPair = SamsungPresentationReview.InspectPlan(
+                json.Serialize(new[] { new {
+                    title = "Verified June results", layout = "cards",
+                    subtitle = "Ledger totals", cards = new[] {
+                        new { heading = "June revenue",
+                            points = new[] { "82,992" } },
+                        new { heading = "June cost",
+                            points = new[] { "36,714" } } }
+                } }));
+            var numericPairPage = ((IEnumerable)json.DeserializeObject(
+                json.Serialize(numericPair)))
+                .Cast<Dictionary<string, object>>().Single();
+            var numericPairElements = ((IEnumerable)numericPairPage[
+                "elements"]).Cast<Dictionary<string, object>>().ToArray();
+            if (numericPairElements.Count(element =>
+                    Convert.ToString(element["fill"]) ==
+                        SamsungSlideDesign.Navy &&
+                    Convert.ToDouble(element["width"]) > 800) != 1 ||
+                new[] { "82,992", "36,714" }.Any(value =>
+                    numericPairElements.Count(element =>
+                        Convert.ToString(element["text"]) == value &&
+                        Convert.ToString(element["color"]) == "#FFFFFF" &&
+                        Convert.ToDouble(element["size"]) >= 50) != 1) ||
+                numericPairElements.Any(element =>
+                    Convert.ToString(element["fill"]) ==
+                        SamsungSlideDesign.Gray &&
+                    Convert.ToDouble(element["height"]) > 100))
+                throw new Exception("A two-metric evidence pair lost its native focal hierarchy.");
             var palette = new HashSet<string>(new[] { "#4F81BD", "#5B9BD5", "#41719C", "#17365D", "#B8D8FF", "#F2F2F2", "#C00000", "#00B050",
                 "#FFFFFF", "#000000", "#7F7F7F", "#A6A6A6", "#202A35", "#596674", "#D7DDE3", "#D4D4D4" }, StringComparer.OrdinalIgnoreCase);
             if (MetoTheme.ChartSeriesColors()[2] != MetoTheme.Rgb("#596674"))

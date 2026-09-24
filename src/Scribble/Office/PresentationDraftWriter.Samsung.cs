@@ -368,6 +368,47 @@ namespace Scribble.Office
         private static void AddStructuredCards(List<SamsungElement> elements, DraftSlide draft, RectangleF region)
         {
             var count = draft.Cards.Count;
+            if (draft.Layout == "cards" && count == 2 &&
+                draft.Cards.All(card => card.Points.Count == 1 &&
+                    Regex.IsMatch(card.Points[0],
+                        @"^[+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?%?$") &&
+                    Regex.IsMatch(card.Heading,
+                        @"\b(?:revenue|cost|margin|sales|budget|profit|headcount|rate|total)\b",
+                        RegexOptions.IgnoreCase)))
+            {
+                // Two verified numeric facts need a single visual system.
+                // Their plan labels and values remain exact native text; no
+                // inferred delta, rank, or symbol is added.
+                var panel = new RectangleF(region.X, region.Y + 10f,
+                    region.Width, region.Height - 20f);
+                elements.Add(TextElement("", panel,
+                    fill: SamsungSlideDesign.Navy));
+                elements.Add(TextElement("", new RectangleF(panel.X,
+                    panel.Y, panel.Width, 5f),
+                    fill: SamsungSlideDesign.SoftBlue));
+                var columnWidth = panel.Width / 2f;
+                elements.Add(TextElement("", new RectangleF(
+                    panel.X + columnWidth - .5f, panel.Y + 37f, 1f,
+                    panel.Height - 74f), fill: "#596674"));
+                for (var index = 0; index < 2; index++)
+                {
+                    var card = draft.Cards[index];
+                    var left = panel.X + index * columnWidth + 28f;
+                    var width = columnWidth - 56f;
+                    elements.Add(TextElement(
+                        card.Heading.ToUpperInvariant(),
+                        new RectangleF(left, panel.Y + 38f, width, 40f),
+                        19, 16, "Arial", true, null, "#B8D8FF"));
+                    elements.Add(TextElement(card.Points[0],
+                        new RectangleF(left, panel.Y + 111f, width, 96f),
+                        58, 38, MetoTheme.TitleFont, true, null,
+                        "#FFFFFF"));
+                    elements.Add(TextElement("", new RectangleF(left,
+                        panel.Bottom - 41f, Math.Min(150f, width / 2f),
+                        4f), fill: SamsungSlideDesign.SoftBlue));
+                }
+                return;
+            }
             if (draft.Layout == "cards" && count == 1 &&
                 draft.Cards[0].Points.Count == 1 &&
                 draft.Cards[0].Points[0].Length <= 100 &&
