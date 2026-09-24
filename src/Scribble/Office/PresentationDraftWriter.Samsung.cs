@@ -541,7 +541,9 @@ namespace Scribble.Office
                     // Omit simple metric-only source lines from the body and put
                     // their original labels beneath the callouts instead.
                     var bodyPoints = i == dualHeroIndex || compactHero
-                        ? card.Points.Select(point => StripHeroClauses(point, evidenceHeroes[i], secondaryHero[i]))
+                        ? card.Points.Select(point => StripHeroClauses(point,
+                            evidenceHeroes[i], compactHero ? null :
+                                secondaryHero[i]))
                             .Where(point => point.Length > 0)
                         : card.Points;
                     var body = string.Join("\n", bodyPoints);
