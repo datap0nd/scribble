@@ -258,6 +258,17 @@ passed, and the architectural-feasibility pilot is not authorized yet.
   Their `full_acceptance_passed=false` field remains correct: no hosted
   model, calibrated or identified human visual attestation, broad recovery
   qualification, or release gate has passed.
+- CI-built `2232692` passed a further disposable native run after moving
+  unresolved native geometry rejection ahead of the task's model-review
+  reservation. Its regression damages the folio and verifies that no review
+  call is consumed. CI-built `2d4f048` and `922288b` each passed a fresh
+  disposable native run. These add explicit unsupported-geometry rejection
+  for a chart overlapping the title and body text overlapping the source
+  footer, respectively. The active tool returns
+  `ANALYSIS_DECK_GEOMETRY_UNSUPPORTED` for this unowned geometry instead of
+  allowing model approval. Both runs preserved the date column, workbook,
+  four slides, typed handoff, and chart review image; neither PowerPoint run
+  exited. The full CI run for `922288b` is still pending at this checkpoint.
 
 ## Still required for the Phase 3 exit gate
 
@@ -268,10 +279,11 @@ passed, and the architectural-feasibility pilot is not authorized yet.
   remaining supported Samsung capabilities in `DocumentDraftHost.PowerPoint`
   and `DocumentDraftHost.SlideRepair`, then retire their old brief/number/native
   regex finding filters as each capability moves.
-- Extend collision ownership beyond the pilot's central content canvas or
-  return an explicit unsupported capability for other geometry. Continue
-  testing source-bound facts, page continuations, and retry receipts against
-  native outputs and context limits.
+- The pilot now explicitly rejects semantic collisions outside its bounded
+  content canvas. Certify the remaining layout families before widening
+  renderer ownership, and continue testing source-bound facts, page
+  continuations, and retry receipts against native outputs and context
+  limits.
 - Freeze Phase 3 code after the active-route and geometry gaps close, then
   complete the offline gate. Only after Phases 0–3 pass offline may the pinned hosted
   OpenRouter `qwen/qwen3.8-27b` run the small paid architectural pilot.
