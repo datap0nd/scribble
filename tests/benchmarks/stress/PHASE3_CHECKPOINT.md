@@ -288,15 +288,39 @@ passed, and the architectural-feasibility pilot is not authorized yet.
   retained `full_acceptance_passed=false`. These are offline fake-model runs;
   no hosted Qwen call or broad recovery/visual qualification followed.
 
+## Bounded native layout reflow (25 September 2026)
+
+- PR #33 extends the typed `VISUAL_HIERARCHY` contract with one page-layout
+  proposal. The host supplies the current layout, allowed IDs, rendered page,
+  and verified facts. Application recompiles the revised plan and rejects a
+  stale or invented layout and changed page allocation.
+- The active route supports one chartless, task-owned native page. It reserves
+  the patch before mutation, stages a replacement and recovery copy, then
+  requires changed native state and exact layout-tag readback before the
+  corrected plan is committed. Chart pages remain explicitly unsupported on
+  this content-reflow route; renderer-owned chart geometry uses its existing
+  bounded repair path.
+- CI-built `59deb88` passed a disposable native offline fake-reviewer run
+  with a title correction, `scorecard` to `cards` reflow, fresh review, and
+  source workbook preservation. The separate recovery test rejected a stale
+  reservation, blocked review after a pending write was reloaded, rejected
+  an incorrect readback, and reconciled the correct native state. The native
+  report recorded `layout_recovery_passed=true`,
+  `native_date_column_passed=true`, `powerpoint_exited=false`, and
+  `full_acceptance_passed=false`. The exact visual output and its known
+  weakness are in `evidence/phase3-layout-reflow/`.
+- Evidence head `8ce9351` passed full Windows CI run `36061372936`, including
+  guardrails and installer checks. No paid model call was made.
+
 ## Still required for the Phase 3 exit gate
 
-- Extend the development-only content correction path beyond unique native
-  title/subtitle/takeaway text. Card bodies and layout changes currently
-  return unsupported rather than attempting an unbounded rewrite. Continue
-  failure injection across journal receipt persistence and resume, then migrate the
-  remaining supported Samsung capabilities in `DocumentDraftHost.PowerPoint`
-  and `DocumentDraftHost.SlideRepair`, then retire their old brief/number/native
-  regex finding filters as each capability moves.
+- Continue failure injection for partial native writes, journal receipt
+  persistence, and resume. Card-body text and chartless layout reflow now
+  have bounded paths, but chart layout reflow and multi-page replacement do
+  not. Migrate the remaining supported Samsung capabilities in
+  `DocumentDraftHost.PowerPoint` and `DocumentDraftHost.SlideRepair`, then
+  retire their old brief/number/native regex finding filters as each
+  capability moves.
 - The pilot now explicitly rejects semantic collisions outside its bounded
   content canvas. Certify the remaining layout families before widening
   renderer ownership, and continue testing source-bound facts, page
