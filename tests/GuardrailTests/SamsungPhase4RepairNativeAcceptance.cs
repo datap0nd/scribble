@@ -36,6 +36,7 @@ namespace GuardrailTests
             var failure = string.Empty;
             var passed = false;
             var chartRecreated = false;
+            var chartFingerprintTrace = new List<string>();
             var candidate = Path.Combine(output,
                 "phase4-pp01-copy.pptx");
             var pdf = Path.Combine(output,
@@ -72,6 +73,9 @@ namespace GuardrailTests
                     "phase4-pp01-native");
                 copy = InvokeStatic(CopyType, "Recover", (object)app,
                     Convert.ToString(Invoke(copy, CopyType, "Snapshot")));
+                for (var sample = 0; sample < 3; sample++)
+                    chartFingerprintTrace.Add(PresentationInspection
+                        .Fingerprint((object)draft.Slides[2]));
                 draft = CopyType.GetField("Draft",
                     BindingFlags.Instance | BindingFlags.NonPublic)
                     .GetValue(copy);
@@ -175,6 +179,9 @@ namespace GuardrailTests
                 });
                 var bound = (object[])Invoke(copy, CopyType,
                     "BindOperations", (object)operations.ToArray());
+                for (var sample = 0; sample < 2; sample++)
+                    chartFingerprintTrace.Add(PresentationInspection
+                        .Fingerprint((object)draft.Slides[2]));
                 revision = Activator.CreateInstance(RevisionType,
                     BindingFlags.Instance | BindingFlags.NonPublic,
                     null, new[] { (object)draft }, null);
@@ -278,6 +285,7 @@ namespace GuardrailTests
                 native_artifact = passed ? candidate : null,
                 pdf_review_artifact = passed ? pdf : null,
                 chart_recreated_from_workbook = chartRecreated,
+                chart_fingerprint_trace = chartFingerprintTrace,
                 independent_grader_passed = false,
                 visual_approved = false,
                 full_acceptance_passed = false,
