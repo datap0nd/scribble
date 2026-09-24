@@ -86,7 +86,7 @@ namespace GuardrailTests
                 Run("Analysis native writer requires an explicit development flag", AnalysisDocumentCompilerTests.PilotRequiresExplicitFeatureFlag);
                 Run("Typed review findings cannot override facts or pages", AnalysisReviewContractTests.FindingsCannotOverrideVerifiedFactsOrPages);
                 Run("One repair budget spans review and patch stages", AnalysisReviewContractTests.SharedBudgetSurvivesEveryStage);
-                Run("PDF export permits only metadata and one EMU table rounding", AnalysisReviewContractTests.PdfExportOnlyPermitsMetadataAndTableRoundoff);
+                Run("PDF export permits only metadata and two EMU table rounding", AnalysisReviewContractTests.PdfExportOnlyPermitsMetadataAndTableRoundoff);
                 Run("Excel DBNull mixed formats resolve a date column", AnalysisContractTests.MixedExcelFormatsResolveDates);
                 Run("Duplicate document writes return a recoverable result", HardeningTests.DuplicateDraftIsRecoverable);
                 Run("Known invalid Excel draft formulas permit a fresh marked sheet", HardeningTests.RejectedDraftFormulaAllowsFreshMarkedSheet);

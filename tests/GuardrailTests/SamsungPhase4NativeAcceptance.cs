@@ -321,10 +321,12 @@ namespace GuardrailTests
                     dynamic firstCard = text("Coverage");
                     target.Left = firstCard.Left;
                     target.Top = firstCard.Top; break;
-                case "shrink_table_width":
-                    target = table(); target.Width = 175f; break;
-                case "shrink_table_height":
-                    target = table(); target.Height = 95f; break;
+                case "move_table_into_title":
+                    target = table(); target.Top = 55f; break;
+                case "move_table_into_footer":
+                    target = table(); target.Top =
+                        (float)slide.Parent.PageSetup.SlideHeight -
+                        (float)target.Height - 15f; break;
                 case "hide_title_color":
                     target = text(Convert.ToString(specification["title"]));
                     target.TextFrame.TextRange.Font.Color.RGB = 0xFFFFFF;
