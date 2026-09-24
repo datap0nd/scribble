@@ -3,7 +3,8 @@ param(
     [Parameter(Mandatory=$true)][string]$ScribbleAssembly,
     [string]$CorpusRoot = '',
     [string]$ExpectedManifestHash = '',
-    [string]$CaseId = 'PP03'
+    [string]$CaseId = 'PP03',
+    [string]$CandidatePptx = ''
 )
 
 # This preflight exercises only the actual presentation/native-artifact rules
@@ -36,6 +37,10 @@ $reference=Join-Path $root $presentationRule.reference_pptx
 $source=@($originalCase.inputs | Where-Object { $_.EndsWith('.pptx') })
 if ($source.Count -ne 1) { throw 'The case must name one source deck' }
 $source=Join-Path $root $source[0]
+if ($CandidatePptx) {
+    $CandidatePptx=[IO.Path]::GetFullPath($CandidatePptx)
+    if (-not [IO.File]::Exists($CandidatePptx)) { throw 'Candidate PowerPoint file does not exist' }
+}
 $preflightRoot=Join-Path $root ('.build/native-grading-preflight/'+[Guid]::NewGuid().ToString('N'))
 $projection=Join-Path $preflightRoot 'projection'
 [IO.Directory]::CreateDirectory($projection) | Out-Null
@@ -131,11 +136,12 @@ try {
         $baselinePresentation.Close()
         [void][Runtime.InteropServices.Marshal]::ReleaseComObject($baselinePresentation)
     }
-    foreach ($variant in @('clean_reference','defective_source','pink_header_only','pink_chart_only')) {
+    $variants=if ($CandidatePptx) { @('candidate') } else { @('clean_reference','defective_source','pink_header_only','pink_chart_only') }
+    foreach ($variant in $variants) {
         $presentation=$null
         try {
             $owned=Join-Path $preflightRoot ($variant+'.pptx')
-            $copySource=if ($variant -eq 'defective_source') { $source } else { $baseline }
+            $copySource=if ($variant -eq 'candidate') { $CandidatePptx } elseif ($variant -eq 'defective_source') { $source } else { $baseline }
             Copy-Item -LiteralPath $copySource -Destination $owned
             $presentation=$app.Presentations.Open($owned,0,0,0)
             $mutated=$false
@@ -170,7 +176,7 @@ try {
             $presentationChecks=@($checks | Where-Object { $_.name -match '_presentation$' })
             if ($presentationChecks.Count -ne 1) { throw "Native preflight did not reach the presentation checker: $($checks | ConvertTo-Json -Compress)" }
             $accepted=@($checks | Where-Object { $_.hard -and -not $_.passed }).Count -eq 0
-            $expectedAcceptance=$variant -eq 'clean_reference'
+            $expectedAcceptance=$variant -eq 'clean_reference' -or $variant -eq 'candidate'
             $records.Add([pscustomobject]@{variant=$variant;expected_accepted=$expectedAcceptance;accepted=$accepted;passed=($accepted -eq $expectedAcceptance);checks=$checks;evidence_zip=$zipPath;native_measurement_error=$native.error;owned_copy=$owned})
             Write-Host "$variant accepted=$accepted expected=$expectedAcceptance"
         } finally {
@@ -184,6 +190,6 @@ try {
 }
 if ($originalHashes.reference -ne (Get-FileHash -LiteralPath $reference -Algorithm SHA256).Hash -or $originalHashes.source -ne (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash) { throw 'An original corpus presentation changed' }
 $report=Join-Path $preflightRoot 'native-presentation-grading-preflight.json'
-Write-Json $report ([pscustomobject]@{schema_version=1;scope='Native presentation-grader only, zero model calls, no TestLab session mutation; clean_reference means normalized owned baseline, not byte-identical source';case_id=$CaseId;assembly_sha256=(Get-FileHash -LiteralPath $assemblyPath -Algorithm SHA256).Hash.ToLowerInvariant();parent_manifest_sha256=$parentHash;original_reference_sha256=$originalHashes.reference.ToLowerInvariant();normalized_baseline_sha256=(Get-FileHash -LiteralPath $baseline -Algorithm SHA256).Hash.ToLowerInvariant();baseline_normalizations=@($normalizations.ToArray());original_oracle_sha256=$derivedOracle.original_oracle_sha256;derived_oracle_sha256=(Get-FileHash -LiteralPath (Join-Path $projection $projectedCase.oracle_ref) -Algorithm SHA256).Hash.ToLowerInvariant();projection_manifest_sha256=(Get-FileHash -LiteralPath (Join-Path $projection 'manifest.json') -Algorithm SHA256).Hash.ToLowerInvariant();results=@($records.ToArray())})
+Write-Json $report ([pscustomobject]@{schema_version=1;scope='Native presentation-grader only, zero model calls, no TestLab session mutation; clean_reference means normalized owned baseline, not byte-identical source';case_id=$CaseId;assembly_sha256=(Get-FileHash -LiteralPath $assemblyPath -Algorithm SHA256).Hash.ToLowerInvariant();parent_manifest_sha256=$parentHash;candidate_sha256=if ($CandidatePptx) { (Get-FileHash -LiteralPath $CandidatePptx -Algorithm SHA256).Hash.ToLowerInvariant() } else { $null };original_reference_sha256=$originalHashes.reference.ToLowerInvariant();normalized_baseline_sha256=(Get-FileHash -LiteralPath $baseline -Algorithm SHA256).Hash.ToLowerInvariant();baseline_normalizations=@($normalizations.ToArray());original_oracle_sha256=$derivedOracle.original_oracle_sha256;derived_oracle_sha256=(Get-FileHash -LiteralPath (Join-Path $projection $projectedCase.oracle_ref) -Algorithm SHA256).Hash.ToLowerInvariant();projection_manifest_sha256=(Get-FileHash -LiteralPath (Join-Path $projection 'manifest.json') -Algorithm SHA256).Hash.ToLowerInvariant();results=@($records.ToArray())})
 Write-Output $report
 if (@($records | Where-Object { -not $_.passed }).Count -gt 0) { throw "Native presentation grading preflight failed; see $report" }
