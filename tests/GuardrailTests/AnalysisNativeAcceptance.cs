@@ -1249,6 +1249,8 @@ namespace GuardrailTests
                         "native-layout-partial-input",
                         AnalysisRepairBudget.CrossApp().ConsumePatch(
                             "headline", "page"), true);
+                var sourceSlideOwner = (string)faultDeck.Slides[
+                    faultPage.ExpectedPageNumber].Tags["ScribbleTask"];
                 var presentationNames = new HashSet<string>(
                     StringComparer.Ordinal);
                 for (var presentationIndex = 1;
@@ -1302,8 +1304,9 @@ namespace GuardrailTests
                     faultPage.ExpectedPageNumber].Shapes.Count == 0;
                 var twoRecoverySlides = (int)recoveryDeck.Slides.Count == 2;
                 var backupOwnerMatches =
+                    !string.IsNullOrWhiteSpace(sourceSlideOwner) &&
                     (string)backupSlide.Tags["ScribbleTask"] ==
-                    (string)faultDeck.Tags["ScribbleTask"];
+                        sourceSlideOwner;
                 var pendingFaultReceipt = persistedFault.HostData.ContainsKey(
                     "analysis_pending_content_patch");
                 Check(partialLayoutRejected && faultSlideBlank &&
