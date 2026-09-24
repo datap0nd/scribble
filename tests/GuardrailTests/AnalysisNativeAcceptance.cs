@@ -716,6 +716,26 @@ namespace GuardrailTests
                     (object)deck, clearedPages).Count == 0 &&
                     AnalysisRepairBudget.Read(repairReceipt).PatchedTargets.Count == 3,
                     "The renderer did not clear and read back a chart/table collision.");
+                var originalChartTop = (float)nativeChart.Top;
+                var outsideCanvasRejected = false;
+                try
+                {
+                    dynamic slideTitle = comparisonSlide.Shapes[1];
+                    nativeChart.Top = (float)slideTitle.Top;
+                    AnalysisDocumentPilot.CaptureNativeMeasurements(
+                        (object)deck, clearedPages);
+                }
+                catch (InvalidOperationException error)
+                {
+                    outsideCanvasRejected = error.Message.StartsWith(
+                        "ANALYSIS_PILOT_GEOMETRY_UNSUPPORTED:",
+                        StringComparison.Ordinal);
+                }
+                finally { nativeChart.Top = originalChartTop; }
+                Check(outsideCanvasRejected &&
+                    AnalysisDocumentPilot.CaptureNativeMeasurements(
+                        (object)deck, clearedPages).Count == 0,
+                    "A chart overlapping the title escaped geometry review.");
                 rendererRepairPassed = true;
                 stage = "powerpoint_save_copy";
                 var deckCopy = Path.Combine(output, "analysis-deck.pptx");

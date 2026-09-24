@@ -360,6 +360,11 @@ namespace Scribble.Office
                     findings.Add(Measure("PAGE_NUMBER", page, "page",
                         string.Join("; ", pageNumbers), expected));
                 var content = ContentBounds((object)slide, height);
+                // Header/footer shapes are excluded from the bounded central
+                // move operation. Reject their intersections explicitly;
+                // otherwise moving a chart into the title can evade review.
+                RejectUnsupportedChromeCollision((object)slide, content,
+                    height, page.NativeSlideId);
                 for (var first = 0; first < content.Count; first++)
                     for (var second = first + 1; second < content.Count;
                         second++)
@@ -771,6 +776,59 @@ namespace Scribble.Office
                 result.Add(bounds);
             }
             return result;
+        }
+
+        private static void RejectUnsupportedChromeCollision(object slideObject,
+            IReadOnlyList<NativeBounds> central, double slideHeight,
+            int nativeSlideId)
+        {
+            dynamic slide = slideObject;
+            var semantic = new List<NativeBounds>();
+            for (var index = 1; index <= (int)slide.Shapes.Count; index++)
+            {
+                dynamic shape = slide.Shapes[index];
+                var table = (int)shape.HasTable != 0;
+                var chart = (int)shape.HasChart != 0;
+                var text = (int)shape.HasTextFrame != 0 &&
+                    !string.IsNullOrWhiteSpace(Convert.ToString(
+                        shape.TextFrame.TextRange.Text));
+                if (!table && !chart && !text) continue;
+                var bounds = new NativeBounds
+                {
+                    Id = (int)shape.Id, Left = (double)shape.Left,
+                    Top = (double)shape.Top, Width = (double)shape.Width,
+                    Height = (double)shape.Height
+                };
+                if (bounds.Width > 0 && bounds.Height > 0)
+                    semantic.Add(bounds);
+            }
+            var centralIds = new HashSet<int>(central.Select(item => item.Id));
+            for (var first = 0; first < semantic.Count; first++)
+                for (var second = first + 1; second < semantic.Count;
+                    second++)
+                {
+                    var left = semantic[first];
+                    var right = semantic[second];
+                    if (centralIds.Contains(left.Id) &&
+                        centralIds.Contains(right.Id)) continue;
+                    // The folio and draft marker intentionally share footer
+                    // space; they are not targets of central layout repair.
+                    if (left.Top >= slideHeight * .9 &&
+                        right.Top >= slideHeight * .9) continue;
+                    var overlapX = Math.Min(left.Right, right.Right) -
+                        Math.Max(left.Left, right.Left);
+                    var overlapY = Math.Min(left.Bottom, right.Bottom) -
+                        Math.Max(left.Top, right.Top);
+                    if (overlapX <= 4 || overlapY <= 4 ||
+                        overlapX * overlapY /
+                        Math.Min(left.Width * left.Height,
+                            right.Width * right.Height) < .10) continue;
+                    throw new InvalidOperationException(
+                        "ANALYSIS_PILOT_GEOMETRY_UNSUPPORTED: Slide " +
+                        nativeSlideId + " has a collision outside the bounded " +
+                        "content canvas between shape:" + left.Id +
+                        " and shape:" + right.Id + ".");
+                }
         }
 
         private static bool Collides(NativeBounds first, NativeBounds second,
