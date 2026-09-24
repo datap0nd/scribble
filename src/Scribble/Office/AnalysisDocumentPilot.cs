@@ -365,11 +365,14 @@ namespace Scribble.Office
                 throw new InvalidOperationException(
                     "REPAIR_NATIVE_PAGE_CHANGED");
             var owner = (string)slide.Tags["ScribbleTask"];
-            if (string.IsNullOrWhiteSpace(owner) ||
-                owner != (string)deck.Tags["ScribbleTask"] ||
-                PresentationInspection.ContainsNativeChart((object)slide))
+            // The generation journal owns slide/shape tags with its own ID;
+            // the task-owned presentation uses a separate task ID.
+            if (string.IsNullOrWhiteSpace(owner))
                 throw new InvalidOperationException(
-                    "REPAIR_NATIVE_LAYOUT_UNSUPPORTED");
+                    "REPAIR_NATIVE_LAYOUT_UNSUPPORTED: owner");
+            if (PresentationInspection.ContainsNativeChart((object)slide))
+                throw new InvalidOperationException(
+                    "REPAIR_NATIVE_LAYOUT_UNSUPPORTED: source chart");
             var compiled = AnalysisDocumentCompiler.Compile(artifact,
                 desiredPlan);
             var composed = PresentationDraftWriter.ComposeSamsung(
@@ -377,11 +380,13 @@ namespace Scribble.Office
                     compiled.Slides.Cast<object>().ToArray()));
             if (composed.Count != (int)deck.Slides.Count ||
                 composed[page.ExpectedPageNumber - 1].Source.Id !=
-                    page.LogicalSlideId ||
-                composed[page.ExpectedPageNumber - 1].Elements.Any(element =>
+                    page.LogicalSlideId)
+                throw new InvalidOperationException(
+                    "REPAIR_NATIVE_LAYOUT_UNSUPPORTED: page allocation");
+            if (composed[page.ExpectedPageNumber - 1].Elements.Any(element =>
                     element.Chart != null))
                 throw new InvalidOperationException(
-                    "REPAIR_NATIVE_LAYOUT_UNSUPPORTED");
+                    "REPAIR_NATIVE_LAYOUT_UNSUPPORTED: replacement chart");
             var output = new PresentationDraftWriter.SamsungOutput
             {
                 Slide = (object)slide, Owner = owner
@@ -391,7 +396,7 @@ namespace Scribble.Office
                 dynamic shape = slide.Shapes[index];
                 if ((string)shape.Tags["ScribbleTask"] != owner)
                     throw new InvalidOperationException(
-                        "REPAIR_NATIVE_LAYOUT_UNSUPPORTED");
+                        "REPAIR_NATIVE_LAYOUT_UNSUPPORTED: shape owner");
                 output.ShapeIds.Add((int)shape.Id);
             }
             output.Image = PresentationDraftWriter.ExportSamsung(output);
