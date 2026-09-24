@@ -87,7 +87,7 @@ namespace Scribble.Office
             else
             {
                 if (!SamsungSlideDesign.SameOwner(Convert.ToString(deck.Tags["ScribbleTask"]), _task.State.Id)) throw new InvalidOperationException("SLIDE_RECOVERY_WRONG_DECK");
-                ValidateReceipts(Data, pages, Ids(value), id => PresentationInspection.Fingerprint(PresentationInspection.FindSlide(value, id)));
+                ValidateReceipts(Data, pages, Ids(value), id => PresentationInspection.FingerprintForJournal(PresentationInspection.FindSlide(value, id)));
                 // These receipts prove that the original attempt already wrote.
                 // A subsequent review failure must retain its recovery boundary.
                 beforeNativeWrite?.Invoke();
@@ -127,7 +127,7 @@ namespace Scribble.Office
         {
             var receipt = Data.Receipts.SingleOrDefault(r => r.Page == index);
             if (receipt == null) { receipt = new Receipt { Page = index, SlideId = (int)((dynamic)output.Slide).SlideID, SourceId = output.Page.Source.Id, PageOrdinal = Data.Receipts.Count(r => r.SourceId == output.Page.Source.Id) }; Data.Receipts.Add(receipt); }
-            receipt.Fingerprint = PresentationInspection.Fingerprint(output.Slide);
+            receipt.Fingerprint = PresentationInspection.FingerprintForJournal(output.Slide);
             if (content != null) receipt.RepairedContent = content;
             Data.LastOrder = Ids(_deck); Persist();
         }

@@ -710,23 +710,11 @@ namespace Scribble.Office
                 }
                 var hasChart = (int)shape.HasChart != 0;
                 AppendState(state, hasChart ? 1 : 0);
-                if (hasChart)
-                {
-                    dynamic chart = shape.Chart;
-                    AppendState(state, (int)chart.ChartType);
-                    var series = chart.SeriesCollection();
-                    AppendState(state, (int)series.Count);
-                    for (var itemIndex = 1;
-                        itemIndex <= (int)series.Count; itemIndex++)
-                    {
-                        dynamic item = chart.SeriesCollection(itemIndex);
-                        AppendState(state, Convert.ToString(item.Name) ??
-                            string.Empty);
-                        AppendNativeValues(state, (object)item.Values);
-                        AppendNativeValues(state, (object)item.XValues);
-                    }
-                }
             }
+            if (PresentationInspection.ContainsNativeChart((object)slide))
+                AppendState(state,
+                    PresentationInspection.PackageSlideFingerprint(
+                        (object)slide));
             using (var digest = SHA256.Create())
                 return BitConverter.ToString(digest.ComputeHash(
                     Encoding.UTF8.GetBytes(state.ToString()))).Replace("-", "")

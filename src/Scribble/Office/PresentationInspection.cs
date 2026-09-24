@@ -2,9 +2,13 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
+using System.Text;
 using System.Web.Script.Serialization;
+using System.Xml.Linq;
 using Scribble.Chat;
 
 namespace Scribble.Office
@@ -73,12 +77,16 @@ namespace Scribble.Office
             return false;
         }
         public static Dictionary<string, object> Capture(object slide)
+        { return Capture(slide, true); }
+        private static Dictionary<string, object> Capture(object slide,
+            bool readChartData)
         {
             dynamic page = slide;
             var unsupported = new List<string>();
             return new Dictionary<string, object> {
                 { "slide_id", (int)page.SlideID }, { "index", (int)page.SlideIndex },
-                { "shapes", Shapes((object)page.Shapes, unsupported, 0) },
+                { "shapes", Shapes((object)page.Shapes, unsupported, 0,
+                    readChartData) },
                 { "notes", Notes(slide) }, { "unsupported", unsupported },
                 { "background", Background(slide) },
                 { "hidden", (int)page.SlideShowTransition.Hidden },
@@ -110,7 +118,8 @@ namespace Scribble.Office
             { dynamic shape = page.NotesPage.Shapes[i]; if ((int)shape.HasTextFrame != 0) result.Add(Convert.ToString(shape.TextFrame.TextRange.Text)); }
             return string.Join("\n", result);
         }
-        private static List<object> Shapes(object value, List<string> unsupported, int depth)
+        private static List<object> Shapes(object value,
+            List<string> unsupported, int depth, bool readChartData)
         {
             if (depth > 16) throw new InvalidOperationException("Slide groups exceed the inspection depth limit.");
             dynamic shapes = value;
@@ -123,7 +132,9 @@ namespace Scribble.Office
                     { "x", (float)shape.Left }, { "y", (float)shape.Top }, { "width", (float)shape.Width }, { "height", (float)shape.Height },
                     { "rotation", (float)shape.Rotation }, { "z_order", (int)shape.ZOrderPosition }
                 };
-                if ((int)shape.Type == 6) data["children"] = Shapes((object)shape.GroupItems, unsupported, depth + 1);
+                if ((int)shape.Type == 6) data["children"] = Shapes(
+                    (object)shape.GroupItems, unsupported, depth + 1,
+                    readChartData);
                 if ((int)shape.HasTextFrame != 0)
                 {
                     dynamic range = shape.TextFrame.TextRange;
@@ -162,9 +173,11 @@ namespace Scribble.Office
                     // carries an independent workbook authority and grades the
                     // generated native chart directly, so do not dereference the
                     // hostile source chart inside an active stress run.
-                    if (AvoidUnsafeStressChartAutomation())
+                    if (!readChartData || AvoidUnsafeStressChartAutomation())
                     {
-                        data["chart"] = new { available = false, reason = "unsafe_stress_fixture" };
+                        data["chart"] = new { available = false,
+                            reason = readChartData ? "unsafe_stress_fixture" :
+                                "native_package_fingerprint" };
                         unsupported.Add("chart-data:" + id);
                     }
                     else
@@ -218,6 +231,132 @@ namespace Scribble.Office
             // data and geometry, so retain the stronger rendered fingerprint only
             // for slides that PowerPoint can safely export.
             return TaskCheckpointStore.Fingerprint(content + (ContainsNativeChart(slide) ? string.Empty : Preview(slide)));
+        }
+        // The native chart COM getter can terminate some PowerPoint builds
+        // after a chart workbook closes. Journal receipts use the exact slide
+        // package and related parts from a disposable SaveCopyAs instead.
+        internal static string FingerprintForJournal(object slide)
+        {
+            if (!ContainsNativeChart(slide)) return Fingerprint(slide);
+            var json = new JavaScriptSerializer { MaxJsonLength =
+                int.MaxValue };
+            return TaskCheckpointStore.Fingerprint(json.Serialize(
+                Capture(slide, false)) + PackageSlideFingerprint(slide));
+        }
+
+        internal static string PackageSlideFingerprint(object slide)
+        {
+            dynamic page = slide;
+            dynamic deck = page.Parent;
+            var slideId = (int)page.SlideID;
+            var temporary = Path.Combine(Path.GetTempPath(),
+                "scribble-chart-fingerprint-" + Guid.NewGuid().ToString("N") +
+                ".pptx");
+            try
+            {
+                deck.SaveCopyAs(temporary);
+                using (var archive = ZipFile.OpenRead(temporary))
+                {
+                    const string presentationPart = "ppt/presentation.xml";
+                    var xml = LoadPackageXml(archive, presentationPart);
+                    var id = xml.Descendants().FirstOrDefault(element =>
+                        element.Name.LocalName == "sldId" &&
+                        (string)element.Attribute("id") ==
+                            slideId.ToString());
+                    if (id == null)
+                        throw new InvalidOperationException(
+                            "CHART_PACKAGE_SLIDE_MISSING");
+                    var relationshipId = (string)id.Attribute(
+                        XName.Get("id",
+                            "http://schemas.openxmlformats.org/officeDocument/2006/relationships"));
+                    var slidePart = RelationshipTarget(archive,
+                        presentationPart, relationshipId);
+                    if (slidePart == null)
+                        throw new InvalidOperationException(
+                            "CHART_PACKAGE_RELATIONSHIP_MISSING");
+                    var visited = new HashSet<string>(
+                        StringComparer.OrdinalIgnoreCase);
+                    var parts = new SortedDictionary<string, string>(
+                        StringComparer.Ordinal);
+                    CollectPackageParts(archive, slidePart, visited, parts,
+                        0);
+                    return TaskCheckpointStore.Fingerprint(string.Join("|",
+                        parts.Select(part => part.Key + ":" + part.Value)));
+                }
+            }
+            finally { if (File.Exists(temporary)) File.Delete(temporary); }
+        }
+
+        private static XDocument LoadPackageXml(ZipArchive archive,
+            string path)
+        {
+            var entry = archive.GetEntry(path);
+            if (entry == null)
+                throw new InvalidOperationException(
+                    "CHART_PACKAGE_PART_MISSING: " + path);
+            using (var stream = entry.Open()) return XDocument.Load(stream);
+        }
+
+        private static string RelationshipPath(string part)
+        {
+            var slash = part.LastIndexOf('/');
+            return part.Substring(0, slash + 1) + "_rels/" +
+                part.Substring(slash + 1) + ".rels";
+        }
+
+        private static string ResolvePackageTarget(string part,
+            string target)
+        {
+            var root = new Uri("http://scribble-package/");
+            var source = new Uri(root, part);
+            return Uri.UnescapeDataString(new Uri(source, target)
+                .AbsolutePath.TrimStart('/'));
+        }
+
+        private static string RelationshipTarget(ZipArchive archive,
+            string part, string relationshipId)
+        {
+            var relationships = LoadPackageXml(archive,
+                RelationshipPath(part));
+            var item = relationships.Descendants().FirstOrDefault(element =>
+                element.Name.LocalName == "Relationship" &&
+                (string)element.Attribute("Id") == relationshipId);
+            if (item == null || (string)item.Attribute("TargetMode") ==
+                "External") return null;
+            return ResolvePackageTarget(part,
+                (string)item.Attribute("Target"));
+        }
+
+        private static void CollectPackageParts(ZipArchive archive,
+            string part, HashSet<string> visited,
+            SortedDictionary<string, string> parts, int depth)
+        {
+            if (depth > 8 || visited.Count >= 48)
+                throw new InvalidOperationException(
+                    "CHART_PACKAGE_RELATIONSHIP_LIMIT");
+            if (!visited.Add(part)) return;
+            var entry = archive.GetEntry(part);
+            if (entry == null || entry.Length > 30 * 1024 * 1024)
+                throw new InvalidOperationException(
+                    "CHART_PACKAGE_PART_INVALID: " + part);
+            using (var stream = entry.Open())
+            using (var hash = SHA256.Create())
+                parts[part] = BitConverter.ToString(hash.ComputeHash(stream))
+                    .Replace("-", "");
+            var relationsPath = RelationshipPath(part);
+            if (archive.GetEntry(relationsPath) == null) return;
+            var relationships = LoadPackageXml(archive, relationsPath);
+            foreach (var item in relationships.Descendants().Where(element =>
+                element.Name.LocalName == "Relationship" &&
+                (string)element.Attribute("TargetMode") != "External"))
+            {
+                var target = (string)item.Attribute("Target");
+                if (string.IsNullOrEmpty(target))
+                    throw new InvalidOperationException(
+                        "CHART_PACKAGE_RELATIONSHIP_INVALID");
+                CollectPackageParts(archive, ResolvePackageTarget(part,
+                    target), visited, parts, depth + 1);
+            }
         }
         public static object ReadPage(object presentation, object slide, int offset, bool preview)
         {
