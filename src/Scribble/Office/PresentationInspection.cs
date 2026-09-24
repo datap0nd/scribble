@@ -573,7 +573,19 @@ namespace Scribble.Office
             if (entry == null || entry.Length > 30 * 1024 * 1024)
                 throw new InvalidOperationException(
                     "CHART_PACKAGE_PART_INVALID: " + part);
-            using (var stream = entry.Open())
+            if (part.StartsWith("ppt/embeddings/",
+                    StringComparison.OrdinalIgnoreCase) &&
+                part.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+            {
+                using (var stream = entry.Open())
+                using (var buffer = new MemoryStream())
+                {
+                    stream.CopyTo(buffer);
+                    parts[part] = EmbeddedWorkbookFingerprint(
+                        buffer.ToArray());
+                }
+            }
+            else using (var stream = entry.Open())
             using (var hash = SHA256.Create())
                 parts[part] = BitConverter.ToString(hash.ComputeHash(stream))
                     .Replace("-", "");
@@ -590,6 +602,57 @@ namespace Scribble.Office
                         "CHART_PACKAGE_RELATIONSHIP_INVALID");
                 CollectPackageParts(archive, ResolvePackageTarget(part,
                     target), visited, parts, depth + 1);
+            }
+        }
+
+        private static string EmbeddedWorkbookFingerprint(byte[] data)
+        {
+            if (data == null || data.Length > 30 * 1024 * 1024)
+                throw new InvalidOperationException(
+                    "CHART_PACKAGE_WORKBOOK_INVALID");
+            using (var stream = new MemoryStream(data))
+            using (var archive = new ZipArchive(stream, ZipArchiveMode.Read))
+            {
+                if (archive.Entries.Count > 500 ||
+                    archive.Entries.Sum(entry => entry.Length) >
+                        150L * 1024 * 1024 ||
+                    archive.Entries.Select(entry => entry.FullName)
+                        .Distinct(StringComparer.Ordinal).Count() !=
+                            archive.Entries.Count)
+                    throw new InvalidOperationException(
+                        "CHART_PACKAGE_WORKBOOK_INVALID");
+                var parts = new SortedDictionary<string, string>(
+                    StringComparer.Ordinal);
+                foreach (var entry in archive.Entries)
+                {
+                    if (entry.Length > 30 * 1024 * 1024)
+                        throw new InvalidOperationException(
+                            "CHART_PACKAGE_WORKBOOK_INVALID");
+                    if (entry.FullName == "docProps/core.xml")
+                    {
+                        using (var part = entry.Open())
+                        {
+                            var xml = XDocument.Load(part);
+                            var revision = XName.Get("revision",
+                                "http://schemas.openxmlformats.org/package/2006/metadata/core-properties");
+                            var modified = XName.Get("modified",
+                                "http://purl.org/dc/terms/");
+                            foreach (var node in xml.Descendants().Where(
+                                element => element.Name == revision ||
+                                    element.Name == modified).ToArray())
+                                node.Remove();
+                            parts[entry.FullName] =
+                                TaskCheckpointStore.Fingerprint(xml.ToString(
+                                    SaveOptions.DisableFormatting));
+                        }
+                    }
+                    else using (var part = entry.Open())
+                    using (var hash = SHA256.Create())
+                        parts[entry.FullName] = BitConverter.ToString(
+                            hash.ComputeHash(part)).Replace("-", "");
+                }
+                return TaskCheckpointStore.Fingerprint(string.Join("|",
+                    parts.Select(part => part.Key + ":" + part.Value)));
             }
         }
         public static object ReadPage(object presentation, object slide, int offset, bool preview)

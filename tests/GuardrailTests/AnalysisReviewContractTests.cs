@@ -48,6 +48,56 @@ namespace GuardrailTests
             finally { Directory.Delete(root, true); }
         }
 
+        public static void ChartFingerprintPreservesEmbeddedWorkbookData()
+        {
+            var method = typeof(PresentationInspection).GetMethod(
+                "EmbeddedWorkbookFingerprint", BindingFlags.NonPublic |
+                BindingFlags.Static);
+            Check(method != null,
+                "The chart workbook fingerprint boundary is missing.");
+            Func<int, string, string, string, string> fingerprint =
+                (revision, modified, title, value) => (string)method.Invoke(
+                    null, new object[] { ChartWorkbookPackage(revision,
+                        modified, title, value) });
+            var original = fingerprint(1, "2026-09-24T12:00:00Z",
+                "Ledger", "42");
+            Check(original == fingerprint(2, "2026-09-24T12:01:00Z",
+                    "Ledger", "42"),
+                "PowerPoint's embedded workbook revision metadata changed the chart fingerprint.");
+            Check(original != fingerprint(1, "2026-09-24T12:00:00Z",
+                    "Ledger", "43") &&
+                original != fingerprint(1, "2026-09-24T12:00:00Z",
+                    "Changed title", "42"),
+                "A workbook value or substantive metadata edit escaped the chart fingerprint.");
+        }
+
+        private static byte[] ChartWorkbookPackage(int revision,
+            string modified, string title, string value)
+        {
+            using (var stream = new MemoryStream())
+            {
+                using (var archive = new ZipArchive(stream,
+                    ZipArchiveMode.Create, true))
+                {
+                    Action<string, string> add = (name, content) =>
+                    {
+                        using (var writer = new StreamWriter(
+                            archive.CreateEntry(name).Open(),
+                            new UTF8Encoding(false)))
+                            writer.Write(content);
+                    };
+                    add("docProps/core.xml",
+                        "<cp:coreProperties xmlns:cp='http://schemas.openxmlformats.org/package/2006/metadata/core-properties' xmlns:dcterms='http://purl.org/dc/terms/' xmlns:dc='http://purl.org/dc/elements/1.1/'><cp:revision>" +
+                        revision + "</cp:revision><dcterms:modified>" +
+                        modified + "</dcterms:modified><dc:title>" +
+                        title + "</dc:title></cp:coreProperties>");
+                    add("xl/worksheets/sheet1.xml", "<sheet><value>" +
+                        value + "</value></sheet>");
+                }
+                return stream.ToArray();
+            }
+        }
+
         private static void WritePdfBoundaryPackage(string path, int width,
             int revision, string title, string chartValue)
         {
