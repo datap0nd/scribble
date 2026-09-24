@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "execution_kind": "native_disposable_phase5_excel_binding",
+  "commit": "54ba4d9dd0eb7b075f94a0372add24813b613957",
+  "ci_run": 36004759291,
+  "assembly_sha256": "cf4d6d6247c960f39b0df95b3092b20dd032558526e84c7296e08767a2b3d4e4",
+  "target_binding_passed": true,
+  "before_image_recovery_passed": false,
+  "full_acceptance_passed": false,
+  "note": "Disposable native workbooks only. The cell edit and draft sheet stayed on the request-bound workbook after an active-window switch; a renamed bound sheet failed before write permission was consumed."
+}
