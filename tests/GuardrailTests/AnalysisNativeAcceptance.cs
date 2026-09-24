@@ -38,6 +38,7 @@ namespace GuardrailTests
             var recoveryPassed = false;
             var typedReviewPassed = false;
             var rendererRepairPassed = false;
+            var contentRecoveryPassed = false;
             var typedDeckHandoffPassed = false;
             var nativeDateColumnPassed = false;
             var powerpointExited = false;
@@ -824,6 +825,108 @@ namespace GuardrailTests
                             fixture.Item1.Snapshots[0].SourceInstanceId),
                         "The rendered slide lost its host-derived citation.");
                 }
+                stage = "powerpoint_content_recovery_injection";
+                var recoveryStore = new TaskCheckpointStore(Path.Combine(
+                    output, "content-recovery-checkpoint"));
+                var recoveryInput = new ChatCompletionRequest
+                {
+                    model = "offline-test",
+                    messages = new List<object>
+                    {
+                        new ChatCompletionInputMessage
+                        { role = "user", content = "Recover the native title" }
+                    }
+                };
+                var recoveryTask = new TaskContextManager(recoveryInput,
+                    "excel", "Recover the native title", recoveryStore);
+                recoveryTask.PersistAnalysis(fixture.Item1);
+                var recoveryPages = AnalysisDocumentPilot
+                    .CapturePresentationPages((object)deck, fixture.Item1,
+                        fixture.Item2);
+                var recoveryPage = recoveryPages[0];
+                var originalTitle = fixture.Item2.Slides[0].Title;
+                var correctedTitle =
+                    "Verified June revenue from ledger";
+                var desiredPlan = new JavaScriptSerializer
+                    { MaxJsonLength = 16000000 }
+                    .Deserialize<AnalysisDocumentPlan>(new JavaScriptSerializer
+                    { MaxJsonLength = 16000000 }.Serialize(fixture.Item2));
+                desiredPlan.Slides[0].Title = correctedTitle;
+                var nativePatch = new AnalysisDocumentPatch
+                {
+                    ContextId = "native-failure-injection",
+                    LogicalSlideId = recoveryPage.LogicalSlideId,
+                    TargetId = "title", SegmentIndex = 0,
+                    ExpectedText = originalTitle,
+                    ReplacementText = correctedTitle
+                };
+                var expectedBudget = AnalysisRepairBudget.CrossApp()
+                    .ConsumePatch(nativePatch.LogicalSlideId,
+                        nativePatch.TargetId);
+                var contentReservation = recoveryTask
+                    .ReserveAnalysisContentPatch(recoveryPage,
+                        nativePatch, desiredPlan, originalTitle,
+                        correctedTitle, "native-input", expectedBudget,
+                        true);
+                var staleReservation = new AnalysisContentPatchReservation
+                {
+                    LogicalSlideId = contentReservation.LogicalSlideId,
+                    NativeSlideId = contentReservation.NativeSlideId,
+                    NativeStateFingerprint = "stale-native-state",
+                    NativeBeforeText = originalTitle,
+                    NativeAfterText = correctedTitle
+                };
+                var stalePatchRejected = false;
+                try
+                {
+                    AnalysisDocumentPilot.ApplyNativeContentPatch(
+                        (object)deck, recoveryPage, staleReservation);
+                }
+                catch (InvalidOperationException error)
+                {
+                    stalePatchRejected = error.Message.Contains(
+                        "REPAIR_RESERVATION_CHANGED");
+                }
+                Check(stalePatchRejected &&
+                    AnalysisDocumentPilot.ReadNativePatchText(
+                        (object)deck, recoveryPage, originalTitle) ==
+                        originalTitle,
+                    "A stale content reservation changed the native slide.");
+                AnalysisDocumentPilot.ApplyNativeContentPatch(
+                    (object)deck, recoveryPage, contentReservation);
+                var changedPages = AnalysisDocumentPilot
+                    .CapturePresentationPages((object)deck, fixture.Item1,
+                        desiredPlan);
+                var changedPage = changedPages[0];
+                var resumedRecovery = new TaskContextManager(recoveryInput,
+                    "excel", recoveryTask.State.Objective, recoveryStore,
+                    recoveryStore.Load(recoveryTask.State.Id));
+                var blockedReview = false;
+                try
+                {
+                    resumedRecovery.ReserveAnalysisReview(fixture.Item1,
+                        fixture.Item2, AnalysisReviewContract.Context(
+                            fixture.Item1, fixture.Item2, recoveryPages),
+                        true);
+                }
+                catch (InvalidOperationException error)
+                {
+                    blockedReview = error.Message.Contains(
+                        "REPAIR_PENDING_RECONCILIATION");
+                }
+                Check(blockedReview && changedPage.NativeStateFingerprint !=
+                    recoveryPage.NativeStateFingerprint,
+                    "An unreceipted native text write resumed as approved.");
+                resumedRecovery.ReconcileAnalysisContentPatch(
+                    contentReservation, changedPage,
+                    AnalysisDocumentPilot.ReadNativePatchText(
+                        (object)deck, changedPage, correctedTitle));
+                Check(!resumedRecovery.State.HostData.ContainsKey(
+                        "analysis_pending_content_patch") &&
+                    resumedRecovery.State.HostData.ContainsKey(
+                        "analysis_deck_plan"),
+                    "Native text readback did not reconcile the pending patch.");
+                contentRecoveryPassed = true;
                 slidesPassed = true;
             }
             catch (Exception error)
@@ -866,6 +969,7 @@ namespace GuardrailTests
                 isolated_retry_passed = recoveryPassed,
                 typed_review_contract_passed = typedReviewPassed,
                 renderer_repair_passed = rendererRepairPassed,
+                content_recovery_passed = contentRecoveryPassed,
                 typed_deck_handoff_passed = typedDeckHandoffPassed,
                 native_date_column_passed = nativeDateColumnPassed,
                 powerpoint_exited = powerpointExited,
@@ -881,7 +985,7 @@ namespace GuardrailTests
             Console.WriteLine(json);
             return workbookPassed && slidesPassed && sourcePreserved &&
                 recoveryPassed && typedReviewPassed && rendererRepairPassed &&
-                typedDeckHandoffPassed
+                typedDeckHandoffPassed && contentRecoveryPassed
                 ? 0 : 1;
         }
 
