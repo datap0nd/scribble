@@ -540,11 +540,15 @@ namespace Scribble.Office
                     // The dual metric rail repeats two numbers as large callouts.
                     // Omit simple metric-only source lines from the body and put
                     // their original labels beneath the callouts instead.
-                    var bodyPoints = i == dualHeroIndex
+                    var bodyPoints = i == dualHeroIndex || compactHero
                         ? card.Points.Select(point => StripHeroClauses(point, evidenceHeroes[i], secondaryHero[i]))
                             .Where(point => point.Length > 0)
                         : card.Points;
                     var body = string.Join("\n", bodyPoints);
+                    if (compactHero && !string.IsNullOrWhiteSpace(
+                        heroLabels[i, 0]))
+                        body = heroLabels[i, 0] + (body.Length == 0 ?
+                            "" : "\n" + body);
                     if (body.Length > 0 || (!compact && heroMode && !string.IsNullOrEmpty(evidenceHeroes[i])))
                     {
                         var bodyStart = compact ? 45f : 64f;
@@ -635,7 +639,8 @@ namespace Scribble.Office
             if (string.IsNullOrWhiteSpace(point) || string.IsNullOrWhiteSpace(hero)) return false;
             var index = point.IndexOf(hero, StringComparison.Ordinal);
             if (index < 0 || point.IndexOf(hero, index + hero.Length, StringComparison.Ordinal) >= 0) return false;
-            var label = point.Remove(index, hero.Length).Trim().TrimEnd(':', '=');
+            var label = point.Remove(index, hero.Length).Trim()
+                .TrimEnd('.', ':', '=').Trim().TrimEnd(':', '=');
             return label.Length > 0 && label.Length <= 32 &&
                 Regex.IsMatch(label, @"^[\p{L}\s:/%=-]+$");
         }
@@ -654,7 +659,7 @@ namespace Scribble.Office
                 if (IsStandaloneHeroPoint(clause, hero)) return "";
                 clause = Regex.Replace(clause,
                     @"\b(?:revenue|cost|margin|sales|budget|profit|headcount|rate|total)\s*(?:EUR|USD|%)?\s*[:=]?\s*" +
-                    Regex.Escape(hero) + @"(?![A-Za-z0-9])", "", RegexOptions.IgnoreCase).Trim().TrimStart(',', ':', '-', '–');
+                    Regex.Escape(hero) + @"(?![A-Za-z0-9])", "", RegexOptions.IgnoreCase).Trim().TrimStart(',', ':', '.', '-', '–').TrimStart();
             }
             return Regex.Replace(clause, @"^(?:across|at|is|was)\s+", "", RegexOptions.IgnoreCase).Trim();
         }

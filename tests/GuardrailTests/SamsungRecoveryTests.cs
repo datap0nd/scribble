@@ -360,6 +360,28 @@ namespace GuardrailTests
                     "Revenue EUR 82,992 across 24 ledger records; Cost EUR 36,714", "82,992", "36,714") ==
                 "24 ledger records",
                 "Evidence-card KPI callouts repeated the same metrics in body copy.");
+            var repairedCardDraft = Invoke(Type("PresentationDraftWriter"),
+                "ParseSlides", null, (object)json.Deserialize<object[]>(
+                "[{\"id\":\"review\",\"layout\":\"cards\",\"title\":\"Operating review\",\"cards\":[{" +
+                "\"heading\":\"June measure\",\"points\":[\"June revenue EUR: 82,992.\"]},{" +
+                "\"heading\":\"Cost and margin\",\"points\":[\"Cost EUR: 36,714. Gross margin: 55.76%.\"]},{" +
+                "\"heading\":\"Scope\",\"points\":[\"Group comparisons use June records only.\"]},{" +
+                "\"heading\":\"Interpretation\",\"points\":[\"A planned action is not a completed result.\"]}]}]"));
+            var repairedCardPage = ((IEnumerable)Invoke(
+                Type("PresentationDraftWriter"), "ComposeSamsung", null,
+                repairedCardDraft)).Cast<object>().Single();
+            var repairedCardText = ((IEnumerable)repairedCardPage.GetType()
+                .GetField("Elements", BindingFlags.Instance |
+                    BindingFlags.NonPublic).GetValue(repairedCardPage))
+                .Cast<object>().Select(element => (string)element.GetType()
+                    .GetField("Text", BindingFlags.Instance |
+                        BindingFlags.NonPublic).GetValue(element)).ToArray();
+            Check(repairedCardText.Count(text => text.Contains("82,992")) == 1 &&
+                repairedCardText.Count(text => text.Contains("36,714")) == 1 &&
+                repairedCardText.Any(text => text.Contains("55.76%")) &&
+                repairedCardText.Any(text => text.Contains("June records only")) &&
+                repairedCardText.Any(text => text.Contains("planned action")),
+                "Promoted PP01 evidence-card metrics were repeated or source content was dropped.");
             var coverHeadline = new[] { json.Deserialize<Dictionary<string, object>>(
                 "{\"id\":\"headline\",\"layout\":\"cover\",\"title\":\"June results\"}") };
             Reject(() => SamsungAuthoringPolicy.ValidateRequestedHeadlineLayout(
