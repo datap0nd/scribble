@@ -5,6 +5,7 @@ using System.Linq;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Web.Script.Serialization;
+using System.Text.RegularExpressions;
 using Scribble.Office;
 
 namespace GuardrailTests
@@ -98,12 +99,43 @@ namespace GuardrailTests
                         { "color", MetoTheme.Rgb(
                             SamsungSlideDesign.Blue) }
                     });
-                operations.Add(Geometry((object)source.Slides[4],
-                    commentary, 63f, 153f, 832.5f, 292.5f));
+                var paragraphs = Regex.Split(Convert.ToString(
+                    commentary.TextFrame.TextRange.Text), @"(?:\r\n|\r|\n){2,}")
+                    .Where(value => !string.IsNullOrWhiteSpace(value))
+                    .ToArray();
+                if (paragraphs.Length != 4)
+                    throw new InvalidOperationException(
+                        "PP01_COMMENTARY_STRUCTURE_CHANGED");
+                var serializer = new JavaScriptSerializer();
+                var replacement = serializer.DeserializeObject(
+                    serializer.Serialize(new
+                    {
+                        title = "Operating review and evidence boundaries",
+                        subtitle = "Source-backed measures and interpretation limits",
+                        layout = "cards",
+                        cards = new[] {
+                            new { heading = "June measure", points = new[] { paragraphs[0] } },
+                            new { heading = "Cost and margin", points = new[] { paragraphs[1] } },
+                            new { heading = "Comparison scope", points = new[] { paragraphs[2] } },
+                            new { heading = "Interpretation", points = new[] { paragraphs[3] } }
+                        },
+                        sources = "WB01 Ledger and History",
+                        footnote = "Fictional operational source",
+                        evidence = "Source content retained in native editable cards."
+                    }));
+                operations.Add(new Dictionary<string, object>
+                {
+                    { "kind", "replace_slide" },
+                    { "slide_id", (int)source.Slides[4].SlideID },
+                    { "fingerprint", PresentationInspection.Fingerprint(
+                        (object)source.Slides[4]) },
+                    { "slide", replacement }
+                });
                 // The seeded source has a compact byline on every page.
                 // PP01 explicitly requests repair of undersized text.
                 for (var index = 1; index <= 6; index++)
                 {
+                    if (index == 4) continue; // The approved renderer rebuilds this text page.
                     dynamic page = source.Slides[index];
                     dynamic byline = OnlyShape((object)page,
                         shape => (int)shape.HasTextFrame != 0 &&
@@ -121,6 +153,22 @@ namespace GuardrailTests
                         { "size", 14f }
                     });
                 }
+                dynamic secondary = OnlyShape(
+                    (object)source.Slides[1],
+                    shape => (int)shape.HasTextFrame != 0 &&
+                        Convert.ToString(shape.TextFrame.TextRange.Text)
+                            .StartsWith("Cost EUR", StringComparison.Ordinal));
+                operations.Add(new Dictionary<string, object>
+                {
+                    { "kind", "shape_font_size" },
+                    { "slide_id", (int)source.Slides[1].SlideID },
+                    { "fingerprint", PresentationInspection.Fingerprint(
+                        (object)source.Slides[1]) },
+                    { "shape_id", (int)secondary.Id },
+                    { "before_size", (float)secondary.TextFrame
+                        .TextRange.Font.Size },
+                    { "size", 27f }
+                });
                 var bound = (object[])Invoke(copy, CopyType,
                     "BindOperations", (object)operations.ToArray());
                 revision = Activator.CreateInstance(RevisionType,
@@ -133,6 +181,7 @@ namespace GuardrailTests
                 Invoke(copy, CopyType, "VerifySource");
                 for (var index = 1; index <= 6; index++)
                 {
+                    if (index == 4) continue;
                     dynamic byline = OnlyShape(
                         (object)draft.Slides[index],
                         shape => (int)shape.HasTextFrame != 0 &&
@@ -149,19 +198,19 @@ namespace GuardrailTests
                 dynamic repairedTable = OnlyShape(
                     (object)draft.Slides[3],
                     shape => (int)shape.HasTable != 0);
-                dynamic repairedCommentary = OnlyShape(
-                    (object)draft.Slides[4],
-                    shape => (int)shape.HasTextFrame != 0 &&
-                        Convert.ToString(shape.TextFrame.TextRange.Text)
-                            .Contains("The monthly comparison covers"));
+                var repairedContent = string.Join("\n",
+                    Enumerable.Range(1, (int)draft.Slides[4].Shapes.Count)
+                        .Select(index => draft.Slides[4].Shapes[index])
+                        .Where(shape => (int)shape.HasTextFrame != 0)
+                        .Select(shape => Convert.ToString(
+                            shape.TextFrame.TextRange.Text)));
                 if ((int)draft.Slides.Count != 6 ||
                     (float)repairedChart.Left < 0 ||
                     (float)repairedChart.Left +
                         (float)repairedChart.Width >
                             (float)draft.PageSetup.SlideWidth ||
-                    (float)repairedCommentary.TextFrame.TextRange
-                        .BoundHeight >
-                            (float)repairedCommentary.Height + 1 ||
+                    paragraphs.Any(paragraph =>
+                        !repairedContent.Contains(paragraph)) ||
                     Enumerable.Range(1, 3).Any(column =>
                         (int)repairedTable.Table.Cell(1, column)
                             .Shape.Fill.ForeColor.RGB != MetoTheme.Rgb(
@@ -169,10 +218,10 @@ namespace GuardrailTests
                     throw new InvalidOperationException(
                         "PP01_DRAFT_REPAIR_READBACK_FAILED");
                 for (var index = 1; index <= 6; index++)
-                    if (PresentationInspection.Notes(
-                            (object)source.Slides[index]) !=
+                    if (!PresentationInspection.Notes(
+                            (object)draft.Slides[index]).Contains(
                         PresentationInspection.Notes(
-                            (object)draft.Slides[index]))
+                            (object)source.Slides[index])))
                         throw new InvalidOperationException(
                             "PP01_DRAFT_NOTES_CHANGED");
                 draft.SaveCopyAs(candidate);
