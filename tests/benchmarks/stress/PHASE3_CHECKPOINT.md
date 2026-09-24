@@ -222,16 +222,49 @@ passed, and the architectural-feasibility pilot is not authorized yet.
   11:22:26 on 24 September). Its report correctly recorded
   `native_date_column_passed=true`, `powerpoint_exited=true`,
   `full_acceptance_passed=false`, and an unapproved pending draft. Known
-  pilot preview exports are suppressed, but this Office build remains
-  unstable while creating a second native chart deck. The review path
-  therefore fails closed; no model approval or Phase 3 exit claim follows.
+  pilot preview exports are suppressed, but the cause of the remaining
+  crash was not yet isolated. The review path therefore failed closed;
+  no model approval or Phase 3 exit claim followed.
+
+## Native chart review recovery (24 September 2026)
+
+- Closing the first chart deck (`c48d2f5`) did not prevent the same
+  `chart.dll` crash. A trace from `445caf1` located it after chart creation
+  and before the second page's journal receipt completed. The crash was in
+  the journal's live chart fingerprint path, not the chart writer or the
+  presence of a second open deck.
+- `908987c` fingerprints a chart page using PowerPoint `SaveCopyAs` and
+  hashes the slide package with its related chart, embedded workbook and
+  layout parts. The journal and review freshness checks use this package
+  state instead of reopening the fragile live chart COM object. Edits to
+  table cells and chart series invalidate the previous receipt. A restored
+  edit requires a fresh review because PowerPoint can retain a different
+  native package state even when displayed text matches again.
+- The development pilot exports the unsaved native deck as PDF using
+  PowerPoint format 32, then renders each bounded page with PDFtoImage
+  5.4.0. The unsaved deck's name, `Saved` state and native fingerprints are
+  checked before accepting any page image. Every PNG is hashed into its
+  review page record; missing or oversized pages fail closed before a model
+  request. A disposable unsaved chart deck kept its name and unsaved state
+  through the PDF export. No chart-slide `Slide.Export` is attempted.
+- CI-built `035b6f4` passed three sequential disposable native runs on
+  this Office build. Each reported `native_date_column_passed=true`,
+  `typed_deck_handoff_passed=true`, `typed_review_contract_passed=true`,
+  `renderer_repair_passed=true`, `four_slides_passed=true`,
+  `source_preserved=true`, `isolated_retry_passed=true`, and
+  `powerpoint_exited=false`. The chart review page was saved as
+  `analysis-slide-02.png`; its native chart, values and table were visually
+  inspected. These are offline hand-authored runs with a fake reviewer.
+  Their `full_acceptance_passed=false` field remains correct: no hosted
+  model, calibrated or identified human visual attestation, broad recovery
+  qualification, or release gate has passed.
 
 ## Still required for the Phase 3 exit gate
 
-- Validate and finish the development-only analysis-bound PowerPoint handoff
-  through a clean native run and offline failure injection. Its typed review
-  path is present, but content findings still need targeted corrective
-  operations and recovery receipts before the route can pass. Migrate the
+- Finish the development-only analysis-bound PowerPoint handoff with
+  offline content-finding failure injection. Its typed native review path
+  passes the hand-authored harness, but content findings still need targeted
+  corrective operations and recovery receipts. Migrate the
   remaining supported Samsung capabilities in `DocumentDraftHost.PowerPoint`
   and `DocumentDraftHost.SlideRepair`, then retire their old brief/number/native
   regex finding filters as each capability moves.
