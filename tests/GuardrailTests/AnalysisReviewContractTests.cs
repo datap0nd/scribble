@@ -241,6 +241,73 @@ namespace GuardrailTests
                 repaired.Plan.Slides[0].Title == "Verified June revenue" &&
                 repaired.Plan.Slides[0].Cards[0].Points[0].FactId == fact.FactId,
                 "A one-field repair altered its source plan or fact reference.");
+            var contentCheckpoint = Path.Combine(Path.GetTempPath(),
+                "scribble-analysis-content-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var contentInput = new ChatCompletionRequest
+                {
+                    model = "offline-test",
+                    messages = new List<object>
+                    {
+                        new ChatCompletionInputMessage
+                        { role = "user", content = "Correct the draft" }
+                    }
+                };
+                var contentStore = new TaskCheckpointStore(
+                    contentCheckpoint);
+                var contentTask = new TaskContextManager(contentInput,
+                    "excel", "Correct the draft", contentStore);
+                contentTask.PersistAnalysis(artifact);
+                var reservedCall = contentTask
+                    .ReserveAnalysisContentPatchRequest(artifact, plan,
+                        context, claimDecision,
+                        claimDecision.Findings.Single(), true);
+                var desired = AnalysisDocumentRepair.Apply(artifact, plan,
+                    context, claimReview, titlePatch,
+                    reservedCall.BudgetReceipt);
+                var contentReservation = contentTask
+                    .ReserveAnalysisContentPatch(page, titlePatch,
+                        desired.Plan, "June revenue",
+                        "Verified June revenue", "input-fingerprint",
+                        desired.BudgetReceipt, true);
+                var resumedContent = new TaskContextManager(contentInput,
+                    "excel", contentTask.State.Objective, contentStore,
+                    contentStore.Load(contentTask.State.Id));
+                Reject(() => resumedContent.ReserveAnalysisReview(
+                    artifact, plan, context, true),
+                    "REPAIR_PENDING_RECONCILIATION");
+                var changedPage = new AnalysisReviewPage
+                {
+                    LogicalSlideId = page.LogicalSlideId,
+                    NativeSlideId = page.NativeSlideId,
+                    ExpectedPageNumber = page.ExpectedPageNumber,
+                    PageOrdinal = page.PageOrdinal,
+                    RenderFingerprint = "sha256:corrected",
+                    NativeStateFingerprint = "sha256:corrected-native"
+                };
+                Reject(() => resumedContent.ReconcileAnalysisContentPatch(
+                    contentReservation, changedPage, "wrong text"),
+                    "REPAIR_PENDING_RECONCILIATION");
+                resumedContent.ReconcileAnalysisContentPatch(
+                    contentReservation, changedPage,
+                    "Verified June revenue");
+                var resumedPlan = json.Deserialize<AnalysisDocumentPlan>(
+                    resumedContent.State.HostData["analysis_deck_plan"]);
+                Check(resumedPlan.Slides[0].Title ==
+                        "Verified June revenue" &&
+                    !resumedContent.State.HostData.ContainsKey(
+                        "analysis_pending_content_patch") &&
+                    AnalysisRepairBudget.Read(resumedContent.State.HostData[
+                        "analysis_repair_budget"]).PatchedTargets.Contains(
+                            "june/title"),
+                    "Content repair lost its durable plan or patch receipt.");
+            }
+            finally
+            {
+                if (Directory.Exists(contentCheckpoint))
+                    Directory.Delete(contentCheckpoint, true);
+            }
             Reject(() => AnalysisDocumentRepair.Apply(artifact, plan,
                 context, claimReview, titlePatch, repaired.BudgetReceipt),
                 "REPAIR_TARGET_ALREADY_PATCHED");

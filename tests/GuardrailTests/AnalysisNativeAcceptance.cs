@@ -41,6 +41,7 @@ namespace GuardrailTests
             var typedDeckHandoffPassed = false;
             var nativeDateColumnPassed = false;
             var powerpointExited = false;
+            string taskOwner = null;
             var images = new List<string>();
             var stage = "setup";
             var output = Path.GetDirectoryName(Path.GetFullPath(reportPath));
@@ -151,6 +152,7 @@ namespace GuardrailTests
                     "read-checkpoint"));
                 var readTask = new TaskContextManager(readInput, "excel",
                     "Analyze the disposable ledger", readStore);
+                taskOwner = readTask.State.Id;
                 readTask.AfterTool(readCall, readResult);
                 var bound = readTask.LoadAnalysis();
                 Check(bound != null && bound.Facts.Count == 4 &&
@@ -836,6 +838,20 @@ namespace GuardrailTests
                 if ((object)deck != null) try { deck.Close(); } catch { }
                 if ((object)typedDeck != null)
                     try { typedDeck.Close(); } catch { }
+                if ((object)powerPoint != null && taskOwner != null)
+                    try
+                    {
+                        for (var index = (int)powerPoint.Presentations.Count;
+                            index >= 1; index--)
+                        {
+                            dynamic candidate =
+                                powerPoint.Presentations[index];
+                            if ((string)candidate.Tags["ScribbleTask"] ==
+                                taskOwner)
+                                candidate.Close();
+                        }
+                    }
+                    catch { }
                 if ((object)workbook != null) try { workbook.Close(false); } catch { }
                 if ((object)excel != null) try { excel.Quit(); } catch { }
                 // PowerPoint can be a shared singleton, so close only our deck.

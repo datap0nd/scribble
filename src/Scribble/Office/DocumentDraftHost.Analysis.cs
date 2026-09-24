@@ -301,6 +301,8 @@ namespace Scribble.Office
                         contentReservation, patchedPage, nativeReadback);
                     plan = repaired.Plan;
                 }
+                OfficeTaskBinding.Validate(_taskContext.State, "excel",
+                    _hostApplication);
                 AnalysisWorkbookSourceGuard.Validate(_hostApplication,
                     artifact);
                 _taskContext.State.PresentationReviewReceipt =
