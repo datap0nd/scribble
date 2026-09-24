@@ -31,8 +31,8 @@ namespace Scribble.Office
             var before = Hash(path);
             var snapshot = OpenXmlWorkbookSnapshotReader.Capture(path,
                 Path.GetFullPath(path), before, cancellationToken);
-            var table = snapshot.Tables.SingleOrDefault(item =>
-                item.Name == "Ledger") ?? throw new InvalidOperationException(
+            var table = snapshot.Tables.SingleOrDefault(sheet =>
+                sheet.Name == "Ledger") ?? throw new InvalidOperationException(
                     "MONTHLY_LEDGER_MISSING");
             if (table.Rows < 13 || table.Rows > 20000 ||
                 table.Columns < 10 || table.Columns > 256)
