@@ -369,8 +369,23 @@ namespace Scribble.Office
                     packageFirst + "/" + packageSecond);
             }
             _draftFingerprints[draftSlideId] = second;
+            var sealedContent = PresentationInspection
+                .ContentFingerprint((object)slide);
+            var sealedPackage = PresentationInspection
+                .PackageSlideFingerprint((object)slide);
             VerifySource();
-            VerifyDraft();
+            try { VerifyDraft(); }
+            catch (InvalidOperationException error) when (error.Message
+                .StartsWith("REVISION_COPY_DRAFT_CHANGED: slide " +
+                    draftSlideId, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(error.Message +
+                    " sealed=" + second + " content=" + sealedContent +
+                    "/" + PresentationInspection.ContentFingerprint(
+                        (object)slide) + " package=" + sealedPackage +
+                    "/" + PresentationInspection.PackageSlideFingerprint(
+                        (object)slide), error);
+            }
             return facts;
         }
 
@@ -391,12 +406,14 @@ namespace Scribble.Office
                 dynamic slide = draft.Slides[index];
                 var id = (int)slide.SlideID;
                 string expected;
+                var actual = PresentationInspection.Fingerprint(
+                    (object)slide);
                 if (_slideIds[_sourceOrder[index - 1]] != id ||
                     !_draftFingerprints.TryGetValue(id, out expected) ||
-                    PresentationInspection.Fingerprint((object)slide) !=
-                        expected)
+                    actual != expected)
                     throw new InvalidOperationException(
-                        "REVISION_COPY_DRAFT_CHANGED: slide " + id);
+                        "REVISION_COPY_DRAFT_CHANGED: slide " + id +
+                        " expected=" + expected + " actual=" + actual);
             }
         }
 
