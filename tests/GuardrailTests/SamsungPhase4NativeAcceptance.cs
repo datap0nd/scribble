@@ -4,7 +4,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
+using System.Threading;
 using System.Web.Script.Serialization;
 using Scribble.Office;
 
@@ -112,11 +114,15 @@ namespace GuardrailTests
                         for (var shapeIndex = 1; shapeIndex <=
                             (int)native.Shapes.Count; shapeIndex++)
                         {
-                            dynamic shape = native.Shapes[shapeIndex];
-                            var shapeChart = (int)shape.HasChart != 0;
-                            var shapeTable = (int)shape.HasTable != 0;
-                            hasChart |= shapeChart;
-                            hasTable |= shapeTable;
+                            var current = shapeIndex;
+                            var flags = RetryOfficeRead(() =>
+                            {
+                                dynamic shape = native.Shapes[current];
+                                return Tuple.Create((int)shape.HasChart != 0,
+                                    (int)shape.HasTable != 0);
+                            });
+                            hasChart |= flags.Item1;
+                            hasTable |= flags.Item2;
                         }
                         if (hasChart != slide.ContainsKey("chart") ||
                             hasTable != slide.ContainsKey("table"))
@@ -130,28 +136,32 @@ namespace GuardrailTests
                         for (var shapeIndex = 1; shapeIndex <=
                             (int)native.Shapes.Count; shapeIndex++)
                         {
-                            dynamic shape = native.Shapes[shapeIndex];
-                            var shapeChart = (int)shape.HasChart != 0;
-                            var shapeTable = (int)shape.HasTable != 0;
-                            var shapeText = !shapeChart && !shapeTable &&
-                                (int)shape.HasTextFrame != 0;
-                            geometry.Add(new
+                            var current = shapeIndex;
+                            geometry.Add(RetryOfficeRead<object>(() =>
                             {
-                                id = (int)shape.Id,
-                                type = (int)shape.Type,
-                                left = (float)shape.Left,
-                                top = (float)shape.Top,
-                                width = (float)shape.Width,
-                                height = (float)shape.Height,
-                                visible = (int)shape.Visible != 0,
-                                chart = shapeChart,
-                                table = shapeTable,
-                                text = shapeText ? Convert.ToString(
-                                    shape.TextFrame.TextRange.Text) : null,
-                                font_size = shapeText ?
-                                    (float?)shape.TextFrame.TextRange.Font.Size :
-                                    null
-                            });
+                                dynamic shape = native.Shapes[current];
+                                var shapeChart = (int)shape.HasChart != 0;
+                                var shapeTable = (int)shape.HasTable != 0;
+                                var shapeText = !shapeChart && !shapeTable &&
+                                    (int)shape.HasTextFrame != 0;
+                                return new
+                                {
+                                    id = (int)shape.Id,
+                                    type = (int)shape.Type,
+                                    left = (float)shape.Left,
+                                    top = (float)shape.Top,
+                                    width = (float)shape.Width,
+                                    height = (float)shape.Height,
+                                    visible = (int)shape.Visible != 0,
+                                    chart = shapeChart,
+                                    table = shapeTable,
+                                    text = shapeText ? Convert.ToString(
+                                        shape.TextFrame.TextRange.Text) : null,
+                                    font_size = shapeText ?
+                                        (float?)shape.TextFrame.TextRange.Font.Size :
+                                        null
+                                };
+                            }));
                         }
                         pages.Add(new
                         {
@@ -261,6 +271,19 @@ namespace GuardrailTests
             using (var hash = SHA256.Create())
                 return BitConverter.ToString(hash.ComputeHash(stream))
                     .Replace("-", "").ToLowerInvariant();
+        }
+
+        private static T RetryOfficeRead<T>(Func<T> read)
+        {
+            for (var attempt = 0; ; attempt++)
+            {
+                try { return read(); }
+                catch (COMException error) when (
+                    (unchecked((uint)error.ErrorCode) == 0x80010001 ||
+                     unchecked((uint)error.ErrorCode) == 0x8001010A) &&
+                    attempt < 9)
+                { Thread.Sleep(250 * (attempt + 1)); }
+            }
         }
 
         private static void ApplyDefect(dynamic slide,

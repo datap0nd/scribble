@@ -244,6 +244,12 @@ namespace GuardrailTests
             Check((bool)Invoke(Type("PresentationDraftWriter"), "RetryableSamsungChartFailure", null,
                 "write chart data: COMException 0x800A01A8 Exception from HRESULT: 0x800A01A8"),
                 "A transient embedded Excel chart-grid failure should be retried inside the host call.");
+            Check((bool)Invoke(Type("PresentationDraftWriter"), "RetryableSamsungChartFailure", null,
+                "AddChart2: COMException 0x80004005 The chart data grid is already open in Presentation1"),
+                "The transient open chart grid did not receive a bounded retry.");
+            Check(!(bool)Invoke(Type("PresentationDraftWriter"), "RetryableSamsungChartFailure", null,
+                "AddChart2: COMException 0x80004005 Access denied"),
+                "An unrelated chart creation failure was retried as a transient grid error.");
             Check(!(bool)Invoke(Type("PresentationDraftWriter"), "RetryableSamsungChartFailure", null,
                 "series readback: InvalidOperationException Chart values differ"),
                 "A factual native chart mismatch must not be retried as a transient COM failure.");

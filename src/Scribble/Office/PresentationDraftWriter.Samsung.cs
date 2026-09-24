@@ -127,6 +127,8 @@ namespace Scribble.Office
             var message = failure ?? string.Empty;
             return message.IndexOf("write chart data: COMException 0x800A01A8",
                 StringComparison.OrdinalIgnoreCase) >= 0 ||
+                message.IndexOf("AddChart2: COMException 0x80004005 The chart data grid is already open",
+                    StringComparison.OrdinalIgnoreCase) >= 0 ||
                 message.IndexOf("SetSourceData: COMException 0x800A01A8",
                     StringComparison.OrdinalIgnoreCase) >= 0 ||
                 message.IndexOf("series readback: COMException 0x800A01A8",

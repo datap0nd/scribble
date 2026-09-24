@@ -1557,20 +1557,30 @@ namespace Scribble.Office
                 slideChart.DisplayBlanksAs = 1; // xlNotPlotted: preserve gaps.
                 StyleChart(slideChart, chart);
 
-                try
+                // A still-open embedded grid can block the next AddChart2.
+                // Never report this chart complete if its grid did not close.
+                step = "close chart data";
+                Exception closeFailure = null;
+                var closed = false;
+                for (var attempt = 0; attempt < 3 && !closed; attempt++)
                 {
-                    // Alerts off so closing the embedded grid can
-                    // never raise a modal prompt and hang the
-                    // draft.
-                    dataWorkbook.Application.DisplayAlerts = false;
-                    dataWorkbook.Close(true);
+                    try
+                    {
+                        dataWorkbook.Application.DisplayAlerts = false;
+                        dataWorkbook.Close(true);
+                        closed = true;
+                    }
+                    catch (System.Runtime.InteropServices.COMException error)
+                    {
+                        closeFailure = error;
+                        if (attempt < 2)
+                            System.Threading.Thread.Sleep(350 * (attempt + 1));
+                    }
                 }
-                catch
-                {
-                    // Leaving the data grid window open is only
-                    // cosmetic; the chart itself already holds the
-                    // data.
-                }
+                if (!closed)
+                    throw new InvalidOperationException(
+                        "The embedded chart data grid did not close.",
+                        closeFailure);
 
                 TraceNativeChartStage("after-chart-complete");
                 return true;
