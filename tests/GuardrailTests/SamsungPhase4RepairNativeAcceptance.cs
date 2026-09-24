@@ -99,8 +99,8 @@ namespace GuardrailTests
                         { "color", MetoTheme.Rgb(
                             SamsungSlideDesign.Blue) }
                     });
-                var paragraphs = Regex.Split(Convert.ToString(
-                    commentary.TextFrame.TextRange.Text), @"(?:\r\n|\r|\n){2,}")
+                var paragraphs = Regex.Split((string)
+                    commentary.TextFrame.TextRange.Text, @"(?:\r\n|\r|\n){2,}")
                     .Where(value => !string.IsNullOrWhiteSpace(value))
                     .ToArray();
                 if (paragraphs.Length != 4)
