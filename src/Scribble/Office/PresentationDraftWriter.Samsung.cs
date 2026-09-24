@@ -438,9 +438,9 @@ namespace Scribble.Office
                             tokens[tokenIndex].point.LastIndexOf(';', tokens[tokenIndex].match.Index) + 1,
                             tokens[tokenIndex].match.Index - tokens[tokenIndex].point.LastIndexOf(';', tokens[tokenIndex].match.Index) - 1)
                             .Trim().TrimEnd(':', '=');
-                        var standalone = StandaloneHeroLabel(
+                        var standalone = count == 4 ? StandaloneHeroLabel(
                             tokens[tokenIndex].point, tokens[tokenIndex]
-                                .match.Value);
+                                .match.Value) : null;
                         heroLabels[cardIndex, tokenIndex] = standalone ??
                             (preceding.Length > 0 && preceding.Length <= 24
                                 ? preceding : label.Success ?

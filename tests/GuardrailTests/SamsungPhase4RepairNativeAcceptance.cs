@@ -245,12 +245,20 @@ namespace GuardrailTests
                         .Where(shape => (int)shape.HasTextFrame != 0)
                         .Select(shape => Convert.ToString(
                             shape.TextFrame.TextRange.Text)));
+                var promotedFacts = new[] { "82,992", "36,714",
+                    "55.76%" };
+                var requiredLabels = new[] { "June revenue eur",
+                    "Cost EUR", "Gross margin" };
                 if ((int)draft.Slides.Count != 6 ||
                     (float)repairedChart.Left < 0 ||
                     (float)repairedChart.Left +
                         (float)repairedChart.Width >
                             (float)draft.PageSetup.SlideWidth ||
-                    paragraphs.Any(paragraph =>
+                    promotedFacts.Any(value => Regex.Matches(
+                        repairedContent, Regex.Escape(value)).Count != 1) ||
+                    requiredLabels.Any(label => repairedContent.IndexOf(
+                        label, StringComparison.OrdinalIgnoreCase) < 0) ||
+                    paragraphs.Skip(2).Any(paragraph =>
                         !repairedContent.Contains(paragraph)) ||
                     Enumerable.Range(1, 3).Any(column =>
                         (int)repairedTable.Table.Cell(1, column)
