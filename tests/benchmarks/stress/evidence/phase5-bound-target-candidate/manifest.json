@@ -13,6 +13,15 @@
     "merged_preflight_passed": true,
     "focused_offline_binding_and_limit_tests_passed": true
   },
+  "prepermission_preflight_candidate": {
+    "commit": "609b11b15e492c750bd3c3297bafd8921ed84fa2",
+    "ci_run": 36006715750,
+    "assembly_sha256": "5ad2ad7167172b99522312f6b279e9ca11fa479d9bea1fadb67b23c569b034fa",
+    "target_binding_passed": true,
+    "merged_preflight_passed": true,
+    "merged_preflight_permission_unconsumed": true,
+    "focused_offline_binding_and_limit_tests_passed": true
+  },
   "before_image_recovery_passed": false,
   "full_acceptance_passed": false,
   "note": "Disposable native workbooks only. The cell edit and draft sheet stayed on the request-bound workbook after an active-window switch; a renamed bound sheet failed before write permission was consumed."
