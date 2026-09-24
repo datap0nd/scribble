@@ -84,7 +84,6 @@ namespace Scribble.Office
             {
                 item.Staged = CopySlide(item.Original, Working);
                 item.Backup = CopySlide(item.Original, Recovery);
-                item.BackupFingerprint = PresentationInspection.Fingerprint(item.Backup);
                 foreach (var operation in item.Operations)
                 {
                     if (SamsungAuthoringPolicy.Text(operation, "kind") == "insert")
@@ -100,6 +99,11 @@ namespace Scribble.Office
                 if (serializer.Serialize(PresentationInspection.Hyperlinks(item.Original)) != serializer.Serialize(PresentationInspection.Hyperlinks(item.Staged)))
                     throw new InvalidOperationException("REVISION_PRESERVATION: The proposed edit changed existing hyperlinks.");
             }
+            // Native chart packages can finish normalizing while later slides
+            // are copied. Seal recovery after the complete staging deck exists.
+            foreach (var item in Items)
+                item.BackupFingerprint = PresentationInspection
+                    .Fingerprint(item.Backup);
             var proposedOrder = ReviewedSlides();
             foreach (var item in Items)
                 foreach (var output in item.StagedInsertOutputs) PresentationDraftWriter.SetSamsungPageNumber(output, proposedOrder.IndexOf(output.Slide) + 1);
