@@ -1519,26 +1519,33 @@ namespace Scribble.Office
                 var chartReadback = false;
                 for (var attempt = 0; attempt < 4 && !chartReadback; attempt++)
                 {
-                    chartReadback = (int)slideChart.SeriesCollection().Count ==
-                        chart.Series.Count;
-                    for (var s = 0; chartReadback && s < chart.Series.Count; s++)
+                    try
                     {
-                        var actual = ComArrayItems((object)slideChart.SeriesCollection(s + 1),
-                            "Values").ToArray();
-                        for (var point = 0; point < chart.Series[s].Values.Count; point++)
-                            if (chart.Series[s].Values[point].HasValue &&
-                                (point >= actual.Length || actual[point] == null ||
-                                Convert.ToDouble(actual[point],
-                                    CultureInfo.InvariantCulture) !=
-                                chart.Series[s].Values[point].Value))
-                            { chartReadback = false; break; }
-                        if (chartReadback)
+                        chartReadback = (int)slideChart.SeriesCollection().Count ==
+                            chart.Series.Count;
+                        for (var s = 0; chartReadback && s < chart.Series.Count; s++)
                         {
-                            var labels = ComArrayItems((object)slideChart.SeriesCollection(s + 1),
-                                "XValues").Select(Convert.ToString).ToArray();
-                            chartReadback = labels.SequenceEqual(chart.Categories);
+                            var actual = ComArrayItems((object)slideChart.SeriesCollection(s + 1),
+                                "Values").ToArray();
+                            for (var point = 0; point < chart.Series[s].Values.Count; point++)
+                                if (chart.Series[s].Values[point].HasValue &&
+                                    (point >= actual.Length || actual[point] == null ||
+                                    Convert.ToDouble(actual[point],
+                                        CultureInfo.InvariantCulture) !=
+                                    chart.Series[s].Values[point].Value))
+                                { chartReadback = false; break; }
+                            if (chartReadback)
+                            {
+                                var labels = ComArrayItems((object)slideChart.SeriesCollection(s + 1),
+                                    "XValues").Select(Convert.ToString).ToArray();
+                                chartReadback = labels.SequenceEqual(chart.Categories);
+                            }
                         }
                     }
+                    catch (System.Runtime.InteropServices.COMException error)
+                        when (unchecked((uint)error.ErrorCode) == 0x800A01A8 &&
+                            attempt < 3)
+                    { chartReadback = false; }
                     if (!chartReadback && attempt < 3)
                         System.Threading.Thread.Sleep(250);
                 }

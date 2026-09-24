@@ -14,6 +14,12 @@ namespace GuardrailTests
     internal static class SamsungPhase4NativeAcceptance
     {
         internal static int Run(string reportPath)
+        { return RunInternal(reportPath, false); }
+
+        internal static int RunDefects(string reportPath)
+        { return RunInternal(reportPath, true); }
+
+        private static int RunInternal(string reportPath, bool defectMode)
         {
             var json = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
             var output = Path.GetDirectoryName(Path.GetFullPath(reportPath));
@@ -23,6 +29,11 @@ namespace GuardrailTests
             var fixtures = ((IEnumerable)json.DeserializeObject(
                 File.ReadAllText(fixturePath)))
                 .Cast<Dictionary<string, object>>().ToArray();
+            var defects = defectMode ? ((IEnumerable)json.DeserializeObject(
+                File.ReadAllText(Path.Combine(
+                    AppDomain.CurrentDomain.BaseDirectory, "Fixtures",
+                    "phase4-defects.json"))))
+                .Cast<Dictionary<string, object>>().ToArray() : null;
             dynamic app = null;
             dynamic deck = null;
             var pages = new List<object>();
@@ -32,6 +43,7 @@ namespace GuardrailTests
             try
             {
                 SamsungSlideTests.Phase4ReferenceMatrix();
+                if (defectMode) SamsungSlideTests.Phase4DefectMatrix();
                 app = Activator.CreateInstance(Type.GetTypeFromProgID(
                     "PowerPoint.Application", true));
                 app.Visible = -1;
@@ -79,9 +91,18 @@ namespace GuardrailTests
                             throw new InvalidOperationException(
                                 "PHASE4_NATIVE_OBJECT_MISSING: " +
                                 subset[index - 1]["id"]);
+                        var defect = defectMode ?
+                            defects[batch * 6 + index - 1] : null;
+                        if (defect != null)
+                            ApplyDefect(native, defect, slide);
                         pages.Add(new
                         {
                             fixture_id = subset[index - 1]["id"],
+                            defect_id = defect == null ? null : defect["id"],
+                            expected_defect = defect == null ? null :
+                                defect["expected"],
+                            severity = defect == null ? null :
+                                defect["severity"],
                             family = subset[index - 1]["family"],
                             density = subset[index - 1]["density"],
                             deck_number = batch + 1,
@@ -92,7 +113,8 @@ namespace GuardrailTests
                             native_table = hasTable
                         });
                     }
-                    var prefix = "phase4-reference-" + (batch + 1);
+                    var prefix = (defectMode ? "phase4-defect-" :
+                        "phase4-reference-") + (batch + 1);
                     var pptx = Path.Combine(output, prefix + ".pptx");
                     var pdf = Path.Combine(output, prefix + ".pdf");
                     var afterExport = Path.Combine(output,
@@ -128,19 +150,100 @@ namespace GuardrailTests
             }
             var report = new
             {
-                execution_kind = "native_disposable_phase4_references",
+                execution_kind = defectMode ?
+                    "native_disposable_phase4_defects" :
+                    "native_disposable_phase4_references",
                 reference_count = pages.Count,
-                structural_passed = passed,
+                structural_passed = !defectMode && passed,
+                seeded_defects_rendered = defectMode && passed,
                 visual_approved = false,
                 reviewer = (string)null,
                 pages,
                 files,
                 failure,
-                note = "The reference renders require identified human approval. No reviewer or model calibration is inferred from these exports."
+                note = defectMode ?
+                    "Each page contains one seeded blocker for reviewer calibration; rendering alone is not a reviewer verdict." :
+                    "The reference renders require identified human approval. No reviewer or model calibration is inferred from these exports."
             };
             File.WriteAllText(reportPath, json.Serialize(report));
             Console.WriteLine(json.Serialize(report));
             return passed ? 0 : 1;
+        }
+
+        private static void ApplyDefect(dynamic slide,
+            Dictionary<string, object> defect,
+            Dictionary<string, object> specification)
+        {
+            var mutation = Convert.ToString(defect["mutation"]);
+            var shapes = Enumerable.Range(1, (int)slide.Shapes.Count)
+                .Select(index => (object)slide.Shapes[index]).ToArray();
+            Func<object, string> shapeText = value =>
+            {
+                dynamic shape = value;
+                return (int)shape.HasTextFrame != 0 ?
+                    Convert.ToString(shape.TextFrame.TextRange.Text) ??
+                    string.Empty : string.Empty;
+            };
+            Func<object> chart = () => shapes.Single(value =>
+                (int)((dynamic)value).HasChart != 0);
+            Func<object> table = () => shapes.Single(value =>
+                (int)((dynamic)value).HasTable != 0);
+            Func<string, object> text = wanted => shapes.Single(value =>
+                shapeText(value) == wanted);
+            dynamic target;
+            switch (mutation)
+            {
+                case "hide_primary_metric":
+                    target = text("82,992"); target.Visible = 0; break;
+                case "shrink_primary_metric":
+                    target = text("82,992");
+                    target.TextFrame.TextRange.Font.Size = 7f; break;
+                case "crop_title":
+                    target = text(Convert.ToString(specification["title"]));
+                    target.Width = 90f; target.Height = 45f; break;
+                case "overlap_chart_table":
+                    target = chart(); dynamic leftTable = table();
+                    target.Left = (float)leftTable.Left +
+                        (float)leftTable.Width - 100f; break;
+                case "move_table_off_canvas":
+                    target = table(); target.Left = -110f; break;
+                case "hide_chart":
+                    target = chart(); target.Visible = 0; break;
+                case "shrink_chart":
+                    target = chart(); target.Width = 95f; break;
+                case "move_chart_into_title":
+                    target = chart(); target.Top = 15f; break;
+                case "move_chart_off_canvas":
+                    target = chart(); target.Left =
+                        (float)slide.Parent.PageSetup.SlideWidth - 80f; break;
+                case "hide_first_card":
+                    target = text("144 source rows");
+                    target.Visible = 0; break;
+                case "shrink_card_copy":
+                    target = shapes.First(value => shapeText(value)
+                        .Contains("The ledger includes all records"));
+                    target.TextFrame.TextRange.Font.Size = 6f; break;
+                case "overlap_cards":
+                    target = text("Integrity");
+                    dynamic firstCard = text("Coverage");
+                    target.Left = firstCard.Left;
+                    target.Top = firstCard.Top; break;
+                case "shrink_table_width":
+                    target = table(); target.Width = 175f; break;
+                case "shrink_table_height":
+                    target = table(); target.Height = 95f; break;
+                case "hide_title_color":
+                    target = text(Convert.ToString(specification["title"]));
+                    target.TextFrame.TextRange.Font.Color.RGB = 0xFFFFFF;
+                    break;
+                case "hide_subtitle_color":
+                    target = text(Convert.ToString(specification["subtitle"]));
+                    target.TextFrame.TextRange.Font.Color.RGB =
+                        (int)slide.Background.Fill.ForeColor.RGB;
+                    break;
+                default: throw new InvalidOperationException(
+                    "PHASE4_DEFECT_UNKNOWN: " + mutation);
+            }
         }
     }
 }

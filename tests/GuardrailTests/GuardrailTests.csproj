@@ -54,6 +54,7 @@
     <Compile Include="Program.cs" />
     <Content Include="Fixtures\structured.xls"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>
     <Content Include="Fixtures\phase4-reference.json"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>
+    <Content Include="Fixtures\phase4-defects.json"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>
     <Compile Include="CrossAppFixture.cs" />
     <Compile Include="ScaleTaskTests.cs" />
     <Compile Include="HardeningTests.cs" />

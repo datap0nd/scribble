@@ -11,6 +11,31 @@ namespace GuardrailTests
 {
     internal static class SamsungSlideTests
     {
+        public static void Phase4DefectMatrix()
+        {
+            var root = Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
+                "Fixtures");
+            var json = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
+            var references = ((IEnumerable)json.DeserializeObject(File.ReadAllText(
+                Path.Combine(root, "phase4-reference.json"))))
+                .Cast<Dictionary<string, object>>().ToArray();
+            var defects = ((IEnumerable)json.DeserializeObject(File.ReadAllText(
+                Path.Combine(root, "phase4-defects.json"))))
+                .Cast<Dictionary<string, object>>().ToArray();
+            if (!(defects.Length == 18 &&
+                defects.Select(item => Convert.ToString(item["id"]))
+                    .Distinct(StringComparer.Ordinal).Count() == 18 &&
+                defects.Select((item, index) =>
+                    Convert.ToString(item["reference_id"]) ==
+                    Convert.ToString(references[index]["id"])).All(match => match) &&
+                defects.All(item => new[] { "critical", "blocker" }
+                    .Contains(Convert.ToString(item["severity"])) &&
+                    !string.IsNullOrWhiteSpace(Convert.ToString(
+                        item["expected"]))))
+                throw new InvalidOperationException(
+                    "Phase 4 defect calibration must seed one labeled variant per reference.");
+        }
+
         public static void Phase4ReferenceMatrix()
         {
             var path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory,

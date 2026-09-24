@@ -1,0 +1,20 @@
+[
+  {"id":"scorecard-normal-hidden-metric","reference_id":"scorecard-normal","mutation":"hide_primary_metric","expected":"MISSING_KEY_CONTENT","severity":"critical"},
+  {"id":"scorecard-long-tiny-metric","reference_id":"scorecard-long","mutation":"shrink_primary_metric","expected":"UNREADABLE_TEXT","severity":"blocker"},
+  {"id":"scorecard-max-cropped-title","reference_id":"scorecard-max","mutation":"crop_title","expected":"TEXT_OVERFLOW","severity":"blocker"},
+  {"id":"comparison-normal-overlap","reference_id":"comparison-normal","mutation":"overlap_chart_table","expected":"COLLISION","severity":"critical"},
+  {"id":"comparison-long-off-canvas","reference_id":"comparison-long","mutation":"move_table_off_canvas","expected":"OUT_OF_BOUNDS","severity":"critical"},
+  {"id":"comparison-max-hidden-chart","reference_id":"comparison-max","mutation":"hide_chart","expected":"MISSING_KEY_CONTENT","severity":"critical"},
+  {"id":"grouped-normal-tiny-chart","reference_id":"grouped-chart-normal","mutation":"shrink_chart","expected":"UNREADABLE_CHART","severity":"blocker"},
+  {"id":"grouped-long-title-collision","reference_id":"grouped-chart-long","mutation":"move_chart_into_title","expected":"COLLISION","severity":"critical"},
+  {"id":"grouped-max-chart-off-canvas","reference_id":"grouped-chart-max","mutation":"move_chart_off_canvas","expected":"OUT_OF_BOUNDS","severity":"critical"},
+  {"id":"evidence-normal-hidden-card","reference_id":"evidence-normal","mutation":"hide_first_card","expected":"MISSING_KEY_CONTENT","severity":"critical"},
+  {"id":"evidence-long-tiny-copy","reference_id":"evidence-long","mutation":"shrink_card_copy","expected":"UNREADABLE_TEXT","severity":"blocker"},
+  {"id":"evidence-max-card-overlap","reference_id":"evidence-max","mutation":"overlap_cards","expected":"COLLISION","severity":"blocker"},
+  {"id":"table-normal-squashed","reference_id":"dense-table-normal","mutation":"shrink_table_width","expected":"UNREADABLE_TABLE","severity":"blocker"},
+  {"id":"table-long-cropped","reference_id":"dense-table-long","mutation":"shrink_table_height","expected":"UNREADABLE_TABLE","severity":"blocker"},
+  {"id":"table-max-off-canvas","reference_id":"dense-table-max","mutation":"move_table_off_canvas","expected":"OUT_OF_BOUNDS","severity":"critical"},
+  {"id":"cover-normal-invisible-title","reference_id":"cover-normal","mutation":"hide_title_color","expected":"MISSING_TITLE","severity":"critical"},
+  {"id":"cover-long-cropped-title","reference_id":"cover-long","mutation":"crop_title","expected":"TEXT_OVERFLOW","severity":"blocker"},
+  {"id":"closing-max-invisible-subtitle","reference_id":"closing-max","mutation":"hide_subtitle_color","expected":"MISSING_SUBTITLE","severity":"blocker"}
+]

@@ -123,7 +123,13 @@ namespace Scribble.Office
         { return new SamsungElement { Text = text ?? "", Box = box, Size = size, Minimum = minimum, Font = font, Bold = bold, Fill = fill, Color = color }; }
 
         internal static bool RetryableSamsungChartFailure(string failure)
-        { return (failure ?? "").IndexOf("write chart data: COMException 0x800A01A8", StringComparison.OrdinalIgnoreCase) >= 0; }
+        {
+            var message = failure ?? string.Empty;
+            return message.IndexOf("write chart data: COMException 0x800A01A8",
+                StringComparison.OrdinalIgnoreCase) >= 0 ||
+                message.IndexOf("series readback: COMException 0x800A01A8",
+                    StringComparison.OrdinalIgnoreCase) >= 0;
+        }
 
         internal static List<SamsungPage> ComposeSamsung(IReadOnlyList<DraftSlide> drafts)
         {
