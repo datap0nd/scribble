@@ -652,7 +652,10 @@ namespace Scribble.Office
         private void VerifyRecoveryOriginals()
         {
             foreach (var item in Items)
-                if (PresentationInspection.Fingerprint(item.Backup) != item.BackupFingerprint) throw new InvalidOperationException("REVISION_RECOVERY_ORIGINAL_CHANGED");
+                if (PresentationInspection.Fingerprint(item.Backup) != item.BackupFingerprint)
+                    throw new InvalidOperationException(
+                        "REVISION_RECOVERY_ORIGINAL_CHANGED: slide " +
+                        item.Index);
         }
         internal void Revert() { RevertWithJournal(null); }
         internal void RevertWithJournal(Action<string> journal)

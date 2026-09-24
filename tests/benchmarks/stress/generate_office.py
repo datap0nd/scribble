@@ -231,6 +231,8 @@ def deck_spec(number: int, workbook: dict) -> tuple[dict, dict]:
     if repair:
         defects = [
             {"slide":2,"kind":"out_of_bounds_chart","object":"monthly-chart","expected_repair":"Fit editable chart inside the content region; preserve all series and six categories"},
+            {"slide":2,"kind":"stale_chart_category","object":"monthly-chart","expected_repair":"Recreate the native chart from the workbook with six current YYYY-MM categories"},
+            {"slide":2,"kind":"stale_chart_title_unit","object":"monthly-chart","expected_repair":"Give the native chart a current title with the correct source unit"},
             {"slide":4,"kind":"text_overflow","object":"commentary","expected_repair":"Reflow complete text into readable native text; do not discard facts"},
             {"slide":3,"kind":"wrong_theme_accent","object":"table-header","actual":"E91E63","expected":"4F81BD"},
         ]

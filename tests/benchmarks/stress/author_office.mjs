@@ -114,12 +114,14 @@ function nativeTable(slide,values,{left=84,top=204,width=1112,height=360,defecti
 
 function nativeChart(slide,spec,{kind='bar',grouped=false,defective=false}={}){
   const categories=grouped?spec.by_group.map(x=>x.group):spec.monthly.map(x=>x.period);
+  if(defective&&!grouped) categories[categories.length-1]='2025-06';
   const values=grouped?spec.by_group:spec.monthly;
   const compatible=spec.domain!=='inventory';
   const series=[{name:spec.primary_label,values:values.map(x=>x.primary),fill:BLUE}];
   if(compatible) series.push({name:spec.secondary_label,values:values.map(x=>x.secondary),fill:SOFT});
   if(kind==='line') for(const [i,value] of series.entries()) value.line={fill:i?SOFT:BLUE,style:'solid',width:2};
-  const ch=slide.charts.add(kind,{position:defective?{left:1080,top:211,width:680,height:371}:{left:88,top:211,width:1100,height:371},categories,series,barOptions:{direction:'column',grouping:'clustered'},lineOptions:{grouping:'standard',smooth:false},hasLegend:series.length>1});
+  const unit=spec.domain==='inventory'?'units':spec.domain==='workforce'||spec.domain==='projects'?'hours':'EUR';
+  const ch=slide.charts.add(kind,{position:defective?{left:1080,top:211,width:680,height:371}:{left:88,top:211,width:1100,height:371},title:defective?'Historical trend — 2025':`${spec.primary_label} / ${spec.secondary_label} (${unit})`,titleTextStyle:{typeface:font,fontSize:18},categories,series,barOptions:{direction:'column',grouping:'clustered'},lineOptions:{grouping:'standard',smooth:false},hasLegend:series.length>1});
   applyPresentationChartFont(ch,{fontFamily:font});
   ch.xAxis={visible:true,textStyle:{typeface:font,fontSize:18,fill:INK}};
   ch.yAxis={visible:true,min:0,numberFormatCode:'#,##0',textStyle:{typeface:font,fontSize:17,fill:MUTED}};
