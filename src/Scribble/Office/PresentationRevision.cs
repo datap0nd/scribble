@@ -61,7 +61,8 @@ namespace Scribble.Office
                     Items.Add(item);
                 }
                 if (item.Before != SamsungAuthoringPolicy.Text(operation, "fingerprint"))
-                    throw new InvalidOperationException("SLIDE_CHANGED: Read the original slide again before editing.");
+                    throw new InvalidOperationException("SLIDE_CHANGED: Slide " + id +
+                        " changed before staging. Read it again before editing.");
                 ValidateOperation(item.Original, operation);
                 if (item.Operations.Any(o => SamsungAuthoringPolicy.Text(o, "kind") == "delete") ||
                     (SamsungAuthoringPolicy.Text(operation, "kind") == "delete" && item.Operations.Count > 0))
