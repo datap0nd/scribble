@@ -40,9 +40,11 @@ namespace GuardrailTests
                     string.IsNullOrWhiteSpace(Convert.ToString(
                         slide["sources"])))
                     throw new Exception("A reference fixture has no source or slide: " + fixture["id"]);
-                var pages = (IEnumerable)SamsungPresentationReview.InspectPlan(
+                var preview = SamsungPresentationReview.InspectPlan(
                     json.Serialize(new[] { slide }));
-                var planned = pages.Cast<Dictionary<string, object>>().ToArray();
+                var planned = ((IEnumerable)json.DeserializeObject(
+                    json.Serialize(preview))).Cast<Dictionary<string, object>>()
+                    .ToArray();
                 if (planned.Length != 1 ||
                     !json.Serialize(planned[0]).Contains("[Scribble draft]"))
                     throw new Exception("A reference fixture did not compose to one bounded native page: " + fixture["id"]);
