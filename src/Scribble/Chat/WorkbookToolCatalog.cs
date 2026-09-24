@@ -605,7 +605,7 @@ namespace Scribble.Chat
                     name = WriteCells,
                     description =
                         "Write values and formulas directly into the " +
-                        "ACTIVE worksheet starting at start_cell, " +
+                        "worksheet captured when this request began, starting at start_cell, " +
                         "overwriting that area in memory. Use it ONLY " +
                         "when the user explicitly asked to change " +
                         "their own sheet (fill, fix, update cells in " +
@@ -622,7 +622,7 @@ namespace Scribble.Chat
                                 "start_cell",
                                 ToolSchema.String(
                                     "A1-style top-left target cell " +
-                                    "on the active sheet, e.g. B2.")
+                                    "on the request-bound sheet, e.g. B2.")
                             },
                             {
                                 "rows",

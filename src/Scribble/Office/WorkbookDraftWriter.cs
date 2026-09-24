@@ -611,7 +611,7 @@ namespace Scribble.Office
             }
 
             return "Wrote " + written + " cells starting at " +
-                anchorName + " on the active sheet" +
+                anchorName + " on the request-bound sheet" +
                 (formulaCount > 0
                     ? " including " + formulaCount +
                       " live formulas"
