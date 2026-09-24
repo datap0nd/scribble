@@ -423,6 +423,21 @@ namespace Scribble.Office
             internal int StartColumn;
             internal int RowCount;
             internal List<string> ExistingNames;
+            internal List<CellBeforeImage> Before;
+        }
+
+        private sealed class CellBeforeImage
+        {
+            internal int Row;
+            internal int Column;
+            internal object Value;
+            internal object Formula;
+            internal object NumberFormat;
+            internal bool HasFormula;
+            internal object WrittenValue;
+            internal object WrittenFormula;
+            internal bool WrittenHasFormula;
+            internal bool WriteReadBack;
         }
 
         internal static void ValidateCellsTarget(object excelApplication,
@@ -476,19 +491,33 @@ namespace Scribble.Office
                     "DRAFT_TARGET_PROTECTED: The request-bound worksheet is protected.");
             // Scan every destination before the first mutation. A late merged
             // cell must not leave earlier rows partially written.
+            var before = new List<CellBeforeImage>();
             for (var row = 0; row < rowCount; row++)
                 for (var column = 0; column <
                         (rows[row] == null ? 0 : rows[row].Count);
                     column++)
-                    if (Convert.ToBoolean(sheet.Cells[startRow + row,
-                            startColumn + column].MergeCells))
+                {
+                    dynamic cell = sheet.Cells[startRow + row,
+                        startColumn + column];
+                    if (Convert.ToBoolean(cell.MergeCells))
                         throw new InvalidOperationException(
                             "DRAFT_TARGET_MERGED: The target grid contains a merged cell.");
+                    before.Add(new CellBeforeImage
+                    {
+                        Row = startRow + row,
+                        Column = startColumn + column,
+                        Value = cell.Value2,
+                        Formula = cell.Formula,
+                        NumberFormat = cell.NumberFormat,
+                        HasFormula = Convert.ToBoolean(cell.HasFormula)
+                    });
+                }
             return new CellWriteTarget
             {
                 Sheet = (object)sheet, AnchorName = anchorName,
                 StartRow = startRow, StartColumn = startColumn,
-                RowCount = rowCount, ExistingNames = existingNames
+                RowCount = rowCount, ExistingNames = existingNames,
+                Before = before
             };
         }
 
@@ -526,6 +555,10 @@ namespace Scribble.Office
             var rejectedFormulas = new List<string>();
             var liveFormulas =
                 new List<KeyValuePair<int[], string>>();
+            var touched = new List<CellBeforeImage>();
+            var beforeIndex = 0;
+            try
+            {
             for (var row = 0; row < rowCount; row++)
             {
                 var source = rows[row];
@@ -560,12 +593,15 @@ namespace Scribble.Office
                     dynamic target = sheet.Cells[
                         startRow + row,
                         startColumn + column];
+                    var beforeCell = writeTarget.Before[beforeIndex++];
+                    touched.Add(beforeCell);
                     if (cell.Length > 0 && cell[0] == '=')
                     {
                         if (!DraftFormulaPolicy.IsAllowedFormula(
                             cell))
                         {
                             target.Value2 = "'" + cell;
+                            CaptureWritten(target, beforeCell);
                             written++;
                             continue;
                         }
@@ -613,11 +649,13 @@ namespace Scribble.Office
                             }
                         }
 
+                        CaptureWritten(target, beforeCell);
                         written++;
                         continue;
                     }
 
                     target.Value2 = cell;
+                    CaptureWritten(target, beforeCell);
                     written++;
                 }
             }
@@ -627,7 +665,19 @@ namespace Scribble.Office
                     "DRAFT_FORMULA_INVALID: Excel rejected " +
                     rejectedFormulas.Count + " formula(s) at " +
                     string.Join(", ", rejectedFormulas.Take(8)) +
-                    ". The affected cells remain visible as text, but this is not a valid analytical output. Correct the syntax before continuing or claiming completion.");
+                    ". No invalid analytical output was accepted; correct the syntax before continuing.");
+            }
+            catch (Exception error)
+            {
+                if (touched.Count == 0) throw;
+                var uncertain = RestoreTouched(sheet, touched);
+                throw new InvalidOperationException(
+                    uncertain.Count == 0
+                        ? "DRAFT_WRITE_ROLLED_BACK: The bounded edit failed and its captured cells were restored. " + error.Message
+                        : "DRAFT_WRITE_UNCERTAIN: The bounded edit failed and some cells could not be safely restored: " +
+                            string.Join(", ", uncertain.Take(8)) + ". " + error.Message,
+                    error);
+            }
 
             if (liveFormulas.Count > 0)
             {
@@ -684,6 +734,64 @@ namespace Scribble.Office
         private static bool IsExcelError(object value)
         {
             return ExcelErrorValue.Text(value) != null;
+        }
+
+        private static void CaptureWritten(dynamic cell,
+            CellBeforeImage image)
+        {
+            image.WrittenValue = cell.Value2;
+            image.WrittenFormula = cell.Formula;
+            image.WrittenHasFormula = Convert.ToBoolean(cell.HasFormula);
+            image.WriteReadBack = true;
+        }
+
+        private static bool MatchesCell(dynamic cell, bool hasFormula,
+            object formula, object value)
+        {
+            if (Convert.ToBoolean(cell.HasFormula) != hasFormula)
+                return false;
+            return hasFormula
+                ? string.Equals(Convert.ToString(cell.Formula),
+                    Convert.ToString(formula),
+                    StringComparison.OrdinalIgnoreCase)
+                : Equals((object)cell.Value2, value);
+        }
+
+        private static List<string> RestoreTouched(dynamic sheet,
+            List<CellBeforeImage> touched)
+        {
+            var uncertain = new List<string>();
+            foreach (var image in touched.AsEnumerable().Reverse())
+            {
+                var address = "R" + image.Row + "C" + image.Column;
+                try
+                {
+                    dynamic cell = sheet.Cells[image.Row, image.Column];
+                    if (MatchesCell(cell, image.HasFormula, image.Formula,
+                            image.Value))
+                        continue;
+                    if (!image.WriteReadBack ||
+                        !MatchesCell(cell, image.WrittenHasFormula,
+                            image.WrittenFormula, image.WrittenValue))
+                    {
+                        uncertain.Add(address);
+                        continue;
+                    }
+                    cell.NumberFormat = image.NumberFormat;
+                    if (image.HasFormula) cell.Formula = image.Formula;
+                    else cell.Value2 = image.Value;
+                    if (!MatchesCell(cell, image.HasFormula, image.Formula,
+                            image.Value) ||
+                        !Equals((object)cell.NumberFormat,
+                            image.NumberFormat))
+                        uncertain.Add(address);
+                }
+                catch
+                {
+                    uncertain.Add(address);
+                }
+            }
+            return uncertain;
         }
 
         private static bool TryRepairAdjacentRowFormula(
