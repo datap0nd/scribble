@@ -479,10 +479,10 @@ namespace Scribble.Chat
         {
             if (!PresentationRevisionAcceptance.Enabled) yield break;
             var operation = ToolSchema.Build(new Dictionary<string, object> {
-                { "kind", new { type = "string", @enum = new[] { "replace_text", "table_cell", "table_cell_fill", "shape_geometry", "chart_point", "move", "delete", "replace_slide", "insert", "annotate", "notes_append" } } },
+                { "kind", new { type = "string", @enum = new[] { "replace_text", "table_cell", "chart_point", "move", "delete", "replace_slide", "insert", "annotate", "notes_append" } } },
                 { "slide_id", ToolSchema.Integer("Stable ID from inspect_slide.", 1, int.MaxValue) },
                 { "fingerprint", ToolSchema.String("Exact current fingerprint from inspect_slide.") },
-                { "shape_id", ToolSchema.Integer("Stable target shape ID, required for shape, text, table and chart edits.", 1, int.MaxValue) },
+                { "shape_id", ToolSchema.Integer("Stable target shape ID, required for text/table/chart edits.", 1, int.MaxValue) },
                 { "before", ToolSchema.String("Exact existing unique text span or cell text.") },
                 { "text", ToolSchema.String("Replacement text.") },
                 { "row", ToolSchema.Integer("1-based native table row, including headers.", 1, 1000) },
@@ -490,12 +490,6 @@ namespace Scribble.Chat
                 { "series", ToolSchema.Integer("1-based chart series.", 1, 100) },
                 { "category", ToolSchema.Integer("1-based chart category.", 1, 1000) },
                 { "before_value", new { type = "number" } }, { "value", new { type = "number" } },
-                { "before_left", new { type = "number" } }, { "before_top", new { type = "number" } },
-                { "before_width", new { type = "number" } }, { "before_height", new { type = "number" } },
-                { "left", new { type = "number" } }, { "top", new { type = "number" } },
-                { "width", new { type = "number" } }, { "height", new { type = "number" } },
-                { "before_color", ToolSchema.Integer("Exact existing native table-cell fill RGB value from inspect_slide.", 0, 16777215) },
-                { "color", ToolSchema.Integer("Requested native table-cell fill RGB value.", 0, 16777215) },
                 { "slide", SlideSchema() },
                 { "notes", ToolSchema.String("Source references or explicitly requested notes to append, preserving existing notes.") },
                 { "new_index", ToolSchema.Integer("Final 1-based position for an explicitly requested move.", 1, 1000) }
