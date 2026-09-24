@@ -37,6 +37,7 @@ namespace GuardrailTests
             var passed = false;
             var chartRecreated = false;
             var chartFingerprintTrace = new List<string>();
+            var chartPackageTrace = new List<string>();
             var candidate = Path.Combine(output,
                 "phase4-pp01-copy.pptx");
             var pdf = Path.Combine(output,
@@ -89,6 +90,13 @@ namespace GuardrailTests
                 chartRecreated = true;
                 copy = InvokeStatic(CopyType, "Recover", (object)app,
                     Convert.ToString(Invoke(copy, CopyType, "Snapshot")));
+                for (var sample = 0; sample < 4; sample++)
+                {
+                    var package = Path.Combine(output,
+                        "chart-package-trace-" + sample + ".pptx");
+                    draft.SaveCopyAs(package);
+                    chartPackageTrace.Add(package);
+                }
                 for (var sample = 0; sample < 3; sample++)
                     chartFingerprintTrace.Add(PresentationInspection
                         .Fingerprint((object)draft.Slides[2]));
@@ -286,6 +294,7 @@ namespace GuardrailTests
                 pdf_review_artifact = passed ? pdf : null,
                 chart_recreated_from_workbook = chartRecreated,
                 chart_fingerprint_trace = chartFingerprintTrace,
+                chart_package_trace = chartPackageTrace,
                 independent_grader_passed = false,
                 visual_approved = false,
                 full_acceptance_passed = false,
