@@ -329,6 +329,97 @@ namespace Scribble.Office
             }
         }
 
+        // Layout reflow is limited to one chartless, task-owned native page.
+        // The writer stages and validates the replacement before touching the
+        // original slide, while the task keeps a pending write-ahead receipt.
+        public static void ApplyNativeLayoutPatch(object presentation,
+            AnalysisReviewPage page,
+            AnalysisContentPatchReservation reservation,
+            AnalysisArtifact artifact, AnalysisDocumentPlan desiredPlan)
+        {
+            RequireEnabled();
+            dynamic deck = presentation;
+            if (page == null || reservation == null ||
+                reservation.TargetId != "page" ||
+                page.PageOrdinal != 0 ||
+                page.LogicalSlideId != reservation.LogicalSlideId ||
+                page.NativeSlideId != reservation.NativeSlideId ||
+                page.NativeStateFingerprint !=
+                    reservation.NativeStateFingerprint ||
+                page.ExpectedPageNumber < 1 ||
+                page.ExpectedPageNumber > (int)deck.Slides.Count ||
+                !SamsungSlideDesign.Layouts.Contains(
+                    reservation.NativeAfterText))
+                throw new InvalidOperationException(
+                    "REPAIR_RESERVATION_CHANGED");
+            var slidePlan = desiredPlan?.Slides?.SingleOrDefault(item =>
+                item.Id == page.LogicalSlideId);
+            if (slidePlan == null ||
+                slidePlan.Layout != reservation.NativeAfterText)
+                throw new InvalidOperationException(
+                    "REPAIR_RESERVATION_CHANGED");
+            dynamic slide = deck.Slides[page.ExpectedPageNumber];
+            if ((int)slide.SlideID != page.NativeSlideId ||
+                NativeStateFingerprint(slide) !=
+                    page.NativeStateFingerprint)
+                throw new InvalidOperationException(
+                    "REPAIR_NATIVE_PAGE_CHANGED");
+            var owner = (string)slide.Tags["ScribbleTask"];
+            if (string.IsNullOrWhiteSpace(owner) ||
+                owner != (string)deck.Tags["ScribbleTask"] ||
+                PresentationInspection.ContainsNativeChart((object)slide))
+                throw new InvalidOperationException(
+                    "REPAIR_NATIVE_LAYOUT_UNSUPPORTED");
+            var compiled = AnalysisDocumentCompiler.Compile(artifact,
+                desiredPlan);
+            var composed = PresentationDraftWriter.ComposeSamsung(
+                PresentationDraftWriter.ParseSlides(
+                    compiled.Slides.Cast<object>().ToArray()));
+            if (composed.Count != (int)deck.Slides.Count ||
+                composed[page.ExpectedPageNumber - 1].Source.Id !=
+                    page.LogicalSlideId ||
+                composed[page.ExpectedPageNumber - 1].Elements.Any(element =>
+                    element.Chart != null))
+                throw new InvalidOperationException(
+                    "REPAIR_NATIVE_LAYOUT_UNSUPPORTED");
+            var output = new PresentationDraftWriter.SamsungOutput
+            {
+                Slide = (object)slide, Owner = owner
+            };
+            for (var index = 1; index <= (int)slide.Shapes.Count; index++)
+            {
+                dynamic shape = slide.Shapes[index];
+                if ((string)shape.Tags["ScribbleTask"] != owner)
+                    throw new InvalidOperationException(
+                        "REPAIR_NATIVE_LAYOUT_UNSUPPORTED");
+                output.ShapeIds.Add((int)shape.Id);
+            }
+            output.Image = PresentationDraftWriter.ExportSamsung(output);
+            PresentationDraftWriter.ReplaceOwnedSamsung(output,
+                composed[page.ExpectedPageNumber - 1]);
+            slide.Tags.Add("ScribbleAnalysisLayout",
+                reservation.NativeAfterText);
+        }
+
+        public static string ReadNativeLayoutPatch(object presentation,
+            AnalysisReviewPage page, string expectedLayout)
+        {
+            RequireEnabled();
+            dynamic deck = presentation;
+            if (page == null || page.PageOrdinal != 0 ||
+                page.ExpectedPageNumber < 1 ||
+                page.ExpectedPageNumber > (int)deck.Slides.Count)
+                throw new InvalidOperationException(
+                    "REPAIR_NATIVE_PAGE_UNSUPPORTED");
+            dynamic slide = deck.Slides[page.ExpectedPageNumber];
+            if ((int)slide.SlideID != page.NativeSlideId ||
+                (string)slide.Tags["ScribbleAnalysisLayout"] !=
+                    expectedLayout)
+                throw new InvalidOperationException(
+                    "REPAIR_NATIVE_LAYOUT_READBACK_FAILED");
+            return (string)slide.Tags["ScribbleAnalysisLayout"];
+        }
+
         public static IReadOnlyList<AnalysisReviewPage> CapturePresentationPages(
             object presentation, AnalysisArtifact artifact,
             AnalysisDocumentPlan plan, List<string> pageImages = null)

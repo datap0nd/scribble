@@ -40,7 +40,7 @@ namespace Scribble.Office
                 if (_taskContext.State.HostData.ContainsKey(
                     "analysis_pending_content_patch"))
                     throw new InvalidOperationException(
-                        "REPAIR_PENDING_RECONCILIATION: A native text patch needs inspection before retry.");
+                        "REPAIR_PENDING_RECONCILIATION: A native content patch needs inspection before retry.");
                 string savedPlan;
                 if (_taskContext.State.HostData.TryGetValue(
                     "analysis_deck_plan", out savedPlan))
@@ -229,8 +229,9 @@ namespace Scribble.Office
                     if (contentPatches >=
                             AnalysisRepairBudget.MaxCorrectivePatches ||
                         blockers.Length != 1 ||
-                        blockers[0].Code != "UNSUPPORTED_CLAIM" ||
-                        blockers[0].Owner != "content")
+                        blockers[0].Owner != "content" ||
+                        (blockers[0].Code != "UNSUPPORTED_CLAIM" &&
+                         blockers[0].Code != "VISUAL_HIERARCHY"))
                         throw new InvalidOperationException(
                             "ANALYSIS_DECK_REVIEW_REJECTED: " +
                             _serializer.Serialize(verdict.Findings));
@@ -243,10 +244,23 @@ namespace Scribble.Office
                         throw new InvalidOperationException(
                             "REPAIR_NATIVE_PAGE_UNSUPPORTED");
                     var nativePage = matchingPages[0];
-                    var nativeBefore = AnalysisDocumentPilot
-                        .CompiledNativeText(artifact, plan,
-                            finding.LogicalSlideId, finding.TargetId);
-                    AnalysisDocumentPilot.ReadNativePatchText(
+                    var layoutPatch = finding.Code ==
+                        "VISUAL_HIERARCHY";
+                    var nativeBefore = layoutPatch ? plan.Slides.Single(
+                        slide => slide.Id == finding.LogicalSlideId).Layout :
+                        AnalysisDocumentPilot.CompiledNativeText(artifact,
+                            plan, finding.LogicalSlideId,
+                            finding.TargetId);
+                    if (layoutPatch)
+                    {
+                        if (finding.TargetId != "page" ||
+                            PresentationInspection.ContainsNativeChart(
+                                (object)deck.Slides[
+                                    nativePage.ExpectedPageNumber]))
+                            throw new InvalidOperationException(
+                                "REPAIR_NATIVE_LAYOUT_UNSUPPORTED");
+                    }
+                    else AnalysisDocumentPilot.ReadNativePatchText(
                         (object)deck, nativePage, nativeBefore);
                     var patchRequest = _taskContext
                         .ReserveAnalysisContentPatchRequest(artifact, plan,
@@ -278,16 +292,22 @@ namespace Scribble.Office
                     var repaired = AnalysisDocumentRepair.Apply(artifact,
                         plan, review.Context, reviewerJson, patch,
                         patchRequest.BudgetReceipt);
-                    var nativeAfter = AnalysisDocumentPilot
-                        .CompiledNativeText(artifact, repaired.Plan,
-                            finding.LogicalSlideId, finding.TargetId);
+                    var nativeAfter = layoutPatch ? repaired.Plan.Slides
+                        .Single(slide => slide.Id == finding.LogicalSlideId)
+                        .Layout : AnalysisDocumentPilot.CompiledNativeText(
+                            artifact, repaired.Plan, finding.LogicalSlideId,
+                            finding.TargetId);
                     var contentReservation = _taskContext
                         .ReserveAnalysisContentPatch(nativePage, patch,
                             repaired.Plan, nativeBefore, nativeAfter,
                             TaskCheckpointStore.Fingerprint(
                                 call.function.arguments),
                             repaired.BudgetReceipt, true);
-                    AnalysisDocumentPilot.ApplyNativeContentPatch(
+                    if (layoutPatch)
+                        AnalysisDocumentPilot.ApplyNativeLayoutPatch(
+                            (object)deck, nativePage, contentReservation,
+                            artifact, repaired.Plan);
+                    else AnalysisDocumentPilot.ApplyNativeContentPatch(
                         (object)deck, nativePage, contentReservation);
                     var patchedPages = AnalysisDocumentPilot
                         .CapturePresentationPages((object)deck, artifact,
@@ -297,9 +317,11 @@ namespace Scribble.Office
                     journal.Record(
                         outputs[nativePage.ExpectedPageNumber - 1],
                         nativePage.ExpectedPageNumber - 1);
-                    var nativeReadback = AnalysisDocumentPilot
-                        .ReadNativePatchText((object)deck, patchedPage,
-                            nativeAfter);
+                    var nativeReadback = layoutPatch ?
+                        AnalysisDocumentPilot.ReadNativeLayoutPatch(
+                            (object)deck, patchedPage, nativeAfter) :
+                        AnalysisDocumentPilot.ReadNativePatchText(
+                            (object)deck, patchedPage, nativeAfter);
                     _taskContext.ReconcileAnalysisContentPatch(
                         contentReservation, patchedPage, nativeReadback);
                     plan = repaired.Plan;
@@ -359,6 +381,9 @@ namespace Scribble.Office
                         StringComparison.Ordinal) ||
                     exception.Message.StartsWith(
                         "REPAIR_NATIVE_TEXT_TARGET_UNSUPPORTED",
+                        StringComparison.Ordinal) ||
+                    exception.Message.StartsWith(
+                        "REPAIR_NATIVE_LAYOUT_UNSUPPORTED",
                         StringComparison.Ordinal) ||
                     exception.Message.StartsWith(
                         "REPAIR_TARGET_UNSUPPORTED",

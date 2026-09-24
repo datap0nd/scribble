@@ -40,6 +40,7 @@ namespace GuardrailTests
             var rendererRepairPassed = false;
             var contentRecoveryPassed = false;
             var cardContentRecoveryPassed = false;
+            var layoutRecoveryPassed = false;
             var typedDeckHandoffPassed = false;
             var nativeDateColumnPassed = false;
             var powerpointExited = false;
@@ -1005,6 +1006,89 @@ namespace GuardrailTests
                         "provenance").Cards[0].Points[0].Text == cardBefore,
                     "Native card repair did not preserve the original plan or reconcile the receipt.");
                 cardContentRecoveryPassed = true;
+                stage = "powerpoint_layout_recovery";
+                var layoutPages = AnalysisDocumentPilot
+                    .CapturePresentationPages((object)deck, fixture.Item1,
+                        cardPlan);
+                var layoutPage = layoutPages.Single(page =>
+                    page.LogicalSlideId == "headline");
+                var layoutPlan = new JavaScriptSerializer
+                    { MaxJsonLength = 16000000 }
+                    .Deserialize<AnalysisDocumentPlan>(new JavaScriptSerializer
+                    { MaxJsonLength = 16000000 }.Serialize(cardPlan));
+                layoutPlan.Slides.Single(slide => slide.Id == "headline")
+                    .Layout = "cards";
+                var layoutTask = new TaskContextManager(
+                    new ChatCompletionRequest
+                    {
+                        model = "offline-test",
+                        messages = new List<object>
+                        {
+                            new ChatCompletionInputMessage
+                            { role = "user", content = "Reflow the KPI slide" }
+                        }
+                    }, "excel", "Reflow the KPI slide",
+                    new TaskCheckpointStore(Path.Combine(output,
+                        "layout-recovery-checkpoint")));
+                layoutTask.PersistAnalysis(fixture.Item1);
+                var layoutPatch = new AnalysisDocumentPatch
+                {
+                    ContextId = "native-layout-recovery",
+                    LogicalSlideId = "headline", TargetId = "page",
+                    SegmentIndex = 0, ExpectedText = "scorecard",
+                    ReplacementText = "cards"
+                };
+                var layoutReservation = layoutTask
+                    .ReserveAnalysisContentPatch(layoutPage, layoutPatch,
+                        layoutPlan, "scorecard", "cards",
+                        "native-layout-input", AnalysisRepairBudget.CrossApp()
+                            .ConsumePatch("headline", "page"), true);
+                var staleLayoutReservation = new AnalysisContentPatchReservation
+                {
+                    TargetId = "page", LogicalSlideId = "headline",
+                    NativeSlideId = layoutPage.NativeSlideId,
+                    NativeStateFingerprint = "stale-native-state",
+                    NativeBeforeText = "scorecard",
+                    NativeAfterText = "cards"
+                };
+                var staleLayoutRejected = false;
+                try
+                {
+                    AnalysisDocumentPilot.ApplyNativeLayoutPatch(
+                        (object)deck, layoutPage, staleLayoutReservation,
+                        fixture.Item1, layoutPlan);
+                }
+                catch (InvalidOperationException error)
+                {
+                    staleLayoutRejected = error.Message.Contains(
+                        "REPAIR_RESERVATION_CHANGED");
+                }
+                Check(staleLayoutRejected,
+                    "A stale layout reservation was allowed to mutate the slide.");
+                AnalysisDocumentPilot.ApplyNativeLayoutPatch((object)deck,
+                    layoutPage, layoutReservation, fixture.Item1,
+                    layoutPlan);
+                var reflowedPage = AnalysisDocumentPilot
+                    .CapturePresentationPages((object)deck, fixture.Item1,
+                        layoutPlan).Single(page => page.LogicalSlideId ==
+                            "headline");
+                Check(reflowedPage.NativeSlideId == layoutPage.NativeSlideId &&
+                    reflowedPage.NativeStateFingerprint !=
+                        layoutPage.NativeStateFingerprint &&
+                    AnalysisDocumentPilot.ReadNativeLayoutPatch(
+                        (object)deck, reflowedPage, "cards") == "cards",
+                    "The native layout reflow lost its slide identity or readback.");
+                layoutTask.ReconcileAnalysisContentPatch(
+                    layoutReservation, reflowedPage,
+                    AnalysisDocumentPilot.ReadNativeLayoutPatch(
+                        (object)deck, reflowedPage, "cards"));
+                Check(!layoutTask.State.HostData.ContainsKey(
+                        "analysis_pending_content_patch") &&
+                    layoutTask.State.HostData[
+                        "analysis_deck_plan"].Contains("\"Layout\":\"cards\"") &&
+                    cardPlan.Slides[0].Layout == "scorecard",
+                    "The native layout receipt did not preserve and commit the plan.");
+                layoutRecoveryPassed = true;
                 slidesPassed = true;
             }
             catch (Exception error)
@@ -1051,6 +1135,7 @@ namespace GuardrailTests
                 renderer_repair_passed = rendererRepairPassed,
                 content_recovery_passed = contentRecoveryPassed,
                 card_content_recovery_passed = cardContentRecoveryPassed,
+                layout_recovery_passed = layoutRecoveryPassed,
                 typed_deck_handoff_passed = typedDeckHandoffPassed,
                 native_date_column_passed = nativeDateColumnPassed,
                 powerpoint_exited = powerpointExited,
@@ -1067,7 +1152,7 @@ namespace GuardrailTests
             return workbookPassed && slidesPassed && sourcePreserved &&
                 recoveryPassed && typedReviewPassed && rendererRepairPassed &&
                 typedDeckHandoffPassed && contentRecoveryPassed &&
-                cardContentRecoveryPassed
+                cardContentRecoveryPassed && layoutRecoveryPassed
                 ? 0 : 1;
         }
 
