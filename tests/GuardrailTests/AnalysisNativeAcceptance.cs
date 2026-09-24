@@ -451,6 +451,12 @@ namespace GuardrailTests
                                 pages[index].RenderFingerprint;
                     }).All(matches => matches),
                     "Review images did not match their page fingerprints.");
+                var chartReviewImage = Path.Combine(output,
+                    "analysis-slide-02.png");
+                File.WriteAllBytes(chartReviewImage,
+                    Convert.FromBase64String(nativeReview.PageImages[1]
+                        .Substring("data:image/png;base64,".Length)));
+                images.Add(chartReviewImage);
                 Check(pages.Count == 4 && pages.Select(page =>
                     page.NativeSlideId).Distinct().Count() == 4 &&
                     pages.Select(page => page.ExpectedPageNumber)
@@ -510,10 +516,33 @@ namespace GuardrailTests
                 }
                 reviewedCell.Text = originalCellText;
                 reviewedCell.Font.Size = originalCellFontSize;
-                Check(staleTableReviewRejected &&
+                var restoredTableStillNeedsReview = false;
+                try
+                {
                     AnalysisDocumentPilot.CompleteNativeReview((object)deck,
-                        nativeReview, cleanVerdict).Approved,
+                        nativeReview, cleanVerdict);
+                }
+                catch (InvalidOperationException error)
+                {
+                    restoredTableStillNeedsReview = error.Message.Contains(
+                        "REVIEW_NATIVE_STATE_CHANGED");
+                }
+                Check(staleTableReviewRejected &&
+                    restoredTableStillNeedsReview,
                     "A native table-cell edit inherited an earlier review approval.");
+                nativeReview = AnalysisDocumentPilot.ReserveNativeReview(
+                    reviewTask, (object)deck, fixture.Item1,
+                    fixture.Item2, true);
+                cleanVerdict = new JavaScriptSerializer().Serialize(new
+                {
+                    contract_version = AnalysisReviewContract.Version,
+                    context_id = nativeReview.Context.ContextId,
+                    approved = true,
+                    findings = new object[0]
+                });
+                Check(AnalysisDocumentPilot.CompleteNativeReview((object)deck,
+                    nativeReview, cleanVerdict).Approved,
+                    "A fresh native review could not bind the restored table.");
                 dynamic reviewedChart = null;
                 for (var shapeIndex = 1;
                     shapeIndex <= (int)reviewedSlide.Shapes.Count; shapeIndex++)
@@ -536,10 +565,33 @@ namespace GuardrailTests
                         "REVIEW_NATIVE_STATE_CHANGED");
                 }
                 reviewedSeries.Name = originalSeriesName;
-                Check(staleChartReviewRejected &&
+                var restoredChartStillNeedsReview = false;
+                try
+                {
                     AnalysisDocumentPilot.CompleteNativeReview((object)deck,
-                        nativeReview, cleanVerdict).Approved,
+                        nativeReview, cleanVerdict);
+                }
+                catch (InvalidOperationException error)
+                {
+                    restoredChartStillNeedsReview = error.Message.Contains(
+                        "REVIEW_NATIVE_STATE_CHANGED");
+                }
+                Check(staleChartReviewRejected &&
+                    restoredChartStillNeedsReview,
                     "A native chart-series edit inherited an earlier review approval.");
+                nativeReview = AnalysisDocumentPilot.ReserveNativeReview(
+                    reviewTask, (object)deck, fixture.Item1,
+                    fixture.Item2, true);
+                cleanVerdict = new JavaScriptSerializer().Serialize(new
+                {
+                    contract_version = AnalysisReviewContract.Version,
+                    context_id = nativeReview.Context.ContextId,
+                    approved = true,
+                    findings = new object[0]
+                });
+                Check(AnalysisDocumentPilot.CompleteNativeReview((object)deck,
+                    nativeReview, cleanVerdict).Approved,
+                    "A fresh native review could not bind the restored chart.");
                 typedReviewPassed = true;
                 stage = "powerpoint_renderer_repair";
                 dynamic firstSlide = deck.Slides[1];
