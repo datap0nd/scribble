@@ -1281,7 +1281,7 @@ namespace GuardrailTests
                         Convert.ToString(candidate.Name)))
                         recoveryCandidates.Add((object)candidate);
                 }
-                Check(recoveryCandidates.Length == 1,
+                Check(recoveryCandidates.Count == 1,
                     "The partial layout write did not retain exactly one " +
                     "new native recovery presentation.");
                 recoveryDeck = recoveryCandidates[0];
