@@ -155,6 +155,7 @@ namespace GuardrailTests
                 Run("Oversized Excel draft rows are rejected without silent loss", ExcelDraftBindingTests.OversizedRowsFailRatherThanDisappear);
                 Run("Failed bounded Excel edits restore earlier cells", ExcelDraftBindingTests.FailedCellWriteRestoresEarlierCells);
                 Run("Restored Excel edits clear uncertain task state", ExcelDraftBindingTests.RestoredEditDoesNotPoisonTaskRecovery);
+                Run("Excel grid receipts retain typed before-images", ExcelDraftBindingTests.GridReceiptRetainsTypedBeforeImages);
                 Run("Attachment pages preserve evidence beyond 130000 characters", DurableTransformTests.AttachmentTail);
                 Run("All twelve attachments are required including late evidence", DurableTransformTests.EveryAttachmentIsRequired);
                 Run("Task checkpoints reconcile 20000 rows across restart", ScaleTaskTests.RestartAndCoverage);

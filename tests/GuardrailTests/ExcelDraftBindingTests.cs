@@ -36,6 +36,8 @@ namespace GuardrailTests
 
         public sealed class GridWorkbook
         {
+            public string Name { get; set; } = "Grid.xlsx";
+            public string FullName { get; set; } = "C:\\Grid.xlsx";
             public List<GridSheet> Worksheets { get; } =
                 new List<GridSheet>();
         }
@@ -297,6 +299,43 @@ namespace GuardrailTests
             {
                 if (Directory.Exists(root)) Directory.Delete(root, true);
             }
+        }
+
+        public static void GridReceiptRetainsTypedBeforeImages()
+        {
+            var workbook = new GridWorkbook();
+            var sheet = new GridSheet { Parent = workbook };
+            workbook.Worksheets.Add(sheet);
+            sheet.Cells[1, 1].Value2 = "001";
+            sheet.Cells[1, 1].NumberFormat = "@";
+            sheet.Cells[1, 2].Value2 = 12.5d;
+            sheet.Cells[1, 2].NumberFormat = "0.00";
+            var writer = typeof(SamsungAuthoringPolicy).Assembly.GetType(
+                "Scribble.Office.WorkbookDraftWriter", true);
+            var rows = new List<IReadOnlyList<string>>
+            {
+                new[] { "002", "14.5" }
+            };
+            var receipt = Invoke(writer, "CaptureCellsReceipt",
+                new GridApplication { ActiveSheet = sheet }, "A1", rows,
+                sheet, "bound-call");
+            var json = new JavaScriptSerializer();
+            var data = (Dictionary<string, object>)
+                json.DeserializeObject(json.Serialize(receipt));
+            var cells = (object[])data["Cells"];
+            var first = (Dictionary<string, object>)cells[0];
+            var second = (Dictionary<string, object>)cells[1];
+            if (Convert.ToString(data["WorkbookFullName"]) !=
+                    "C:\\Grid.xlsx" ||
+                Convert.ToString(data["SheetName"]) != "Data" ||
+                Convert.ToString(first["ValueKind"]) != "text" ||
+                Convert.ToString(first["Value"]) != "001" ||
+                Convert.ToString(first["NumberFormat"]) != "@" ||
+                Convert.ToString(second["ValueKind"]) != "number" ||
+                Convert.ToString(second["Value"]) != "12.5" ||
+                Convert.ToString(second["Planned"]) != "14.5")
+                throw new Exception(
+                    "The durable before-image lost workbook identity or typed values.");
         }
     }
 }

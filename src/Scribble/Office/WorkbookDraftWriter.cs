@@ -448,6 +448,82 @@ namespace Scribble.Office
                 boundSheet);
         }
 
+        internal static ExcelGridWriteReceipt CaptureCellsReceipt(
+            object excelApplication, string startCell,
+            IReadOnlyList<IReadOnlyList<string>> rows,
+            object boundSheet, string callId)
+        {
+            var target = PrepareCellsTarget(excelApplication, startCell,
+                rows, boundSheet);
+            dynamic sheet = target.Sheet;
+            dynamic workbook = sheet.Parent;
+            var receipt = new ExcelGridWriteReceipt
+            {
+                CallId = callId,
+                WorkbookName = Convert.ToString(workbook.Name),
+                WorkbookFullName = Convert.ToString(workbook.FullName),
+                SheetName = Convert.ToString(sheet.Name),
+                StartCell = target.AnchorName
+            };
+            var index = 0;
+            for (var row = 0; row < rows.Count; row++)
+                for (var column = 0; column <
+                        (rows[row] == null ? 0 : rows[row].Count);
+                    column++)
+                {
+                    var before = target.Before[index++];
+                    var value = before.HasFormula ? null : before.Value;
+                    string kind;
+                    string literal;
+                    if (value == null)
+                    {
+                        kind = "empty";
+                        literal = null;
+                    }
+                    else if (value is string)
+                    {
+                        kind = "text";
+                        literal = (string)value;
+                    }
+                    else if (value is bool)
+                    {
+                        kind = "boolean";
+                        literal = (bool)value ? "true" : "false";
+                    }
+                    else if (value is double || value is float ||
+                        value is decimal || value is int ||
+                        value is long)
+                    {
+                        if (ExcelErrorValue.Text(value) != null)
+                            throw new InvalidOperationException(
+                                "DRAFT_BEFORE_IMAGE_UNSUPPORTED: An Excel error cell cannot be safely restored.");
+                        kind = "number";
+                        literal = Convert.ToString(value,
+                            CultureInfo.InvariantCulture);
+                    }
+                    else
+                        throw new InvalidOperationException(
+                            "DRAFT_BEFORE_IMAGE_UNSUPPORTED: The target has an unsupported native cell value.");
+                    if (!(before.NumberFormat is string))
+                        throw new InvalidOperationException(
+                            "DRAFT_BEFORE_IMAGE_UNSUPPORTED: The target cell format was not scalar.");
+                    receipt.Cells.Add(new ExcelGridCellReceipt
+                    {
+                        Row = before.Row,
+                        Column = before.Column,
+                        HasFormula = before.HasFormula,
+                        Formula = before.HasFormula
+                            ? Convert.ToString(before.Formula)
+                            : null,
+                        ValueKind = kind,
+                        Value = literal,
+                        NumberFormat = (string)before.NumberFormat,
+                        Planned = rows[row][column]
+                    });
+                }
+            return receipt;
+        }
+
         private static CellWriteTarget PrepareCellsTarget(
             object excelApplication, string startCell,
             IReadOnlyList<IReadOnlyList<string>> rows,

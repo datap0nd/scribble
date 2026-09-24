@@ -359,14 +359,36 @@ namespace Scribble.Office
                 try
                 {
                     boundCellRows = ParsedRows(arguments);
-                    WorkbookDraftWriter.ValidateCellsTarget(
-                        _hostApplication,
-                        ToolArguments.GetString(arguments, "start_cell",
-                            string.Empty), boundCellRows, boundExcelSheet);
+                    var cellAnchor = ToolArguments.GetString(arguments,
+                        "start_cell", string.Empty);
+                    if (_taskContext == null)
+                        WorkbookDraftWriter.ValidateCellsTarget(
+                            _hostApplication, cellAnchor, boundCellRows,
+                            boundExcelSheet);
+                    else
+                    {
+                        var receipt = WorkbookDraftWriter
+                            .CaptureCellsReceipt(_hostApplication,
+                                cellAnchor, boundCellRows,
+                                boundExcelSheet, call.id);
+                        var receiptJson = new JavaScriptSerializer
+                        {
+                            MaxJsonLength = int.MaxValue
+                        }.Serialize(receipt);
+                        var receiptId = _taskContext.Store.PutEvidence(
+                            _taskContext.State.Id, receiptJson);
+                        _taskContext.State.HostData[
+                            "excel_grid_receipt"] = receiptId;
+                        _taskContext.State.HostData[
+                            "excel_grid_call_id"] = call.id;
+                        _taskContext.Checkpoint();
+                    }
                 }
                 catch (Exception error) when (
                     error is InvalidOperationException ||
-                    error is System.Runtime.InteropServices.COMException)
+                    error is System.Runtime.InteropServices.COMException ||
+                    error is System.IO.IOException ||
+                    error is UnauthorizedAccessException)
                 {
                     return Error(call.id, authorization,
                         "DRAFT_PREFLIGHT_FAILED", error.Message);

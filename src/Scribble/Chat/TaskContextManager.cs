@@ -591,6 +591,14 @@ namespace Scribble.Chat
                     !knownIncompleteDraft && !restoredCellEdit)
                     _state.HostData[DocumentWritePermissionKey(
                         call.function.name)] = "true";
+                string gridCallId;
+                if (write.Status == "verified" &&
+                    _state.HostData.TryGetValue("excel_grid_call_id",
+                        out gridCallId) && gridCallId == call.id)
+                {
+                    _state.HostData.Remove("excel_grid_call_id");
+                    _state.HostData.Remove("excel_grid_receipt");
+                }
             }
             Checkpoint();
         }
