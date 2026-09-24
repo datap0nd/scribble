@@ -39,6 +39,7 @@ namespace GuardrailTests
             var typedReviewPassed = false;
             var rendererRepairPassed = false;
             var contentRecoveryPassed = false;
+            var cardContentRecoveryPassed = false;
             var typedDeckHandoffPassed = false;
             var nativeDateColumnPassed = false;
             var powerpointExited = false;
@@ -951,6 +952,59 @@ namespace GuardrailTests
                         "analysis_deck_plan"),
                     "Native text readback did not reconcile the pending patch.");
                 contentRecoveryPassed = true;
+                stage = "powerpoint_card_content_recovery";
+                var cardPage = changedPages.Single(page =>
+                    page.LogicalSlideId == "provenance");
+                var cardBefore = AnalysisDocumentPilot.CompiledNativeText(
+                    fixture.Item1, desiredPlan, "provenance", "cards[0]");
+                Check(AnalysisDocumentPilot.ReadNativePatchText(
+                        (object)deck, cardPage, cardBefore) == cardBefore,
+                    "The card literal did not identify one native text shape.");
+                var cardPlan = new JavaScriptSerializer
+                    { MaxJsonLength = 16000000 }
+                    .Deserialize<AnalysisDocumentPlan>(new JavaScriptSerializer
+                    { MaxJsonLength = 16000000 }.Serialize(desiredPlan));
+                cardPlan.Slides.Single(slide => slide.Id == "provenance")
+                    .Cards[0].Points[0].Text =
+                    "Verified workbook range and checked formulas";
+                var cardAfter = AnalysisDocumentPilot.CompiledNativeText(
+                    fixture.Item1, cardPlan, "provenance", "cards[0]");
+                var cardTask = new TaskContextManager(new ChatCompletionRequest
+                {
+                    model = "offline-test",
+                    messages = new List<object> { new ChatCompletionInputMessage
+                        { role = "user", content = "Correct the card text" } }
+                }, "excel", "Correct the card text",
+                    new TaskCheckpointStore(Path.Combine(output,
+                        "card-recovery-checkpoint")));
+                cardTask.PersistAnalysis(fixture.Item1);
+                var cardPatch = new AnalysisDocumentPatch
+                {
+                    ContextId = "native-card-recovery",
+                    LogicalSlideId = "provenance", TargetId = "cards[0]",
+                    SegmentIndex = 0, ExpectedText = cardBefore,
+                    ReplacementText = cardAfter
+                };
+                var cardReservation = cardTask.ReserveAnalysisContentPatch(
+                    cardPage, cardPatch, cardPlan, cardBefore, cardAfter,
+                    "native-card-input", AnalysisRepairBudget.CrossApp()
+                        .ConsumePatch("provenance", "cards[0]"), true);
+                AnalysisDocumentPilot.ApplyNativeContentPatch(
+                    (object)deck, cardPage, cardReservation);
+                var cardReadbackPage = AnalysisDocumentPilot
+                    .CapturePresentationPages((object)deck, fixture.Item1,
+                        cardPlan).Single(page => page.LogicalSlideId ==
+                            "provenance");
+                cardTask.ReconcileAnalysisContentPatch(cardReservation,
+                    cardReadbackPage,
+                    AnalysisDocumentPilot.ReadNativePatchText(
+                        (object)deck, cardReadbackPage, cardAfter));
+                Check(!cardTask.State.HostData.ContainsKey(
+                        "analysis_pending_content_patch") &&
+                    desiredPlan.Slides.Single(slide => slide.Id ==
+                        "provenance").Cards[0].Points[0].Text == cardBefore,
+                    "Native card repair did not preserve the original plan or reconcile the receipt.");
+                cardContentRecoveryPassed = true;
                 slidesPassed = true;
             }
             catch (Exception error)
@@ -996,6 +1050,7 @@ namespace GuardrailTests
                 typed_review_contract_passed = typedReviewPassed,
                 renderer_repair_passed = rendererRepairPassed,
                 content_recovery_passed = contentRecoveryPassed,
+                card_content_recovery_passed = cardContentRecoveryPassed,
                 typed_deck_handoff_passed = typedDeckHandoffPassed,
                 native_date_column_passed = nativeDateColumnPassed,
                 powerpoint_exited = powerpointExited,
@@ -1011,7 +1066,8 @@ namespace GuardrailTests
             Console.WriteLine(json);
             return workbookPassed && slidesPassed && sourcePreserved &&
                 recoveryPassed && typedReviewPassed && rendererRepairPassed &&
-                typedDeckHandoffPassed && contentRecoveryPassed
+                typedDeckHandoffPassed && contentRecoveryPassed &&
+                cardContentRecoveryPassed
                 ? 0 : 1;
         }
 
