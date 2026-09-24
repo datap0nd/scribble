@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -209,6 +210,8 @@ namespace GuardrailTests
                         "EXCEL_FORMULA_ERROR_WAS_ACCEPTED: " +
                         formulaError.Content);
                 }
+                VerifyInterruptedRecovery(app, source, other,
+                    originalSheet);
                 passed = true;
             }
             catch (Exception error) { failure = error.ToString(); }
@@ -231,7 +234,7 @@ namespace GuardrailTests
                 merged_preflight_passed = passed,
                 in_process_rollback_passed = passed,
                 formula_error_rollback_passed = passed,
-                before_image_recovery_passed = false,
+                before_image_recovery_passed = passed,
                 full_acceptance_passed = false,
                 failure
             }));
@@ -242,6 +245,92 @@ namespace GuardrailTests
         private static void Check(bool condition, string message)
         {
             if (!condition) throw new InvalidOperationException(message);
+        }
+
+        private static void VerifyInterruptedRecovery(dynamic app,
+            dynamic source, dynamic other, dynamic sheet)
+        {
+            foreach (var scenario in new[] { "before", "partial",
+                "applied", "user_edit" })
+            {
+                var root = Path.Combine(Path.GetTempPath(),
+                    "scribble-native-grid-recovery-" +
+                    Guid.NewGuid().ToString("N"));
+                try
+                {
+                    sheet.Cells[10, 10].NumberFormat = "yyyy-mm-dd";
+                    sheet.Cells[10, 10].Value2 = 45100d;
+                    sheet.Cells[10, 11].Value2 = "original K10";
+                    var writer = typeof(DocumentDraftHost).Assembly.GetType(
+                        "Scribble.Office.WorkbookDraftWriter", true);
+                    var capture = writer.GetMethod("CaptureCellsReceipt",
+                        BindingFlags.Static | BindingFlags.NonPublic);
+                    var rows = new List<IReadOnlyList<string>>
+                    {
+                        new[] { "revised date", "revised K10" }
+                    };
+                    var callId = "native-recovery-" + scenario;
+                    var receipt = capture.Invoke(null, new object[] {
+                        (object)app, "J10", rows, (object)sheet, callId });
+                    var request = new ChatCompletionRequest
+                    {
+                        model = "test",
+                        messages = new List<object> {
+                            new ChatCompletionInputMessage {
+                                role = "user", content = "Change J10 and K10" }
+                        }
+                    };
+                    var task = new TaskContextManager(request, "excel",
+                        "Change J10 and K10", new TaskCheckpointStore(root));
+                    var call = new ChatToolCall
+                    {
+                        id = callId, type = "function",
+                        function = new ChatToolCallFunction
+                        {
+                            name = WorkbookToolCatalog.WriteCells,
+                            arguments = "{\"start_cell\":\"J10\",\"rows\":[[\"revised date\",\"revised K10\"]]}"
+                        }
+                    };
+                    task.BeforeTool(call, true);
+                    var receiptId = task.Store.PutEvidence(task.State.Id,
+                        new JavaScriptSerializer().Serialize(receipt));
+                    task.State.HostData["excel_grid_receipt"] = receiptId;
+                    task.State.HostData["excel_grid_call_id"] = callId;
+                    task.Checkpoint();
+                    if (scenario != "before")
+                        sheet.Cells[10, 10].Value2 = "revised date";
+                    if (scenario == "applied")
+                        sheet.Cells[10, 11].Value2 = "revised K10";
+                    if (scenario == "user_edit")
+                        sheet.Cells[10, 11].Value2 = "user edit";
+                    other.Activate();
+                    using (var host = new DocumentDraftHost("excel",
+                        (object)app))
+                        host.BindTaskAsync(task,
+                            System.Threading.CancellationToken.None)
+                            .GetAwaiter().GetResult();
+                    var uncertain = scenario == "user_edit";
+                    var applied = scenario == "applied";
+                    Check(task.State.Writes.Single().Status ==
+                            (uncertain ? "pending" : "verified") &&
+                        Convert.ToString(sheet.Cells[10, 10].Value2) ==
+                            (applied || uncertain ? "revised date" : "45100") &&
+                        Convert.ToString(sheet.Cells[10, 11].Value2) ==
+                            (applied ? "revised K10" : uncertain ?
+                                "user edit" : "original K10") &&
+                        Convert.ToString(sheet.Cells[10, 10].NumberFormat) ==
+                            "yyyy-mm-dd" &&
+                        (task.State.HostData.ContainsKey("generic_write_spent")
+                            == applied) &&
+                        (task.State.HostData.ContainsKey("excel_grid_receipt")
+                            == uncertain),
+                        "NATIVE_GRID_RECOVERY_FAILED: " + scenario);
+                }
+                finally
+                {
+                    if (Directory.Exists(root)) Directory.Delete(root, true);
+                }
+            }
         }
     }
 }

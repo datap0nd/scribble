@@ -626,6 +626,8 @@ namespace Scribble.Chat
                 "excel_grid_recovery:" + reconciliation + ":" + receiptId);
             if (reconciliation == ExcelGridWriteRecovery.Applied)
                 _state.HostData["generic_write_spent"] = "true";
+            else
+                _state.HostData.Remove("generic_write_spent");
             _state.HostData.Remove("excel_grid_call_id");
             _state.HostData.Remove("excel_grid_receipt");
             Checkpoint();
