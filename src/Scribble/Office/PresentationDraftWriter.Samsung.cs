@@ -373,20 +373,29 @@ namespace Scribble.Office
                 draft.Cards[0].Points[0].Length <= 100 &&
                 !Regex.IsMatch(draft.Cards[0].Points[0], @"\d"))
             {
-                // One short qualitative assurance reads as a statement. A
-                // full-width gray card makes sparse evidence look like a form.
+                // Give a short, sourced qualitative statement a deliberate
+                // focal panel rather than leaving it stranded in empty space.
                 var card = draft.Cards[0];
+                var panel = new RectangleF(region.X + 14f,
+                    region.Y + 8f, region.Width - 28f,
+                    region.Height - 16f);
+                elements.Add(TextElement("", panel,
+                    fill: SamsungSlideDesign.Navy));
+                elements.Add(TextElement("", new RectangleF(panel.X,
+                    panel.Y, panel.Width, 6f),
+                    fill: SamsungSlideDesign.SoftBlue));
                 elements.Add(TextElement(card.Heading.ToUpperInvariant(),
-                    new RectangleF(region.X + 24f, region.Y + 24f,
-                        region.Width - 48f, 34f), 16, 16, "Arial", true,
-                    null, "#596674"));
+                    new RectangleF(panel.X + 34f, panel.Y + 31f,
+                        panel.Width - 68f, 30f), 16, 16, "Arial", true,
+                    null, "#B8D8FF"));
                 elements.Add(TextElement(card.Points[0],
-                    new RectangleF(region.X + 24f, region.Y + 80f,
-                        region.Width - 64f, 130f), 32, 24,
-                    MetoTheme.TitleFont, true, null, "#202A35"));
-                elements.Add(TextElement("", new RectangleF(region.X + 24f,
-                    region.Y + 235f, Math.Min(235f, region.Width / 3f), 5f),
-                    fill: SamsungSlideDesign.Blue));
+                    new RectangleF(panel.X + 34f, panel.Y + 84f,
+                        panel.Width - 68f, panel.Height - 123f), 36, 26,
+                    MetoTheme.TitleFont, true, null, "#FFFFFF"));
+                elements.Add(TextElement("", new RectangleF(panel.X + 34f,
+                    panel.Bottom - 34f, Math.Min(170f,
+                        panel.Width / 4f), 4f),
+                    fill: SamsungSlideDesign.SoftBlue));
                 return;
             }
             // When a factual card grid carries several numbers, reserve the

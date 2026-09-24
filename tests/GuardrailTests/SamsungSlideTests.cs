@@ -145,7 +145,29 @@ namespace GuardrailTests
             if (scorecardElements.Where(e => new[] { "JUNE REVENUE", "JUNE COST", "GROSS MARGIN" }.Contains(Convert.ToString(e["text"])))
                     .Any(e => Convert.ToDouble(e["size"]) < 14))
                 throw new Exception("Scorecard KPI labels must meet the native 14-point body minimum.");
-            var palette = new HashSet<string>(new[] { "#4F81BD", "#5B9BD5", "#41719C", "#F2F2F2", "#C00000", "#00B050",
+            var statement = SamsungPresentationReview.InspectPlan(
+                json.Serialize(new[] { new {
+                    title = "What the ledger supports", layout = "cards",
+                    cards = new[] { new { heading = "Evidence",
+                        points = new[] {
+                            "Verified workbook range and live formulas" } } }
+                } }));
+            var statementPage = ((IEnumerable)json.DeserializeObject(
+                json.Serialize(statement)))
+                .Cast<Dictionary<string, object>>().Single();
+            var statementElements = ((IEnumerable)statementPage["elements"])
+                .Cast<Dictionary<string, object>>().ToArray();
+            if (statementElements.Count(element =>
+                    Convert.ToString(element["fill"]) ==
+                        SamsungSlideDesign.Navy &&
+                    Convert.ToDouble(element["width"]) > 800) != 1 ||
+                !statementElements.Any(element =>
+                    Convert.ToString(element["text"]) ==
+                        "Verified workbook range and live formulas" &&
+                    Convert.ToString(element["color"]) == "#FFFFFF" &&
+                    Convert.ToDouble(element["size"]) >= 26))
+                throw new Exception("A single evidence statement lost its readable focal panel.");
+            var palette = new HashSet<string>(new[] { "#4F81BD", "#5B9BD5", "#41719C", "#17365D", "#B8D8FF", "#F2F2F2", "#C00000", "#00B050",
                 "#FFFFFF", "#000000", "#7F7F7F", "#A6A6A6", "#202A35", "#596674", "#D7DDE3", "#D4D4D4" }, StringComparer.OrdinalIgnoreCase);
             if (MetoTheme.ChartSeriesColors()[2] != MetoTheme.Rgb("#596674"))
                 throw new Exception("The third chart series needs contrast against the white plot area.");

@@ -29,6 +29,7 @@ namespace Scribble.Office
         }
         public const float Width = 960f, Height = 540f;
         public const string Blue = "#4F81BD", SoftBlue = "#5B9BD5", Border = "#41719C";
+        public const string Navy = "#17365D";
         public const string Gray = "#F2F2F2", Red = "#C00000", Green = "#00B050";
         public static readonly string[] Layouts = { "cover", "divider", "agenda", "bullets", "cards", "scorecard", "action_list",
             "two_pane", "table", "matrix", "chart", "annotated_chart", "visual_grid", "dual_visual",
