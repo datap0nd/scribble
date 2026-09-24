@@ -85,12 +85,22 @@ namespace GuardrailTests
             private object _value;
             private object _formula;
             public bool FailNextWrite { get; set; }
+            public bool FailNextRead { get; set; }
             public bool MergeCells { get; set; }
             public bool HasFormula { get; private set; }
             public object NumberFormat { get; set; } = "General";
             public object Value2
             {
-                get { return _value; }
+                get
+                {
+                    if (FailNextRead)
+                    {
+                        FailNextRead = false;
+                        throw new InvalidOperationException(
+                            "Injected restart readback failure");
+                    }
+                    return _value;
+                }
                 set
                 {
                     if (FailNextWrite)
@@ -343,7 +353,8 @@ namespace GuardrailTests
         public static void InterruptedGridWriteReconcilesSafely()
         {
             foreach (var scenario in new[] {
-                "before", "partial", "applied", "user_edit", "wrong_book" })
+                "before", "partial", "applied", "user_edit",
+                "wrong_book", "read_error", "resume_write_error" })
             {
                 var root = Path.Combine(Path.GetTempPath(),
                     "scribble-grid-recovery-" + Guid.NewGuid().ToString("N"));
@@ -394,6 +405,10 @@ namespace GuardrailTests
                         sheet.Cells[1, 2].Value2 = "planned B1";
                     if (scenario == "user_edit")
                         sheet.Cells[1, 2].Value2 = "user edit";
+                    if (scenario == "read_error")
+                        sheet.Cells[1, 1].FailNextRead = true;
+                    if (scenario == "resume_write_error")
+                        sheet.Cells[1, 1].FailNextWrite = true;
                     if (scenario == "wrong_book")
                     {
                         workbook.Name = "Renamed.xlsx";
@@ -404,9 +419,15 @@ namespace GuardrailTests
                             System.Threading.CancellationToken.None)
                             .GetAwaiter().GetResult();
                     var expectedStatus = scenario == "user_edit" ||
-                        scenario == "wrong_book" ? "pending" : "verified";
+                        scenario == "wrong_book" ||
+                        scenario == "read_error" ||
+                        scenario == "resume_write_error"
+                        ? "pending" : "verified";
                     var expectedFirst = scenario == "applied" ||
-                        scenario == "user_edit" || scenario == "wrong_book"
+                        scenario == "user_edit" ||
+                        scenario == "wrong_book" ||
+                        scenario == "read_error" ||
+                        scenario == "resume_write_error"
                         ? "planned A1" : "original A1";
                     var expectedSecond = scenario == "applied"
                         ? "planned B1" : scenario == "user_edit"
