@@ -7,7 +7,7 @@ param(
     [string]$CandidatePptx = ''
 )
 
-# This preflight exercises only the actual presentation/native-artifact rules
+# This preflight exercises the presentation, native-chart, and artifact rules
 # derived from a sealed case. It does not start a Test Lab session, contact a
 # model, or claim the clean source reference solves the entire task.
 $ErrorActionPreference='Stop'
@@ -30,7 +30,7 @@ if ($originalCase.Count -ne 1 -or $originalCase[0].host -ne 'PowerPoint') { thro
 $originalCase=$originalCase[0]
 $originalOraclePath=Join-Path $root $originalCase.oracle_ref
 $originalOracle=Get-Content -LiteralPath $originalOraclePath -Raw | ConvertFrom-Json
-$rules=@($originalOracle.checks | Where-Object { $_.kind -eq 'presentation' -or ($_.kind -eq 'native_artifact' -and $_.extension -eq 'pptx') })
+$rules=@($originalOracle.checks | Where-Object { $_.kind -eq 'presentation' -or $_.kind -eq 'native_chart' -or ($_.kind -eq 'native_artifact' -and $_.extension -eq 'pptx') })
 if (@($rules | Where-Object kind -eq 'presentation').Count -ne 1) { throw 'The case must have exactly one presentation rule' }
 $presentationRule=@($rules | Where-Object kind -eq 'presentation')[0]
 $reference=Join-Path $root $presentationRule.reference_pptx
