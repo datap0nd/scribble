@@ -418,8 +418,12 @@ namespace Scribble.Office
                     "REPAIR_NATIVE_PAGE_UNSUPPORTED");
             dynamic slide = deck.Slides[page.ExpectedPageNumber];
             if ((int)slide.SlideID != page.NativeSlideId ||
-                (string)slide.Tags["ScribbleAnalysisLayout"] !=
-                    expectedLayout)
+                NativeStateFingerprint(slide) !=
+                    page.NativeStateFingerprint)
+                throw new InvalidOperationException(
+                    "REPAIR_NATIVE_PAGE_CHANGED");
+            if ((string)slide.Tags["ScribbleAnalysisLayout"] !=
+                expectedLayout)
                 throw new InvalidOperationException(
                     "REPAIR_NATIVE_LAYOUT_READBACK_FAILED");
             return (string)slide.Tags["ScribbleAnalysisLayout"];

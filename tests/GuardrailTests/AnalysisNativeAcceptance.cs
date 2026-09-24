@@ -1090,6 +1090,31 @@ namespace GuardrailTests
                     AnalysisDocumentPilot.ReadNativeLayoutPatch(
                         (object)deck, reflowedPage, "cards") == "cards",
                     "The native layout reflow lost its slide identity or readback.");
+                dynamic reflowedTitle = deck.Slides[
+                    reflowedPage.ExpectedPageNumber].Shapes[1]
+                    .TextFrame.TextRange;
+                var titleBeforeConcurrentEdit = (string)reflowedTitle.Text;
+                var concurrentEditRejected = false;
+                try
+                {
+                    reflowedTitle.Text = titleBeforeConcurrentEdit +
+                        " (user edit)";
+                    AnalysisDocumentPilot.ReadNativeLayoutPatch(
+                        (object)deck, reflowedPage, "cards");
+                }
+                catch (InvalidOperationException error)
+                {
+                    concurrentEditRejected = error.Message.Contains(
+                        "REPAIR_NATIVE_PAGE_CHANGED");
+                }
+                finally
+                {
+                    reflowedTitle.Text = titleBeforeConcurrentEdit;
+                }
+                Check(concurrentEditRejected &&
+                    AnalysisDocumentPilot.ReadNativeLayoutPatch(
+                        (object)deck, reflowedPage, "cards") == "cards",
+                    "A concurrent native edit was accepted by layout readback.");
                 var resumedLayoutTask = new TaskContextManager(layoutInput,
                     "excel", layoutTask.State.Objective, layoutStore,
                     layoutStore.Load(layoutTask.State.Id));
