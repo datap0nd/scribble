@@ -379,7 +379,7 @@ namespace Scribble.Office
                     PresentationInspection.Fingerprint((object)slide) !=
                         expected)
                     throw new InvalidOperationException(
-                        "REVISION_COPY_DRAFT_CHANGED");
+                        "REVISION_COPY_DRAFT_CHANGED: slide " + id);
             }
         }
 

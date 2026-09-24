@@ -94,7 +94,9 @@ namespace GuardrailTests
                             beforeTamper);
                     }
                     catch (InvalidOperationException error) when
-                        (error.Message == "REVISION_COPY_DRAFT_CHANGED")
+                        (error.Message.StartsWith(
+                            "REVISION_COPY_DRAFT_CHANGED",
+                            StringComparison.Ordinal))
                     { draftConflictRejected = true; }
                 }
                 finally
