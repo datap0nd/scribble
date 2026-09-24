@@ -38,6 +38,14 @@ foreach ($pattern in $forbidden) {
                 $_.Line.Trim() -eq 'try { Directory.Delete(staging, true); } catch (IOException) { } catch (UnauthorizedAccessException) { }') -and
             -not ($pattern -eq "\.Delete\s*\(" -and
                 ($_.Path -like '*\Office\PresentationRevision.cs' -or $_.Path -like '*\Office\PresentationDraftWriter.Samsung.cs')) -and
+            # The owned, unsaved deck copy replaces one chart. Partial new
+            # shapes are removed only before the original chart is deleted.
+            -not ($pattern -eq "\.Delete\s*\(" -and
+                $_.Path -like '*\Office\PresentationDraftCopy.cs' -and
+                $_.Line.Trim() -in @(
+                    'slide.Shapes[(int)slide.Shapes.Count].Delete();',
+                    'try { oldChart.Delete(); }',
+                    'replacement.Delete();')) -and
             -not ($_.Path -like '*\Chat\TaskCoordinator.cs' -and
                 ($_.Line.Trim() -eq 'if (Directory.Exists(path)) Directory.Delete(path, true);' -or
                  $_.Line.Trim() -eq 'else File.Move(temporary, path);')) -and
