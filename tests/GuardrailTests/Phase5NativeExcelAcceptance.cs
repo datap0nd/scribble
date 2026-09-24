@@ -179,6 +179,35 @@ namespace GuardrailTests
                             .Value2) == "original second",
                         "EXCEL_ROLLBACK_LOST_SOURCE: " +
                         rollback.Content);
+
+                    originalSheet.Cells[6, 8].Value2 = "original third";
+                    originalSheet.Cells[6, 9].Value2 = "original fourth";
+                    source.Activate(); originalSheet.Activate();
+                    capture();
+                    var errorAuth = new OneShotDraftAuthorization(true);
+                    var formulaError = host.Execute(new ChatToolCall
+                    {
+                        id = "phase5-formula-error", type = "function",
+                        function = new ChatToolCallFunction
+                        {
+                            name = WorkbookToolCatalog.WriteCells,
+                            arguments = json.Serialize(new
+                            {
+                                start_cell = "H6",
+                                rows = new[] { new[] {
+                                    "changed third", "=1/0" } }
+                            })
+                        }
+                    }, errorAuth, true, "Update H6:I6 in my sheet");
+                    Check(formulaError.Outcome.Failed &&
+                        formulaError.Outcome.ErrorCode ==
+                            "DRAFT_WRITE_ROLLED_BACK" &&
+                        Convert.ToString(originalSheet.Cells[6, 8]
+                            .Value2) == "original third" &&
+                        Convert.ToString(originalSheet.Cells[6, 9]
+                            .Value2) == "original fourth",
+                        "EXCEL_FORMULA_ERROR_WAS_ACCEPTED: " +
+                        formulaError.Content);
                 }
                 passed = true;
             }
@@ -201,6 +230,7 @@ namespace GuardrailTests
                 target_binding_passed = passed,
                 merged_preflight_passed = passed,
                 in_process_rollback_passed = passed,
+                formula_error_rollback_passed = passed,
                 before_image_recovery_passed = false,
                 full_acceptance_passed = false,
                 failure

@@ -687,6 +687,7 @@ namespace Scribble.Office
                 }
                 catch
                 {
+                    brokenFormulas++;
                 }
 
                 foreach (var formula in liveFormulas)
@@ -698,20 +699,25 @@ namespace Scribble.Office
                             formula.Key[1]];
                         object value = cell.Value2;
                         if (IsExcelError(value))
-                        {
-                            if (TryRepairAdjacentRowFormula(
-                                sheet,
-                                cell,
-                                formula.Value,
-                                formula.Key[0]))
-                                continue;
                             brokenFormulas++;
-                        }
                     }
                     catch
                     {
+                        brokenFormulas++;
                     }
                 }
+            }
+
+            if (brokenFormulas > 0)
+            {
+                var uncertain = RestoreTouched(sheet, touched);
+                throw new InvalidOperationException(
+                    uncertain.Count == 0
+                        ? "DRAFT_WRITE_ROLLED_BACK: " +
+                          brokenFormulas + " live formula(s) evaluated to an Excel error or could not be read back. The captured cells were restored."
+                        : "DRAFT_WRITE_UNCERTAIN: " +
+                          brokenFormulas + " live formula(s) failed native recalculation, and some cells could not be safely restored: " +
+                          string.Join(", ", uncertain.Take(8)) + ".");
             }
 
             return "Wrote " + written + " cells starting at " +
@@ -721,11 +727,6 @@ namespace Scribble.Office
                       " live formulas"
                     : string.Empty) +
                 "." +
-                (brokenFormulas > 0
-                    ? " " + brokenFormulas +
-                      " formula(s) evaluated to an Excel error " +
-                      "and remain visible for correction. Do not claim the analysis is complete."
-                    : string.Empty) +
                 " Nothing was saved, but Excel cannot undo " +
                 "add-in changes - close without saving to " +
                 "discard.";
