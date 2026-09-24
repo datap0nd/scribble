@@ -25,6 +25,7 @@ namespace Scribble.Office
             AnalysisArtifact artifact;
             AnalysisDocumentPlan plan;
             IReadOnlyList<PresentationDraftWriter.DraftSlide> slides;
+            object sourceWorkbook = null;
             try
             {
                 artifact = _taskContext.LoadAnalysis();
@@ -70,8 +71,10 @@ namespace Scribble.Office
                         "ANALYSIS_DECK_VISION_REQUIRED");
                 OfficeTaskBinding.Validate(_taskContext.State, "excel",
                     _hostApplication);
+                sourceWorkbook = (object)((dynamic)_hostApplication)
+                    .ActiveWorkbook;
                 AnalysisWorkbookSourceGuard.Validate(_hostApplication,
-                    artifact);
+                    artifact, sourceWorkbook);
                 token.ThrowIfCancellationRequested();
             }
             catch (Exception exception) when (!(exception is
@@ -301,10 +304,8 @@ namespace Scribble.Office
                         contentReservation, patchedPage, nativeReadback);
                     plan = repaired.Plan;
                 }
-                OfficeTaskBinding.Validate(_taskContext.State, "excel",
-                    _hostApplication);
                 AnalysisWorkbookSourceGuard.Validate(_hostApplication,
-                    artifact);
+                    artifact, sourceWorkbook);
                 _taskContext.State.PresentationReviewReceipt =
                     review.Context.ContextId;
                 _taskContext.State.HostData["analysis_deck_complete"] =

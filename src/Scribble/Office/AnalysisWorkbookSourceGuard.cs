@@ -10,7 +10,7 @@ namespace Scribble.Office
     public static class AnalysisWorkbookSourceGuard
     {
         public static void Validate(object excelApplication,
-            AnalysisArtifact artifact)
+            AnalysisArtifact artifact, object boundWorkbook = null)
         {
             AnalysisContract.Serialize(artifact);
             if (excelApplication == null || artifact.Snapshots.Count != 1 ||
@@ -28,14 +28,18 @@ namespace Scribble.Office
                     "ANALYSIS_SOURCE_UNAVAILABLE");
             try
             {
-                var binding = OfficeTaskBinding.Capture("excel",
-                    excelApplication);
+                var binding = boundWorkbook == null
+                    ? OfficeTaskBinding.Capture("excel",
+                        excelApplication)
+                    : OfficeTaskBinding.CaptureDocument("excel",
+                        boundWorkbook);
                 if (binding == null ||
                     binding.Id != snapshot.SourceInstanceId)
                     throw new InvalidOperationException(
                         "ANALYSIS_SOURCE_CHANGED: workbook binding");
                 dynamic application = excelApplication;
-                dynamic workbook = application.ActiveWorkbook;
+                dynamic workbook = boundWorkbook ??
+                    (object)application.ActiveWorkbook;
                 dynamic sheet = workbook.Worksheets[table.Name];
                 dynamic range = sheet.Range(locator.Range);
                 var address = Convert.ToString(
