@@ -1360,7 +1360,7 @@ namespace Scribble.Office
             return values[category].Value;
         }
 
-        private static bool AddChartToSlide(
+        internal static bool AddChartToSlide(
             dynamic slide,
             DraftChart chart,
             double left,

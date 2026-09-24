@@ -34,6 +34,7 @@ namespace GuardrailTests
             object revision = null;
             var failure = string.Empty;
             var passed = false;
+            var chartRecreated = false;
             var candidate = Path.Combine(output,
                 "phase4-pp01-copy.pptx");
             var pdf = Path.Combine(output,
@@ -71,9 +72,18 @@ namespace GuardrailTests
                 draft = CopyType.GetField("Draft",
                     BindingFlags.Instance | BindingFlags.NonPublic)
                     .GetValue(copy);
+                var chartFacts = (WorkbookMonthlyChartFacts.Result)
+                    Invoke(copy, CopyType,
+                        "RecreateSalesChartFromWorkbook",
+                        (int)source.Slides[2].SlideID,
+                        (int)chart.Id, workbookPath,
+                        66f, 158.25f, 825f, 278.25f);
+                if (chartFacts.SourceSha256 != workbookHash ||
+                    chartFacts.Categories.Length != 6)
+                    throw new InvalidOperationException(
+                        "PP01_CHART_SOURCE_BINDING_FAILED");
+                chartRecreated = true;
                 var operations = new List<object>();
-                operations.Add(Geometry((object)source.Slides[2],
-                    chart, 66f, 158.25f, 825f, 278.25f));
                 for (var column = 1; column <= 3; column++)
                     operations.Add(new Dictionary<string, object>
                     {
@@ -214,12 +224,12 @@ namespace GuardrailTests
                 patch_stage_passed = passed,
                 native_artifact = passed ? candidate : null,
                 pdf_review_artifact = passed ? pdf : null,
-                chart_recreated_from_workbook = false,
+                chart_recreated_from_workbook = chartRecreated,
                 independent_grader_passed = false,
                 visual_approved = false,
                 full_acceptance_passed = false,
                 failure,
-                note = "A new six-slide copy received bounded geometry and table-fill patches. Chart creation from the workbook, independent grading, and human visual approval remain separate gates."
+                note = "A new six-slide copy received a workbook-derived native chart and bounded repairs. Independent grading and human visual approval remain separate gates."
             };
             File.WriteAllText(reportPath,
                 new JavaScriptSerializer().Serialize(report));

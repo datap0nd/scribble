@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 
 namespace Scribble.Office
 {
@@ -118,6 +119,82 @@ namespace Scribble.Office
                 bound.Add(mapped);
             }
             return bound.ToArray();
+        }
+
+        internal WorkbookMonthlyChartFacts.Result RecreateSalesChartFromWorkbook(
+            int sourceSlideId, int sourceShapeId, string workbookPath,
+            float left, float top, float width, float height)
+        {
+            VerifySource();
+            var facts = WorkbookMonthlyChartFacts.ReadSalesLedger(
+                workbookPath, CancellationToken.None);
+            if (facts.Categories.Length != 6 ||
+                facts.RevenueEur.Length != 6 || facts.CostEur.Length != 6)
+                throw new InvalidOperationException(
+                    "REVISION_CHART_FACTS_INCOMPLETE");
+            int draftSlideId;
+            int draftShapeId;
+            if (!_slideIds.TryGetValue(sourceSlideId,
+                    out draftSlideId) ||
+                !_shapeIds[sourceSlideId].TryGetValue(sourceShapeId,
+                    out draftShapeId))
+                throw new InvalidOperationException(
+                    "REVISION_CHART_SOURCE_CHANGED");
+            dynamic slide = PresentationInspection.FindSlide(Draft,
+                draftSlideId);
+            dynamic oldChart = PresentationInspection.FindShape(
+                (object)slide, draftShapeId);
+            if ((int)oldChart.HasChart == 0 ||
+                left < 0 || top < 0 || width < 100 || height < 100 ||
+                left + width > (float)((dynamic)Draft).PageSetup.SlideWidth ||
+                top + height > (float)((dynamic)Draft).PageSetup.SlideHeight)
+                throw new InvalidOperationException(
+                    "REVISION_CHART_REPLACEMENT_INVALID");
+            var chart = new PresentationDraftWriter.DraftChart(
+                DraftChartTypes.ColumnClustered,
+                "Revenue EUR / Cost EUR (EUR)", facts.Categories,
+                new[] {
+                    new PresentationDraftWriter.DraftChartSeries(
+                        "Revenue EUR", facts.RevenueEur.Select(value =>
+                            (double?)value).ToArray()),
+                    new PresentationDraftWriter.DraftChartSeries(
+                        "Cost EUR", facts.CostEur.Select(value =>
+                            (double?)value).ToArray())
+                });
+            var before = (int)slide.Shapes.Count;
+            var created = false;
+            for (var attempt = 0; attempt < 3; attempt++)
+            {
+                if (PresentationDraftWriter.AddChartToSlide(slide,
+                        chart, left, top, width, height))
+                { created = true; break; }
+                while ((int)slide.Shapes.Count > before)
+                    slide.Shapes[(int)slide.Shapes.Count].Delete();
+                if (attempt == 2 || !PresentationDraftWriter
+                        .RetryableSamsungChartFailure(
+                            PresentationDraftWriter.LastChartFailure))
+                    break;
+                Thread.Sleep(350 * (attempt + 1));
+            }
+            if (!created || (int)slide.Shapes.Count != before + 1)
+                throw new InvalidOperationException(
+                    "REVISION_CHART_RECREATE_FAILED: " +
+                    PresentationDraftWriter.LastChartFailure);
+            dynamic replacement = slide.Shapes[before + 1];
+            if ((int)replacement.HasChart == 0)
+                throw new InvalidOperationException(
+                    "REVISION_CHART_RECREATE_NOT_NATIVE");
+            var replacementId = (int)replacement.Id;
+            try { oldChart.Delete(); }
+            catch
+            {
+                replacement.Delete();
+                throw;
+            }
+            _shapeIds[sourceSlideId][sourceShapeId] =
+                replacementId;
+            VerifySource();
+            return facts;
         }
 
         internal void VerifySource()
