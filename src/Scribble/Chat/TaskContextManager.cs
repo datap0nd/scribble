@@ -579,9 +579,16 @@ namespace Scribble.Chat
                 // An error may have occurred after the side effect. Never presume that it did not execute.
                 var knownIncompleteDraft = result.Outcome.Failed && result.Outcome.ErrorCode == "DRAFT_FORMULA_INVALID" &&
                     (call.function.name == WorkbookToolCatalog.WriteDraftSheet || call.function.name == CrossAppToolCatalog.SendToExcel);
-                write.Status = knownIncompleteDraft || !result.Outcome.Failed || result.Outcome.PermissionConsumed == false ? "verified" : "uncertain";
+                var restoredCellEdit = result.Outcome.Failed &&
+                    result.Outcome.ErrorCode == "DRAFT_WRITE_ROLLED_BACK" &&
+                    call.function.name == WorkbookToolCatalog.WriteCells;
+                write.Status = knownIncompleteDraft || restoredCellEdit ||
+                    !result.Outcome.Failed ||
+                    result.Outcome.PermissionConsumed == false
+                    ? "verified" : "uncertain";
                 write.AfterFingerprint = TaskCheckpointStore.Fingerprint(result.Content);
-                if (result.Outcome.PermissionConsumed != false && !knownIncompleteDraft)
+                if (result.Outcome.PermissionConsumed != false &&
+                    !knownIncompleteDraft && !restoredCellEdit)
                     _state.HostData[DocumentWritePermissionKey(
                         call.function.name)] = "true";
             }

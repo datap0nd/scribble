@@ -553,6 +553,19 @@ namespace Scribble.Office
             catch (Exception exception)
             {
                 Log.Error("DocumentDraft." + name, exception);
+                if (name == WorkbookToolCatalog.WriteCells &&
+                    exception is InvalidOperationException &&
+                    (exception.Message.StartsWith(
+                        "DRAFT_WRITE_ROLLED_BACK:", StringComparison.Ordinal) ||
+                     exception.Message.StartsWith(
+                        "DRAFT_WRITE_UNCERTAIN:", StringComparison.Ordinal)))
+                    return Error(call.id, authorization,
+                        exception.Message.StartsWith(
+                            "DRAFT_WRITE_ROLLED_BACK:",
+                            StringComparison.Ordinal)
+                            ? "DRAFT_WRITE_ROLLED_BACK"
+                            : "DRAFT_WRITE_UNCERTAIN",
+                        exception.Message);
                 if ((name == WorkbookToolCatalog.WriteDraftSheet || name == CrossAppToolCatalog.SendToExcel) &&
                     exception is InvalidOperationException &&
                     exception.Message.StartsWith("DRAFT_FORMULA_INVALID:", StringComparison.Ordinal))

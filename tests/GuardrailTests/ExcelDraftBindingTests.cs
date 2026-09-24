@@ -1,7 +1,10 @@
 using System;
 using System.Linq;
 using System.Collections.Generic;
+using System.IO;
 using System.Reflection;
+using System.Web.Script.Serialization;
+using Scribble.Chat;
 using Scribble.Office;
 
 namespace GuardrailTests
@@ -244,6 +247,56 @@ namespace GuardrailTests
                 Convert.ToString(sheet.Cells[1, 2].Value2) !=
                     "original B1")
                 throw new Exception("The bounded write lost a before-image.");
+        }
+
+        public static void RestoredEditDoesNotPoisonTaskRecovery()
+        {
+            var root = Path.Combine(Path.GetTempPath(),
+                "scribble-cell-rollback-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var request = new ChatCompletionRequest
+                {
+                    model = "test",
+                    messages = new List<object>
+                    {
+                        new ChatCompletionInputMessage
+                        {
+                            role = "user", content = "Change A1"
+                        }
+                    }
+                };
+                var task = new TaskContextManager(request, "excel",
+                    "Change A1", new TaskCheckpointStore(root));
+                var call = new ChatToolCall
+                {
+                    id = "rolled-back-cell", type = "function",
+                    function = new ChatToolCallFunction
+                    {
+                        name = WorkbookToolCatalog.WriteCells,
+                        arguments = "{\"start_cell\":\"A1\",\"rows\":[[\"x\"]]}"
+                    }
+                };
+                task.BeforeTool(call, true);
+                var result = new MailboxToolResult(call.id,
+                    new JavaScriptSerializer().Serialize(new
+                    {
+                        ok = false,
+                        error_code = "DRAFT_WRITE_ROLLED_BACK",
+                        permission_consumed = true
+                    }), "The captured cells were restored.");
+                task.AfterTool(call, result);
+                if (task.State.Writes.Single().Status != "verified" ||
+                    task.State.HostData.Any(entry =>
+                        entry.Value == "true" &&
+                        entry.Key.Contains("write_cells")))
+                    throw new Exception(
+                        "A verified rollback was left as an uncertain write.");
+            }
+            finally
+            {
+                if (Directory.Exists(root)) Directory.Delete(root, true);
+            }
         }
     }
 }

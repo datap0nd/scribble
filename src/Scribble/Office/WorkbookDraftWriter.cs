@@ -665,7 +665,7 @@ namespace Scribble.Office
                     "DRAFT_FORMULA_INVALID: Excel rejected " +
                     rejectedFormulas.Count + " formula(s) at " +
                     string.Join(", ", rejectedFormulas.Take(8)) +
-                    ". No invalid analytical output was accepted; correct the syntax before continuing.");
+                    ". Correct the syntax before continuing.");
             }
             catch (Exception error)
             {
