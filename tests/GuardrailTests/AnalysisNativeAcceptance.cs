@@ -409,15 +409,18 @@ namespace GuardrailTests
                         .HostData["analysis_repair_budget"]);
                     Check(savedPlan.Slides[0].Title ==
                             "Verified June revenue from ledger" &&
+                        savedPlan.Slides[0].Layout == "cards" &&
                         (string)typedDeck.Slides[1].Shapes[1]
                             .TextFrame.TextRange.Text ==
                             "Verified June revenue from ledger" &&
-                        repairBudget.ModelCalls == 3 &&
+                        repairBudget.ModelCalls == 5 &&
                         repairBudget.PatchedTargets.Contains(
                             savedPlan.Slides[0].Id + "/title") &&
+                        repairBudget.PatchedTargets.Contains(
+                            savedPlan.Slides[0].Id + "/page") &&
                         !readTask.State.HostData.ContainsKey(
                             "analysis_pending_content_patch"),
-                        "The typed content repair lost its native readback or recovery receipt.");
+                        "The typed text/layout repairs lost native readback or recovery receipts.");
                     typedDeck.Close();
                     typedDeck = null;
                     typedDeckHandoffPassed = true;
@@ -1244,7 +1247,7 @@ namespace GuardrailTests
 
             private void Handle()
             {
-                for (var round = 0; round < 3; round++)
+                for (var round = 0; round < 5; round++)
                     HandleOne(round);
             }
 
@@ -1288,27 +1291,49 @@ namespace GuardrailTests
                     var user = (IDictionary<string, object>)
                         messages[messages.Count - 1];
                     string decision;
-                    if (round == 1)
+                    if (round == 1 || round == 3)
                     {
                         var proposal = (IDictionary<string, object>)
                             json.DeserializeObject((string)user["content"]);
-                        var segments = (IList)proposal[
-                            "editable_literals"];
-                        var segment = (IDictionary<string, object>)segments[0];
-                        Check((string)proposal["target_id"] == "title" &&
-                            (string)segment["text"] ==
-                                "June revenue at a glance",
-                            "The repair prompt lost its exact title literal.");
-                        decision = json.Serialize(new
+                        if (round == 1)
                         {
-                            context_id = (string)proposal["context_id"],
-                            logical_slide_id =
-                                (string)proposal["logical_slide_id"],
-                            target_id = "title", segment_index = 0,
-                            expected_text = (string)segment["text"],
-                            replacement_text =
-                                "Verified June revenue from ledger"
-                        });
+                            var segments = (IList)proposal[
+                                "editable_literals"];
+                            var segment = (IDictionary<string, object>)
+                                segments[0];
+                            Check((string)proposal["target_id"] == "title" &&
+                                (string)segment["text"] ==
+                                    "June revenue at a glance",
+                                "The repair prompt lost its exact title literal.");
+                            decision = json.Serialize(new
+                            {
+                                context_id = (string)proposal["context_id"],
+                                logical_slide_id =
+                                    (string)proposal["logical_slide_id"],
+                                target_id = "title", segment_index = 0,
+                                expected_text = (string)segment["text"],
+                                replacement_text =
+                                    "Verified June revenue from ledger"
+                            });
+                        }
+                        else
+                        {
+                            Check((string)proposal["target_id"] == "page" &&
+                                (string)proposal["current_layout"] ==
+                                    "scorecard" &&
+                                ((IList)proposal["allowed_layouts"])
+                                    .Cast<string>().Contains("cards"),
+                                "The layout prompt lost its bounded recipe choices.");
+                            decision = json.Serialize(new
+                            {
+                                context_id = (string)proposal["context_id"],
+                                logical_slide_id =
+                                    (string)proposal["logical_slide_id"],
+                                target_id = "page", segment_index = 0,
+                                expected_text = "scorecard",
+                                replacement_text = "cards"
+                            });
+                        }
                     }
                     else
                     {
@@ -1365,14 +1390,44 @@ namespace GuardrailTests
                                     evidence = "Make ledger scope explicit."
                                 } }
                             });
-                        else
+                        else if (round == 2)
                         {
                             var slides = (IList)content["logical_slides"];
                             var firstSlide = (IDictionary<string, object>)
                                 slides[0];
                             Check((string)firstSlide["title"] ==
-                                "Verified June revenue from ledger",
-                                "The corrected title did not reach review.");
+                                "Verified June revenue from ledger" &&
+                                (string)firstSlide["layout"] == "scorecard",
+                                "The corrected title did not reach layout review.");
+                            decision = json.Serialize(new
+                            {
+                                contract_version =
+                                    AnalysisReviewContract.Version,
+                                context_id = (string)content["context_id"],
+                                approved = false,
+                                findings = new[] { new
+                                {
+                                    code = "VISUAL_HIERARCHY",
+                                    owner = "content",
+                                    logical_slide_id = (string)
+                                        firstPage["LogicalSlideId"],
+                                    native_slide_id = Convert.ToInt32(
+                                        firstPage["NativeSlideId"]),
+                                    target_id = "page", fact_id = "",
+                                    measurement_id = "",
+                                    severity = "blocker",
+                                    action = "revise_layout",
+                                    evidence = "The two KPIs need stronger hierarchy."
+                                } }
+                            });
+                        }
+                        else
+                        {
+                            var slides = (IList)content["logical_slides"];
+                            var firstSlide = (IDictionary<string, object>)
+                                slides[0];
+                            Check((string)firstSlide["layout"] == "cards",
+                                "The reflowed layout did not reach review.");
                             decision = json.Serialize(new
                             {
                                 contract_version =
