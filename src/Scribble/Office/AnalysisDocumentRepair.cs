@@ -51,7 +51,8 @@ namespace Scribble.Office
                 finding.TargetId != "takeaway")
                 throw new InvalidOperationException("REPAIR_TARGET_UNSUPPORTED");
             var literals = EditableLiterals(slide, finding.TargetId);
-            if (literals.Count == 0 || literals.All(value => value == null))
+            if (literals.Count == 0 ||
+                literals.All(string.IsNullOrWhiteSpace))
                 throw new InvalidOperationException("REPAIR_TARGET_UNSUPPORTED");
             var compiled = AnalysisDocumentCompiler.Compile(artifact, plan);
             var slideIndex = plan.Slides.IndexOf(slide);

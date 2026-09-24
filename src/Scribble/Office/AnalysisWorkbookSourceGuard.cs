@@ -51,7 +51,14 @@ namespace Scribble.Office
                         "ANALYSIS_SOURCE_CHANGED");
                 object values = range.Value2;
                 object formulas = range.Formula;
-                object formats = range.NumberFormat;
+                object formats = WorkbookTypedCapture
+                    .ResolveMixedNumberFormats((object)range.NumberFormat,
+                        table.Rows, table.Columns,
+                        column => (object)range.Columns[column + 1]
+                            .NumberFormat,
+                        (row, column) => (object)range.Cells[row + 1,
+                            column + 1].NumberFormat,
+                        WorkbookToolHost.MaxTypedMetadataCells);
                 if (formats == null)
                     throw new InvalidOperationException(
                         "ANALYSIS_SOURCE_CHANGED");

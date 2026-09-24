@@ -221,8 +221,8 @@ namespace Scribble.Office
                     var verdict = AnalysisDocumentPilot.CompleteNativeReview(
                         (object)deck, review, reviewerJson);
                     if (verdict.Approved) break;
-                    var blockers = verdict.Findings.Where(finding =>
-                        finding.Severity == "blocker").ToArray();
+                    var blockers = verdict.Findings.Where(item =>
+                        item.Severity == "blocker").ToArray();
                     if (contentPatches >=
                             AnalysisRepairBudget.MaxCorrectivePatches ||
                         blockers.Length != 1 ||
@@ -301,6 +301,8 @@ namespace Scribble.Office
                         contentReservation, patchedPage, nativeReadback);
                     plan = repaired.Plan;
                 }
+                AnalysisWorkbookSourceGuard.Validate(_hostApplication,
+                    artifact);
                 _taskContext.State.PresentationReviewReceipt =
                     review.Context.ContextId;
                 _taskContext.State.HostData["analysis_deck_complete"] =
