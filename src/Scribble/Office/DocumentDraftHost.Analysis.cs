@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Scribble.Chat;
@@ -111,7 +112,8 @@ namespace Scribble.Office
                         outputs.Add(output);
                         _samsungPresentation = (object)((dynamic)
                             output.Slide).Parent;
-                    }, _samsungPresentation, journal, beforeNativeWrite);
+                    }, _samsungPresentation, journal, beforeNativeWrite,
+                    true);
                 dynamic deck = _samsungPresentation;
                 if (deck == null ||
                     !string.Equals((string)deck.Tags["ScribbleTask"],
@@ -224,6 +226,13 @@ namespace Scribble.Office
             catch (OperationCanceledException) { throw; }
             catch (Exception exception)
             {
+                if (exception is COMException &&
+                    (unchecked((uint)exception.HResult) == 0x800706BA ||
+                     unchecked((uint)exception.HResult) == 0x800706BE ||
+                     unchecked((uint)exception.HResult) == 0x80010108))
+                    return Error(call.id, authorization,
+                        "POWERPOINT_EXITED",
+                        "PowerPoint exited during native deck creation. The draft remains pending; inspect the task before retrying.");
                 if (exception.Message.StartsWith(
                         "ANALYSIS_VISUAL_REVIEW_UNAVAILABLE:",
                         StringComparison.Ordinal))

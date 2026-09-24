@@ -253,7 +253,8 @@ namespace Scribble.Office
             Action<SamsungOutput> onRendered,
             object boundPresentation,
             SamsungGenerationJournal journal,
-            Action beforeNativeWrite)
+            Action beforeNativeWrite,
+            bool skipChartPreview = false)
         {
             if (slides == null || slides.Count == 0)
             {
@@ -322,12 +323,14 @@ namespace Scribble.Office
             foreach (var page in planned)
             {
                 var index = anchor + added + 1;
-                var output = journal?.Resume(page, added);
+                var output = journal?.Resume(page, added,
+                    skipChartPreview);
                 if (output == null)
                 {
                     dynamic nativeSlides = presentation.Slides;
                     beforeNativeWrite?.Invoke();
-                    output = DrawNewSamsungSlide((object)nativeSlides, index, page, owner);
+                    output = DrawNewSamsungSlide((object)nativeSlides, index,
+                        page, owner, skipChartPreview);
                     journal?.Record(output, added);
                 }
                 onRendered?.Invoke(output);

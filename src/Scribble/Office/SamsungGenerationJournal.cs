@@ -100,7 +100,8 @@ namespace Scribble.Office
             foreach (var receipt in state.Receipts)
                 if (fingerprint(receipt.SlideId) != receipt.Fingerprint) throw new InvalidOperationException("SLIDE_RECOVERY_USER_EDIT: A surviving slide changed; no user content was overwritten.");
         }
-        internal PresentationDraftWriter.SamsungOutput Resume(PresentationDraftWriter.SamsungPage page, int index)
+        internal PresentationDraftWriter.SamsungOutput Resume(PresentationDraftWriter.SamsungPage page, int index,
+            bool skipChartPreview = false)
         {
             var receipt = Data.Receipts.SingleOrDefault(r => r.Page == index);
             if (receipt == null) return null;
@@ -117,7 +118,9 @@ namespace Scribble.Office
             var output = new PresentationDraftWriter.SamsungOutput { Slide = PresentationInspection.FindSlide(_deck, receipt.SlideId), Page = page, Owner = Data.Owner };
             dynamic slide = output.Slide;
             for (var i = 1; i <= (int)slide.Shapes.Count; i++) output.ShapeIds.Add((int)slide.Shapes[i].Id);
-            output.Image = PresentationDraftWriter.ExportSamsung(output);
+            output.Image = skipChartPreview &&
+                PresentationInspection.ContainsNativeChart(output.Slide)
+                    ? null : PresentationDraftWriter.ExportSamsung(output);
             return output;
         }
         internal void Record(PresentationDraftWriter.SamsungOutput output, int index, string content = null)

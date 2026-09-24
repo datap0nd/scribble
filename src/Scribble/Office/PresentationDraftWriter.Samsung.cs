@@ -671,14 +671,17 @@ namespace Scribble.Office
         // state and the same payload can be retried. Without this a single
         // native failure left an unreceipted slide that made every retry end
         // in SLIDE_RECOVERY_UNCERTAIN.
-        internal static SamsungOutput DrawNewSamsungSlide(object nativeSlidesObject, int index, SamsungPage page, string owner)
+        internal static SamsungOutput DrawNewSamsungSlide(object nativeSlidesObject, int index, SamsungPage page, string owner,
+            bool skipChartPreview = false)
         {
             dynamic nativeSlides = nativeSlidesObject;
             dynamic created = nativeSlides.Add(index, PpLayoutBlank);
             try
             {
                 var output = DrawSamsungPage((object)created, page, owner);
-                output.Image = ExportSamsung(output);
+                output.Image = skipChartPreview &&
+                    PresentationInspection.ContainsNativeChart((object)created)
+                        ? null : ExportSamsung(output);
                 return output;
             }
             catch

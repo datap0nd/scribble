@@ -95,7 +95,7 @@ namespace Scribble.Office
             var slides = PresentationDraftWriter.ParseSlides(
                 compiled.Slides.Cast<object>().ToArray());
             return PresentationDraftWriter.AddDraftSlides(powerPointApplication,
-                slides, null, true);
+                slides, null, true, null, null, null, null, true);
         }
 
         // After native write, the caller supplies actual slide identities and

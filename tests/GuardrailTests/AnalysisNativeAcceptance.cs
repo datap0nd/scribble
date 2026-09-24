@@ -734,11 +734,17 @@ namespace GuardrailTests
         {
             for (var current = error; current != null;
                 current = current.InnerException)
+            {
                 if (current is COMException &&
                     (unchecked((uint)current.HResult) == 0x800706BA ||
                      unchecked((uint)current.HResult) == 0x800706BE ||
                      unchecked((uint)current.HResult) == 0x80010108))
                     return true;
+                if (current.Message.Contains(
+                        "\"error_code\":\"POWERPOINT_EXITED\"") ||
+                    current.Message.Contains("0x800706BA"))
+                    return true;
+            }
             return false;
         }
 
