@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using System.Web.Script.Serialization;
 
 namespace Scribble.Office
 {
@@ -18,6 +19,23 @@ namespace Scribble.Office
             new Dictionary<int, Dictionary<int, int>>();
         private readonly Dictionary<int, string> _sourceContent =
             new Dictionary<int, string>();
+        private string _owner;
+        private string _draftId;
+        private string _sourceName;
+        private string _sourceFullName;
+
+        internal sealed class State
+        {
+            public int Version { get; set; } = 1;
+            public string Owner { get; set; }
+            public string DraftId { get; set; }
+            public string SourceName { get; set; }
+            public string SourceFullName { get; set; }
+            public int[] SourceOrder { get; set; }
+            public Dictionary<string, string> SourceContent { get; set; }
+            public Dictionary<string, int> SlideIds { get; set; }
+            public Dictionary<string, Dictionary<string, int>> ShapeIds { get; set; }
+        }
 
         private PresentationDraftCopy(object source, object draft,
             int[] sourceOrder)
@@ -41,10 +59,16 @@ namespace Scribble.Office
                 // window, even when the application is driven through COM.
                 draft = app.Presentations.Add(-1);
                 draft.Tags.Add("ScribbleRevisionDraft", owner);
+                var draftId = Guid.NewGuid().ToString("N");
+                draft.Tags.Add("ScribblePresentationId", draftId);
                 draft.PageSetup.SlideWidth = source.PageSetup.SlideWidth;
                 draft.PageSetup.SlideHeight = source.PageSetup.SlideHeight;
                 var result = new PresentationDraftCopy(sourcePresentation,
                     (object)draft, order);
+                result._owner = owner;
+                result._draftId = draftId;
+                result._sourceName = Convert.ToString(source.Name);
+                result._sourceFullName = Convert.ToString(source.FullName);
                 for (var index = 1; index <= 6; index++)
                 {
                     dynamic original = source.Slides[index];
@@ -75,6 +99,112 @@ namespace Scribble.Office
                 if (draft != null) try { draft.Close(); } catch { }
                 throw;
             }
+        }
+
+        internal string Snapshot()
+        {
+            VerifySource();
+            return new JavaScriptSerializer { MaxJsonLength = 16000000 }
+                .Serialize(new State
+                {
+                    Owner = _owner, DraftId = _draftId,
+                    SourceName = _sourceName,
+                    SourceFullName = _sourceFullName,
+                    SourceOrder = _sourceOrder,
+                    SourceContent = _sourceContent.ToDictionary(pair =>
+                        pair.Key.ToString(), pair => pair.Value),
+                    SlideIds = _slideIds.ToDictionary(pair =>
+                        pair.Key.ToString(), pair => pair.Value),
+                    ShapeIds = _shapeIds.ToDictionary(pair =>
+                        pair.Key.ToString(), pair => pair.Value.ToDictionary(
+                            shape => shape.Key.ToString(),
+                            shape => shape.Value))
+                });
+        }
+
+        internal static PresentationDraftCopy Recover(object application,
+            string snapshot)
+        {
+            State state;
+            try
+            {
+                state = new JavaScriptSerializer { MaxJsonLength = 16000000 }
+                    .Deserialize<State>(snapshot);
+            }
+            catch (ArgumentException)
+            {
+                throw new InvalidOperationException(
+                    "REVISION_COPY_RECEIPT_INVALID");
+            }
+            if (state == null || state.Version != 1 ||
+                string.IsNullOrWhiteSpace(state.Owner) ||
+                string.IsNullOrWhiteSpace(state.DraftId) ||
+                string.IsNullOrWhiteSpace(state.SourceFullName) ||
+                state.SourceOrder == null || state.SourceOrder.Length != 6 ||
+                state.SourceContent == null ||
+                state.SourceContent.Count != 6 ||
+                state.SlideIds == null || state.SlideIds.Count != 6 ||
+                state.ShapeIds == null || state.ShapeIds.Count != 6 ||
+                state.SourceOrder.Distinct().Count() != 6 ||
+                state.SourceOrder.Any(id =>
+                    !state.SourceContent.ContainsKey(id.ToString()) ||
+                    !state.SlideIds.ContainsKey(id.ToString()) ||
+                    !state.ShapeIds.ContainsKey(id.ToString())) ||
+                state.ShapeIds.Values.Any(shapes => shapes == null))
+                throw new InvalidOperationException(
+                    "REVISION_COPY_RECEIPT_INVALID");
+            dynamic app = application;
+            var sources = new List<object>();
+            var drafts = new List<object>();
+            foreach (dynamic candidate in app.Presentations)
+            {
+                if (Convert.ToString(candidate.Tags[
+                        "ScribbleRevisionDraft"]) == state.Owner &&
+                    Convert.ToString(candidate.Tags[
+                        "ScribblePresentationId"]) == state.DraftId)
+                    drafts.Add((object)candidate);
+                if (Convert.ToString(candidate.Name) == state.SourceName &&
+                    Convert.ToString(candidate.FullName) ==
+                        state.SourceFullName &&
+                    (int)candidate.Slides.Count == 6 &&
+                    Enumerable.Range(1, 6).All(index =>
+                        (int)candidate.Slides[index].SlideID ==
+                            state.SourceOrder[index - 1] &&
+                        PresentationInspection.CopyContentFingerprint(
+                            (object)candidate.Slides[index]) ==
+                            state.SourceContent[
+                                state.SourceOrder[index - 1]
+                                    .ToString()]))
+                    sources.Add((object)candidate);
+            }
+            if (sources.Count != 1 || drafts.Count != 1 ||
+                ReferenceEquals(sources[0], drafts[0]))
+                throw new InvalidOperationException(
+                    "REVISION_COPY_SESSION_UNAVAILABLE");
+            dynamic draft = drafts[0];
+            if ((int)draft.Slides.Count != 6 ||
+                state.SlideIds.Values.Distinct().Count() != 6 ||
+                state.SlideIds.Values.Any(id => !Enumerable.Range(1, 6)
+                    .Any(index => (int)draft.Slides[index].SlideID == id)))
+                throw new InvalidOperationException(
+                    "REVISION_COPY_DRAFT_CHANGED");
+            var result = new PresentationDraftCopy(sources[0], drafts[0],
+                state.SourceOrder)
+            {
+                _owner = state.Owner, _draftId = state.DraftId,
+                _sourceName = state.SourceName,
+                _sourceFullName = state.SourceFullName
+            };
+            foreach (var pair in state.SourceContent)
+                result._sourceContent.Add(int.Parse(pair.Key), pair.Value);
+            foreach (var pair in state.SlideIds)
+                result._slideIds.Add(int.Parse(pair.Key), pair.Value);
+            foreach (var pair in state.ShapeIds)
+                result._shapeIds.Add(int.Parse(pair.Key),
+                    pair.Value.ToDictionary(shape => int.Parse(shape.Key),
+                        shape => shape.Value));
+            result.VerifySource();
+            return result;
         }
 
         internal object[] BindOperations(object[] operations)
@@ -202,6 +332,10 @@ namespace Scribble.Office
         internal void VerifySource()
         {
             dynamic source = Source;
+            if (Convert.ToString(source.Name) != _sourceName ||
+                Convert.ToString(source.FullName) != _sourceFullName)
+                throw new InvalidOperationException(
+                    "REVISION_COPY_SOURCE_CHANGED");
             if ((int)source.Slides.Count != _sourceOrder.Length)
                 throw new InvalidOperationException(
                     "REVISION_COPY_SOURCE_CHANGED");

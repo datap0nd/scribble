@@ -70,6 +70,8 @@ namespace GuardrailTests
                 var copy = InvokeStatic(CopyType, "Create",
                     (object)app, (object)source,
                     "phase4-pp01-native");
+                copy = InvokeStatic(CopyType, "Recover", (object)app,
+                    Convert.ToString(Invoke(copy, CopyType, "Snapshot")));
                 draft = CopyType.GetField("Draft",
                     BindingFlags.Instance | BindingFlags.NonPublic)
                     .GetValue(copy);
@@ -84,6 +86,8 @@ namespace GuardrailTests
                     throw new InvalidOperationException(
                         "PP01_CHART_SOURCE_BINDING_FAILED");
                 chartRecreated = true;
+                copy = InvokeStatic(CopyType, "Recover", (object)app,
+                    Convert.ToString(Invoke(copy, CopyType, "Snapshot")));
                 var operations = new List<object>();
                 for (var column = 1; column <= 3; column++)
                     operations.Add(new Dictionary<string, object>
