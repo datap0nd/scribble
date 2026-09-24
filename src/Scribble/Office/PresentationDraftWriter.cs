@@ -1406,7 +1406,9 @@ namespace Scribble.Office
                 for (var attempt = 0; attempt < 3 && dataWorkbook == null; attempt++)
                 {
                     try { dataWorkbook = slideChart.ChartData.Workbook; }
-                    catch (System.Runtime.InteropServices.COMException exception)
+                    catch (Exception exception) when (
+                        exception is System.Runtime.InteropServices.COMException ||
+                        exception is OutOfMemoryException)
                     {
                         workbookFailure = exception;
                         if (attempt == 2) break;

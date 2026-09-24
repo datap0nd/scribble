@@ -838,9 +838,16 @@ namespace GuardrailTests
                         comparison.Contains("85,519") &&
                         comparison.Contains("82,992"),
                         "The native slide content differed from the independent fact oracle.");
-                    Check(headline.Contains(
-                            fixture.Item1.Snapshots[0].SourceInstanceId),
-                        "The rendered slide lost its host-derived citation.");
+                    var notes = package.Entries.Where(entry =>
+                        entry.FullName.StartsWith("ppt/notesSlides/notesSlide",
+                            StringComparison.OrdinalIgnoreCase) &&
+                        entry.FullName.EndsWith(".xml",
+                            StringComparison.OrdinalIgnoreCase))
+                        .Select(PackageText).ToArray();
+                    Check(headline.Contains("Source: Ledger!") &&
+                        notes.Any(note => note.Contains(
+                            fixture.Item1.Snapshots[0].SourceInstanceId)),
+                        "The visible source label or exact speaker-note citation was lost.");
                 }
                 stage = "powerpoint_content_recovery_injection";
                 var recoveryStore = new TaskCheckpointStore(Path.Combine(
