@@ -117,6 +117,42 @@ namespace Scribble.Office
                 targetFill.Transparency = sourceFill.Transparency;
             }
         }
+        internal static object CopySlideTo(object originalSlide,
+            object destinationPresentation)
+        {
+            dynamic original = originalSlide;
+            dynamic deck = destinationPresentation;
+            var before = (int)deck.Slides.Count;
+            for (var attempt = 0; attempt < 3; attempt++)
+            {
+                try
+                {
+                    original.Copy();
+                    deck.Slides.Paste(before + 1);
+                }
+                catch (System.Runtime.InteropServices.COMException error)
+                {
+                    // 0x80048240 is PowerPoint's transient empty clipboard.
+                    // Retry only after confirming that Paste added no slide.
+                    if (unchecked((uint)error.ErrorCode) != 0x80048240)
+                        throw;
+                    if ((int)deck.Slides.Count != before)
+                        throw new InvalidOperationException(
+                            "REVISION_COPY_UNCERTAIN: Paste reported an error after changing the destination.",
+                            error);
+                    if (attempt == 2) throw;
+                    System.Threading.Thread.Sleep(150 * (attempt + 1));
+                    continue;
+                }
+                if ((int)deck.Slides.Count != before + 1)
+                    throw new InvalidOperationException(
+                        "REVISION_COPY_INCOMPLETE: Native paste added an unexpected number of slides.");
+                object copy = deck.Slides[before + 1];
+                RestoreCopiedBackground(originalSlide, copy);
+                return copy;
+            }
+            throw new InvalidOperationException("REVISION_COPY_INCOMPLETE");
+        }
         internal static object[] Hyperlinks(object slide)
         {
             dynamic page = slide; var links = new List<object>();

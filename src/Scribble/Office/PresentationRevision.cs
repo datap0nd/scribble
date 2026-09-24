@@ -145,18 +145,12 @@ namespace Scribble.Office
         }
         private static object CopySlide(object slide, object target)
         {
-            dynamic original = slide; dynamic deck = target;
+            dynamic deck = target;
             var beforeCount = (int)deck.Slides.Count;
-            original.Copy();
-            deck.Slides.Paste(beforeCount + 1);
+            object copy = PresentationInspection.CopySlideTo(slide, target);
             var afterCount = (int)deck.Slides.Count;
             if (afterCount != beforeCount + 1)
-                throw new InvalidOperationException("REVISION_COPY_INCOMPLETE: Native paste must add exactly one slide. Before: " + beforeCount + "; after: " + afterCount + ". No paste was retried.");
-            // Read the actual collection mutation, including when native Paste
-            // returns no range. Never blindly repeat a clipboard write.
-            object copy = deck.Slides[beforeCount + 1];
-            PresentationInspection.RestoreCopiedBackground(
-                slide, copy);
+                throw new InvalidOperationException("REVISION_COPY_INCOMPLETE: Native paste must add exactly one slide. Before: " + beforeCount + "; after: " + afterCount + ".");
             if (PresentationInspection.ContentFingerprint(slide) != PresentationInspection.ContentFingerprint(copy))
                 throw new InvalidOperationException("REVISION_COPY_PRESERVATION: Native staging did not preserve the source content and formatting.");
             return copy;

@@ -49,14 +49,11 @@ namespace Scribble.Office
                     var fingerprint = PresentationInspection
                         .CopyContentFingerprint((object)original);
                     result._sourceContent[originalId] = fingerprint;
-                    original.Copy();
-                    draft.Slides.Paste(index);
+                    dynamic copy = PresentationInspection.CopySlideTo(
+                        (object)original, (object)draft);
                     if ((int)draft.Slides.Count != index)
                         throw new InvalidOperationException(
                             "REVISION_COPY_INCOMPLETE: Native paste changed the page count.");
-                    dynamic copy = draft.Slides[index];
-                    PresentationInspection.RestoreCopiedBackground(
-                        (object)original, (object)copy);
                     if (PresentationInspection.CopyContentFingerprint(
                             (object)copy) != fingerprint)
                         throw new InvalidOperationException(
