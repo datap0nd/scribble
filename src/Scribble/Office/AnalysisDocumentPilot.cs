@@ -234,6 +234,9 @@ namespace Scribble.Office
                 throw new InvalidOperationException(
                     "ANALYSIS_VISUAL_REVIEW_UNAVAILABLE: Page count exceeds the bounded native review limit.");
             dynamic deck = presentation;
+            if (!string.IsNullOrEmpty((string)deck.Path))
+                throw new InvalidOperationException(
+                    "ANALYSIS_VISUAL_REVIEW_UNAVAILABLE: Only an unsaved pilot draft can be exported for review.");
             var nameBefore = (string)deck.FullName;
             var savedBefore = (int)deck.Saved;
             var nativeBefore = Enumerable.Range(1, expectedPages)

@@ -475,6 +475,11 @@ foreach ($guardedFile in $officeGuardedFiles) {
                 $_.Line -notmatch '_settingsStore\.Save' -and
                 $_.Line -notmatch 'SuiteExchange\.Save' -and
                 $_.Line -notmatch 'dataWorkbook\.Close' -and
+                # The analysis pilot may copy only its unsaved, tagged draft
+                # to a bounded temporary PPTX for chart fingerprinting.
+                # PresentationInspection verifies identity and deletes it.
+                -not ($_.Path -like '*\Office\PresentationInspection.cs' -and
+                    $_.Line.Trim() -eq 'deck.SaveCopyAs(temporary);') -and
                 -not (($_.Path -like '*\Office\PresentationDraftWriter.Samsung.cs' -or $_.Path -like '*\Office\LegacySamsung\PresentationDraftWriter.Samsung.cs') -and $_.Line.Trim() -eq 'image.Save(path, System.Drawing.Imaging.ImageFormat.Png);') -and
                 -not ($_.Path -like '*\Office\PresentationDraftWriter.Samsung.cs' -and $_.Line.Trim() -eq 'temporary.Close();') -and
                 -not ($_.Path -like '*\Office\PresentationRevision.cs' -and ($_.Line -match 'working\.Close\(\)' -or $_.Line -match 'recovery\.Close\(\)'))

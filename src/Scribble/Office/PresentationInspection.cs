@@ -6,7 +6,6 @@ using System.IO.Compression;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
-using System.Text;
 using System.Web.Script.Serialization;
 using System.Xml.Linq;
 using Scribble.Chat;
@@ -237,7 +236,10 @@ namespace Scribble.Office
         // package and related parts from a disposable SaveCopyAs instead.
         internal static string FingerprintForJournal(object slide)
         {
-            if (!ContainsNativeChart(slide)) return Fingerprint(slide);
+            if (!ContainsNativeChart(slide) || !string.Equals(
+                Environment.GetEnvironmentVariable(
+                    AnalysisDocumentPilot.FeatureFlag), "1",
+                StringComparison.Ordinal)) return Fingerprint(slide);
             var json = new JavaScriptSerializer { MaxJsonLength =
                 int.MaxValue };
             return TaskCheckpointStore.Fingerprint(json.Serialize(
@@ -248,6 +250,13 @@ namespace Scribble.Office
         {
             dynamic page = slide;
             dynamic deck = page.Parent;
+            if (!string.IsNullOrEmpty((string)deck.Path) ||
+                string.IsNullOrWhiteSpace(Convert.ToString(
+                    page.Tags["ScribbleTask"])))
+                throw new InvalidOperationException(
+                    "CHART_PACKAGE_UNSAVED_DRAFT_REQUIRED");
+            var nameBefore = (string)deck.FullName;
+            var savedBefore = (int)deck.Saved;
             var slideId = (int)page.SlideID;
             var temporary = Path.Combine(Path.GetTempPath(),
                 "scribble-chart-fingerprint-" + Guid.NewGuid().ToString("N") +
@@ -255,6 +264,12 @@ namespace Scribble.Office
             try
             {
                 deck.SaveCopyAs(temporary);
+                if ((string)deck.FullName != nameBefore ||
+                    (int)deck.Saved != savedBefore ||
+                    !File.Exists(temporary) ||
+                    new FileInfo(temporary).Length > 50 * 1024 * 1024)
+                    throw new InvalidOperationException(
+                        "CHART_PACKAGE_DRAFT_BOUNDARY_CHANGED");
                 using (var archive = ZipFile.OpenRead(temporary))
                 {
                     const string presentationPart = "ppt/presentation.xml";
