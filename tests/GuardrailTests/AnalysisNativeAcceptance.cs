@@ -381,6 +381,9 @@ namespace GuardrailTests
                         "Create a verified four-slide deck",
                         client, settings, CancellationToken.None, null)
                         .GetAwaiter().GetResult();
+                    Check(!routeResult.Outcome.Failed,
+                        "The active typed handoff failed offline review: " +
+                        routeResult.Content);
                     for (var p = 1; p <=
                         (int)powerPoint.Presentations.Count; p++)
                     {
@@ -389,9 +392,6 @@ namespace GuardrailTests
                             readTask.State.Id)
                             typedDeck = candidate;
                     }
-                    Check(!routeResult.Outcome.Failed,
-                        "The active typed handoff failed offline review: " +
-                        routeResult.Content);
                     endpoint.Wait();
                     Check(deckAuthorization.IsCreated &&
                         endpoint.ImageCount == 4 &&
