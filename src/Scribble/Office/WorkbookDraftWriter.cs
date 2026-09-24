@@ -512,14 +512,14 @@ namespace Scribble.Office
             IReadOnlyList<IReadOnlyList<string>> rows,
             object boundSheet)
         {
-            var target = PrepareCellsTarget(excelApplication, startCell,
+            var writeTarget = PrepareCellsTarget(excelApplication, startCell,
                 rows, boundSheet);
-            dynamic sheet = target.Sheet;
-            var anchorName = target.AnchorName;
-            var startRow = target.StartRow;
-            var startColumn = target.StartColumn;
-            var rowCount = target.RowCount;
-            var existingNames = target.ExistingNames;
+            dynamic sheet = writeTarget.Sheet;
+            var anchorName = writeTarget.AnchorName;
+            var startRow = writeTarget.StartRow;
+            var startColumn = writeTarget.StartColumn;
+            var rowCount = writeTarget.RowCount;
+            var existingNames = writeTarget.ExistingNames;
             var written = 0;
             var formulaCount = 0;
             var brokenFormulas = 0;
