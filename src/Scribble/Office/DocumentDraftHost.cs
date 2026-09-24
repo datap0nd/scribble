@@ -102,6 +102,8 @@ namespace Scribble.Office
         private bool _selectionReplaceSource;
         private KoreanWorkbookRequestContext _koreanWorkbookRequest;
         private KoreanWorkbookOutputSession _koreanWorkbookOutput;
+        private ExcelDraftBinding _excelDraftBinding;
+        private string _excelDraftBindingError;
 
         public DocumentDraftHost(
             string hostKind,
@@ -328,6 +330,30 @@ namespace Scribble.Office
                         string.Join(" ", pageIssues));
             }
 
+            object boundExcelWorkbook = null;
+            object boundExcelSheet = null;
+            if (name == WorkbookToolCatalog.WriteDraftSheet ||
+                name == WorkbookToolCatalog.WriteCells)
+            {
+                try
+                {
+                    if (_excelDraftBinding == null)
+                        throw new InvalidOperationException(
+                            _excelDraftBindingError ??
+                            "EXCEL_DRAFT_TARGET_NOT_CAPTURED: Submit the Excel request again.");
+                    boundExcelWorkbook = _excelDraftBinding.Workbook();
+                    if (name == WorkbookToolCatalog.WriteCells)
+                        boundExcelSheet = _excelDraftBinding.Sheet();
+                }
+                catch (Exception error) when (
+                    error is InvalidOperationException ||
+                    error is System.Runtime.InteropServices.COMException)
+                {
+                    return Error(call.id, authorization,
+                        "EXCEL_DRAFT_TARGET_CHANGED", error.Message);
+                }
+            }
+
             // A deck or workbook may be built over several bounded
             // calls, but one request may open at most ONE unsent
             // email draft - recipients are the sensitive surface,
@@ -381,7 +407,10 @@ namespace Scribble.Office
                             "title",
                             string.Empty),
                         ParsedRows(arguments),
-                        ParsedChart(arguments));
+                        ParsedChart(arguments),
+                        false,
+                        boundExcelWorkbook,
+                        true);
                 }
                 else if (string.Equals(
                              name,
@@ -394,7 +423,8 @@ namespace Scribble.Office
                             arguments,
                             "start_cell",
                             string.Empty),
-                        ParsedRows(arguments));
+                        ParsedRows(arguments),
+                        boundExcelSheet);
                 }
                 else if (string.Equals(
                              name,
@@ -544,6 +574,25 @@ namespace Scribble.Office
             _allowSelectionSourceReplacement =
                 context != null && context.AllowSourceReplacement;
             _selectionReplaceSource = false;
+        }
+
+        internal void BeginExcelDraftRequest()
+        {
+            _excelDraftBinding = null;
+            _excelDraftBindingError = null;
+            if (_hostKind != "excel") return;
+            try
+            {
+                _excelDraftBinding = ExcelDraftBinding.Capture(
+                    _hostApplication);
+            }
+            catch (Exception error) when (
+                error is InvalidOperationException ||
+                error is System.Runtime.InteropServices.COMException)
+            {
+                _excelDraftBindingError =
+                    "EXCEL_DRAFT_TARGET_UNAVAILABLE: " + error.Message;
+            }
         }
 
         internal void BeginKoreanWorkbookRequest(

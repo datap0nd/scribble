@@ -99,6 +99,19 @@ namespace Scribble.Office
             bool inNewWorkbook,
             object boundWorkbook)
         {
+            return WriteDraftSheet(excelApplication, title, rows, chart,
+                inNewWorkbook, boundWorkbook, false);
+        }
+
+        internal static string WriteDraftSheet(
+            object excelApplication,
+            string title,
+            IReadOnlyList<IReadOnlyList<string>> rows,
+            DraftSheetChart chart,
+            bool inNewWorkbook,
+            object boundWorkbook,
+            bool requireBoundWorkbook)
+        {
             if (rows == null || rows.Count == 0)
             {
                 throw new InvalidOperationException(
@@ -108,7 +121,8 @@ namespace Scribble.Office
             dynamic application = excelApplication;
             dynamic workbook = inNewWorkbook
                 ? null
-                : boundWorkbook ?? application.ActiveWorkbook;
+                : requireBoundWorkbook ? boundWorkbook :
+                    boundWorkbook ?? application.ActiveWorkbook;
             if (workbook == null)
             {
                 workbook = application.Workbooks.Add();
@@ -412,6 +426,15 @@ namespace Scribble.Office
             string startCell,
             IReadOnlyList<IReadOnlyList<string>> rows)
         {
+            return WriteCells(excelApplication, startCell, rows, null);
+        }
+
+        internal static string WriteCells(
+            object excelApplication,
+            string startCell,
+            IReadOnlyList<IReadOnlyList<string>> rows,
+            object boundSheet)
+        {
             if (rows == null || rows.Count == 0)
             {
                 throw new InvalidOperationException(
@@ -429,7 +452,7 @@ namespace Scribble.Office
             }
 
             dynamic application = excelApplication;
-            dynamic sheet = application.ActiveSheet;
+            dynamic sheet = boundSheet ?? application.ActiveSheet;
             if (sheet == null)
             {
                 throw new InvalidOperationException(

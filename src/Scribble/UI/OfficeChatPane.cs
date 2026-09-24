@@ -1873,6 +1873,7 @@ namespace Scribble.UI
             var generation = ++_requestGeneration;
             var cancellation = new CancellationTokenSource();
             _requestCancellation = cancellation;
+            _draftHost?.BeginExcelDraftRequest();
             _draftHost?.BeginExcelSelectionRequest(
                 selectionRequest);
             _draftHost?.BeginKoreanWorkbookRequest(

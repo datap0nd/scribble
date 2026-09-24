@@ -67,6 +67,7 @@
     <Compile Include="StressGradingTests.cs" />
     <Compile Include="OfficeBootstrapTests.cs" />
     <Compile Include="DurableTransformTests.cs" />
+    <Compile Include="ExcelDraftBindingTests.cs" />
     <Compile Include="TaskContinuationTests.cs" />
     <Compile Include="SamsungSlideTests.cs" />
     <Compile Include="SamsungWorkflowTests.cs" />
