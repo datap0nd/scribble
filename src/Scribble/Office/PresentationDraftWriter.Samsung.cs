@@ -183,7 +183,7 @@ namespace Scribble.Office
             {
                 if (draft.Layout == "closing") page.Background = SamsungSlideDesign.Blue;
                 var coverTitleSize = draft.Layout == "cover" ?
-                    (draft.Title.Length > 64 ? 52 : 66) : 40;
+                    (draft.Title.Length > 64 ? 42 : 66) : 40;
                 elements.Add(TextElement(draft.Title, regions[0], coverTitleSize, 28,
                     MetoTheme.TitleFont, true, null, draft.Layout == "closing" ? "#FFFFFF" : "#000000"));
                 if (draft.Subtitle.Length > 0) elements.Add(TextElement(draft.Subtitle, SamsungSlideDesign.Percent(4.6f, 78, 84.4f, 8), 22, 18, color: draft.Layout == "closing" ? "#FFFFFF" : "#000000"));
@@ -302,7 +302,9 @@ namespace Scribble.Office
                     elements.Add(new SamsungElement { Box = SamsungSlideDesign.Percent(50.8f, 80.2f, 5.3f, 4.5f), Connector = true });
             }
             var audienceFootnote = SamsungAuthoringPolicy.AudienceNote(draft.Footnote);
-            var source = string.Join("; ", new[] { audienceFootnote, draft.Sources }.Where(s => !string.IsNullOrWhiteSpace(s)));
+            var source = string.Join("; ", new[] { audienceFootnote,
+                VisibleSourceCaption(draft.Sources) }.Where(s =>
+                !string.IsNullOrWhiteSpace(s)));
             // The complete citation always reaches the speaker notes. A cover or
             // divider keeps only a short visible reference, placed clear of the
             // cover's accent bar instead of across it. When the combined note
@@ -311,7 +313,8 @@ namespace Scribble.Office
             var visibleSource = source;
             if (source.Length > (sparse ? 90 : 120))
             {
-                var shortReference = string.IsNullOrWhiteSpace(draft.Sources) ? audienceFootnote : draft.Sources.Trim();
+                var shortReference = string.IsNullOrWhiteSpace(draft.Sources) ?
+                    audienceFootnote : VisibleSourceCaption(draft.Sources);
                 shortReference = shortReference.Split(';')[0].Trim();
                 var limit = sparse ? 90 : 120;
                 if (shortReference.Length > limit)
@@ -325,6 +328,29 @@ namespace Scribble.Office
             if (draft.Layout == "closing")
                 foreach (var element in elements) if (element.Fill == null) element.Color = "#FFFFFF";
             return page;
+        }
+
+        private static string VisibleSourceCaption(string exactSources)
+        {
+            if (string.IsNullOrWhiteSpace(exactSources)) return string.Empty;
+            var references = exactSources.Split(';').Select(value =>
+                value.Trim()).Where(value => value.Length > 0).ToArray();
+            var parsed = references.Select(value => Regex.Match(value,
+                @"^(?<id>excel:[0-9a-f]{32}) / (?<location>.+)$",
+                RegexOptions.IgnoreCase)).ToArray();
+            if (parsed.Length == 0 || parsed.Any(match => !match.Success))
+                return exactSources;
+            var workbooks = parsed.Select(match => match.Groups["id"].Value)
+                .Distinct(StringComparer.OrdinalIgnoreCase).Count();
+            if (workbooks > 1)
+                return "Sources: " + workbooks +
+                    " workbooks (exact references in notes)";
+            if (parsed.Length > 3)
+                return "Source: " + parsed[0].Groups["location"].Value
+                    .Split('!')[0] + " (" + parsed.Length +
+                    " references; details in notes)";
+            return "Source: " + string.Join("; ", parsed.Select(match =>
+                match.Groups["location"].Value));
         }
 
         private static void AddStructuredCards(List<SamsungElement> elements, DraftSlide draft, RectangleF region)
