@@ -1017,6 +1017,12 @@ namespace Scribble.Office
                     AppendState(state, Convert.ToString(range.Text) ?? string.Empty);
                     AppendState(state, Convert.ToDouble(range.Font.Size,
                         CultureInfo.InvariantCulture));
+                    AppendState(state, Convert.ToString(range.Font.Name) ??
+                        string.Empty);
+                    AppendState(state, Convert.ToString(range.Font.Bold) ??
+                        string.Empty);
+                    AppendState(state, Convert.ToString(range.Font.Color.RGB) ??
+                        string.Empty);
                 }
                 var hasTable = (int)shape.HasTable != 0;
                 AppendState(state, hasTable ? 1 : 0);
@@ -1035,6 +1041,12 @@ namespace Scribble.Office
                                 string.Empty);
                             AppendState(state, Convert.ToDouble(range.Font.Size,
                                 CultureInfo.InvariantCulture));
+                            AppendState(state, Convert.ToString(range.Font.Name) ??
+                                string.Empty);
+                            AppendState(state, Convert.ToString(range.Font.Bold) ??
+                                string.Empty);
+                            AppendState(state, Convert.ToString(range.Font.Color.RGB) ??
+                                string.Empty);
                         }
                 }
                 var hasChart = (int)shape.HasChart != 0;

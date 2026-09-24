@@ -1017,6 +1017,29 @@ namespace GuardrailTests
                     AnalysisDocumentPilot.ReadNativePatchText((object)deck,
                         changedPage, correctedTitle) == correctedTitle,
                     "A concurrent edit outside the target text cleared its receipt.");
+                var otherTextColorBefore =
+                    (int)otherText.Font.Color.RGB;
+                var concurrentStyleEditRejected = false;
+                try
+                {
+                    otherText.Font.Color.RGB =
+                        otherTextColorBefore ^ 0x000101;
+                    AnalysisDocumentPilot.ReadNativePatchText((object)deck,
+                        changedPage, correctedTitle);
+                }
+                catch (InvalidOperationException error)
+                {
+                    concurrentStyleEditRejected = error.Message.Contains(
+                        "REPAIR_NATIVE_PAGE_CHANGED");
+                }
+                finally
+                {
+                    otherText.Font.Color.RGB = otherTextColorBefore;
+                }
+                Check(concurrentStyleEditRejected &&
+                    AnalysisDocumentPilot.ReadNativePatchText((object)deck,
+                        changedPage, correctedTitle) == correctedTitle,
+                    "A concurrent native font-color edit cleared its receipt.");
                 resumedRecovery.ReconcileAnalysisContentPatch(
                     contentReservation, changedPage,
                     AnalysisDocumentPilot.ReadNativePatchText(
