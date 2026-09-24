@@ -38,6 +38,30 @@ namespace GuardrailTests
             var paneJson = json.Serialize(twoPane);
             if (!paneJson.Contains("#4F81BD") || !paneJson.Contains("#F2F2F2")) throw new Exception("The two-pane recipe lost its heading and container.");
             previews.Add(twoPane);
+            var comparison = SamsungPresentationReview.InspectPlan(json.Serialize(new[] { new {
+                title = "Two period comparison", layout = "two_pane",
+                table = new { headers = new[] { "Metric", "May", "June" }, rows = new[] {
+                    new[] { "Revenue EUR", "85,519", "82,992" },
+                    new[] { "Cost EUR", "36,702", "36,714" } } },
+                chart = new { type = "column", title = "Revenue EUR",
+                    categories = new[] { "May", "June" }, series = new[] {
+                        new { name = "Revenue EUR", values = new[] { 85519, 82992 } } } }
+            } }));
+            var comparisonPage = ((IEnumerable)json.DeserializeObject(json.Serialize(comparison)))
+                .Cast<Dictionary<string, object>>().Single();
+            var comparisonElements = ((IEnumerable)comparisonPage["elements"])
+                .Cast<Dictionary<string, object>>().ToArray();
+            var comparisonTable = comparisonElements.Single(e =>
+                Convert.ToInt32(e["tableRows"]) == 2);
+            var comparisonChart = comparisonElements.Single(e =>
+                Convert.ToBoolean(e["chart"]));
+            if (Convert.ToDouble(comparisonChart["width"]) < 400 ||
+                Convert.ToDouble(comparisonChart["height"]) < 260 ||
+                Convert.ToDouble(comparisonTable["height"]) > 250 ||
+                Convert.ToDouble(comparisonTable["width"]) >
+                    Convert.ToDouble(comparisonChart["width"]))
+                throw new Exception("A table/chart comparison must give the native chart and table balanced, legible regions.");
+            previews.Add(comparison);
             var scorecard = SamsungPresentationReview.InspectPlan(json.Serialize(new[] { new { title = "June performance", layout = "scorecard", subtitle = "Revenue softened while cost held flat", cards = new[] {
                 new { heading = "June revenue", points = new[] { "EUR 82,992", "2.95% below May" } },
                 new { heading = "June cost", points = new[] { "EUR 36,714", "Flat versus May" } },

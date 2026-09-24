@@ -219,6 +219,11 @@ namespace Scribble.Office
                         else queue.Enqueue(comment);
                     }
                     if (queue.Count == 0) throw new InvalidOperationException("A content slide needs source-backed content.");
+                    if (draft.Layout == "two_pane" && commentary.Length == 0 &&
+                        table != null && draft.Chart != null &&
+                        secondaryTable == null && draft.SecondaryChart == null &&
+                        draft.ImageData.Count == 0)
+                        regions = SamsungSlideDesign.ChartTableRegions();
                     if (queue.Count > regions.Length)
                     {
                         // Generic composition: preserve every supplied block. Explicit

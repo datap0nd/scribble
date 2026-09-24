@@ -61,6 +61,14 @@ namespace Scribble.Office
                 default: return new[] { Percent(3.8f, 25f, 92.4f, 57f) };
             }
         }
+        // A comparison that has a table and a chart needs both to be readable.
+        // The ordinary two_pane recipe reserves its first region for commentary
+        // and gives the later evidence region much less space.
+        public static RectangleF[] ChartTableRegions()
+        {
+            return new[] { Percent(4.8f, 30f, 42.2f, 45f),
+                Percent(51f, 27f, 44.2f, 51f) };
+        }
         public static bool InBounds(RectangleF rectangle)
         { return rectangle.Width > 0 && rectangle.Height > 0 && rectangle.Left >= 0 && rectangle.Top >= 0 && rectangle.Right <= Width + .01 && rectangle.Bottom <= Height + .01; }
         public static bool SameOwner(string tag, string owner)
