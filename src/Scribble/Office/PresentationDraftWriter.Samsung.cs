@@ -1039,7 +1039,8 @@ namespace Scribble.Office
             try { slide.Export(path, "PNG", 1600, 900); return "data:image/png;base64," + Convert.ToBase64String(File.ReadAllBytes(path)); }
             finally { if (File.Exists(path)) File.Delete(path); }
         }
-        internal static void ReplaceOwnedSamsung(SamsungOutput output, SamsungPage replacement)
+        internal static void ReplaceOwnedSamsung(SamsungOutput output,
+            SamsungPage replacement, Action afterNativeDeletion = null)
         {
             dynamic slide = output.Slide;
             if (ExportSamsung(output) != output.Image || (int)slide.Shapes.Count != output.ShapeIds.Count)
@@ -1069,6 +1070,9 @@ namespace Scribble.Office
             {
                 if (ExportSamsung(output) != output.Image) throw new InvalidOperationException("SLIDE_CHANGED_DURING_REPAIR");
                 for (var i = (int)slide.Shapes.Count; i >= 1; i--) slide.Shapes[i].Delete();
+                // Acceptance harness fault point: the original is now only
+                // available in the unsaved recovery presentation.
+                afterNativeDeletion?.Invoke();
                 PaintBackground(slide, MetoTheme.Rgb(replacement.Background));
                 staged.Shapes.Range().Copy(); slide.Shapes.Paste();
                 output.Page = replacement;

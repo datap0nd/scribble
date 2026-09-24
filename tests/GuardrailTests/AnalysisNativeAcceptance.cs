@@ -30,7 +30,8 @@ namespace GuardrailTests
         internal static int Run(string reportPath)
         {
             dynamic excel = null, workbook = null, powerPoint = null,
-                deck = null, typedDeck = null;
+                deck = null, typedDeck = null, faultDeck = null,
+                recoveryDeck = null;
             var failure = string.Empty;
             var workbookPassed = false;
             var slidesPassed = false;
@@ -42,6 +43,7 @@ namespace GuardrailTests
             var partialContentRollbackPassed = false;
             var cardContentRecoveryPassed = false;
             var layoutRecoveryPassed = false;
+            var partialLayoutRecoveryPassed = false;
             var typedDeckHandoffPassed = false;
             var nativeDateColumnPassed = false;
             var powerpointExited = false;
@@ -1221,6 +1223,87 @@ namespace GuardrailTests
                     "The native layout receipt did not preserve and commit the plan.");
                 layoutRecoveryPassed = true;
                 slidesPassed = true;
+                stage = "powerpoint_partial_layout_recovery";
+                AnalysisDocumentPilot.WritePresentation((object)powerPoint,
+                    fixture.Item1, layoutPlan);
+                faultDeck = powerPoint.ActivePresentation;
+                var faultPage = AnalysisDocumentPilot
+                    .CapturePresentationPages((object)faultDeck,
+                        fixture.Item1, layoutPlan)
+                    .Single(page => page.LogicalSlideId == "headline");
+                var faultStore = new TaskCheckpointStore(Path.Combine(
+                    output, "partial-layout-checkpoint"));
+                var faultTask = new TaskContextManager(layoutInput,
+                    "excel", "Inject a partial layout write", faultStore);
+                faultTask.PersistAnalysis(fixture.Item1);
+                var faultPatch = new AnalysisDocumentPatch
+                {
+                    ContextId = "native-layout-partial-write",
+                    LogicalSlideId = "headline", TargetId = "page",
+                    SegmentIndex = 0, ExpectedText = "cards",
+                    ReplacementText = "scorecard"
+                };
+                var faultReservation = faultTask
+                    .ReserveAnalysisContentPatch(faultPage, faultPatch,
+                        cardPlan, "cards", "scorecard",
+                        "native-layout-partial-input",
+                        AnalysisRepairBudget.CrossApp().ConsumePatch(
+                            "headline", "page"), true);
+                var presentationNames = new HashSet<string>(
+                    Enumerable.Range(1,
+                        (int)powerPoint.Presentations.Count)
+                        .Select(index => Convert.ToString(
+                            powerPoint.Presentations[index].Name)),
+                    StringComparer.Ordinal);
+                var partialLayoutRejected = false;
+                try
+                {
+                    AnalysisDocumentPilot.ApplyNativeLayoutPatch(
+                        (object)faultDeck, faultPage, faultReservation,
+                        fixture.Item1, cardPlan,
+                        () => { throw new InvalidOperationException(
+                            "INJECT_AFTER_LAYOUT_DELETE"); });
+                }
+                catch (InvalidOperationException error)
+                {
+                    partialLayoutRejected = error.Message.Contains(
+                        "SLIDE_REPAIR_RECOVERY_REQUIRED");
+                }
+                var recoveryCandidates = Enumerable.Range(1,
+                        (int)powerPoint.Presentations.Count)
+                    .Select(index => powerPoint.Presentations[index])
+                    .Where(candidate => !presentationNames.Contains(
+                        Convert.ToString(candidate.Name)))
+                    .ToArray();
+                Check(recoveryCandidates.Length == 1,
+                    "The partial layout write did not retain exactly one " +
+                    "new native recovery presentation.");
+                recoveryDeck = recoveryCandidates[0];
+                dynamic backupSlide = recoveryDeck.Slides[2];
+                var backupHasTitle = false;
+                for (var shapeIndex = 1;
+                    shapeIndex <= (int)backupSlide.Shapes.Count;
+                    shapeIndex++)
+                {
+                    dynamic shape = backupSlide.Shapes[shapeIndex];
+                    if ((int)shape.HasTextFrame != 0 &&
+                        Convert.ToString(shape.TextFrame.TextRange.Text) ==
+                            correctedTitle)
+                        backupHasTitle = true;
+                }
+                var persistedFault = faultStore.Load(faultTask.State.Id);
+                Check(partialLayoutRejected &&
+                    (int)faultDeck.Slides[
+                        faultPage.ExpectedPageNumber].Shapes.Count == 0 &&
+                    (int)recoveryDeck.Slides.Count == 2 &&
+                    (string)backupSlide.Tags["ScribbleTask"] ==
+                        (string)faultDeck.Tags["ScribbleTask"] &&
+                    backupHasTitle &&
+                    persistedFault.HostData.ContainsKey(
+                        "analysis_pending_content_patch"),
+                    "A partial native layout write lost its original " +
+                    "slide or the pending repair receipt.");
+                partialLayoutRecoveryPassed = true;
             }
             catch (Exception error)
             {
@@ -1235,6 +1318,10 @@ namespace GuardrailTests
                 Environment.SetEnvironmentVariable(pdfDiagnosticFlag,
                     priorPdfDiagnostic);
                 if ((object)deck != null) try { deck.Close(); } catch { }
+                if ((object)faultDeck != null)
+                    try { faultDeck.Close(); } catch { }
+                if ((object)recoveryDeck != null)
+                    try { recoveryDeck.Close(); } catch { }
                 if ((object)typedDeck != null)
                     try { typedDeck.Close(); } catch { }
                 if ((object)powerPoint != null && taskOwner != null)
@@ -1269,6 +1356,8 @@ namespace GuardrailTests
                     partialContentRollbackPassed,
                 card_content_recovery_passed = cardContentRecoveryPassed,
                 layout_recovery_passed = layoutRecoveryPassed,
+                partial_layout_recovery_passed =
+                    partialLayoutRecoveryPassed,
                 typed_deck_handoff_passed = typedDeckHandoffPassed,
                 native_date_column_passed = nativeDateColumnPassed,
                 powerpoint_exited = powerpointExited,
@@ -1287,6 +1376,7 @@ namespace GuardrailTests
                 typedDeckHandoffPassed && contentRecoveryPassed &&
                 partialContentRollbackPassed &&
                 cardContentRecoveryPassed && layoutRecoveryPassed
+                && partialLayoutRecoveryPassed
                 ? 0 : 1;
         }
 

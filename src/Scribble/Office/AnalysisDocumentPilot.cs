@@ -348,7 +348,8 @@ namespace Scribble.Office
         public static void ApplyNativeLayoutPatch(object presentation,
             AnalysisReviewPage page,
             AnalysisContentPatchReservation reservation,
-            AnalysisArtifact artifact, AnalysisDocumentPlan desiredPlan)
+            AnalysisArtifact artifact, AnalysisDocumentPlan desiredPlan,
+            Action afterNativeDeletion = null)
         {
             RequireEnabled();
             dynamic deck = presentation;
@@ -414,7 +415,8 @@ namespace Scribble.Office
             }
             output.Image = PresentationDraftWriter.ExportSamsung(output);
             PresentationDraftWriter.ReplaceOwnedSamsung(output,
-                composed[page.ExpectedPageNumber - 1]);
+                composed[page.ExpectedPageNumber - 1],
+                afterNativeDeletion);
             slide.Tags.Add("ScribbleAnalysisLayout",
                 reservation.NativeAfterText);
         }
