@@ -176,7 +176,7 @@ namespace Scribble.Office
         private static void ValidateOperation(object slide, Dictionary<string, object> operation)
         {
             var kind = SamsungAuthoringPolicy.Text(operation, "kind");
-            if (!new[] { "replace_text", "table_cell", "table_cell_fill", "shape_geometry", "chart_point", "move", "delete", "replace_slide", "insert", "annotate", "notes_append" }.Contains(kind))
+            if (!new[] { "replace_text", "table_cell", "table_cell_fill", "shape_geometry", "shape_font_size", "chart_point", "move", "delete", "replace_slide", "insert", "annotate", "notes_append" }.Contains(kind))
                 throw new InvalidOperationException("REVISION_UNSUPPORTED: Use a supported targeted operation.");
             if (kind == "move" || kind == "notes_append") return;
             if (kind == "delete")
@@ -237,6 +237,20 @@ namespace Scribble.Office
                 if (RevisionNumber(operation, "width") < 4 ||
                     RevisionNumber(operation, "height") < 4)
                     throw new InvalidOperationException("REVISION_GEOMETRY_INVALID");
+                return;
+            }
+            if (kind == "shape_font_size")
+            {
+                if ((int)shape.HasTextFrame == 0 ||
+                    (int)shape.TextFrame.HasText == 0)
+                    throw new InvalidOperationException("REVISION_TEXT_REQUIRED");
+                var before = RevisionNumber(operation, "before_size");
+                var size = RevisionNumber(operation, "size");
+                if (size < 7 || size > 72 ||
+                    Math.Abs(before - (float)shape.TextFrame.TextRange
+                        .Font.Size) > .01)
+                    throw new InvalidOperationException(
+                        "REVISION_FONT_CHANGED: Inspect the shape again.");
                 return;
             }
             if (kind == "table_cell_fill")
@@ -323,6 +337,12 @@ namespace Scribble.Office
                 shape.Top = (float)RevisionNumber(operation, "top");
                 shape.Width = (float)RevisionNumber(operation, "width");
                 shape.Height = (float)RevisionNumber(operation, "height");
+                return;
+            }
+            if (kind == "shape_font_size")
+            {
+                shape.TextFrame.TextRange.Font.Size = (float)
+                    RevisionNumber(operation, "size");
                 return;
             }
             if (kind == "table_cell_fill")
@@ -467,6 +487,12 @@ namespace Scribble.Office
                     target.Left = source.Left; target.Top = source.Top;
                     target.Width = source.Width;
                     target.Height = source.Height;
+                    continue;
+                }
+                if (kind == "shape_font_size")
+                {
+                    target.TextFrame.TextRange.Font.Size =
+                        source.TextFrame.TextRange.Font.Size;
                     continue;
                 }
                 if (kind == "table_cell_fill")

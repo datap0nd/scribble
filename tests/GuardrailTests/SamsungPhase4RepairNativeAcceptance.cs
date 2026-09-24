@@ -71,9 +71,6 @@ namespace GuardrailTests
                 draft = CopyType.GetField("Draft",
                     BindingFlags.Instance | BindingFlags.NonPublic)
                     .GetValue(copy);
-                var untouched = new[] { 1, 5, 6 }.ToDictionary(index =>
-                    index, index => CopyContent((object)
-                        draft.Slides[index]));
                 var operations = new List<object>();
                 operations.Add(Geometry((object)source.Slides[2],
                     chart, 66f, 158.25f, 825f, 278.25f));
@@ -93,6 +90,27 @@ namespace GuardrailTests
                     });
                 operations.Add(Geometry((object)source.Slides[4],
                     commentary, 63f, 153f, 832.5f, 292.5f));
+                // The seeded source has a compact byline on every page.
+                // PP01 explicitly requests repair of undersized text.
+                for (var index = 1; index <= 6; index++)
+                {
+                    dynamic page = source.Slides[index];
+                    dynamic byline = OnlyShape((object)page,
+                        shape => (int)shape.HasTextFrame != 0 &&
+                            Convert.ToString(shape.TextFrame.TextRange.Text)
+                                .Contains(" | sales | "));
+                    operations.Add(new Dictionary<string, object>
+                    {
+                        { "kind", "shape_font_size" },
+                        { "slide_id", (int)page.SlideID },
+                        { "fingerprint", PresentationInspection
+                            .Fingerprint((object)page) },
+                        { "shape_id", (int)byline.Id },
+                        { "before_size", (float)byline.TextFrame
+                            .TextRange.Font.Size },
+                        { "size", 14f }
+                    });
+                }
                 var bound = (object[])Invoke(copy, CopyType,
                     "BindOperations", (object)operations.ToArray());
                 revision = Activator.CreateInstance(RevisionType,
@@ -104,11 +122,18 @@ namespace GuardrailTests
                 Invoke(revision, RevisionType, "Commit",
                     (Action<string>)(status => { }));
                 Invoke(copy, CopyType, "VerifySource");
-                foreach (var page in untouched)
-                    if (CopyContent((object)draft.Slides[page.Key]) !=
-                            page.Value)
+                for (var index = 1; index <= 6; index++)
+                {
+                    dynamic byline = OnlyShape(
+                        (object)draft.Slides[index],
+                        shape => (int)shape.HasTextFrame != 0 &&
+                            Convert.ToString(shape.TextFrame.TextRange.Text)
+                                .Contains(" | sales | "));
+                    if (Math.Abs((float)byline.TextFrame.TextRange
+                            .Font.Size - 14f) > .01f)
                         throw new InvalidOperationException(
-                            "PP01_UNRELATED_DRAFT_PAGE_CHANGED");
+                            "PP01_BYLINE_FONT_REPAIR_FAILED");
+                }
                 dynamic repairedChart = OnlyShape(
                     (object)draft.Slides[2],
                     shape => (int)shape.HasChart != 0);
