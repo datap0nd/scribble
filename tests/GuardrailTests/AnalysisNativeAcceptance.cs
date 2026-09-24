@@ -325,6 +325,15 @@ namespace GuardrailTests
                         "A native slide image was not rendered.");
                     images.Add(path);
                 }
+                // The active route must also work when another marked deck
+                // has been closed. Save the structural fixture for later
+                // assertions instead of keeping two chart decks open.
+                stage = "powerpoint_first_deck_checkpoint";
+                var firstDeckCopy = Path.Combine(output,
+                    "analysis-first-deck.pptx");
+                deck.SaveCopyAs(firstDeckCopy);
+                deck.Close();
+                deck = null;
                 stage = "active_typed_deck_handoff";
                 var deckCall = new ChatToolCall
                 {
@@ -412,6 +421,8 @@ namespace GuardrailTests
                     typedDeck = null;
                     typedDeckHandoffPassed = true;
                 }
+                stage = "powerpoint_reopen_first_deck";
+                deck = powerPoint.Presentations.Open(firstDeckCopy);
                 stage = "powerpoint_review_metadata";
                 var taskInput = new ChatCompletionRequest
                 {
