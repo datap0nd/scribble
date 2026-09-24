@@ -148,6 +148,37 @@ namespace GuardrailTests
                         originalSheet.Cells[2, 4].Value2 == null,
                         "EXCEL_MERGED_PREFLIGHT_LEFT_PARTIAL_WRITE: " +
                         merged.Content);
+
+                    originalSheet.Cells[6, 6].Value2 = "original first";
+                    originalSheet.Cells[6, 7].Value2 = "original second";
+                    source.Activate(); originalSheet.Activate();
+                    capture();
+                    other.Activate(); otherSheet.Activate();
+                    var rollbackAuth = new OneShotDraftAuthorization(true);
+                    var rollback = host.Execute(new ChatToolCall
+                    {
+                        id = "phase5-rollback", type = "function",
+                        function = new ChatToolCallFunction
+                        {
+                            name = WorkbookToolCatalog.WriteCells,
+                            arguments = json.Serialize(new
+                            {
+                                start_cell = "F6",
+                                rows = new[] { new[] {
+                                    "changed first", "=SUM(" } }
+                            })
+                        }
+                    }, rollbackAuth, true, "Update F6:G6 in my sheet");
+                    Check(rollback.Outcome.Failed &&
+                        rollback.Outcome.ErrorCode ==
+                            "DRAFT_WRITE_ROLLED_BACK" &&
+                        rollbackAuth.IsConsumed &&
+                        Convert.ToString(originalSheet.Cells[6, 6]
+                            .Value2) == "original first" &&
+                        Convert.ToString(originalSheet.Cells[6, 7]
+                            .Value2) == "original second",
+                        "EXCEL_ROLLBACK_LOST_SOURCE: " +
+                        rollback.Content);
                 }
                 passed = true;
             }
@@ -169,6 +200,7 @@ namespace GuardrailTests
                 execution_kind = "native_disposable_phase5_excel_binding",
                 target_binding_passed = passed,
                 merged_preflight_passed = passed,
+                in_process_rollback_passed = passed,
                 before_image_recovery_passed = false,
                 full_acceptance_passed = false,
                 failure
