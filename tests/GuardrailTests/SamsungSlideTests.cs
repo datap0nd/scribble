@@ -11,6 +11,44 @@ namespace GuardrailTests
 {
     internal static class SamsungSlideTests
     {
+        public static void Phase4ReferenceMatrix()
+        {
+            var path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
+                "Fixtures", "phase4-reference.json");
+            var json = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
+            var fixtures = ((IEnumerable)json.DeserializeObject(File.ReadAllText(path)))
+                .Cast<Dictionary<string, object>>().ToArray();
+            var expectedFamilies = new[] { "scorecard", "comparison",
+                "grouped_chart", "evidence_cards", "dense_table",
+                "cover_closing" };
+            var expectedDensities = new[] { "normal", "long", "maximum" };
+            if (fixtures.Length != 18 || fixtures.Select(fixture =>
+                    Convert.ToString(fixture["id"]))
+                    .Distinct(StringComparer.Ordinal).Count() != 18 ||
+                expectedFamilies.Any(family =>
+                    !expectedDensities.OrderBy(value => value).SequenceEqual(
+                        fixtures.Where(fixture => Convert.ToString(
+                                fixture["family"]) == family)
+                            .Select(fixture => Convert.ToString(
+                                fixture["density"]))
+                            .OrderBy(value => value))))
+                throw new Exception("The Phase 4 reference matrix needs six families with three unique density variants each.");
+            foreach (var fixture in fixtures)
+            {
+                var slide = fixture["slide"] as Dictionary<string, object>;
+                if (slide == null || !slide.ContainsKey("sources") ||
+                    string.IsNullOrWhiteSpace(Convert.ToString(
+                        slide["sources"])))
+                    throw new Exception("A reference fixture has no source or slide: " + fixture["id"]);
+                var pages = (IEnumerable)SamsungPresentationReview.InspectPlan(
+                    json.Serialize(new[] { slide }));
+                var planned = pages.Cast<Dictionary<string, object>>().ToArray();
+                if (planned.Length != 1 ||
+                    !json.Serialize(planned[0]).Contains("[Scribble draft]"))
+                    throw new Exception("A reference fixture did not compose to one bounded native page: " + fixture["id"]);
+            }
+        }
+
         public static void LayoutsAndOverflow()
         {
             var json = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };

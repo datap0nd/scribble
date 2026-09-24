@@ -34,6 +34,7 @@ namespace GuardrailTests
         {
             if (args.Length == 2 && args[0] == "--native-powerpoint") return SamsungNativeAcceptance.Run(args[1]);
             if (args.Length == 2 && args[0] == "--native-analysis-pilot") return AnalysisNativeAcceptance.Run(args[1]);
+            if (args.Length == 2 && args[0] == "--native-phase4-reference") return SamsungPhase4NativeAcceptance.Run(args[1]);
             // The MCP round-trip test relaunches this same exe as a
             // scripted stdio MCP server, so the test needs no
             // external interpreter and stays deterministic. The
@@ -132,6 +133,7 @@ namespace GuardrailTests
                 Run("Korean-target request exposes direction-specific tool and instruction", WorkbookTranslationTests.RequestSurface);
                 Run("Grouped totals are host arithmetic with disclosed gaps", WorkbookTranslationTests.GroupedTotals);
                 Run("Samsung layouts preserve content and enforce overflow bounds", SamsungSlideTests.LayoutsAndOverflow);
+                Run("Phase 4 reference matrix covers six native layout families and three densities", SamsungSlideTests.Phase4ReferenceMatrix);
                 Run("Samsung slide numbers require verified source evidence", SamsungSlideTests.EvidenceAndNumbers);
                 Run("PowerPoint and Outlook slide tool calls reach independent review", SlideToolCallsReachReview);
                 Run("Empty endpoint responses retry once without replaying tools", EmptyEndpointResponsesRecover);

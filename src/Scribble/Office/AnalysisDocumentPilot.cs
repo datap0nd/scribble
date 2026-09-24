@@ -364,6 +364,9 @@ namespace Scribble.Office
             var nativeBefore = Enumerable.Range(1, expectedPages)
                 .Select(index => NativeStateFingerprint(deck.Slides[index]))
                 .ToArray();
+            var editableBefore = Enumerable.Range(1, expectedPages)
+                .Select(index => NativeStateFingerprint(deck.Slides[index],
+                    false)).ToArray();
             var pdf = Path.Combine(Path.GetTempPath(),
                 "scribble-analysis-review-" + Guid.NewGuid().ToString("N") +
                 ".pdf");
@@ -378,6 +381,9 @@ namespace Scribble.Office
                 var changedPages = Enumerable.Range(1, expectedPages)
                     .Where(index => NativeStateFingerprint(deck.Slides[index]) !=
                         nativeBefore[index - 1]).ToArray();
+                var changedEditablePages = Enumerable.Range(1, expectedPages)
+                    .Where(index => NativeStateFingerprint(deck.Slides[index],
+                        false) != editableBefore[index - 1]).ToArray();
                 var pdfMissing = !File.Exists(pdf);
                 var pdfTooLarge = !pdfMissing && new FileInfo(pdf).Length >
                     30 * 1024 * 1024;
@@ -387,6 +393,8 @@ namespace Scribble.Office
                         "PDF export changed or exceeded the native draft boundary: " +
                         "name=" + nameChanged + ", saved=" + savedChanged +
                         ", pages=" + string.Join(",", changedPages) +
+                        ", editable_pages=" + string.Join(",",
+                            changedEditablePages) +
                         ", missing=" + pdfMissing + ", too_large=" +
                         pdfTooLarge + ".");
                 using (var stream = File.OpenRead(pdf))
@@ -797,7 +805,8 @@ namespace Scribble.Office
         // Native repair identity uses stable editable state. PowerPoint can
         // export different PNG bytes for the same live slide; rendered bytes
         // remain review evidence but cannot safely authorize a COM mutation.
-        private static string NativeStateFingerprint(dynamic slide)
+        private static string NativeStateFingerprint(dynamic slide,
+            bool includeChartPackage = true)
         {
             var state = new StringBuilder();
             AppendState(state, (int)slide.SlideID);
@@ -848,7 +857,8 @@ namespace Scribble.Office
                 var hasChart = (int)shape.HasChart != 0;
                 AppendState(state, hasChart ? 1 : 0);
             }
-            if (PresentationInspection.ContainsNativeChart((object)slide))
+            if (includeChartPackage &&
+                PresentationInspection.ContainsNativeChart((object)slide))
                 AppendState(state,
                     PresentationInspection.PackageSlideFingerprint(
                         (object)slide));
