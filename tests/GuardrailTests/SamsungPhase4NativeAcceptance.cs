@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Security.Cryptography;
 using System.Web.Script.Serialization;
 using Scribble.Office;
 
@@ -29,6 +30,9 @@ namespace GuardrailTests
             var fixtures = ((IEnumerable)json.DeserializeObject(
                 File.ReadAllText(fixturePath)))
                 .Cast<Dictionary<string, object>>().ToArray();
+            var assemblyHash = FileHash(typeof(SamsungAuthoringPolicy)
+                .Assembly.Location);
+            var fixtureHash = FileHash(fixturePath);
             var defects = defectMode ? ((IEnumerable)json.DeserializeObject(
                 File.ReadAllText(Path.Combine(
                     AppDomain.CurrentDomain.BaseDirectory, "Fixtures",
@@ -44,6 +48,21 @@ namespace GuardrailTests
             {
                 SamsungSlideTests.Phase4ReferenceMatrix();
                 if (defectMode) SamsungSlideTests.Phase4DefectMatrix();
+                if (defectMode)
+                {
+                    var baselinePath = Path.Combine(output,
+                        "phase4-reference-report.json");
+                    var baseline = json.Deserialize<Dictionary<string, object>>(
+                        File.ReadAllText(baselinePath));
+                    if (!Convert.ToBoolean(baseline["structural_passed"]) ||
+                        Convert.ToInt32(baseline["reference_count"]) != 18 ||
+                        Convert.ToString(baseline["assembly_sha256"]) !=
+                            assemblyHash ||
+                        Convert.ToString(baseline["fixture_sha256"]) !=
+                            fixtureHash)
+                        throw new InvalidOperationException(
+                            "PHASE4_DEFECT_BASELINE_CHANGED");
+                }
                 app = Activator.CreateInstance(Type.GetTypeFromProgID(
                     "PowerPoint.Application", true));
                 app.Visible = -1;
@@ -60,16 +79,26 @@ namespace GuardrailTests
                 for (var batch = 0; batch < 3; batch++)
                 {
                     var subset = fixtures.Skip(batch * 6).Take(6).ToArray();
-                    var input = subset.Select(fixture =>
+                    var referencePath = Path.Combine(output,
+                        "phase4-reference-" + (batch + 1) + ".pptx");
+                    var referenceHash = defectMode ?
+                        FileHash(referencePath) : null;
+                    if (defectMode)
+                        deck = app.Presentations.Open(referencePath, -1,
+                            -1, 0);
+                    else
                     {
-                        var slide = (Dictionary<string, object>)fixture["slide"];
-                        slide["id"] = fixture["id"];
-                        return (object)slide;
-                    }).ToArray();
-                    var slides = parse.Invoke(null, new object[] { input });
-                    add.Invoke(null, new object[] { (object)app,
-                        slides, null, true, null, null, null, null, true });
-                    deck = app.ActivePresentation;
+                        var input = subset.Select(fixture =>
+                        {
+                            var slide = (Dictionary<string, object>)fixture["slide"];
+                            slide["id"] = fixture["id"];
+                            return (object)slide;
+                        }).ToArray();
+                        var slides = parse.Invoke(null, new object[] { input });
+                        add.Invoke(null, new object[] { (object)app,
+                            slides, null, true, null, null, null, null, true });
+                        deck = app.ActivePresentation;
+                    }
                     if ((int)deck.Slides.Count != subset.Length)
                         throw new InvalidOperationException(
                             "PHASE4_NATIVE_PAGE_COUNT_CHANGED");
@@ -79,12 +108,15 @@ namespace GuardrailTests
                         var slide = (Dictionary<string, object>)subset[index - 1]["slide"];
                         var hasChart = false;
                         var hasTable = false;
+                        var geometry = new List<object>();
                         for (var shapeIndex = 1; shapeIndex <=
                             (int)native.Shapes.Count; shapeIndex++)
                         {
                             dynamic shape = native.Shapes[shapeIndex];
-                            hasChart |= (int)shape.HasChart != 0;
-                            hasTable |= (int)shape.HasTable != 0;
+                            var shapeChart = (int)shape.HasChart != 0;
+                            var shapeTable = (int)shape.HasTable != 0;
+                            hasChart |= shapeChart;
+                            hasTable |= shapeTable;
                         }
                         if (hasChart != slide.ContainsKey("chart") ||
                             hasTable != slide.ContainsKey("table"))
@@ -95,6 +127,32 @@ namespace GuardrailTests
                             defects[batch * 6 + index - 1] : null;
                         if (defect != null)
                             ApplyDefect(native, defect, slide);
+                        for (var shapeIndex = 1; shapeIndex <=
+                            (int)native.Shapes.Count; shapeIndex++)
+                        {
+                            dynamic shape = native.Shapes[shapeIndex];
+                            var shapeChart = (int)shape.HasChart != 0;
+                            var shapeTable = (int)shape.HasTable != 0;
+                            var shapeText = !shapeChart && !shapeTable &&
+                                (int)shape.HasTextFrame != 0;
+                            geometry.Add(new
+                            {
+                                id = (int)shape.Id,
+                                type = (int)shape.Type,
+                                left = (float)shape.Left,
+                                top = (float)shape.Top,
+                                width = (float)shape.Width,
+                                height = (float)shape.Height,
+                                visible = (int)shape.Visible != 0,
+                                chart = shapeChart,
+                                table = shapeTable,
+                                text = shapeText ? Convert.ToString(
+                                    shape.TextFrame.TextRange.Text) : null,
+                                font_size = shapeText ?
+                                    (float?)shape.TextFrame.TextRange.Font.Size :
+                                    null
+                            });
+                        }
                         pages.Add(new
                         {
                             fixture_id = subset[index - 1]["id"],
@@ -103,6 +161,7 @@ namespace GuardrailTests
                                 defect["expected"],
                             severity = defect == null ? null :
                                 defect["severity"],
+                            reference_sha256 = referenceHash,
                             family = subset[index - 1]["family"],
                             density = subset[index - 1]["density"],
                             deck_number = batch + 1,
@@ -110,7 +169,8 @@ namespace GuardrailTests
                             native_slide_id = (int)native.SlideID,
                             shape_count = (int)native.Shapes.Count,
                             native_chart = hasChart,
-                            native_table = hasTable
+                            native_table = hasTable,
+                            geometry
                         });
                     }
                     var prefix = (defectMode ? "phase4-defect-" :
@@ -122,6 +182,18 @@ namespace GuardrailTests
                     deck.SaveCopyAs(pptx);
                     deck.SaveAs(pdf, 32);
                     deck.SaveCopyAs(afterExport);
+                    var packageCheck = typeof(PresentationInspection)
+                        .GetMethod("PdfExportPackageEquivalent",
+                            BindingFlags.Static | BindingFlags.NonPublic);
+                    if (packageCheck == null)
+                        throw new InvalidOperationException(
+                            "PHASE4_PACKAGE_BOUNDARY_MISSING");
+                    var packageArguments = new object[] { pptx, afterExport,
+                        null };
+                    if (!(bool)packageCheck.Invoke(null, packageArguments))
+                        throw new InvalidOperationException(
+                            "PHASE4_PDF_EXPORT_CHANGED_NATIVE_PACKAGE: " +
+                            Convert.ToString(packageArguments[2]));
                     if (!File.Exists(pptx) ||
                         new FileInfo(pptx).Length < 1000 ||
                         !File.Exists(pdf) ||
@@ -133,6 +205,10 @@ namespace GuardrailTests
                     files.Add(pptx);
                     files.Add(pdf);
                     files.Add(afterExport);
+                    if (defectMode && FileHash(referencePath) !=
+                        referenceHash)
+                        throw new InvalidOperationException(
+                            "PHASE4_DEFECT_CHANGED_REFERENCE_DECK");
                     deck.Close();
                     deck = null;
                 }
@@ -153,6 +229,11 @@ namespace GuardrailTests
                 execution_kind = defectMode ?
                     "native_disposable_phase4_defects" :
                     "native_disposable_phase4_references",
+                assembly_sha256 = assemblyHash,
+                fixture_sha256 = fixtureHash,
+                defect_fixture_sha256 = defectMode ? FileHash(Path.Combine(
+                    AppDomain.CurrentDomain.BaseDirectory, "Fixtures",
+                    "phase4-defects.json")) : null,
                 reference_count = pages.Count,
                 structural_passed = !defectMode && passed,
                 seeded_defects_rendered = defectMode && passed,
@@ -168,6 +249,18 @@ namespace GuardrailTests
             File.WriteAllText(reportPath, json.Serialize(report));
             Console.WriteLine(json.Serialize(report));
             return passed ? 0 : 1;
+        }
+
+        private static string FileHash(string path)
+        {
+            if (!File.Exists(path) || new FileInfo(path).Length >
+                50 * 1024 * 1024)
+                throw new InvalidOperationException(
+                    "PHASE4_REFERENCE_DECK_REQUIRED: " + path);
+            using (var stream = File.OpenRead(path))
+            using (var hash = SHA256.Create())
+                return BitConverter.ToString(hash.ComputeHash(stream))
+                    .Replace("-", "").ToLowerInvariant();
         }
 
         private static void ApplyDefect(dynamic slide,
