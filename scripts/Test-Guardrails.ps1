@@ -483,6 +483,9 @@ foreach ($guardedFile in $officeGuardedFiles) {
                 $_.Line -notmatch '_settingsStore\.Save' -and
                 $_.Line -notmatch 'SuiteExchange\.Save' -and
                 $_.Line -notmatch 'dataWorkbook\.Close' -and
+                # Read-only protection status blocks an edit before it starts.
+                -not ($_.Path -like '*\Office\WorkbookDraftWriter.cs' -and
+                    $_.Line.Trim() -eq 'if (Convert.ToBoolean(sheet.ProtectContents))') -and
                 # The analysis pilot may copy only its unsaved, tagged draft
                 # to a bounded temporary PPTX for chart fingerprinting.
                 # PresentationInspection verifies identity and deletes it.
