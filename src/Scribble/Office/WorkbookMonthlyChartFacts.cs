@@ -37,17 +37,17 @@ namespace Scribble.Office
             if (table.Rows < 13 || table.Rows > 20000 ||
                 table.Columns < 10 || table.Columns > 256)
                 throw new InvalidOperationException("MONTHLY_LEDGER_SCOPE_INVALID");
-            var cells = table.Cells.ToDictionary(cell =>
-                cell.Row.ToString(CultureInfo.InvariantCulture) + ":" +
-                cell.Column.ToString(CultureInfo.InvariantCulture),
+            var cells = table.Cells.ToDictionary(entry =>
+                entry.Row.ToString(CultureInfo.InvariantCulture) + ":" +
+                entry.Column.ToString(CultureInfo.InvariantCulture),
                 StringComparer.Ordinal);
             Func<int, int, DatasetCell> at = (row, column) =>
             {
-                DatasetCell cell;
+                DatasetCell found;
                 cells.TryGetValue(row.ToString(CultureInfo.InvariantCulture) +
                     ":" + column.ToString(CultureInfo.InvariantCulture),
-                    out cell);
-                return cell;
+                    out found);
+                return found;
             };
             var id = Column(table, at, "RowID");
             var period = Column(table, at, "Period");
