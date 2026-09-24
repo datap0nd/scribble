@@ -334,6 +334,16 @@ namespace GuardrailTests
                 deck.SaveCopyAs(firstDeckCopy);
                 deck.Close();
                 deck = null;
+                // The chart workbook is hosted in the PowerPoint process.
+                // Exercise the active route in a fresh process, as it would
+                // run after a prior authoring session has ended.
+                stage = "powerpoint_restart_before_active_route";
+                powerPoint.Quit();
+                System.Runtime.InteropServices.Marshal.ReleaseComObject(
+                    powerPoint);
+                powerPoint = Activator.CreateInstance(Type.GetTypeFromProgID(
+                    "PowerPoint.Application", true));
+                powerPoint.Visible = -1;
                 stage = "active_typed_deck_handoff";
                 var deckCall = new ChatToolCall
                 {
