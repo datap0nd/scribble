@@ -102,8 +102,8 @@ namespace GuardrailTests
                 {
                     chartFingerprintTrace.Add(PresentationInspection
                         .Fingerprint((object)draft.Slides[2]));
-                    chartContentTrace.Add(PresentationInspection
-                        .CopyContentFingerprint((object)draft.Slides[2]));
+                    chartContentTrace.Add(CopyContent(
+                        (object)draft.Slides[2]));
                 }
                 var operations = new List<object>();
                 for (var column = 1; column <= 3; column++)
@@ -196,8 +196,8 @@ namespace GuardrailTests
                 {
                     chartFingerprintTrace.Add(PresentationInspection
                         .Fingerprint((object)draft.Slides[2]));
-                    chartContentTrace.Add(PresentationInspection
-                        .CopyContentFingerprint((object)draft.Slides[2]));
+                    chartContentTrace.Add(CopyContent(
+                        (object)draft.Slides[2]));
                 }
                 revision = Activator.CreateInstance(RevisionType,
                     BindingFlags.Instance | BindingFlags.NonPublic,
