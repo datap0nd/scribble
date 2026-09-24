@@ -1250,11 +1250,12 @@ namespace GuardrailTests
                         AnalysisRepairBudget.CrossApp().ConsumePatch(
                             "headline", "page"), true);
                 var presentationNames = new HashSet<string>(
-                    Enumerable.Range(1,
-                        (int)powerPoint.Presentations.Count)
-                        .Select(index => Convert.ToString(
-                            powerPoint.Presentations[index].Name)),
                     StringComparer.Ordinal);
+                for (var presentationIndex = 1;
+                    presentationIndex <= (int)powerPoint.Presentations.Count;
+                    presentationIndex++)
+                    presentationNames.Add(Convert.ToString(
+                        powerPoint.Presentations[presentationIndex].Name));
                 var partialLayoutRejected = false;
                 try
                 {
@@ -1269,12 +1270,17 @@ namespace GuardrailTests
                     partialLayoutRejected = error.Message.Contains(
                         "SLIDE_REPAIR_RECOVERY_REQUIRED");
                 }
-                var recoveryCandidates = Enumerable.Range(1,
-                        (int)powerPoint.Presentations.Count)
-                    .Select(index => powerPoint.Presentations[index])
-                    .Where(candidate => !presentationNames.Contains(
+                var recoveryCandidates = new List<object>();
+                for (var presentationIndex = 1;
+                    presentationIndex <= (int)powerPoint.Presentations.Count;
+                    presentationIndex++)
+                {
+                    dynamic candidate =
+                        powerPoint.Presentations[presentationIndex];
+                    if (!presentationNames.Contains(
                         Convert.ToString(candidate.Name)))
-                    .ToArray();
+                        recoveryCandidates.Add((object)candidate);
+                }
                 Check(recoveryCandidates.Length == 1,
                     "The partial layout write did not retain exactly one " +
                     "new native recovery presentation.");
