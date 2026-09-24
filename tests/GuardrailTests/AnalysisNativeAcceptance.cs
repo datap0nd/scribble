@@ -368,7 +368,8 @@ namespace GuardrailTests
                         .GetAwaiter().GetResult();
                     Check(!routeResult.Outcome.Failed,
                         "The active typed handoff failed offline review: " +
-                        routeResult.Content);
+                        routeResult.Content + "; source_cells_unchanged=" +
+                        (SourceFingerprint(ledger) == sourceBefore));
                     for (var p = 1; p <=
                         (int)powerPoint.Presentations.Count; p++)
                     {

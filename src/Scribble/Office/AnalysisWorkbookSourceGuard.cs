@@ -33,7 +33,7 @@ namespace Scribble.Office
                 if (binding == null ||
                     binding.Id != snapshot.SourceInstanceId)
                     throw new InvalidOperationException(
-                        "ANALYSIS_SOURCE_CHANGED");
+                        "ANALYSIS_SOURCE_CHANGED: workbook binding");
                 dynamic application = excelApplication;
                 dynamic workbook = application.ActiveWorkbook;
                 dynamic sheet = workbook.Worksheets[table.Name];
@@ -48,7 +48,7 @@ namespace Scribble.Office
                     snapshot.CaptureRevision != binding.Fingerprint + "|" +
                         table.Name + "|" + address)
                     throw new InvalidOperationException(
-                        "ANALYSIS_SOURCE_CHANGED");
+                        "ANALYSIS_SOURCE_CHANGED: range or revision");
                 object values = range.Value2;
                 object formulas = range.Formula;
                 object formats = WorkbookTypedCapture
@@ -61,7 +61,7 @@ namespace Scribble.Office
                         WorkbookToolHost.MaxTypedMetadataCells);
                 if (formats == null)
                     throw new InvalidOperationException(
-                        "ANALYSIS_SOURCE_CHANGED");
+                        "ANALYSIS_SOURCE_CHANGED: mixed formats incomplete");
                 var current = WorkbookTypedCapture.Capture(table.TableId,
                     table.Name, values, formulas, formats, null,
                     table.Rows, table.Columns, (int)range.Row,
@@ -76,7 +76,7 @@ namespace Scribble.Office
                     cell.ValueType == AnalysisContract.ErrorValue).ToArray();
                 if (metadata.Length > WorkbookToolHost.MaxTypedMetadataCells)
                     throw new InvalidOperationException(
-                        "ANALYSIS_SOURCE_CHANGED");
+                        "ANALYSIS_SOURCE_CHANGED: metadata bound exceeded");
                 foreach (var cell in current.Cells.Where(item =>
                     !string.IsNullOrEmpty(item.Formula)))
                     cell.Status = AnalysisContract.Unresolved;
@@ -91,7 +91,7 @@ namespace Scribble.Office
                     new[] { current });
                 if (fresh.ContentHash != snapshot.ContentHash)
                     throw new InvalidOperationException(
-                        "ANALYSIS_SOURCE_CHANGED");
+                        "ANALYSIS_SOURCE_CHANGED: cell content or format");
             }
             catch (InvalidOperationException)
             {
