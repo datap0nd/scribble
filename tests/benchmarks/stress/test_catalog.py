@@ -113,7 +113,9 @@ class CatalogContractTests(unittest.TestCase):
         self.assertEqual(source["id"], "PPT01")
         self.assertTrue(private["presentations"][0]["repair_case"])
         self.assertEqual({item["kind"] for item in source["intentional_defects"]},
-                         {"out_of_bounds_chart", "text_overflow", "wrong_theme_accent"})
+                         {"out_of_bounds_chart", "stale_chart_category",
+                          "stale_chart_title_unit", "text_overflow",
+                          "wrong_theme_accent"})
         self.assertEqual(case["task_family"], "repair_preserve_and_reconcile")
 
     def test_chart_requirements_target_the_requested_output_host(self):
