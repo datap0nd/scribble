@@ -32,6 +32,8 @@ namespace GuardrailTests
         public sealed class GridApplication
         {
             public GridSheet ActiveSheet { get; set; }
+            public List<GridWorkbook> Workbooks { get; } =
+                new List<GridWorkbook>();
         }
 
         public sealed class GridWorkbook
@@ -336,6 +338,97 @@ namespace GuardrailTests
                 Convert.ToString(second["Planned"]) != "14.5")
                 throw new Exception(
                     "The durable before-image lost workbook identity or typed values.");
+        }
+
+        public static void InterruptedGridWriteReconcilesSafely()
+        {
+            foreach (var scenario in new[] {
+                "before", "partial", "applied", "user_edit", "wrong_book" })
+            {
+                var root = Path.Combine(Path.GetTempPath(),
+                    "scribble-grid-recovery-" + Guid.NewGuid().ToString("N"));
+                try
+                {
+                    var workbook = new GridWorkbook();
+                    var sheet = new GridSheet { Parent = workbook };
+                    workbook.Worksheets.Add(sheet);
+                    sheet.Cells[1, 1].Value2 = "original A1";
+                    sheet.Cells[1, 2].Value2 = "original B1";
+                    var application = new GridApplication { ActiveSheet = sheet };
+                    application.Workbooks.Add(workbook);
+                    var writer = typeof(SamsungAuthoringPolicy).Assembly
+                        .GetType("Scribble.Office.WorkbookDraftWriter", true);
+                    var rows = new List<IReadOnlyList<string>>
+                    {
+                        new[] { "planned A1", "planned B1" }
+                    };
+                    const string callId = "interrupted-grid";
+                    var receipt = Invoke(writer, "CaptureCellsReceipt",
+                        application, "A1", rows, sheet, callId);
+                    var request = new ChatCompletionRequest
+                    {
+                        model = "test",
+                        messages = new List<object> { new ChatCompletionInputMessage
+                            { role = "user", content = "Change A1 and B1" } }
+                    };
+                    var task = new TaskContextManager(request, "excel",
+                        "Change A1 and B1", new TaskCheckpointStore(root));
+                    var call = new ChatToolCall
+                    {
+                        id = callId, type = "function",
+                        function = new ChatToolCallFunction
+                        {
+                            name = WorkbookToolCatalog.WriteCells,
+                            arguments = "{\"start_cell\":\"A1\",\"rows\":[[\"planned A1\",\"planned B1\"]]}"
+                        }
+                    };
+                    task.BeforeTool(call, true);
+                    var receiptId = task.Store.PutEvidence(task.State.Id,
+                        new JavaScriptSerializer().Serialize(receipt));
+                    task.State.HostData["excel_grid_receipt"] = receiptId;
+                    task.State.HostData["excel_grid_call_id"] = callId;
+                    task.Checkpoint();
+                    if (scenario != "before")
+                        sheet.Cells[1, 1].Value2 = "planned A1";
+                    if (scenario == "applied")
+                        sheet.Cells[1, 2].Value2 = "planned B1";
+                    if (scenario == "user_edit")
+                        sheet.Cells[1, 2].Value2 = "user edit";
+                    if (scenario == "wrong_book")
+                    {
+                        workbook.Name = "Renamed.xlsx";
+                        workbook.FullName = "C:\\Renamed.xlsx";
+                    }
+                    using (var host = new DocumentDraftHost("excel", application))
+                        host.BindTaskAsync(task,
+                            System.Threading.CancellationToken.None)
+                            .GetAwaiter().GetResult();
+                    var expectedStatus = scenario == "user_edit" ||
+                        scenario == "wrong_book" ? "pending" : "verified";
+                    var expectedFirst = scenario == "applied" ||
+                        scenario == "user_edit" || scenario == "wrong_book"
+                        ? "planned A1" : "original A1";
+                    var expectedSecond = scenario == "applied"
+                        ? "planned B1" : scenario == "user_edit"
+                            ? "user edit" : "original B1";
+                    if (task.State.Writes.Single().Status != expectedStatus ||
+                        Convert.ToString(sheet.Cells[1, 1].Value2) !=
+                            expectedFirst ||
+                        Convert.ToString(sheet.Cells[1, 2].Value2) !=
+                            expectedSecond ||
+                        (task.State.HostData.ContainsKey("excel_grid_receipt") !=
+                            (expectedStatus == "pending")) ||
+                        (task.State.HostData.ContainsKey(
+                            "generic_write_spent") !=
+                            (scenario == "applied")))
+                        throw new Exception("Unsafe restart reconciliation: " +
+                            scenario);
+                }
+                finally
+                {
+                    if (Directory.Exists(root)) Directory.Delete(root, true);
+                }
+            }
         }
     }
 }

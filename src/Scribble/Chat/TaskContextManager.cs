@@ -603,6 +603,35 @@ namespace Scribble.Chat
             Checkpoint();
         }
 
+        // Only the host may resolve an interrupted ordinary Excel grid edit,
+        // after comparing every recorded cell with its encrypted before-image.
+        internal bool ResolveExcelGridWrite(string callId, string receiptId,
+            string reconciliation)
+        {
+            string recordedCall;
+            string recordedReceipt;
+            if (string.IsNullOrWhiteSpace(callId) ||
+                !_state.HostData.TryGetValue("excel_grid_call_id",
+                    out recordedCall) || recordedCall != callId ||
+                !_state.HostData.TryGetValue("excel_grid_receipt",
+                    out recordedReceipt) || recordedReceipt != receiptId ||
+                (reconciliation != ExcelGridWriteRecovery.Applied &&
+                 reconciliation != ExcelGridWriteRecovery.RolledBack))
+                return false;
+            var write = _state.Writes.SingleOrDefault(w =>
+                w.Id == "tool:" + callId && w.Status != "verified");
+            if (write == null) return false;
+            write.Status = "verified";
+            write.AfterFingerprint = TaskCheckpointStore.Fingerprint(
+                "excel_grid_recovery:" + reconciliation + ":" + receiptId);
+            if (reconciliation == ExcelGridWriteRecovery.Applied)
+                _state.HostData["generic_write_spent"] = "true";
+            _state.HostData.Remove("excel_grid_call_id");
+            _state.HostData.Remove("excel_grid_receipt");
+            Checkpoint();
+            return true;
+        }
+
         public void FinishExchange(ChatCompletionRequest request)
         {
             _state.PendingCalls.Clear();

@@ -231,6 +231,7 @@
     <Compile Include="Office\WorkbookDraftWriter.cs" />
     <Compile Include="Office\ExcelDraftBinding.cs" />
     <Compile Include="Office\ExcelGridWriteReceipt.cs" />
+    <Compile Include="Office\ExcelGridWriteRecovery.cs" />
     <Compile Include="Office\ExcelErrorValue.cs" />
     <Compile Include="Office\ExcelSelectionOutputPolicy.cs" />
     <Compile Include="Office\DurableExcelTransform.cs" />
