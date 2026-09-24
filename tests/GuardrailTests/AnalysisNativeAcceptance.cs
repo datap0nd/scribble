@@ -954,6 +954,44 @@ namespace GuardrailTests
                 Check(blockedReview && changedPage.NativeStateFingerprint !=
                     recoveryPage.NativeStateFingerprint,
                     "An unreceipted native text write resumed as approved.");
+                dynamic otherText = null;
+                dynamic changedSlide = deck.Slides[
+                    changedPage.ExpectedPageNumber];
+                for (var shapeIndex = 1;
+                    shapeIndex <= (int)changedSlide.Shapes.Count;
+                    shapeIndex++)
+                {
+                    dynamic shape = changedSlide.Shapes[shapeIndex];
+                    if ((int)shape.HasTextFrame == 0 ||
+                        (int)shape.HasChart != 0 ||
+                        (int)shape.HasTable != 0) continue;
+                    var value = Convert.ToString(
+                        shape.TextFrame.TextRange.Text) ?? string.Empty;
+                    if (value.Length == 0 || value == correctedTitle)
+                        continue;
+                    otherText = shape.TextFrame.TextRange;
+                    break;
+                }
+                Check(otherText != null,
+                    "The native text receipt fixture has no independent shape.");
+                var otherTextBefore = (string)otherText.Text;
+                var concurrentTextEditRejected = false;
+                try
+                {
+                    otherText.Text = otherTextBefore + " (user edit)";
+                    AnalysisDocumentPilot.ReadNativePatchText((object)deck,
+                        changedPage, correctedTitle);
+                }
+                catch (InvalidOperationException error)
+                {
+                    concurrentTextEditRejected = error.Message.Contains(
+                        "REPAIR_NATIVE_PAGE_CHANGED");
+                }
+                finally { otherText.Text = otherTextBefore; }
+                Check(concurrentTextEditRejected &&
+                    AnalysisDocumentPilot.ReadNativePatchText((object)deck,
+                        changedPage, correctedTitle) == correctedTitle,
+                    "A concurrent edit outside the target text cleared its receipt.");
                 resumedRecovery.ReconcileAnalysisContentPatch(
                     contentReservation, changedPage,
                     AnalysisDocumentPilot.ReadNativePatchText(

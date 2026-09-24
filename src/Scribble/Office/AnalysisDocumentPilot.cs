@@ -238,7 +238,9 @@ namespace Scribble.Office
                 throw new InvalidOperationException(
                     "REPAIR_NATIVE_PAGE_UNSUPPORTED");
             dynamic slide = deck.Slides[page.ExpectedPageNumber];
-            if ((int)slide.SlideID != page.NativeSlideId)
+            if ((int)slide.SlideID != page.NativeSlideId ||
+                NativeStateFingerprint(slide) !=
+                    page.NativeStateFingerprint)
                 throw new InvalidOperationException("REPAIR_NATIVE_PAGE_CHANGED");
             dynamic match = null;
             for (var index = 1; index <= (int)slide.Shapes.Count;
