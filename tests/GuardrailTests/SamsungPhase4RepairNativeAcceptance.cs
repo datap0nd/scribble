@@ -36,9 +36,6 @@ namespace GuardrailTests
             var failure = string.Empty;
             var passed = false;
             var chartRecreated = false;
-            var chartFingerprintTrace = new List<string>();
-            var chartContentTrace = new List<string>();
-            var chartPackageTrace = new List<string>();
             var candidate = Path.Combine(output,
                 "phase4-pp01-copy.pptx");
             var pdf = Path.Combine(output,
@@ -91,20 +88,6 @@ namespace GuardrailTests
                 chartRecreated = true;
                 copy = InvokeStatic(CopyType, "Recover", (object)app,
                     Convert.ToString(Invoke(copy, CopyType, "Snapshot")));
-                for (var sample = 0; sample < 4; sample++)
-                {
-                    var package = Path.Combine(output,
-                        "chart-package-trace-" + sample + ".pptx");
-                    draft.SaveCopyAs(package);
-                    chartPackageTrace.Add(package);
-                }
-                for (var sample = 0; sample < 3; sample++)
-                {
-                    chartFingerprintTrace.Add(PresentationInspection
-                        .Fingerprint((object)draft.Slides[2]));
-                    chartContentTrace.Add(CopyContent(
-                        (object)draft.Slides[2]));
-                }
                 var operations = new List<object>();
                 for (var column = 1; column <= 3; column++)
                     operations.Add(new Dictionary<string, object>
@@ -192,17 +175,6 @@ namespace GuardrailTests
                 });
                 var bound = (object[])Invoke(copy, CopyType,
                     "BindOperations", (object)operations.ToArray());
-                var boundPackage = Path.Combine(output,
-                    "chart-package-trace-after-bind.pptx");
-                draft.SaveCopyAs(boundPackage);
-                chartPackageTrace.Add(boundPackage);
-                for (var sample = 0; sample < 2; sample++)
-                {
-                    chartFingerprintTrace.Add(PresentationInspection
-                        .Fingerprint((object)draft.Slides[2]));
-                    chartContentTrace.Add(CopyContent(
-                        (object)draft.Slides[2]));
-                }
                 revision = Activator.CreateInstance(RevisionType,
                     BindingFlags.Instance | BindingFlags.NonPublic,
                     null, new[] { (object)draft }, null);
@@ -274,18 +246,7 @@ namespace GuardrailTests
                 Invoke(copy, CopyType, "VerifySource");
                 passed = true;
             }
-            catch (Exception error)
-            {
-                failure = error.ToString();
-                if (chartRecreated && draft != null) try
-                {
-                    var failedPackage = Path.Combine(output,
-                        "chart-package-trace-after-failure.pptx");
-                    draft.SaveCopyAs(failedPackage);
-                    chartPackageTrace.Add(failedPackage);
-                }
-                catch { }
-            }
+            catch (Exception error) { failure = error.ToString(); }
             finally
             {
                 if (revision != null) try
@@ -317,9 +278,6 @@ namespace GuardrailTests
                 native_artifact = passed ? candidate : null,
                 pdf_review_artifact = passed ? pdf : null,
                 chart_recreated_from_workbook = chartRecreated,
-                chart_fingerprint_trace = chartFingerprintTrace,
-                chart_content_trace = chartContentTrace,
-                chart_package_trace = chartPackageTrace,
                 independent_grader_passed = false,
                 visual_approved = false,
                 full_acceptance_passed = false,
