@@ -328,6 +328,27 @@ namespace Scribble.Office
         private static void AddStructuredCards(List<SamsungElement> elements, DraftSlide draft, RectangleF region)
         {
             var count = draft.Cards.Count;
+            if (draft.Layout == "cards" && count == 1 &&
+                draft.Cards[0].Points.Count == 1 &&
+                draft.Cards[0].Points[0].Length <= 100 &&
+                !Regex.IsMatch(draft.Cards[0].Points[0], @"\d"))
+            {
+                // One short qualitative assurance reads as a statement. A
+                // full-width gray card makes sparse evidence look like a form.
+                var card = draft.Cards[0];
+                elements.Add(TextElement(card.Heading.ToUpperInvariant(),
+                    new RectangleF(region.X + 24f, region.Y + 24f,
+                        region.Width - 48f, 34f), 16, 16, "Arial", true,
+                    null, "#596674"));
+                elements.Add(TextElement(card.Points[0],
+                    new RectangleF(region.X + 24f, region.Y + 80f,
+                        region.Width - 64f, 130f), 32, 24,
+                    MetoTheme.TitleFont, true, null, "#202A35"));
+                elements.Add(TextElement("", new RectangleF(region.X + 24f,
+                    region.Y + 235f, Math.Min(235f, region.Width / 3f), 5f),
+                    fill: SamsungSlideDesign.Blue));
+                return;
+            }
             // When a factual card grid carries several numbers, reserve the
             // lower part of its panels for source-backed metric anchors. This
             // creates hierarchy without asking the model to invent artwork or

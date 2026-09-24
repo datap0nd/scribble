@@ -97,6 +97,21 @@ namespace GuardrailTests
                     new { heading = "Integrity", points = new[] { "No blank revenue or cost cells", "Each ID counted once" } },
                     new { heading = "Method", points = new[] { "Margin uses aggregate totals" } }
                 } } }));
+            var assurance = SamsungPresentationReview.InspectPlan(json.Serialize(new[] { new {
+                title = "What the ledger supports", layout = "cards",
+                cards = new[] { new { heading = "Evidence",
+                    points = new[] { "Verified workbook range and live formulas" } } }
+            } }));
+            var assuranceElements = ((IEnumerable)((IEnumerable)json.DeserializeObject(
+                json.Serialize(assurance))).Cast<Dictionary<string, object>>()
+                .Single()["elements"]).Cast<Dictionary<string, object>>().ToArray();
+            if (assuranceElements.Any(e => Convert.ToString(e["fill"]) ==
+                    SamsungSlideDesign.Gray) ||
+                !assuranceElements.Any(e => Convert.ToString(e["text"]) ==
+                    "Verified workbook range and live formulas" &&
+                    Convert.ToDouble(e["size"]) >= 24))
+                throw new Exception("A short single-card assurance needs a prominent statement rather than a sparse gray form panel.");
+            previews.Add(assurance);
             var evidenceJson = json.Serialize(evidenceCards);
             if (!evidenceJson.Contains("Coverage") || !evidenceJson.Contains("Integrity") ||
                 !evidenceJson.Contains("Method") || !evidenceJson.Contains("#202A35"))

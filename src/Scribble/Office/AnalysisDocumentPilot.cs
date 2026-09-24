@@ -373,15 +373,22 @@ namespace Scribble.Office
                 // which terminates chart.dll on some Office builds. SaveAs
                 // format 32 leaves this unsaved native draft in place.
                 deck.SaveAs(pdf, 32);
-                if ((string)deck.FullName != nameBefore ||
-                    (int)deck.Saved != savedBefore ||
-                    Enumerable.Range(1, expectedPages).Where(index =>
-                        NativeStateFingerprint(deck.Slides[index]) !=
-                            nativeBefore[index - 1]).Any() ||
-                    !File.Exists(pdf) || new FileInfo(pdf).Length >
-                        30 * 1024 * 1024)
+                var nameChanged = (string)deck.FullName != nameBefore;
+                var savedChanged = (int)deck.Saved != savedBefore;
+                var changedPages = Enumerable.Range(1, expectedPages)
+                    .Where(index => NativeStateFingerprint(deck.Slides[index]) !=
+                        nativeBefore[index - 1]).ToArray();
+                var pdfMissing = !File.Exists(pdf);
+                var pdfTooLarge = !pdfMissing && new FileInfo(pdf).Length >
+                    30 * 1024 * 1024;
+                if (nameChanged || savedChanged || changedPages.Length > 0 ||
+                    pdfMissing || pdfTooLarge)
                     throw new InvalidOperationException(
-                        "PDF export changed or exceeded the native draft boundary.");
+                        "PDF export changed or exceeded the native draft boundary: " +
+                        "name=" + nameChanged + ", saved=" + savedChanged +
+                        ", pages=" + string.Join(",", changedPages) +
+                        ", missing=" + pdfMissing + ", too_large=" +
+                        pdfTooLarge + ".");
                 using (var stream = File.OpenRead(pdf))
                 {
                     var sizes = PDFtoImage.Conversion.GetPageSizes(stream,
