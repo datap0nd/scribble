@@ -213,7 +213,11 @@ namespace GuardrailTests
                     bound);
                 Invoke(revision, RevisionType, "Commit",
                     (Action<string>)(status => { }));
+                Invoke(copy, CopyType, "AcceptRevision", revision);
+                copy = InvokeStatic(CopyType, "Recover", (object)app,
+                    Convert.ToString(Invoke(copy, CopyType, "Snapshot")));
                 Invoke(copy, CopyType, "VerifySource");
+                Invoke(copy, CopyType, "VerifyDraft");
                 for (var index = 1; index <= 6; index++)
                 {
                     if (index == 4) continue;

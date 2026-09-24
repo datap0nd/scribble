@@ -383,6 +383,59 @@ namespace Scribble.Office
             }
         }
 
+        internal void AcceptRevision(PresentationRevision revision)
+        {
+            VerifySource();
+            if (revision == null ||
+                !ReferenceEquals(revision.Presentation, Draft) ||
+                revision.Status != "applied" ||
+                revision.Items.Count == 0 ||
+                revision.Items.Any(item => !item.Applied || item.Deleted ||
+                    string.IsNullOrWhiteSpace(item.After) ||
+                    !_draftFingerprints.ContainsKey(item.SlideId) ||
+                    item.Operations.Any(operation => new[] { "insert",
+                        "delete", "move" }.Contains(
+                            SamsungAuthoringPolicy.Text(operation,
+                                "kind")))))
+                throw new InvalidOperationException(
+                    "REVISION_COPY_RECEIPT_INVALID");
+            dynamic draft = Draft;
+            if ((int)draft.Slides.Count != _sourceOrder.Length ||
+                Convert.ToString(draft.Tags["ScribbleRevisionDraft"]) !=
+                    _owner ||
+                Convert.ToString(draft.Tags["ScribblePresentationId"]) !=
+                    _draftId)
+                throw new InvalidOperationException(
+                    "REVISION_COPY_DRAFT_CHANGED");
+            var changed = revision.Items.ToDictionary(item =>
+                item.SlideId, item => item);
+            for (var index = 1; index <= _sourceOrder.Length; index++)
+            {
+                dynamic slide = draft.Slides[index];
+                var id = (int)slide.SlideID;
+                PresentationRevision.Item item;
+                if (_slideIds[_sourceOrder[index - 1]] != id ||
+                    PresentationInspection.Fingerprint((object)slide) !=
+                        (changed.TryGetValue(id, out item) ? item.After :
+                            _draftFingerprints[id]))
+                    throw new InvalidOperationException(
+                        "REVISION_COPY_DRAFT_CHANGED");
+            }
+            foreach (var item in revision.Items)
+            {
+                _draftFingerprints[item.SlideId] = item.After;
+                if (item.Operations.Any(operation =>
+                    SamsungAuthoringPolicy.Text(operation, "kind") ==
+                        "replace_slide"))
+                {
+                    var sourceId = _slideIds.Single(pair =>
+                        pair.Value == item.SlideId).Key;
+                    _shapeIds[sourceId].Clear();
+                }
+            }
+            VerifyDraft();
+        }
+
         internal void VerifySource()
         {
             dynamic source = Source;
