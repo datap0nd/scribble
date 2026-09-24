@@ -209,6 +209,35 @@ namespace GuardrailTests
                             .Value2) == "original fourth",
                         "EXCEL_FORMULA_ERROR_WAS_ACCEPTED: " +
                         formulaError.Content);
+
+                    originalSheet.Cells[12, 6].Value2 = 3d;
+                    originalSheet.Cells[12, 7].Value2 = 4d;
+                    source.Activate(); originalSheet.Activate();
+                    capture();
+                    other.Activate(); otherSheet.Activate();
+                    var goodFormula = host.Execute(new ChatToolCall
+                    {
+                        id = "phase5-good-formula", type = "function",
+                        function = new ChatToolCallFunction
+                        {
+                            name = WorkbookToolCatalog.WriteCells,
+                            arguments = json.Serialize(new
+                            {
+                                start_cell = "H12",
+                                rows = new[] { new[] {
+                                    "=SUM($F$12:G12)" } }
+                            })
+                        }
+                    }, new OneShotDraftAuthorization(true), true,
+                        "Calculate H12 from F12 and G12");
+                    Check(!goodFormula.Outcome.Failed &&
+                        Convert.ToDouble(originalSheet.Cells[12, 8]
+                            .Value2) == 7d &&
+                        Convert.ToString(originalSheet.Cells[12, 8]
+                            .Formula).Contains("$F$12:G12") &&
+                        otherSheet.Cells[12, 8].Value2 == null,
+                        "EXCEL_NATIVE_FORMULA_ADDRESS_FAILED: " +
+                        goodFormula.Content);
                 }
                 VerifyInterruptedRecovery(app, source, other,
                     originalSheet);
@@ -234,6 +263,7 @@ namespace GuardrailTests
                 merged_preflight_passed = passed,
                 in_process_rollback_passed = passed,
                 formula_error_rollback_passed = passed,
+                formula_address_passed = passed,
                 before_image_recovery_passed = passed,
                 full_acceptance_passed = false,
                 failure
