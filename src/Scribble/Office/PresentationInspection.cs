@@ -159,7 +159,7 @@ namespace Scribble.Office
                     {
                         var cells = new List<object>();
                         for (var c = 1; c <= (int)table.Columns.Count; c++)
-                        { dynamic cell = table.Cell(r, c).Shape; cells.Add(new { text = Convert.ToString(cell.TextFrame.TextRange.Text), width = (float)cell.Width, height = (float)cell.Height, font_size = (float)cell.TextFrame.TextRange.Font.Size }); }
+                        { dynamic cell = table.Cell(r, c).Shape; cells.Add(new { text = Convert.ToString(cell.TextFrame.TextRange.Text), width = (float)cell.Width, height = (float)cell.Height, font_size = (float)cell.TextFrame.TextRange.Font.Size, fill_color = (int)cell.Fill.ForeColor.RGB }); }
                         rows.Add(cells);
                     }
                     data["table"] = rows;

@@ -174,7 +174,7 @@ namespace Scribble.Office
         private static void ValidateOperation(object slide, Dictionary<string, object> operation)
         {
             var kind = SamsungAuthoringPolicy.Text(operation, "kind");
-            if (!new[] { "replace_text", "table_cell", "chart_point", "move", "delete", "replace_slide", "insert", "annotate", "notes_append" }.Contains(kind))
+            if (!new[] { "replace_text", "table_cell", "table_cell_fill", "shape_geometry", "chart_point", "move", "delete", "replace_slide", "insert", "annotate", "notes_append" }.Contains(kind))
                 throw new InvalidOperationException("REVISION_UNSUPPORTED: Use a supported targeted operation.");
             if (kind == "move" || kind == "notes_append") return;
             if (kind == "delete")
@@ -218,6 +218,46 @@ namespace Scribble.Office
                 return;
             }
             dynamic shape = PresentationInspection.FindShape(slide, Convert.ToInt32(operation["shape_id"]));
+            if (kind == "shape_geometry")
+            {
+                foreach (var dimension in new[] { "left", "top", "width", "height" })
+                {
+                    var before = RevisionNumber(operation, "before_" + dimension);
+                    var actual = Convert.ToDouble(
+                        dimension == "left" ? shape.Left :
+                        dimension == "top" ? shape.Top :
+                        dimension == "width" ? shape.Width : shape.Height);
+                    if (Math.Abs(before - actual) > .25)
+                        throw new InvalidOperationException(
+                            "REVISION_GEOMETRY_CHANGED: Inspect the shape again.");
+                    RevisionNumber(operation, dimension);
+                }
+                if (RevisionNumber(operation, "width") < 4 ||
+                    RevisionNumber(operation, "height") < 4)
+                    throw new InvalidOperationException("REVISION_GEOMETRY_INVALID");
+                return;
+            }
+            if (kind == "table_cell_fill")
+            {
+                if ((int)shape.HasTable == 0)
+                    throw new InvalidOperationException("REVISION_TABLE_REQUIRED");
+                var row = Convert.ToInt32(operation["row"]);
+                var column = Convert.ToInt32(operation["column"]);
+                if (row < 1 || column < 1 || row >
+                    (int)shape.Table.Rows.Count || column >
+                    (int)shape.Table.Columns.Count)
+                    throw new InvalidOperationException("REVISION_CELL_INVALID");
+                var before = Convert.ToInt32(operation["before_color"]);
+                var color = Convert.ToInt32(operation["color"]);
+                if (before < 0 || before > 0xFFFFFF || color < 0 ||
+                    color > 0xFFFFFF)
+                    throw new InvalidOperationException("REVISION_COLOR_INVALID");
+                if ((int)shape.Table.Cell(row, column).Shape.Fill
+                    .ForeColor.RGB != before)
+                    throw new InvalidOperationException(
+                        "REVISION_CELL_CHANGED: Inspect the table again.");
+                return;
+            }
             if (kind == "replace_text")
             {
                 if ((int)shape.HasTextFrame == 0 || string.IsNullOrEmpty(SamsungAuthoringPolicy.Text(operation, "before")))
@@ -232,6 +272,21 @@ namespace Scribble.Office
                 throw new InvalidOperationException("REVISION_ANNOTATION_TARGET: Select a table or chart.");
             if (kind == "chart_point" && ((int)shape.HasChart == 0 || (bool)shape.Chart.ChartData.IsLinked))
                 throw new InvalidOperationException("REVISION_CHART_UNSUPPORTED: Linked charts cannot be refreshed or changed.");
+        }
+        private static double RevisionNumber(
+            Dictionary<string, object> operation, string key)
+        {
+            object value;
+            if (!operation.TryGetValue(key, out value) || value == null ||
+                value is string || value is bool)
+                throw new InvalidOperationException(
+                    "REVISION_GEOMETRY_INVALID: " + key);
+            var number = Convert.ToDouble(value);
+            if (double.IsNaN(number) || double.IsInfinity(number) ||
+                Math.Abs(number) > 100000)
+                throw new InvalidOperationException(
+                    "REVISION_GEOMETRY_INVALID: " + key);
+            return number;
         }
         private static bool HasActions(object shape)
         {
@@ -260,6 +315,23 @@ namespace Scribble.Office
                 notes.InsertAfter("\n" + SamsungAuthoringPolicy.Text(operation, "notes")); return;
             }
             dynamic shape = CorrespondingShape(original, target, Convert.ToInt32(operation["shape_id"]));
+            if (kind == "shape_geometry")
+            {
+                shape.Left = (float)RevisionNumber(operation, "left");
+                shape.Top = (float)RevisionNumber(operation, "top");
+                shape.Width = (float)RevisionNumber(operation, "width");
+                shape.Height = (float)RevisionNumber(operation, "height");
+                return;
+            }
+            if (kind == "table_cell_fill")
+            {
+                dynamic cell = shape.Table.Cell(Convert.ToInt32(
+                    operation["row"]), Convert.ToInt32(
+                    operation["column"])).Shape;
+                cell.Fill.ForeColor.RGB = Convert.ToInt32(
+                    operation["color"]);
+                return;
+            }
             if (kind == "annotate")
             {
                 dynamic page = target;
@@ -388,6 +460,21 @@ namespace Scribble.Office
                 var id = Convert.ToInt32(operation["shape_id"]);
                 dynamic source = CorrespondingShape(item.Original, item.Backup, id);
                 dynamic target = PresentationInspection.FindShape(item.Original, id);
+                if (kind == "shape_geometry")
+                {
+                    target.Left = source.Left; target.Top = source.Top;
+                    target.Width = source.Width;
+                    target.Height = source.Height;
+                    continue;
+                }
+                if (kind == "table_cell_fill")
+                {
+                    var row = Convert.ToInt32(operation["row"]);
+                    var column = Convert.ToInt32(operation["column"]);
+                    target.Table.Cell(row, column).Shape.Fill.ForeColor.RGB =
+                        source.Table.Cell(row, column).Shape.Fill.ForeColor.RGB;
+                    continue;
+                }
                 if (kind == "replace_text")
                 {
                     source.TextFrame.TextRange.Copy(); target.TextFrame.TextRange.PasteSpecial(9);

@@ -91,6 +91,12 @@ namespace GuardrailTests
                 dataWorkbook.Close(true);
                 var scenarios = new[] {
                     new Dictionary<string, object> { { "kind", "table_cell" }, { "shape_id", (int)table.Id }, { "row", 2 }, { "column", 2 }, { "before", "100" }, { "text", "125" } },
+                    new Dictionary<string, object> { { "kind", "table_cell_fill" }, { "shape_id", (int)table.Id }, { "row", 1 }, { "column", 1 }, { "before_color", (int)table.Table.Cell(1, 1).Shape.Fill.ForeColor.RGB }, { "color", MetoTheme.Rgb("#4F81BD") } },
+                    new Dictionary<string, object> { { "kind", "shape_geometry" }, { "shape_id", (int)title.Id },
+                        { "before_left", (double)title.Left }, { "before_top", (double)title.Top },
+                        { "before_width", (double)title.Width }, { "before_height", (double)title.Height },
+                        { "left", (double)title.Left }, { "top", (double)title.Top },
+                        { "width", (double)title.Width + 10 }, { "height", (double)title.Height } },
                     new Dictionary<string, object> { { "kind", "chart_point" }, { "shape_id", (int)chart.Id }, { "series", 1 }, { "category", 1 }, { "before_value", 100d }, { "value", 125d } },
                     new Dictionary<string, object> { { "kind", "annotate" }, { "shape_id", (int)table.Id }, { "row", 2 }, { "column", 2 } },
                     new Dictionary<string, object> { { "kind", "notes_append" }, { "notes", "Additional source reference" } },
@@ -117,6 +123,14 @@ namespace GuardrailTests
                         Check(Convert.ToDouble(dataCheck.Worksheets[1].Cells[2, 2].Value2) == 125d, "Chart edit lost its embedded data association.");
                         dataCheck.Close(false);
                     }
+                    if (Convert.ToString(scenario["kind"]) == "table_cell_fill")
+                        Check((int)table.Table.Cell(1, 1).Shape.Fill.ForeColor.RGB ==
+                            MetoTheme.Rgb("#4F81BD"),
+                            "Native table fill did not reach the requested cell.");
+                    if (Convert.ToString(scenario["kind"]) == "shape_geometry")
+                        Check(Math.Abs((double)title.Width -
+                            Convert.ToDouble(scenario["width"])) < .25,
+                            "Native shape geometry did not reach the requested width.");
                     var snapshot = Invoke(native, "Snapshot");
                     var recovered = Transaction.GetMethod("Recover", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, new object[] { (object)app, (object)deck, snapshot });
                     Check(Convert.ToString(Invoke(recovered, "Reconcile")) == "applied", "Interrupted completed batch was not reconciled.");
