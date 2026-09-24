@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Web.Script.Serialization;
 using Scribble.Office;
 
@@ -34,6 +35,16 @@ namespace GuardrailTests
                 app = Activator.CreateInstance(Type.GetTypeFromProgID(
                     "PowerPoint.Application", true));
                 app.Visible = -1;
+                var writer = typeof(SamsungAuthoringPolicy).Assembly.GetType(
+                    "Scribble.Office.PresentationDraftWriter", true);
+                var parse = writer.GetMethods(BindingFlags.Static |
+                    BindingFlags.NonPublic).Single(method =>
+                    method.Name == "ParseSlides" &&
+                    method.GetParameters().Length == 1);
+                var add = writer.GetMethods(BindingFlags.Static |
+                    BindingFlags.NonPublic).Single(method =>
+                    method.Name == "AddDraftSlides" &&
+                    method.GetParameters().Length == 9);
                 for (var batch = 0; batch < 3; batch++)
                 {
                     var subset = fixtures.Skip(batch * 6).Take(6).ToArray();
@@ -43,9 +54,9 @@ namespace GuardrailTests
                         slide["id"] = fixture["id"];
                         return (object)slide;
                     }).ToArray();
-                    var slides = PresentationDraftWriter.ParseSlides(input);
-                    PresentationDraftWriter.AddDraftSlides((object)app,
-                        slides, null, true, null, null, null, null, true);
+                    var slides = parse.Invoke(null, new object[] { input });
+                    add.Invoke(null, new object[] { (object)app,
+                        slides, null, true, null, null, null, null, true });
                     deck = app.ActivePresentation;
                     if ((int)deck.Slides.Count != subset.Length)
                         throw new InvalidOperationException(
