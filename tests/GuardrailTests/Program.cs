@@ -152,6 +152,7 @@ namespace GuardrailTests
                 Run("Semantic repairs retain source alignment", TaskContinuationTests.ReviewRepairsAndAlignment);
                 Run("Changed source and occupied destination stop all writes", DurableTransformTests.ChangedRangesFailClosed);
                 Run("Ordinary Excel drafts retain request-bound workbook and sheet", ExcelDraftBindingTests.FocusChangesStayBoundAndRenamesFail);
+                Run("Oversized Excel draft rows are rejected without silent loss", ExcelDraftBindingTests.OversizedRowsFailRatherThanDisappear);
                 Run("Attachment pages preserve evidence beyond 130000 characters", DurableTransformTests.AttachmentTail);
                 Run("All twelve attachments are required including late evidence", DurableTransformTests.EveryAttachmentIsRequired);
                 Run("Task checkpoints reconcile 20000 rows across restart", ScaleTaskTests.RestartAndCoverage);

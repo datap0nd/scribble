@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Reflection;
 using Scribble.Office;
 
@@ -97,6 +98,34 @@ namespace GuardrailTests
                 if (!error.Message.Contains("EXCEL_DRAFT_SHEET_UNAVAILABLE"))
                     throw;
             }
+        }
+
+        public static void OversizedRowsFailRatherThanDisappear()
+        {
+            var writer = typeof(SamsungAuthoringPolicy).Assembly.GetType(
+                "Scribble.Office.WorkbookDraftWriter", true);
+            Action<object, string> rejects = (rows, code) =>
+            {
+                try
+                {
+                    Invoke(writer, "ParseRows", rows);
+                    throw new Exception("Oversized input was silently accepted: " +
+                        code);
+                }
+                catch (InvalidOperationException error)
+                {
+                    if (!error.Message.Contains(code)) throw;
+                }
+            };
+            rejects(Enumerable.Range(0, 201).Select(index =>
+                (object)new object[] { "row " + index }).ToArray(),
+                "DRAFT_ROWS_LIMIT");
+            rejects(new object[] {
+                Enumerable.Range(0, 31).Select(index =>
+                    (object)("column " + index)).ToArray()
+            }, "DRAFT_COLUMNS_LIMIT");
+            rejects(new object[] { new object[] { new string('x', 501) } },
+                "DRAFT_CELL_LIMIT");
         }
     }
 }

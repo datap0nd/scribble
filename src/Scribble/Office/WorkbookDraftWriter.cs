@@ -1040,7 +1040,9 @@ namespace Scribble.Office
             {
                 if (rows.Count == MaxDraftRows)
                 {
-                    break;
+                    throw new InvalidOperationException(
+                        "DRAFT_ROWS_LIMIT: A single write can contain at most " +
+                        MaxDraftRows + " rows. Split the request into another batch.");
                 }
 
                 var inner = AsEnumerable(rowValue);
@@ -1055,11 +1057,17 @@ namespace Scribble.Office
                 {
                     if (cells.Count == MaxDraftColumns)
                     {
-                        break;
+                        throw new InvalidOperationException(
+                            "DRAFT_COLUMNS_LIMIT: A row can contain at most " +
+                            MaxDraftColumns + " cells.");
                     }
 
-                    cells.Add(TextBoundary.SingleLine(
-                        Convert.ToString(cell),
+                    var value = Convert.ToString(cell) ?? string.Empty;
+                    if (value.Length > MaxCellCharacters)
+                        throw new InvalidOperationException(
+                            "DRAFT_CELL_LIMIT: A cell exceeds " +
+                            MaxCellCharacters + " characters.");
+                    cells.Add(TextBoundary.SingleLine(value,
                         MaxCellCharacters));
                 }
 
