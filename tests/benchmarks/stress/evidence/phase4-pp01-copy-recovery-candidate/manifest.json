@@ -1,0 +1,23 @@
+{
+  "scope": "disposable_native_phase4_pp01_copy_candidate",
+  "compiled_head_commit": "e00d279040c92578ddae118e4134ecdc62f35315",
+  "ci_run_id": 36019997343,
+  "assembly_sha256": "e496a59ae04b33ffbcca155493ddb53c4ce1c154283ae373bf94557aa8fe7dd8",
+  "sealed_kit_manifest_sha256": "4593da2d6786fcdd0736fed0f4e925fd6f1e96ab20187fb06ca1f935ed2c1e41",
+  "source_sha256": "f03a13f9662e78c9f9f32c9c64948ac2e40ed0aefd665bdc634fa13e1a950695",
+  "workbook_sha256": "e19439507f59339bf080bd4f177f0eb0bff109e48cce2322fab9686f2e4bc740",
+  "artifacts": {
+    "candidate.pptx": "20f259f90623c9bd6a5f5cc22635260e5ccfd6244bbe0f3cda5328213c14f498",
+    "candidate.pdf": "358a10b0f0fa1490b1c89bb326ed14657fbdded9ab84df9ea1d868036a20e263",
+    "contact.png": "049454d9ee49dbd029d05e42541be72f848a5d886dab61d226bb0f3430eef066"
+  },
+  "native_copy_patch_passed": true,
+  "chart_recreated_from_workbook": true,
+  "source_unchanged": true,
+  "workbook_unchanged": true,
+  "independent_pp01_hard_checks_passed": true,
+  "independent_pp01_advisory": "Non-solid or translucent chart fill requires visual review",
+  "model_facing_integration_passed": false,
+  "visual_approved": false,
+  "full_acceptance_passed": false
+}
