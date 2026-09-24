@@ -41,7 +41,20 @@
     "native_formula_error_rollback_passed": true,
     "restart_reconciliation_passed": false
   },
-  "before_image_recovery_passed": false,
+  "restart_recovery_candidate": {
+    "commit": "32d46bc026e7a25224598d35d415e00469635840",
+    "ci_run": 36011129279,
+    "assembly_sha256": "af27d08a78eb81adb173eb26ac9a21d3a483dab6d9791c34111a337b460ab12f",
+    "native_report_sha256": "3a5149c3a68cc73d6a697cedd490c6c87a4795f6dc803e6c7dd0192e42b4ea52",
+    "target_binding_passed": true,
+    "merged_preflight_passed": true,
+    "in_process_rollback_passed": true,
+    "formula_error_rollback_passed": true,
+    "formula_address_passed": true,
+    "before_image_recovery_passed": true,
+    "full_acceptance_passed": false
+  },
+  "before_image_recovery_passed": true,
   "full_acceptance_passed": false,
-  "note": "Disposable native workbooks only. The cell edit and draft sheet stayed on the request-bound workbook after an active-window switch; a renamed bound sheet failed before write permission was consumed."
+  "note": "Disposable native workbooks only. The cell edit and draft sheet stayed on the request-bound workbook after an active-window switch. A renamed bound sheet failed before permission. Formula addresses recalculated. Interrupted writes reconciled before, partial, applied, and user-edit states; a date-formatted numeric before-image was restored on partial write. Full Phase 5 acceptance remains pending the latest CI gate and support-scope review."
 }

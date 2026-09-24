@@ -354,7 +354,8 @@ namespace GuardrailTests
         {
             foreach (var scenario in new[] {
                 "before", "partial", "applied", "user_edit",
-                "wrong_book", "read_error", "resume_write_error" })
+                "wrong_book", "read_error", "resume_write_error",
+                "uncertain_rolled_back" })
             {
                 var root = Path.Combine(Path.GetTempPath(),
                     "scribble-grid-recovery-" + Guid.NewGuid().ToString("N"));
@@ -399,6 +400,16 @@ namespace GuardrailTests
                     task.State.HostData["excel_grid_receipt"] = receiptId;
                     task.State.HostData["excel_grid_call_id"] = callId;
                     task.Checkpoint();
+                    if (scenario == "uncertain_rolled_back")
+                    {
+                        task.AfterTool(call, new MailboxToolResult(call.id,
+                            "{\"ok\":false,\"error_code\":\"DRAFT_WRITE_UNCERTAIN\",\"permission_consumed\":true}",
+                            "Native outcome unknown"));
+                        if (task.State.Writes.Single().Status != "uncertain" ||
+                            !task.State.HostData.ContainsKey(
+                                "generic_write_spent"))
+                            throw new Exception("The interrupted attempt was not recorded as uncertain.");
+                    }
                     if (scenario != "before")
                         sheet.Cells[1, 1].Value2 = "planned A1";
                     if (scenario == "applied")
