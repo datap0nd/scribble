@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -132,6 +131,9 @@ namespace Scribble.Office
                     "ANALYSIS_VISUAL_REVIEW_UNAVAILABLE: A native chart slide cannot be safely exported on this Office build. The draft remains pending for visual inspection; no model approval or review receipt was issued.");
             var measurements = CaptureNativeMeasurements(presentation,
                 pages);
+            if (measurements.Count != 0)
+                throw new InvalidOperationException(
+                    "ANALYSIS_DECK_GEOMETRY_UNRESOLVED: Native measurements must be repaired or explicitly declined before model review.");
             var context = AnalysisReviewContract.Context(artifact, plan,
                 pages, measurements);
             var request = task.ReserveAnalysisReview(artifact, plan,
@@ -731,21 +733,6 @@ namespace Scribble.Office
                 : Convert.ToString(value, CultureInfo.InvariantCulture) ??
                     string.Empty;
             state.Append(text.Length).Append(':').Append(text);
-        }
-
-        private static void AppendNativeValues(StringBuilder state,
-            object values)
-        {
-            var sequence = values as IEnumerable;
-            if (sequence == null || values is string)
-            {
-                AppendState(state, values);
-                return;
-            }
-            var entries = sequence.Cast<object>().ToArray();
-            AppendState(state, entries.Length);
-            foreach (var entry in entries)
-                AppendNativeValues(state, entry);
         }
 
         private sealed class NativeBounds

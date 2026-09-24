@@ -625,6 +625,24 @@ namespace GuardrailTests
                 var damagedMeasurements =
                     AnalysisDocumentPilot.CaptureNativeMeasurements(
                         (object)deck, damagedPages);
+                var budgetBeforeUnresolved = reviewTask.State.HostData[
+                    "analysis_repair_budget"];
+                var unresolvedReviewRejected = false;
+                try
+                {
+                    AnalysisDocumentPilot.ReserveNativeReview(reviewTask,
+                        (object)deck, fixture.Item1, fixture.Item2, true);
+                }
+                catch (InvalidOperationException error)
+                {
+                    unresolvedReviewRejected = error.Message.StartsWith(
+                        "ANALYSIS_DECK_GEOMETRY_UNRESOLVED:",
+                        StringComparison.Ordinal);
+                }
+                Check(unresolvedReviewRejected &&
+                    reviewTask.State.HostData["analysis_repair_budget"] ==
+                        budgetBeforeUnresolved,
+                    "Unresolved geometry spent a model-review call.");
                 var folioDefect = damagedMeasurements.Single(item =>
                     item.Code == "PAGE_NUMBER" &&
                     item.NativeSlideId == damagedPages[0].NativeSlideId);
