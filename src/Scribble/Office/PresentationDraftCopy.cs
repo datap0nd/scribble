@@ -405,7 +405,7 @@ namespace Scribble.Office
             {
                 dynamic slide = draft.Slides[index];
                 var id = (int)slide.SlideID;
-                string expected;
+                string expected = null;
                 var actual = PresentationInspection.Fingerprint(
                     (object)slide);
                 if (_slideIds[_sourceOrder[index - 1]] != id ||
