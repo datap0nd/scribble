@@ -73,9 +73,6 @@ namespace GuardrailTests
                     "phase4-pp01-native");
                 copy = InvokeStatic(CopyType, "Recover", (object)app,
                     Convert.ToString(Invoke(copy, CopyType, "Snapshot")));
-                for (var sample = 0; sample < 3; sample++)
-                    chartFingerprintTrace.Add(PresentationInspection
-                        .Fingerprint((object)draft.Slides[2]));
                 draft = CopyType.GetField("Draft",
                     BindingFlags.Instance | BindingFlags.NonPublic)
                     .GetValue(copy);
@@ -92,6 +89,9 @@ namespace GuardrailTests
                 chartRecreated = true;
                 copy = InvokeStatic(CopyType, "Recover", (object)app,
                     Convert.ToString(Invoke(copy, CopyType, "Snapshot")));
+                for (var sample = 0; sample < 3; sample++)
+                    chartFingerprintTrace.Add(PresentationInspection
+                        .Fingerprint((object)draft.Slides[2]));
                 var operations = new List<object>();
                 for (var column = 1; column <= 3; column++)
                     operations.Add(new Dictionary<string, object>
