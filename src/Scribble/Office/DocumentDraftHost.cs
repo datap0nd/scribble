@@ -332,6 +332,7 @@ namespace Scribble.Office
 
             object boundExcelWorkbook = null;
             object boundExcelSheet = null;
+            IReadOnlyList<IReadOnlyList<string>> boundCellRows = null;
             if (name == WorkbookToolCatalog.WriteDraftSheet ||
                 name == WorkbookToolCatalog.WriteCells)
             {
@@ -351,6 +352,24 @@ namespace Scribble.Office
                 {
                     return Error(call.id, authorization,
                         "EXCEL_DRAFT_TARGET_CHANGED", error.Message);
+                }
+            }
+            if (name == WorkbookToolCatalog.WriteCells)
+            {
+                try
+                {
+                    boundCellRows = ParsedRows(arguments);
+                    WorkbookDraftWriter.ValidateCellsTarget(
+                        _hostApplication,
+                        ToolArguments.GetString(arguments, "start_cell",
+                            string.Empty), boundCellRows, boundExcelSheet);
+                }
+                catch (Exception error) when (
+                    error is InvalidOperationException ||
+                    error is System.Runtime.InteropServices.COMException)
+                {
+                    return Error(call.id, authorization,
+                        "DRAFT_PREFLIGHT_FAILED", error.Message);
                 }
             }
 
@@ -423,7 +442,7 @@ namespace Scribble.Office
                             arguments,
                             "start_cell",
                             string.Empty),
-                        ParsedRows(arguments),
+                        boundCellRows,
                         boundExcelSheet);
                 }
                 else if (string.Equals(

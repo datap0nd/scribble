@@ -415,53 +415,46 @@ namespace Scribble.Office
                 " Nothing was saved.";
         }
 
-        // Writes a bounded grid into the ACTIVE worksheet starting
-        // at the given A1-style cell - the user explicitly asked to
-        // work on their own sheet. Existing cells in the target
-        // area are overwritten in memory; nothing is ever saved,
-        // but Excel cannot undo add-in changes, so the draft sheet
-        // stays the default surface.
-        internal static string WriteCells(
-            object excelApplication,
-            string startCell,
-            IReadOnlyList<IReadOnlyList<string>> rows)
+        private sealed class CellWriteTarget
         {
-            return WriteCells(excelApplication, startCell, rows, null);
+            internal object Sheet;
+            internal string AnchorName;
+            internal int StartRow;
+            internal int StartColumn;
+            internal int RowCount;
+            internal List<string> ExistingNames;
         }
 
-        internal static string WriteCells(
-            object excelApplication,
-            string startCell,
+        internal static void ValidateCellsTarget(object excelApplication,
+            string startCell, IReadOnlyList<IReadOnlyList<string>> rows,
+            object boundSheet)
+        {
+            PrepareCellsTarget(excelApplication, startCell, rows,
+                boundSheet);
+        }
+
+        private static CellWriteTarget PrepareCellsTarget(
+            object excelApplication, string startCell,
             IReadOnlyList<IReadOnlyList<string>> rows,
             object boundSheet)
         {
             if (rows == null || rows.Count == 0)
-            {
                 throw new InvalidOperationException(
                     "At least one row of cells is required.");
-            }
-
-            var anchorName = TextBoundary.SingleLine(
-                startCell,
+            var anchorName = TextBoundary.SingleLine(startCell,
                 12).Replace("$", string.Empty);
             if (!IsCellName(anchorName))
-            {
                 throw new InvalidOperationException(
-                    "start_cell must be a single A1-style cell " +
-                    "such as B2.");
-            }
-
+                    "start_cell must be a single A1-style cell such as B2.");
             dynamic application = excelApplication;
             dynamic sheet = boundSheet ?? application.ActiveSheet;
             if (sheet == null)
-            {
                 throw new InvalidOperationException(
                     "No worksheet is active.");
-            }
             var existingNames = new List<string>();
             foreach (dynamic candidate in sheet.Parent.Worksheets)
-                existingNames.Add(Convert.ToString(candidate.Name) ?? string.Empty);
-
+                existingNames.Add(Convert.ToString(candidate.Name) ??
+                    string.Empty);
             dynamic anchor = sheet.Range(anchorName);
             int startRow = anchor.Row;
             int startColumn = anchor.Column;
@@ -491,6 +484,42 @@ namespace Scribble.Office
                             startColumn + column].MergeCells))
                         throw new InvalidOperationException(
                             "DRAFT_TARGET_MERGED: The target grid contains a merged cell.");
+            return new CellWriteTarget
+            {
+                Sheet = (object)sheet, AnchorName = anchorName,
+                StartRow = startRow, StartColumn = startColumn,
+                RowCount = rowCount, ExistingNames = existingNames
+            };
+        }
+
+        // Writes a bounded grid into the request-bound worksheet starting
+        // at the given A1-style cell - the user explicitly asked to
+        // work on their own sheet. Existing cells in the target
+        // area are overwritten in memory; nothing is ever saved,
+        // but Excel cannot undo add-in changes, so the draft sheet
+        // stays the default surface.
+        internal static string WriteCells(
+            object excelApplication,
+            string startCell,
+            IReadOnlyList<IReadOnlyList<string>> rows)
+        {
+            return WriteCells(excelApplication, startCell, rows, null);
+        }
+
+        internal static string WriteCells(
+            object excelApplication,
+            string startCell,
+            IReadOnlyList<IReadOnlyList<string>> rows,
+            object boundSheet)
+        {
+            var target = PrepareCellsTarget(excelApplication, startCell,
+                rows, boundSheet);
+            dynamic sheet = target.Sheet;
+            var anchorName = target.AnchorName;
+            var startRow = target.StartRow;
+            var startColumn = target.StartColumn;
+            var rowCount = target.RowCount;
+            var existingNames = target.ExistingNames;
             var written = 0;
             var formulaCount = 0;
             var brokenFormulas = 0;

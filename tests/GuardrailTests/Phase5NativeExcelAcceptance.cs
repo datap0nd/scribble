@@ -143,6 +143,7 @@ namespace GuardrailTests
                     }, mergeAuth, true, "Update C2:D3 in my sheet");
                     Check(merged.Outcome.Failed &&
                         merged.Content.Contains("DRAFT_TARGET_MERGED") &&
+                        !mergeAuth.IsConsumed &&
                         originalSheet.Cells[2, 3].Value2 == null &&
                         originalSheet.Cells[2, 4].Value2 == null,
                         "EXCEL_MERGED_PREFLIGHT_LEFT_PARTIAL_WRITE: " +
