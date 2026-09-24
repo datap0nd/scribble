@@ -357,6 +357,52 @@ namespace GuardrailTests
                 repaired.Plan.Slides[0].Title == "Verified June revenue" &&
                 repaired.Plan.Slides[0].Cards[0].Points[0].FactId == fact.FactId,
                 "A one-field repair altered its source plan or fact reference.");
+            var hierarchy = Finding("VISUAL_HIERARCHY", "content", "june",
+                412, "page", "", "", "blocker", "revise_layout",
+                "The KPI needs a clearer hierarchy.");
+            var hierarchyReview = verdict(false, new object[] { hierarchy });
+            var hierarchyDecision = AnalysisReviewContract.Parse(
+                hierarchyReview, context);
+            var layoutRequest = AnalysisDocumentRepair.PreparePatchRequest(
+                artifact, plan, context, hierarchyDecision,
+                hierarchyDecision.Findings.Single());
+            Check(layoutRequest.Instructions ==
+                    AnalysisDocumentRepair.LayoutPatchInstructions &&
+                layoutRequest.Content.Contains("\"current_layout\":\"scorecard\"") &&
+                layoutRequest.Content.Contains("\"target_id\":\"page\"") &&
+                layoutRequest.Content.Contains(fact.FactId) &&
+                layoutRequest.MaxResponseTokens <= 512,
+                "The bounded layout prompt lost its current layout or evidence.");
+            var layoutPatchJson = json.Serialize(new Dictionary<string, object>
+            {
+                { "context_id", context.ContextId },
+                { "logical_slide_id", "june" },
+                { "target_id", "page" },
+                { "segment_index", 0 },
+                { "expected_text", "scorecard" },
+                { "replacement_text", "cards" }
+            });
+            var layoutPatch = AnalysisDocumentRepair.ParsePatch(layoutPatchJson,
+                context, hierarchyDecision.Findings.Single());
+            var reflowed = AnalysisDocumentRepair.Apply(artifact, plan,
+                context, hierarchyReview, layoutPatch,
+                new AnalysisRepairBudget().Serialize());
+            Check(plan.Slides[0].Layout == "scorecard" &&
+                reflowed.Plan.Slides[0].Layout == "cards" &&
+                reflowed.Plan.Slides[0].Cards[0].Points[0].FactId == fact.FactId &&
+                reflowed.Plan.Slides[0].Title == plan.Slides[0].Title,
+                "A layout repair changed its source plan, text, or fact reference.");
+            layoutPatch.ReplacementText = "invented_layout";
+            Reject(() => AnalysisDocumentRepair.Apply(artifact, plan,
+                context, hierarchyReview, layoutPatch,
+                new AnalysisRepairBudget().Serialize()),
+                "REPAIR_LAYOUT_INVALID");
+            layoutPatch.ReplacementText = "cards";
+            layoutPatch.ExpectedText = "stale_layout";
+            Reject(() => AnalysisDocumentRepair.Apply(artifact, plan,
+                context, hierarchyReview, layoutPatch,
+                new AnalysisRepairBudget().Serialize()),
+                "REPAIR_LAYOUT_INVALID");
             var cardPlan = json.Deserialize<AnalysisDocumentPlan>(
                 json.Serialize(plan));
             cardPlan.Slides[0].Cards[0].Points.Add(
