@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "execution_kind": "native_disposable_analysis_pilot",
+  "commit": "c80dfe6",
+  "ci_run": 36014026163,
+  "model_calls": 0,
+  "before_image_sha256": "9cf85c97b50032e05b30a04ea6733866a0351d7c8d729288f36b744e6653d6de",
+  "after_image_sha256": "9b055b35b52de8936a7095d2e8d730adc3b2696ea62ce77aa66231fe86fd49c2",
+  "candidate_pptx_sha256": "acc127c0b22d0ebbfd3202b152cb3d9bdd64cde9aba085bebfe7d24d446a9f91",
+  "native_report_sha256": "85ed47100142bf1e225755c87acd2e458af7b4f1573fec5006749478092193c5",
+  "native_structural_passed": true,
+  "card_content_recovery_passed": true,
+  "identified_visual_review_passed": false,
+  "full_acceptance_passed": false
+}
