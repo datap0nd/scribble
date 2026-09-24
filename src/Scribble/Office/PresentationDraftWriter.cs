@@ -329,11 +329,17 @@ namespace Scribble.Office
                 {
                     dynamic nativeSlides = presentation.Slides;
                     beforeNativeWrite?.Invoke();
+                    TraceNativeChartStage("before-draw-page-" + index);
                     output = DrawNewSamsungSlide((object)nativeSlides, index,
                         page, owner, skipChartPreview);
+                    TraceNativeChartStage("after-draw-page-" + index);
+                    TraceNativeChartStage("before-receipt-page-" + index);
                     journal?.Record(output, added);
+                    TraceNativeChartStage("after-receipt-page-" + index);
                 }
+                TraceNativeChartStage("before-render-callback-page-" + index);
                 onRendered?.Invoke(output);
+                TraceNativeChartStage("after-render-callback-page-" + index);
                 var drawn = (page.Elements.Any(e => e.Chart != null) ? 1 : 0) | (page.Elements.Any(e => e.Table != null) ? 2 : 0);
                 if ((drawn & 1) != 0)
                 {
@@ -1366,6 +1372,7 @@ namespace Scribble.Office
             dynamic dataWorkbook = null;
             try
             {
+                TraceNativeChartStage("before-chart-AddChart2");
                 dynamic shape = slide.Shapes.AddChart2(
                     -1,
                     chart.TypeCode,
@@ -1374,8 +1381,10 @@ namespace Scribble.Office
                     (float)width,
                     (float)(height * 0.94),
                     true);
+                TraceNativeChartStage("after-chart-AddChart2");
                 dynamic slideChart = shape.Chart;
                 step = "ChartData.Activate";
+                TraceNativeChartStage("before-chart-activate");
                 try
                 {
                     slideChart.ChartData.Activate();
@@ -1391,6 +1400,7 @@ namespace Scribble.Office
                 }
 
                 step = "ChartData.Workbook";
+                TraceNativeChartStage("before-chart-workbook");
                 Exception workbookFailure = null;
                 for (var attempt = 0; attempt < 3 && dataWorkbook == null; attempt++)
                 {
@@ -1408,6 +1418,7 @@ namespace Scribble.Office
                 dynamic dataSheet =
                     dataWorkbook.Worksheets[1];
                 step = "write chart data";
+                TraceNativeChartStage("before-chart-write-data");
                 dataSheet.Cells[1, 1].Value2 = " ";
                 for (var series = 0;
                      series < chart.Series.Count;
@@ -1483,9 +1494,11 @@ namespace Scribble.Office
                 }
 
                 step = "SetSourceData";
+                TraceNativeChartStage("before-chart-source-data");
                 slideChart.SetSourceData("='" + ((string)dataSheet.Name).Replace("'", "''") + "'!$A$1:$" +
                     (char)('A' + chart.Series.Count) + "$" + (chart.Categories.Count + 1), 2);
                 step = "series readback";
+                TraceNativeChartStage("before-chart-readback");
                 if ((int)slideChart.SeriesCollection().Count != chart.Series.Count) throw new InvalidOperationException("Chart source series were not applied.");
                 for (var s = 0; s < chart.Series.Count; s++)
                 {
@@ -1504,6 +1517,7 @@ namespace Scribble.Office
                     if (!labels.SequenceEqual(chart.Categories)) throw new InvalidOperationException("Chart category readback failed.");
                 }
                 step = "style";
+                TraceNativeChartStage("before-chart-style");
                 slideChart.DisplayBlanksAs = 1; // xlNotPlotted: preserve gaps.
                 StyleChart(slideChart, chart);
 
@@ -1522,6 +1536,7 @@ namespace Scribble.Office
                     // data.
                 }
 
+                TraceNativeChartStage("after-chart-complete");
                 return true;
             }
             catch (Exception exception)

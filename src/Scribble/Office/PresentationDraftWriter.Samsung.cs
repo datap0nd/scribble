@@ -12,6 +12,14 @@ namespace Scribble.Office
 {
     internal static partial class PresentationDraftWriter
     {
+        internal static void TraceNativeChartStage(string stage)
+        {
+            var path = Environment.GetEnvironmentVariable(
+                "SCRIBBLE_NATIVE_CHART_TRACE");
+            if (string.IsNullOrWhiteSpace(path)) return;
+            try { File.AppendAllText(path, stage + Environment.NewLine); }
+            catch { }
+        }
         private static object SamsungValue(IDictionary<string, object> map, string key)
         { object value; return map.TryGetValue(key, out value) ? value : null; }
         private static string SamsungString(IDictionary<string, object> map, string key, int limit)
