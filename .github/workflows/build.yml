@@ -55,7 +55,7 @@ jobs:
       # Native Office is unavailable on the hosted runner. Retain the built
       # binary early so an explicit workstation pilot can run while CI checks.
       - name: Upload native acceptance harness
-        if: startsWith(github.head_ref, 'codex/reliability-') || startsWith(github.ref_name, 'codex/reliability-')
+        if: startsWith(github.head_ref, 'codex/reliability-') || startsWith(github.ref_name, 'codex/reliability-') || github.head_ref == 'codex/scribble-2-delivery' || github.ref_name == 'codex/scribble-2-delivery'
         uses: actions/upload-artifact@v4
         with:
           name: Phase2NativeHarness
@@ -909,7 +909,7 @@ jobs:
           }
 
       - name: Smoke-test opt-in pilot renderer payload
-        if: startsWith(github.head_ref, 'codex/reliability-') || startsWith(github.ref_name, 'codex/reliability-')
+        if: startsWith(github.head_ref, 'codex/reliability-') || startsWith(github.ref_name, 'codex/reliability-') || github.head_ref == 'codex/scribble-2-delivery' || github.ref_name == 'codex/scribble-2-delivery'
         shell: pwsh
         run: |
           $installer = Resolve-Path "artifacts\ScribblePilotSetup.exe"
