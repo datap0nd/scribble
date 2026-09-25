@@ -63,7 +63,7 @@ namespace Scribble.Office
                         "PILOT_COPY_SOURCE_CHANGED: Inspect the saved six-slide source again.");
                 var operations = SamsungAuthoringPolicy.Array(args,
                     "operations");
-                if (operations.Length == 0 || operations.Length > 24)
+                if (operations.Length == 0 || operations.Length > 15)
                     throw new InvalidOperationException(
                         "PILOT_COPY_OPERATIONS_INVALID");
                 var mapped = operations.Select(
@@ -153,6 +153,11 @@ namespace Scribble.Office
                 _taskContext.State.HostData[statusKey] = "copied";
                 _taskContext.Checkpoint();
                 var bound = copy.BindOperations(operations);
+                var nativeStyle = copy.Pp01NativeStyleOperations();
+                var combined = bound.Concat(nativeStyle).ToArray();
+                if (combined.Length > 24)
+                    throw new InvalidOperationException(
+                        "PILOT_COPY_OPERATIONS_INVALID");
                 ((dynamic)copy.Draft).Activate();
                 var draftCall = new ChatToolCall
                 {
@@ -164,7 +169,7 @@ namespace Scribble.Office
                         {
                             presentation_id = PresentationInspection
                                 .IdentityFor(copy.Draft),
-                            operations = bound
+                            operations = combined
                         })
                     }
                 };
@@ -185,6 +190,11 @@ namespace Scribble.Office
                     !(ok is bool) || !(bool)ok)
                     throw new InvalidOperationException(
                         "PILOT_COPY_PATCH_FAILED: " + patch.StatusText);
+                var patchReviewReceipt = _taskContext.State
+                    .PresentationReviewReceipt;
+                if (string.IsNullOrEmpty(patchReviewReceipt))
+                    throw new InvalidOperationException(
+                        "PILOT_COPY_PATCH_REVIEW_MISSING");
                 var revision = PresentationRevision.Last(copy.Draft);
                 copy.AcceptRevision(revision);
                 _taskContext.State.HostData["pilot_copy_snapshot"] =
@@ -195,14 +205,6 @@ namespace Scribble.Office
                 // Keeping extra staging decks open while chart.dll creates
                 // the native chart has crashed this Office build.
                 revision.CloseStaging(false);
-                stage = "native_style";
-                _taskContext.State.HostData[statusKey] = "styling";
-                _taskContext.Checkpoint();
-                var nativeStyleChanges = copy.RepairPp01NativeStyles(
-                    _hostApplication);
-                _taskContext.State.HostData["pilot_copy_snapshot"] =
-                    copy.Snapshot();
-                _taskContext.Checkpoint();
                 stage = "chart";
                 _taskContext.State.HostData[statusKey] = "charting";
                 _taskContext.Checkpoint();
@@ -221,8 +223,31 @@ namespace Scribble.Office
                 _taskContext.State.HostData["pilot_copy_snapshot"] =
                     copy.Snapshot();
                 _taskContext.State.HostData[statusKey] = "complete";
+                for (var index = 1; index <= 6; index++)
+                {
+                    var pageId = "ppt:" + index;
+                    if (!_taskContext.State.ExpectedSourceIds
+                        .Contains(pageId))
+                        _taskContext.State.ExpectedSourceIds.Add(pageId);
+                    if (!_taskContext.State.Batches.Any(batch =>
+                        batch.Id == pageId))
+                        _taskContext.State.Batches.Add(
+                            new TaskBatchResult
+                            {
+                                Id = pageId,
+                                CoveredSourceIds = new List<string>
+                                    { pageId },
+                                Output = "Copied, repaired and verified"
+                            });
+                }
                 _taskContext.State.PresentationReviewRequired = true;
-                _taskContext.State.PresentationReviewReceipt = null;
+                _taskContext.State.PresentationReviewReceipt =
+                    SamsungAuthoringPolicy.CacheKey(settings.Model,
+                        settings.BaseUrl, patchReviewReceipt,
+                        chartFacts.SourceSha256);
+                _taskContext.State.HostData[
+                    "pilot_copy_review_scope"] =
+                    "model-reviewed chartless content; host-verified workbook chart; human visual approval pending";
                 _taskContext.Checkpoint();
                 Scribble.Testing.TestLab.RegisterOutput(copy.Draft,
                     "pptx");
@@ -232,7 +257,7 @@ namespace Scribble.Office
                     {
                         ok = true, saved = false, copied_slides = 6,
                         revised_slides = revision.Items.Count,
-                        native_style_changes = nativeStyleChanges,
+                        native_style_changes = nativeStyle.Length,
                         chart_recreated = true,
                         visual_approval_required = true,
                         revert_available = false

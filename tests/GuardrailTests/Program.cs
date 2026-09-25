@@ -7158,6 +7158,21 @@ namespace GuardrailTests
                         repair.messages[0]).content).Contains(
                             "copies the source into an unsaved draft"),
                     "The workbook-backed PP01 pilot must expose the copy-and-patch route.");
+                if (!repair.tools.Any(tool => tool.function.name ==
+                        PresentationToolCatalog.ReviseSlides))
+                    repair.tools.Add(new ChatToolDefinition
+                    {
+                        type = "function",
+                        function = new ChatToolFunctionDefinition
+                        {
+                            name = PresentationToolCatalog.ReviseSlides
+                        }
+                    });
+                var repairTask = new TaskContextManager(repair,
+                    "powerpoint",
+                    "Repair the source deck into exactly 6 output slides; preserve the original slides.");
+                Assert(repairTask.State.RequiredPresentationSlides == 6,
+                    "The PP01 copy route lost its six-slide task count.");
             }
             finally
             {

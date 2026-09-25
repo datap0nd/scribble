@@ -43,7 +43,12 @@ namespace Scribble.Chat
             _prefixCount = request.messages.Count;
             if (request.tools == null) request.tools = new List<ChatToolDefinition>();
             if (Scribble.Security.DocumentDraftIntentPolicy.AllowsDraft(objective) &&
-                request.tools.Any(t => t.function.name == PresentationToolCatalog.AddDraftSlides || t.function.name == CrossAppToolCatalog.SendToPowerPoint))
+                request.tools.Any(t => t.function.name == PresentationToolCatalog.AddDraftSlides ||
+                    t.function.name == CrossAppToolCatalog.SendToPowerPoint ||
+                    (t.function.name == PresentationToolCatalog.ReviseSlides &&
+                     string.Equals(Environment.GetEnvironmentVariable(
+                         Scribble.Office.AnalysisDocumentPilot.FeatureFlag),
+                         "1", StringComparison.Ordinal))))
             {
                 var count = System.Text.RegularExpressions.Regex.Match(objective ?? "",
                     @"\b(?<count>\d+|one|two|three|four|five|six|seven|eight|nine|ten)\b(?:[\s-]+[A-Za-z][A-Za-z0-9-]*){0,8}[\s-]+slides?\b",

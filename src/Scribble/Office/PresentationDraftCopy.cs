@@ -520,7 +520,7 @@ namespace Scribble.Office
         // The PP01 fixture has three fixed native style defects. Their target
         // shapes and current values are read back from the owned chartless
         // draft; the model never supplies RGB, font-size or geometry values.
-        internal int RepairPp01NativeStyles(object application)
+        internal object[] Pp01NativeStyleOperations()
         {
             VerifySource();
             VerifyDraft();
@@ -585,19 +585,7 @@ namespace Scribble.Office
                     { "shape_id", (int)cost.Id },
                     { "before_size", costSize }, { "size", 27f }
                 });
-            if (operations.Count == 0) return 0;
-            var revision = new PresentationRevision(Draft);
-            try
-            {
-                revision.Stage(application, operations.ToArray());
-                revision.Commit(status => { });
-                AcceptRevision(revision);
-                return operations.Count;
-            }
-            finally
-            {
-                revision.CloseStaging(false);
-            }
+            return operations.ToArray();
         }
 
         private static dynamic UniqueShape(object slide,

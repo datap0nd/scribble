@@ -151,23 +151,23 @@ namespace GuardrailTests
                 stage = "bind_patch_operations";
                 var bound = (object[])Invoke(copy, CopyType,
                     "BindOperations", (object)operations.ToArray());
+                var nativeStyle = (object[])Invoke(copy, CopyType,
+                    "Pp01NativeStyleOperations");
+                if (nativeStyle.Length < 4)
+                    throw new InvalidOperationException(
+                        "PP01_NATIVE_STYLE_REPAIR_MISSING");
+                var combined = bound.Concat(nativeStyle).ToArray();
                 revision = Activator.CreateInstance(RevisionType,
                     BindingFlags.Instance | BindingFlags.NonPublic,
                     null, new[] { (object)draft }, null);
                 stage = "stage_patch";
                 Invoke(revision, RevisionType, "Stage", (object)app,
-                    bound);
+                    combined);
                 stage = "commit_patch";
                 Invoke(revision, RevisionType, "Commit",
                     (Action<string>)(status => { }));
                 Invoke(copy, CopyType, "AcceptRevision", revision);
                 Invoke(revision, RevisionType, "CloseStaging", false);
-                stage = "native_style_repair";
-                var styleChanges = (int)Invoke(copy, CopyType,
-                    "RepairPp01NativeStyles", (object)app);
-                if (styleChanges < 4)
-                    throw new InvalidOperationException(
-                        "PP01_NATIVE_STYLE_REPAIR_MISSING");
                 stage = "recover_before_chart";
                 copy = InvokeStatic(CopyType, "Recover", (object)app,
                     Convert.ToString(Invoke(copy, CopyType,
