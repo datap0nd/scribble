@@ -160,9 +160,10 @@ namespace Scribble.Chat
                             PresentationToolCatalog.ReviseSlides));
                 }
 
-                tools.AddRange(
-                    CrossAppToolCatalog.CreateDefinitions(
-                        hostKind));
+                if (!pilotRepair)
+                    tools.AddRange(
+                        CrossAppToolCatalog.CreateDefinitions(
+                            hostKind));
             }
 
             if (extraTools != null)

@@ -7174,6 +7174,10 @@ namespace GuardrailTests
                         "Attached workbook", "C:\\pilot\\WB01.xlsx") });
                 Assert(!repair.tools.Any(tool =>
                         tool.function.name == "add_draft_slides") &&
+                    !repair.tools.Any(tool =>
+                        tool.function.name == "send_to_excel" ||
+                        tool.function.name == "send_to_word" ||
+                        tool.function.name == "create_email_draft") &&
                     Convert.ToString(((ChatCompletionInputMessage)
                         repair.messages[0]).content).Contains(
                             PresentationRevisionAcceptance.Enabled
