@@ -571,6 +571,22 @@ namespace Scribble.Office
                 (object)copy);
             copy.SlideShowTransition.Hidden =
                 original.SlideShowTransition.Hidden;
+            if ((int)copy.NotesPage.Shapes.Count !=
+                (int)original.NotesPage.Shapes.Count)
+                throw new InvalidOperationException(
+                    "REVISION_COPY_NOTES_UNSUPPORTED");
+            for (var index = 1; index <=
+                (int)original.NotesPage.Shapes.Count; index++)
+            {
+                dynamic from = original.NotesPage.Shapes[index];
+                dynamic to = copy.NotesPage.Shapes[index];
+                if ((int)from.HasTextFrame != (int)to.HasTextFrame)
+                    throw new InvalidOperationException(
+                        "REVISION_COPY_NOTES_UNSUPPORTED");
+                if ((int)from.HasTextFrame != 0)
+                    to.TextFrame.TextRange.Text =
+                        from.TextFrame.TextRange.Text;
+            }
             for (var index = 1; index <= (int)original.Shapes.Count;
                 index++)
             {
