@@ -1,12 +1,13 @@
 # Phase 4 evidence sequence native render
 
-- Code commit: `adeaa57` (PR #40), stacked on PR #39.
-- Native harness: `GuardrailTests.exe --native-phase4-reference` from Windows CI run `36102395574`'s `Phase2NativeHarness` artifact.
+- Code commit: `c8cbea6` (PR #40), stacked on PR #39.
+- Native harness: `GuardrailTests.exe --native-phase4-reference` from Windows CI run `36102967482`'s `Phase2NativeHarness` artifact.
 - Fixture SHA-256: `98cd27392938ddaa1ab714007808eb16b7a9dd9922c5e1b2cc19062900c82484`.
-- Harness assembly SHA-256: `0ffe1cc260548f6a7fa5956aa26b468a74757fc93ddbf8efa3a33126c3b8c969`.
+- Harness assembly SHA-256: `dbd7ec9216a9b91ccbdaea403cfcbe360cf547f73e522a8d3610af7b3120be65`.
 - Native result: 18 reference slides rendered with `structural_passed=true`; `visual_approved=false`, reviewer unidentified. PowerPoint exported editable slides to PDF.
 - `before-normal.png` is the corresponding render from PR #39's code commit `193c4b8`.
 - `evidence-normal.png` and `evidence-long.png` are pages 4–5 of the second native deck at 120 DPI. Both use the new sequence. `evidence-max.png` is page 6 and retains the four-card recipe.
+- The bounded-length follow-up at `c8cbea6` produced byte-identical PNGs to the first native run, showing the normal and long fixtures still take this layout.
 
 | Image | SHA-256 |
 | --- | --- |
