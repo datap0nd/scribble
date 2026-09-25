@@ -42,6 +42,10 @@ namespace Scribble.Chat
             if (_state.OriginalDecisions.Count == 0) _state.OriginalDecisions.Add(objective);
             _prefixCount = request.messages.Count;
             if (request.tools == null) request.tools = new List<ChatToolDefinition>();
+            if (resume == null && host == "powerpoint" &&
+                string.Equals(Environment.GetEnvironmentVariable(AnalysisDocumentPilot.FeatureFlag), "1", StringComparison.Ordinal) &&
+                request.tools.Any(tool => tool.function.name == PresentationToolCatalog.ReviseSlides))
+                _state.HostData["delivery_request_limit"] = "18";
             if (Scribble.Security.DocumentDraftIntentPolicy.AllowsDraft(objective) &&
                 request.tools.Any(t => t.function.name == PresentationToolCatalog.AddDraftSlides ||
                     t.function.name == CrossAppToolCatalog.SendToPowerPoint ||

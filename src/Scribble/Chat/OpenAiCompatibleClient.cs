@@ -273,6 +273,7 @@ namespace Scribble.Chat
                     "application/json");
 
                 HttpResponseMessage response;
+                requestModel.Diagnostics?.ReserveModelRequest();
                 try
                 {
                     response = await _httpClient

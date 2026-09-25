@@ -77,6 +77,8 @@
     <Compile Include="SamsungRecoveryTests.cs" />
     <Compile Include="PowerPointRecoveryBoundaryTests.cs" />
     <Compile Include="SamsungNativeAcceptance.cs" />
+    <Compile Include="PresentationAcceptanceTests.cs" />
+    <Compile Include="PilotRouteNativeAcceptance.cs" />
     <Compile Include="SamsungPhase4NativeAcceptance.cs" />
     <Compile Include="SamsungPhase4RepairNativeAcceptance.cs" />
   </ItemGroup>

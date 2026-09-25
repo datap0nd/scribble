@@ -33,11 +33,13 @@ namespace GuardrailTests
         private static int Main(string[] args)
         {
             if (args.Length == 2 && args[0] == "--native-powerpoint") return SamsungNativeAcceptance.Run(args[1]);
+            if (args.Length == 2 && args[0] == "--native-powerpoint-chartless") return SamsungNativeAcceptance.Run(args[1], true);
             if (args.Length == 2 && args[0] == "--native-analysis-pilot") return AnalysisNativeAcceptance.Run(args[1]);
             if (args.Length == 2 && args[0] == "--native-saved-chart-fingerprint") return SavedChartFingerprintNativeAcceptance.Run(args[1]);
             if (args.Length == 2 && args[0] == "--native-phase4-reference") return SamsungPhase4NativeAcceptance.Run(args[1]);
             if (args.Length == 2 && args[0] == "--native-phase4-defects") return SamsungPhase4NativeAcceptance.RunDefects(args[1]);
             if (args.Length == 4 && args[0] == "--native-phase4-pp01-copy") return SamsungPhase4RepairNativeAcceptance.Run(args[1], args[2], args[3]);
+            if (args.Length == 4 && args[0] == "--native-pilot-route") return PilotRouteNativeAcceptance.Run(args[1], args[2], args[3]);
             if (args.Length == 2 && args[0] == "--native-phase5-excel-binding") return Phase5NativeExcelAcceptance.Run(args[1]);
             // The MCP round-trip test relaunches this same exe as a
             // scripted stdio MCP server, so the test needs no
@@ -82,6 +84,8 @@ namespace GuardrailTests
                 Run("Typed analysis snapshots preserve identity and serialization", AnalysisContractTests.SnapshotIdentityInvalidationAndSerialization);
                 Run("Explicit typed table bindings issue only verified facts", AnalysisContractTests.ExplicitTableBindingsIssueOnlyVerifiedFacts);
                 Run("Typed analysis calculations preserve source authority", AnalysisContractTests.DeterministicCalculationsPreserveAuthority);
+                Run("Native revision acceptance cannot expand its certified scope", PresentationAcceptanceTests.ScopedReceiptCannotCertifyCharts);
+                Run("Delivery transport budget persists across restart", PresentationAcceptanceTests.TransportBudgetSurvivesRestart);
                 Run("OpenXML typed capture retains formulas formats dates and blanks", AnalysisContractTests.OpenXmlCaptureRetainsTypedCells);
                 Run("One verified analysis compiles workbook formulas and four slides", AnalysisDocumentCompilerTests.OneAnalysisSuppliesWorkbookAndFourSlides);
                 Run("Typed deck tool accepts only fact references", AnalysisDocumentCompilerTests.DeckToolAcceptsOnlyFactReferencedPlan);

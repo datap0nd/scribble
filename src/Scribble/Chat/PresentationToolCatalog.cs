@@ -478,8 +478,10 @@ namespace Scribble.Chat
         public static IEnumerable<ChatToolDefinition> RevisionDefinitions()
         {
             if (!PresentationRevisionAcceptance.Enabled) yield break;
+            var kinds = new List<string> { "replace_text", "table_cell", "move", "delete", "replace_slide", "insert", "annotate", "notes_append" };
+            if (PresentationRevisionAcceptance.SupportsCharts) kinds.Add("chart_point");
             var operation = ToolSchema.Build(new Dictionary<string, object> {
-                { "kind", new { type = "string", @enum = new[] { "replace_text", "table_cell", "chart_point", "move", "delete", "replace_slide", "insert", "annotate", "notes_append" } } },
+                { "kind", new { type = "string", @enum = kinds.ToArray() } },
                 { "slide_id", ToolSchema.Integer("Stable ID from inspect_slide.", 1, int.MaxValue) },
                 { "fingerprint", ToolSchema.String("Exact current fingerprint from inspect_slide.") },
                 { "shape_id", ToolSchema.Integer("Stable target shape ID, required for text/table/chart edits.", 1, int.MaxValue) },
@@ -495,7 +497,8 @@ namespace Scribble.Chat
                 { "new_index", ToolSchema.Integer("Final 1-based position for an explicitly requested move.", 1, 1000) }
             }, "kind", "slide_id", "fingerprint");
             yield return new ChatToolDefinition { type = "function", function = new ChatToolFunctionDefinition {
-                name = ReviseSlides, description = "Revise explicitly requested existing slides in place. Inspect complete structured content first. Stage and review changes before applying; preserve unrelated content. No saving or export. Native session recovery is available. " + SamsungAuthoringPolicy.Instructions,
+                name = ReviseSlides, description = "Revise explicitly requested existing slides in place. Inspect complete structured content first. Stage and review changes before applying; preserve unrelated content. No saving or export. Native session recovery is available. " +
+                    (PresentationRevisionAcceptance.SupportsCharts ? "" : "This build certifies chartless revisions only. Do not supply chart operations or chart-bearing replacement/insert plans. The workbook-backed copy pilot reconstructs its chart separately. ") + SamsungAuthoringPolicy.Instructions,
                 parameters = ToolSchema.Build(new Dictionary<string, object> {
                     { "presentation_id", ToolSchema.String("Exact live presentation ID returned by inspect_slide.") },
                     { "operations", SamsungWorkflowSchema.List(operation) }

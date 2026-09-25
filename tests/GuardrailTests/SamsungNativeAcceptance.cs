@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
+using System.Linq;
 using System.Web.Script.Serialization;
 using Scribble.Office;
 
@@ -24,7 +25,7 @@ namespace GuardrailTests
         }
         private static string Content(object slide)
         { return (string)typeof(PresentationInspection).GetMethod("ContentFingerprint", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, new[] { slide }); }
-        internal static int Run(string reportPath)
+        internal static int Run(string reportPath, bool chartless = false)
         {
             dynamic app = null; dynamic deck = null;
             var temps = new List<object>(); var passed = false;
@@ -79,7 +80,10 @@ namespace GuardrailTests
                 table.Table.Cell(2, 2).Shape.TextFrame.TextRange.Text = "100";
                 table.Table.Cell(3, 1).Shape.TextFrame.TextRange.Text = "Q2";
                 table.Table.Cell(3, 2).Shape.TextFrame.TextRange.Text = "120";
-                dynamic chart = slide.Shapes.AddChart2(201, 51, 470, 150, 400, 250);
+                dynamic chart = null;
+                if (!chartless)
+                {
+                chart = slide.Shapes.AddChart2(201, 51, 470, 150, 400, 250);
                 if ((int)chart.Chart.SeriesCollection().Count == 0) chart.Chart.SeriesCollection().NewSeries();
                 chart.Chart.SeriesCollection(1).Name = "Sales";
                 chart.Chart.ChartData.Activate();
@@ -101,6 +105,7 @@ namespace GuardrailTests
                 sourceSheet.Cells[3, 1].Value2 = "Q2"; sourceSheet.Cells[3, 2].Value2 = 120d;
                 chart.Chart.SetSourceData("'" + Convert.ToString(sourceSheet.Name).Replace("'", "''") + "'!$A$1:$B$3", 2);
                 dataWorkbook.Close(true);
+                }
                 var scenarios = new[] {
                     new Dictionary<string, object> { { "kind", "table_cell" }, { "shape_id", (int)table.Id }, { "row", 2 }, { "column", 2 }, { "before", "100" }, { "text", "125" } },
                     new Dictionary<string, object> { { "kind", "table_cell_fill" }, { "shape_id", (int)table.Id }, { "row", 1 }, { "column", 1 }, { "before_color", (int)table.Table.Cell(1, 1).Shape.Fill.ForeColor.RGB }, { "color", MetoTheme.Rgb("#4F81BD") } },
@@ -109,7 +114,8 @@ namespace GuardrailTests
                         { "before_width", (double)title.Width }, { "before_height", (double)title.Height },
                         { "left", (double)title.Left }, { "top", (double)title.Top },
                         { "width", (double)title.Width + 10 }, { "height", (double)title.Height } },
-                    new Dictionary<string, object> { { "kind", "chart_point" }, { "shape_id", (int)chart.Id }, { "series", 1 }, { "category", 1 }, { "before_value", 100d }, { "value", 125d } },
+                    new Dictionary<string, object> { { "kind", "shape_font_size" }, { "shape_id", (int)title.Id }, { "before_size", (float)title.TextFrame.TextRange.Font.Size }, { "size", 26f } },
+                    new Dictionary<string, object> { { "kind", "chart_point" }, { "shape_id", chartless ? 0 : (int)chart.Id }, { "series", 1 }, { "category", 1 }, { "before_value", 100d }, { "value", 125d } },
                     new Dictionary<string, object> { { "kind", "annotate" }, { "shape_id", (int)table.Id }, { "row", 2 }, { "column", 2 } },
                     new Dictionary<string, object> { { "kind", "notes_append" }, { "notes", "Additional source reference" } },
                     new Dictionary<string, object> { { "kind", "move" }, { "new_index", 2 } },
@@ -123,6 +129,13 @@ namespace GuardrailTests
                 };
                 foreach (var scenario in scenarios)
                 {
+                    if (chartless && Convert.ToString(scenario["kind"]) == "chart_point") continue;
+                    if (chartless && Convert.ToString(scenario["kind"]) == "replace_slide")
+                    {
+                        var replacement = (Dictionary<string, object>)scenario["slide"];
+                        replacement.Remove("chart");
+                        replacement["layout"] = "table";
+                    }
                     slide = deck.Slides[1];
                     var baseline = Content((object)slide); var otherBaseline = Content((object)deck.Slides[2]);
                     scenario["slide_id"] = (int)slide.SlideID; scenario["fingerprint"] = PresentationInspection.Fingerprint((object)slide);
@@ -170,7 +183,10 @@ namespace GuardrailTests
                 catch (Exception ex) { powerpointExited |= PowerPointExited(ex); }
             }
             var report = new { execution_kind = "native", policy = SamsungAuthoringPolicy.Version, assembly_sha256 = PresentationRevisionAcceptance.AssemblyHash(),
-                revision_passed = passed, preservation_passed = passed, rollback_passed = passed, all_operations_passed = passed, full_acceptance_passed = false,
+                revision_passed = passed, preservation_passed = passed, rollback_passed = passed,
+                scope = chartless ? PresentationRevisionAcceptance.ChartlessScope : null,
+                chartless_operations_passed = chartless && passed,
+                all_operations_passed = !chartless && passed, full_acceptance_passed = false,
                 powerpoint_exited = powerpointExited,
                 note = "Native operation, preservation, rollback and concurrency checks only. Model/UI workflows and real Samsung fidelity require additional acceptance.", failure };
             var json = new JavaScriptSerializer().Serialize(report);
