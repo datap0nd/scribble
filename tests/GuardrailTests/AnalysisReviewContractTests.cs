@@ -71,6 +71,26 @@ namespace GuardrailTests
                 "A workbook value or substantive metadata edit escaped the chart fingerprint.");
         }
 
+        public static void SavedDeckCannotUseChartPackageFingerprint()
+        {
+            var method = typeof(PresentationInspection).GetMethod(
+                "OwnedUnsavedDraft", BindingFlags.NonPublic |
+                BindingFlags.Static);
+            Check(method != null,
+                "The chart package ownership boundary is missing.");
+            Func<string, string, string, string, bool> allowed =
+                (path, slideOwner, deckOwner, revisionOwner) =>
+                    (bool)method.Invoke(null, new object[] {
+                        path, slideOwner, deckOwner, revisionOwner });
+            Check(!allowed(@"C:\\user\\saved.pptx", "task", "task", "revision") &&
+                !allowed("", "", "", "") &&
+                !allowed("", "task-a", "task-b", ""),
+                "A saved or unowned deck can reach SaveCopyAs.");
+            Check(allowed("", "task", "task", "") &&
+                allowed("", "", "", "revision"),
+                "An owned unsaved draft cannot reach the package fingerprint.");
+        }
+
         private static byte[] ChartWorkbookPackage(int revision,
             string modified, string title, string value)
         {

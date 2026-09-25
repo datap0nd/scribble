@@ -486,9 +486,11 @@ foreach ($guardedFile in $officeGuardedFiles) {
                 # Read-only protection status blocks an edit before it starts.
                 -not ($_.Path -like '*\Office\WorkbookDraftWriter.cs' -and
                     $_.Line.Trim() -eq 'if (Convert.ToBoolean(sheet.ProtectContents))') -and
-                # The analysis pilot may copy only its unsaved, tagged draft
-                # to a bounded temporary PPTX for chart fingerprinting.
-                # PresentationInspection verifies identity and deletes it.
+                # PresentationInspection permits this copy only after
+                # OwnedUnsavedDraft has checked an unsaved presentation with
+                # matching task tags or the revision-draft ownership tag.
+                # Saved and unowned decks use in-memory chart readback.
+                # The bounded temporary PPTX is deleted after fingerprinting.
                 -not ($_.Path -like '*\Office\PresentationInspection.cs' -and
                     $_.Line.Trim() -eq 'deck.SaveCopyAs(temporary);') -and
                 -not (($_.Path -like '*\Office\PresentationDraftWriter.Samsung.cs' -or $_.Path -like '*\Office\LegacySamsung\PresentationDraftWriter.Samsung.cs') -and $_.Line.Trim() -eq 'image.Save(path, System.Drawing.Imaging.ImageFormat.Png);') -and

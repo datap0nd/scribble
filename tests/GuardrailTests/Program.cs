@@ -90,6 +90,7 @@ namespace GuardrailTests
                 Run("One repair budget spans review and patch stages", AnalysisReviewContractTests.SharedBudgetSurvivesEveryStage);
                 Run("PDF export permits only metadata and two EMU table rounding", AnalysisReviewContractTests.PdfExportOnlyPermitsMetadataAndTableRoundoff);
                 Run("Chart fingerprint keeps workbook data while ignoring revision metadata", AnalysisReviewContractTests.ChartFingerprintPreservesEmbeddedWorkbookData);
+                Run("Saved decks cannot use chart package fingerprints", AnalysisReviewContractTests.SavedDeckCannotUseChartPackageFingerprint);
                 Run("Excel DBNull mixed formats resolve a date column", AnalysisContractTests.MixedExcelFormatsResolveDates);
                 Run("Duplicate document writes return a recoverable result", HardeningTests.DuplicateDraftIsRecoverable);
                 Run("Known invalid Excel draft formulas permit a fresh marked sheet", HardeningTests.RejectedDraftFormulaAllowsFreshMarkedSheet);

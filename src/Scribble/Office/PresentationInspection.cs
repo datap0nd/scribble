@@ -292,23 +292,23 @@ namespace Scribble.Office
         {
             var json = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
             var chart = ContainsNativeChart(slide);
-            // Chart COM getters and Slide.Export can terminate POWERPNT on
-            // affected builds. The native package includes chart XML and its
-            // embedded workbook without activating either object.
-            var content = json.Serialize(Capture(slide, !chart));
+            // The pilot can inspect its own unsaved draft through a temporary
+            // package. A saved or unowned deck must stay in memory: read its
+            // chart through the prior structured COM path without exporting
+            // the slide or copying the user's presentation to disk.
+            var package = chart && PilotCanPackageChart(slide);
+            var content = json.Serialize(Capture(slide, !package));
             return TaskCheckpointStore.Fingerprint(content +
-                (chart ? PackageSlideFingerprintCore(slide, false) :
-                    Preview(slide)));
+                (chart ? (package ? PackageSlideFingerprint(slide) :
+                    string.Empty) : Preview(slide)));
         }
         // The native chart COM getter can terminate some PowerPoint builds
         // after a chart workbook closes. Journal receipts use the exact slide
         // package and related parts from a disposable SaveCopyAs instead.
         internal static string FingerprintForJournal(object slide)
         {
-            if (!ContainsNativeChart(slide) || !string.Equals(
-                Environment.GetEnvironmentVariable(
-                    AnalysisDocumentPilot.FeatureFlag), "1",
-                StringComparison.Ordinal)) return Fingerprint(slide);
+            if (!ContainsNativeChart(slide) ||
+                !PilotCanPackageChart(slide)) return Fingerprint(slide);
             var json = new JavaScriptSerializer { MaxJsonLength =
                 int.MaxValue };
             return TaskCheckpointStore.Fingerprint(json.Serialize(
@@ -316,19 +316,43 @@ namespace Scribble.Office
         }
 
         internal static string PackageSlideFingerprint(object slide)
-        { return PackageSlideFingerprintCore(slide, true); }
+        { return PackageSlideFingerprintCore(slide); }
 
-        private static string PackageSlideFingerprintCore(object slide,
-            bool requireOwnedDraft)
+        private static bool PilotCanPackageChart(object slide)
+        {
+            if (!string.Equals(Environment.GetEnvironmentVariable(
+                    AnalysisDocumentPilot.FeatureFlag), "1",
+                    StringComparison.Ordinal)) return false;
+            dynamic page = slide;
+            dynamic deck = page.Parent;
+            var path = Convert.ToString(deck.Path);
+            if (!string.IsNullOrEmpty(path)) return false;
+            return OwnedUnsavedDraft(path,
+                Convert.ToString(page.Tags["ScribbleTask"]),
+                Convert.ToString(deck.Tags["ScribbleTask"]),
+                Convert.ToString(deck.Tags["ScribbleRevisionDraft"]));
+        }
+
+        internal static bool OwnedUnsavedDraft(string path,
+            string slideOwner, string deckOwner, string revisionOwner)
+        {
+            return string.IsNullOrEmpty(path) &&
+                ((!string.IsNullOrWhiteSpace(slideOwner) &&
+                  string.Equals(slideOwner, deckOwner,
+                      StringComparison.Ordinal)) ||
+                 !string.IsNullOrWhiteSpace(revisionOwner));
+        }
+
+        private static string PackageSlideFingerprintCore(object slide)
         {
             dynamic page = slide;
             dynamic deck = page.Parent;
-            if (requireOwnedDraft &&
-                (!string.IsNullOrEmpty((string)deck.Path) ||
-                (string.IsNullOrWhiteSpace(Convert.ToString(
-                    page.Tags["ScribbleTask"])) &&
-                 string.IsNullOrWhiteSpace(Convert.ToString(
-                    deck.Tags["ScribbleRevisionDraft"])))))
+            var path = Convert.ToString(deck.Path);
+            if (!string.IsNullOrEmpty(path) ||
+                !OwnedUnsavedDraft(path,
+                    Convert.ToString(page.Tags["ScribbleTask"]),
+                    Convert.ToString(deck.Tags["ScribbleTask"]),
+                    Convert.ToString(deck.Tags["ScribbleRevisionDraft"])))
                 throw new InvalidOperationException(
                     "CHART_PACKAGE_UNSAVED_DRAFT_REQUIRED");
             var nameBefore = (string)deck.FullName;

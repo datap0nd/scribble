@@ -31,7 +31,7 @@ namespace GuardrailTests
         {
             dynamic excel = null, workbook = null, powerPoint = null,
                 deck = null, typedDeck = null, faultDeck = null,
-                recoveryDeck = null;
+                recoveryDeck = null, savedFingerprintDeck = null;
             var failure = string.Empty;
             var workbookPassed = false;
             var slidesPassed = false;
@@ -46,11 +46,14 @@ namespace GuardrailTests
             var partialLayoutRecoveryPassed = false;
             var typedDeckHandoffPassed = false;
             var nativeDateColumnPassed = false;
+            var savedChartFingerprintPassed = false;
             var powerpointExited = false;
             string taskOwner = null;
             var images = new List<string>();
             var stage = "setup";
             var output = Path.GetDirectoryName(Path.GetFullPath(reportPath));
+            var savedFingerprintPath = Path.Combine(output,
+                "saved-chart-fingerprint-boundary.pptx");
             Directory.CreateDirectory(output);
             var priorFlag = Environment.GetEnvironmentVariable(
                 AnalysisDocumentPilot.FeatureFlag);
@@ -644,6 +647,50 @@ namespace GuardrailTests
                     nativeReview, cleanVerdict).Approved,
                     "A fresh native review could not bind the restored chart.");
                 typedReviewPassed = true;
+                stage = "saved_chart_fingerprint_boundary";
+                savedFingerprintDeck = powerPoint.Presentations.Add(-1);
+                reviewedSlide.Copy();
+                savedFingerprintDeck.Slides.Paste(1);
+                savedFingerprintDeck.SaveAs(savedFingerprintPath, 24);
+                var savedSourceHash = Sha256(File.ReadAllBytes(
+                    savedFingerprintPath));
+                var copyEvents = 0;
+                using (var watcher = new FileSystemWatcher(Path.GetTempPath(),
+                    "scribble-chart-fingerprint-*.pptx"))
+                {
+                    watcher.Created += (sender, args) =>
+                        Interlocked.Increment(ref copyEvents);
+                    watcher.EnableRaisingEvents = true;
+                    dynamic savedSlide = savedFingerprintDeck.Slides[1];
+                    var beforeChart = PresentationInspection.Fingerprint(
+                        (object)savedSlide);
+                    dynamic savedChart = null;
+                    for (var shapeIndex = 1;
+                        shapeIndex <= (int)savedSlide.Shapes.Count;
+                        shapeIndex++)
+                        if ((int)savedSlide.Shapes[shapeIndex].HasChart != 0)
+                            savedChart = savedSlide.Shapes[shapeIndex].Chart;
+                    Check(savedChart != null,
+                        "The saved test slide lost its native chart.");
+                    dynamic savedSeries = savedChart.SeriesCollection(1);
+                    var savedSeriesName = Convert.ToString(savedSeries.Name);
+                    savedSeries.Name = savedSeriesName + " changed";
+                    var afterChart = PresentationInspection.Fingerprint(
+                        (object)savedSlide);
+                    savedSeries.Name = savedSeriesName;
+                    Thread.Sleep(300);
+                    Check(beforeChart != afterChart,
+                        "A saved chart edit escaped the default fingerprint.");
+                    Check(copyEvents == 0,
+                        "Fingerprint copied a saved deck to temp.");
+                }
+                Check(savedSourceHash == Sha256(File.ReadAllBytes(
+                    savedFingerprintPath)),
+                    "The fingerprint wrote to the saved source deck.");
+                savedChartFingerprintPassed = true;
+                savedFingerprintDeck.Close();
+                savedFingerprintDeck = null;
+                File.Delete(savedFingerprintPath);
                 stage = "powerpoint_renderer_repair";
                 dynamic firstSlide = deck.Slides[1];
                 dynamic folio = null;
@@ -1356,6 +1403,10 @@ namespace GuardrailTests
                 Environment.SetEnvironmentVariable(pdfDiagnosticFlag,
                     priorPdfDiagnostic);
                 if ((object)deck != null) try { deck.Close(); } catch { }
+                if ((object)savedFingerprintDeck != null)
+                    try { savedFingerprintDeck.Close(); } catch { }
+                if (File.Exists(savedFingerprintPath))
+                    try { File.Delete(savedFingerprintPath); } catch { }
                 if ((object)faultDeck != null)
                     try { faultDeck.Close(); } catch { }
                 if ((object)recoveryDeck != null)
@@ -1398,6 +1449,8 @@ namespace GuardrailTests
                     partialLayoutRecoveryPassed,
                 typed_deck_handoff_passed = typedDeckHandoffPassed,
                 native_date_column_passed = nativeDateColumnPassed,
+                saved_chart_fingerprint_passed =
+                    savedChartFingerprintPassed,
                 powerpoint_exited = powerpointExited,
                 visual_review_unavailable = failure.Contains(
                     "ANALYSIS_VISUAL_REVIEW_UNAVAILABLE"),
@@ -1411,6 +1464,7 @@ namespace GuardrailTests
             Console.WriteLine(json);
             return workbookPassed && slidesPassed && sourcePreserved &&
                 recoveryPassed && typedReviewPassed && rendererRepairPassed &&
+                savedChartFingerprintPassed &&
                 typedDeckHandoffPassed && contentRecoveryPassed &&
                 partialContentRollbackPassed &&
                 cardContentRecoveryPassed && layoutRecoveryPassed
@@ -1423,6 +1477,12 @@ namespace GuardrailTests
             return string.Join("|", new[] { "B2", "I2", "J2", "B3", "I3", "J3" }
                 .Select(cell => Convert.ToString(sheet.Range(cell).Value2,
                     CultureInfo.InvariantCulture)));
+        }
+
+        private static string Sha256(byte[] value)
+        {
+            using (var hash = SHA256.Create())
+                return BitConverter.ToString(hash.ComputeHash(value));
         }
 
         private static bool PowerPointExited(Exception error)
