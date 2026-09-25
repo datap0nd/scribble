@@ -50,7 +50,10 @@ namespace GuardrailTests
                 app = Activator.CreateInstance(Type.GetTypeFromProgID(
                     "PowerPoint.Application", true));
                 app.Visible = -1;
-                source = app.Presentations.Open(sourcePath, -1, -1, 0);
+                // Untitled=false keeps the disposable source bound to its
+                // saved PPTX. Untitled=true removes Path and incorrectly
+                // selects the unsafe unsaved-chart fingerprint route.
+                source = app.Presentations.Open(sourcePath, -1, 0, 0);
                 if ((int)source.Slides.Count != 6)
                     throw new InvalidOperationException(
                         "PP01_SOURCE_PAGE_COUNT_INVALID");

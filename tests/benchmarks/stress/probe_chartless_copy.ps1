@@ -9,11 +9,13 @@ try {
     $app = New-Object -ComObject PowerPoint.Application
     $app.Visible = -1
     $stage = 'open_source'
-    $source = $app.Presentations.Open($SourcePptx, -1, -1, 0)
+    $source = $app.Presentations.Open($SourcePptx, -1, 0, 0)
+    Write-Output "source saved before draft=$($source.Saved), path=$($source.Path)"
     $stage = 'new_draft'
     $draft = $app.Presentations.Add(-1)
     $draft.PageSetup.SlideWidth = $source.PageSetup.SlideWidth
     $draft.PageSetup.SlideHeight = $source.PageSetup.SlideHeight
+    Write-Output "source saved after draft=$($source.Saved)"
     $page = $source.Slides.Item(2)
     $copy = $draft.Slides.Add(1, 12)
     for ($i = 1; $i -le $page.Shapes.Count; $i++) {
