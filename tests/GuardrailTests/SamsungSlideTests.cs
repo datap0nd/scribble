@@ -145,6 +145,36 @@ namespace GuardrailTests
             if (scorecardElements.Where(e => new[] { "JUNE REVENUE", "JUNE COST", "GROSS MARGIN" }.Contains(Convert.ToString(e["text"])))
                     .Any(e => Convert.ToDouble(e["size"]) < 14))
                 throw new Exception("Scorecard KPI labels must meet the native 14-point body minimum.");
+            var pairedScorecard = SamsungPresentationReview.InspectPlan(
+                json.Serialize(new[] { new {
+                    title = "June operating snapshot", layout = "scorecard",
+                    cards = new[] {
+                        new { heading = "Revenue EUR",
+                            points = new[] { "82,992", "June total" } },
+                        new { heading = "Cost EUR",
+                            points = new[] { "36,714", "June total" } } }
+                } }));
+            var pairedPage = ((IEnumerable)json.DeserializeObject(
+                json.Serialize(pairedScorecard)))
+                .Cast<Dictionary<string, object>>().Single();
+            var pairedElements = ((IEnumerable)pairedPage["elements"])
+                .Cast<Dictionary<string, object>>().ToArray();
+            if (pairedElements.Count(element =>
+                    Convert.ToString(element["fill"]) ==
+                        SamsungSlideDesign.Navy &&
+                    Convert.ToDouble(element["width"]) > 800) != 1 ||
+                new[] { "82,992", "36,714" }.Any(value =>
+                    pairedElements.Count(element =>
+                        Convert.ToString(element["text"]) == value &&
+                        Convert.ToString(element["color"]) == "#FFFFFF" &&
+                        Convert.ToDouble(element["size"]) >= 50) != 1) ||
+                pairedElements.Count(element =>
+                    Convert.ToString(element["text"]) == "June total") != 2 ||
+                pairedElements.Any(element =>
+                    Convert.ToString(element["fill"]) ==
+                        SamsungSlideDesign.Gray &&
+                    Convert.ToDouble(element["height"]) > 100))
+                throw new Exception("A two-measure scorecard must keep both exact values and contexts in one native panel.");
             var statement = SamsungPresentationReview.InspectPlan(
                 json.Serialize(new[] { new {
                     title = "What the ledger supports", layout = "cards",

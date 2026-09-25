@@ -368,6 +368,43 @@ namespace Scribble.Office
         private static void AddStructuredCards(List<SamsungElement> elements, DraftSlide draft, RectangleF region)
         {
             var count = draft.Cards.Count;
+            if (draft.Layout == "scorecard" && count == 2 &&
+                draft.Cards.All(card => card.Points.Count == 2 &&
+                    card.Heading.Length <= 32 && card.Points[1].Length <= 46 &&
+                    Regex.IsMatch(card.Points[0],
+                        @"^(?:(?:EUR|USD|GBP|AED)\s+)?[+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?%?$")))
+            {
+                // Keep both sourced measures and their contexts in one
+                // editable composition. The source order conveys no rank.
+                var panel = new RectangleF(region.X, region.Y + 10f,
+                    region.Width, region.Height - 20f);
+                elements.Add(TextElement("", panel,
+                    fill: SamsungSlideDesign.Navy));
+                elements.Add(TextElement("", new RectangleF(panel.X,
+                    panel.Y, panel.Width, 5f),
+                    fill: SamsungSlideDesign.SoftBlue));
+                var columnWidth = panel.Width / 2f;
+                elements.Add(TextElement("", new RectangleF(
+                    panel.X + columnWidth - .5f, panel.Y + 30f, 1f,
+                    panel.Height - 60f), fill: "#596674"));
+                for (var index = 0; index < 2; index++)
+                {
+                    var card = draft.Cards[index];
+                    var left = panel.X + index * columnWidth + 28f;
+                    var width = columnWidth - 56f;
+                    elements.Add(TextElement(card.Heading.ToUpperInvariant(),
+                        new RectangleF(left, panel.Y + 28f, width, 38f),
+                        18, 16, "Arial", true, null, "#B8D8FF"));
+                    elements.Add(TextElement(card.Points[0],
+                        new RectangleF(left, panel.Y + 76f, width, 81f),
+                        56, 38, MetoTheme.TitleFont, true, null,
+                        "#FFFFFF"));
+                    elements.Add(TextElement(card.Points[1],
+                        new RectangleF(left, panel.Y + 180f, width, 32f),
+                        17, 15, "Arial", false, null, "#B8D8FF"));
+                }
+                return;
+            }
             if (draft.Layout == "cards" && count == 2 &&
                 draft.Cards.All(card => card.Points.Count == 1 &&
                     Regex.IsMatch(card.Points[0],
