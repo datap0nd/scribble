@@ -114,20 +114,6 @@ namespace GuardrailTests
                         "PP01_DRAFT_CONFLICT_NOT_REJECTED");
                 copy = InvokeStatic(CopyType, "Recover", (object)app,
                     beforeTamper);
-                stage = "recreate_chart";
-                var chartFacts = (WorkbookMonthlyChartFacts.Result)
-                    Invoke(copy, CopyType,
-                        "RecreateSalesChartFromWorkbook",
-                        (int)source.Slides[2].SlideID,
-                        (int)chart.Id, workbookPath,
-                        66f, 158.25f, 825f, 278.25f);
-                if (chartFacts.SourceSha256 != workbookHash ||
-                    chartFacts.Categories.Length != 6)
-                    throw new InvalidOperationException(
-                        "PP01_CHART_SOURCE_BINDING_FAILED");
-                chartRecreated = true;
-                copy = InvokeStatic(CopyType, "Recover", (object)app,
-                    Convert.ToString(Invoke(copy, CopyType, "Snapshot")));
                 var operations = new List<object>();
                 for (var column = 1; column <= 3; column++)
                     operations.Add(new Dictionary<string, object>
@@ -226,6 +212,22 @@ namespace GuardrailTests
                 Invoke(revision, RevisionType, "Commit",
                     (Action<string>)(status => { }));
                 Invoke(copy, CopyType, "AcceptRevision", revision);
+                // Stage only chartless pages. PresentationRevision copies
+                // targets into two staging decks; on this Office build,
+                // copying a native chart can terminate chart.dll. Add the
+                // workbook-derived chart after the bounded patch commits.
+                stage = "recreate_chart";
+                var chartFacts = (WorkbookMonthlyChartFacts.Result)
+                    Invoke(copy, CopyType,
+                        "RecreateSalesChartFromWorkbook",
+                        (int)source.Slides[2].SlideID,
+                        (int)chart.Id, workbookPath,
+                        66f, 158.25f, 825f, 278.25f);
+                if (chartFacts.SourceSha256 != workbookHash ||
+                    chartFacts.Categories.Length != 6)
+                    throw new InvalidOperationException(
+                        "PP01_CHART_SOURCE_BINDING_FAILED");
+                chartRecreated = true;
                 copy = InvokeStatic(CopyType, "Recover", (object)app,
                     Convert.ToString(Invoke(copy, CopyType, "Snapshot")));
                 Invoke(copy, CopyType, "VerifySource");
