@@ -254,6 +254,7 @@
     <Compile Include="Office\PresentationChartEdit.cs" />
     <Compile Include="Office\PresentationRevisionAcceptance.cs" />
     <Compile Include="Office\DocumentDraftHost.Revisions.cs" />
+    <Compile Include="Office\DocumentDraftHost.PilotCopy.cs" />
     <Compile Include="Office\DocumentDraftHost.SlideRepair.cs" />
     <Compile Include="Chat\SamsungWorkflowSchema.cs" />
     <Compile Include="Office\DocumentDraftHost.PowerPoint.cs" />

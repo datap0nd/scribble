@@ -7139,6 +7139,32 @@ namespace GuardrailTests
             var authorizedSystem = Convert.ToString(
                 ((ChatCompletionInputMessage)
                     authorized.messages[0]).content);
+            var previousPilotFlag = Environment.GetEnvironmentVariable(
+                AnalysisDocumentPilot.FeatureFlag);
+            try
+            {
+                Environment.SetEnvironmentVariable(
+                    AnalysisDocumentPilot.FeatureFlag, "1");
+                var repair = DocumentChatRequestFactory.Create(
+                    "test-model", "powerpoint", "Presentation: Deck1",
+                    new List<ChatTurn>(),
+                    "Repair the source deck into exactly 6 output slides; preserve the original slides.",
+                    true,
+                    new[] { new ExternalContextDocument("WB01",
+                        "Attached workbook", "C:\\pilot\\WB01.xlsx") });
+                Assert(!repair.tools.Any(tool =>
+                        tool.function.name == "add_draft_slides") &&
+                    Convert.ToString(((ChatCompletionInputMessage)
+                        repair.messages[0]).content).Contains(
+                            "copies the source into an unsaved draft"),
+                    "The workbook-backed PP01 pilot must expose the copy-and-patch route.");
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(
+                    AnalysisDocumentPilot.FeatureFlag,
+                    previousPilotFlag);
+            }
             Assert(
                 authorizedSystem.Contains(
                     "authorized ONE deliverable") &&

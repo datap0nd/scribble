@@ -1,5 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text.RegularExpressions;
 using Scribble.Office;
 using Scribble.Security;
 
@@ -88,6 +91,19 @@ namespace Scribble.Chat
             bool hasKoreanWorkbook = false,
             string workbookTranslationTarget = null)
         {
+            var pilotRepair = hostKind == "powerpoint" &&
+                allowDraftCreate &&
+                string.Equals(Environment.GetEnvironmentVariable(
+                    AnalysisDocumentPilot.FeatureFlag), "1",
+                    StringComparison.Ordinal) &&
+                Regex.IsMatch(userPrompt ?? "",
+                    @"\b(?:6|six)\b.{0,24}\bslides?\b", RegexOptions.IgnoreCase) &&
+                DocumentDraftHost.ShouldDraftRepairedDeck(hostKind,
+                    userPrompt, 6) &&
+                externalContext != null && externalContext.Any(document =>
+                    new[] { ".xlsx", ".xlsm" }.Contains(
+                        Path.GetExtension(document.SourcePath ?? ""),
+                        StringComparer.OrdinalIgnoreCase));
             var translateToKorean = hasKoreanWorkbook && string.Equals(
                 workbookTranslationTarget,
                 Scribble.Office.ExcelSelectionOutputPolicy.TargetKorean,
@@ -137,9 +153,11 @@ namespace Scribble.Chat
                 }
                 else
                 {
-                    tools.Add(
-                        PresentationToolCatalog.DraftDefinition());
-                    tools.AddRange(PresentationToolCatalog.RevisionDefinitions());
+                    if (!pilotRepair)
+                        tools.Add(PresentationToolCatalog.DraftDefinition());
+                    tools.AddRange(PresentationToolCatalog.RevisionDefinitions()
+                        .Where(tool => !pilotRepair || tool.function.name ==
+                            PresentationToolCatalog.ReviseSlides));
                 }
 
                 tools.AddRange(
@@ -170,7 +188,11 @@ namespace Scribble.Chat
                         extraTools != null && extraTools.Count > 0,
                         hasExcelSelection,
                         hasKoreanWorkbook,
-                        translateToKorean) +
+                        translateToKorean,
+                        pilotRepair) +
+                        (pilotRepair ?
+                            " For this six-slide workbook-backed repair, inspect the saved source deck completely, then call revise_slides on its inspected presentation ID. The host copies the source into an unsaved draft, applies your bounded text/table/content patches there, and recreates its one native chart from the attached workbook. Do not request chart reflow, multiple full-slide replacements, slide insertion, deletion, or reordering. The source deck and workbook remain unchanged. The draft needs visual review before completion." :
+                            string.Empty) +
                         BuildTopicBoundary(activeTopic) +
                         PromptHelperTool.SystemInstruction
                 },
@@ -276,7 +298,8 @@ namespace Scribble.Chat
             bool hasExternalTools,
             bool hasExcelSelection,
             bool hasKoreanWorkbook,
-            bool translateToKorean = false)
+            bool translateToKorean = false,
+            bool pilotRepair = false)
         {
             var hostName = hostKind == "excel"
                 ? "Excel"
@@ -304,7 +327,7 @@ namespace Scribble.Chat
                 if (hostKind == "powerpoint")
                 {
                     boundary += " " + SamsungPresentationReview.AuthoringInstructions;
-                    if (PresentationRevisionAcceptance.Enabled) boundary += " The revise_slides tool supports explicitly requested in-place edits to presentation content, including slide deletion/reordering. File deletion, file moving, saving and export remain unavailable. Use inspect_slide first. Revert Scribble changes restores only the latest unchanged revision batch in this Office session.";
+                    if (PresentationRevisionAcceptance.Enabled && !pilotRepair) boundary += " The revise_slides tool supports explicitly requested in-place edits to presentation content, including slide deletion/reordering. File deletion, file moving, saving and export remain unavailable. Use inspect_slide first. Revert Scribble changes restores only the latest unchanged revision batch in this Office session.";
                 }
                 var selectionInstruction = hasExcelSelection
                     ? " For a one-to-one transformation of the attached " +

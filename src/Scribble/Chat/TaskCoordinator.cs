@@ -111,7 +111,10 @@ namespace Scribble.Chat
         {
             var expected = new HashSet<string>(ExpectedSourceIds, StringComparer.Ordinal);
             var covered = Batches.SelectMany(b => b.CoveredSourceIds).ToArray();
+            string pilotCopyStatus;
             return (!PresentationReviewRequired || !string.IsNullOrEmpty(PresentationReviewReceipt)) &&
+                (!HostData.TryGetValue("pilot_copy_status", out pilotCopyStatus) ||
+                 pilotCopyStatus == "complete") &&
                 EnumerationComplete && Outstanding().Length == 0 &&
                 (RequiredPresentationSlides == 0 || covered.Count(id => id.StartsWith("ppt:", StringComparison.Ordinal)) >= RequiredPresentationSlides) &&
                 covered.Distinct(StringComparer.Ordinal).Count() == covered.Length &&

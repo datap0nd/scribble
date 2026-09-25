@@ -1,0 +1,223 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Scribble.Chat;
+using Scribble.Configuration;
+using Scribble.Security;
+
+namespace Scribble.Office
+{
+    public sealed partial class DocumentDraftHost
+    {
+        private bool PilotCopyRequested(ChatToolCall call)
+        {
+            return call?.function?.name ==
+                    PresentationToolCatalog.ReviseSlides &&
+                _hostKind == "powerpoint" && _taskContext != null &&
+                string.Equals(Environment.GetEnvironmentVariable(
+                    AnalysisDocumentPilot.FeatureFlag), "1",
+                    StringComparison.Ordinal) &&
+                ShouldDraftRepairedDeck(_hostKind,
+                    string.Join("\n", _taskContext.State.OriginalDecisions),
+                    _taskContext.State.RequiredPresentationSlides) &&
+                _taskContext.State.RequiredPresentationSlides == 6;
+        }
+
+        private async Task<MailboxToolResult> ExecutePilotCopyRevisionAsync(
+            ChatToolCall call, OneShotDraftAuthorization authorization,
+            bool exclusive, string prompt, OpenAiCompatibleClient client,
+            AppSettings settings, CancellationToken token,
+            Action<int, int> progress)
+        {
+            PresentationDraftCopy copy = null;
+            var stage = "preflight";
+            var statusKey = "pilot_copy_status";
+            try
+            {
+                if (!PresentationRevisionAcceptance.Enabled || !exclusive ||
+                    authorization == null || !authorization.CanCreate)
+                    throw new InvalidOperationException(
+                        "PILOT_COPY_NOT_AUTHORIZED");
+                if (client == null || settings == null ||
+                    !ModelCatalog.IsVisionCapable(settings.Model))
+                    throw new InvalidOperationException(
+                        "PILOT_COPY_VISION_REQUIRED");
+                if (_taskContext.State.HostData.ContainsKey(statusKey))
+                    throw new InvalidOperationException(
+                        "PILOT_COPY_NEEDS_INSPECTION: A prior copy attempt has a durable checkpoint; do not repeat it.");
+                dynamic app = _hostApplication;
+                object sourceDeck = app.ActivePresentation;
+                dynamic source = sourceDeck;
+                var args = ToolArguments.Parse(_serializer,
+                    call.function.arguments);
+                if (SamsungAuthoringPolicy.Text(args,
+                        "presentation_id") != PresentationInspection
+                            .IdentityFor(sourceDeck) ||
+                    (int)source.Slides.Count != 6 ||
+                    string.IsNullOrEmpty(Convert.ToString(source.Path)) ||
+                    (int)source.Saved == 0)
+                    throw new InvalidOperationException(
+                        "PILOT_COPY_SOURCE_CHANGED: Inspect the saved six-slide source again.");
+                var operations = SamsungAuthoringPolicy.Array(args,
+                    "operations");
+                if (operations.Length == 0 || operations.Length > 24)
+                    throw new InvalidOperationException(
+                        "PILOT_COPY_OPERATIONS_INVALID");
+                var mapped = operations.Select(
+                    SamsungAuthoringPolicy.ReadMap).ToArray();
+                if (mapped.Count(operation => SamsungAuthoringPolicy.Text(
+                        operation, "kind") == "replace_slide") > 1)
+                    throw new InvalidOperationException(
+                        "ANALYSIS_MULTI_PAGE_REPLACEMENT_UNSUPPORTED");
+                dynamic chartSlide = source.Slides[2];
+                dynamic chartShape = chartSlide.Shapes[
+                    (int)chartSlide.Shapes.Count];
+                if ((int)chartShape.HasChart == 0)
+                    throw new InvalidOperationException(
+                        "PILOT_COPY_CHART_SOURCE_UNSUPPORTED");
+                var chartShapeId = (int)chartShape.Id;
+                foreach (var operation in mapped)
+                {
+                    var kind = SamsungAuthoringPolicy.Text(operation,
+                        "kind");
+                    if (kind == "insert" || kind == "delete" ||
+                        kind == "move")
+                        throw new InvalidOperationException(
+                            "PILOT_COPY_OPERATION_UNSUPPORTED");
+                    object target;
+                    if (kind.IndexOf("chart", StringComparison
+                            .OrdinalIgnoreCase) >= 0 ||
+                        (operation.TryGetValue("shape_id", out target) &&
+                         Convert.ToInt32(target) == chartShapeId &&
+                         Convert.ToInt32(operation["slide_id"]) ==
+                            (int)chartSlide.SlideID))
+                        throw new InvalidOperationException(
+                            "ANALYSIS_CHART_REFLOW_UNSUPPORTED: The pilot recreates the chart from the bound workbook after patching.");
+                }
+                if (!_taskContext.State.HostData.ContainsKey(
+                        "recovery_input"))
+                    throw new InvalidOperationException(
+                        "PILOT_COPY_WORKBOOK_MISSING");
+                var workbooks = TaskRecoveryInput.Read(
+                    _taskContext.State).Documents.Where(document =>
+                        new[] { ".xlsx", ".xlsm" }.Contains(
+                            Path.GetExtension(document.SourcePath ?? ""),
+                            StringComparer.OrdinalIgnoreCase)).ToArray();
+                if (workbooks.Length != 1 ||
+                    string.IsNullOrEmpty(workbooks[0].SourcePath) ||
+                    !File.Exists(workbooks[0].SourcePath) ||
+                    !string.Equals(workbooks[0].SourceFingerprint,
+                        ExternalContextDocument.FingerprintFile(
+                            workbooks[0].SourcePath),
+                        StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException(
+                        "PILOT_COPY_WORKBOOK_CHANGED: Reattach one saved workbook before repair.");
+                token.ThrowIfCancellationRequested();
+                if (!authorization.TryConsume())
+                    throw new InvalidOperationException(
+                        "PILOT_COPY_PERMISSION_UNAVAILABLE");
+                _taskContext.State.HostData[statusKey] = "creating";
+                _taskContext.Checkpoint();
+                stage = "copy";
+                copy = PresentationDraftCopy.Create(_hostApplication,
+                    sourceDeck, _taskContext.State.Id);
+                _taskContext.State.HostData["pilot_copy_snapshot"] =
+                    copy.Snapshot();
+                _taskContext.State.HostData[statusKey] = "copied";
+                _taskContext.Checkpoint();
+                var bound = copy.BindOperations(operations);
+                ((dynamic)copy.Draft).Activate();
+                var draftCall = new ChatToolCall
+                {
+                    id = call.id + ":pilot",
+                    function = new ChatToolCallFunction
+                    {
+                        name = PresentationToolCatalog.ReviseSlides,
+                        arguments = _serializer.Serialize(new
+                        {
+                            presentation_id = PresentationInspection
+                                .IdentityFor(copy.Draft),
+                            operations = bound
+                        })
+                    }
+                };
+                _taskContext.State.HostData[statusKey] = "patching";
+                _taskContext.Checkpoint();
+                stage = "patch";
+                var internalAuthorization =
+                    new OneShotDraftAuthorization(true, false);
+                var patch = await ExecuteRevisionAsync(draftCall,
+                    internalAuthorization, true, prompt, client, settings,
+                    token, progress, true);
+                var patchResult = _serializer.Deserialize<
+                    Dictionary<string, object>>(patch.Content);
+                object ok;
+                if (!patchResult.TryGetValue("ok", out ok) ||
+                    !(ok is bool) || !(bool)ok)
+                    throw new InvalidOperationException(
+                        "PILOT_COPY_PATCH_FAILED: " + patch.StatusText);
+                var revision = PresentationRevision.Last(copy.Draft);
+                copy.AcceptRevision(revision);
+                _taskContext.State.HostData["pilot_copy_snapshot"] =
+                    copy.Snapshot();
+                _taskContext.State.HostData[statusKey] = "patched";
+                _taskContext.Checkpoint();
+                stage = "chart";
+                _taskContext.State.HostData[statusKey] = "charting";
+                _taskContext.Checkpoint();
+                var chartFacts = copy.RecreateSalesChartFromWorkbook(
+                    (int)chartSlide.SlideID, chartShapeId,
+                    workbooks[0].SourcePath, 66f, 158.25f, 825f,
+                    278.25f);
+                if (chartFacts.Categories.Length != 6 ||
+                    !string.Equals(chartFacts.SourceSha256,
+                        workbooks[0].SourceFingerprint,
+                        StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException(
+                        "PILOT_COPY_CHART_FACTS_INVALID");
+                copy.VerifySource();
+                copy.VerifyDraft();
+                _taskContext.State.HostData["pilot_copy_snapshot"] =
+                    copy.Snapshot();
+                _taskContext.State.HostData[statusKey] = "complete";
+                _taskContext.State.PresentationReviewRequired = true;
+                _taskContext.State.PresentationReviewReceipt = null;
+                _taskContext.Checkpoint();
+                Scribble.Testing.TestLab.RegisterOutput(copy.Draft,
+                    "pptx");
+                revision.CloseStaging(false);
+                authorization.MarkCreated();
+                return new MailboxToolResult(call.id,
+                    _serializer.Serialize(new
+                    {
+                        ok = true, saved = false, copied_slides = 6,
+                        revised_slides = revision.Items.Count,
+                        chart_recreated = true,
+                        visual_approval_required = true,
+                        revert_available = false
+                    }), "Opened a six-slide unsaved repair draft. The source and workbook were preserved; visual approval is still required.");
+            }
+            catch (OperationCanceledException)
+            { throw; }
+            catch (Exception error)
+            {
+                var code = error.Message.Split(':')[0];
+                return new MailboxToolResult(call.id,
+                    _serializer.Serialize(new
+                    {
+                        error_code = code.StartsWith("PILOT_COPY_") ||
+                            code.StartsWith("ANALYSIS_") ? code :
+                            "PILOT_COPY_FAILED",
+                        message = error.Message,
+                        stage,
+                        saved = false,
+                        needs_inspection = _taskContext.State.HostData
+                            .ContainsKey(statusKey)
+                    }), error.Message);
+            }
+        }
+    }
+}
