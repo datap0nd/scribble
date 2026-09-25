@@ -1,9 +1,10 @@
 # Scribble 2.0 — master delivery plan
 
-Updated 25 September 2026. Owner: the implementation task responsible for
-[PR #41](https://github.com/datap0nd/scribble/pull/41). This is the current,
-authoritative implementation and acceptance plan for the owner's instruction
-to redirect Scribble and finish delivery.
+Updated 26 September 2026. [PR #41](https://github.com/datap0nd/scribble/pull/41)
+merged this plan into `codex/development` on 25 September 2026. This remains
+the authoritative implementation and acceptance plan for the owner's
+instruction to redirect Scribble and finish delivery. Execution progress is
+tracked in [DELIVERY_STATUS.md](DELIVERY_STATUS.md).
 
 Navigation: [authority and completion](#1-authority-integration-and-definition-of-completion)
 · [current evidence](#3-verified-starting-position)
@@ -18,12 +19,12 @@ Navigation: [authority and completion](#1-authority-integration-and-definition-o
 
 ## 1. Authority, integration, and definition of completion
 
-Work on `codex/scribble-2-delivery`; PR #41 targets `codex/development`. PRs
-#20–#40 have been consolidated and closed, with every previous head retained
-in the candidate's ancestry and their source branches preserved. Do not wait
-for PR #20, reopen the phase stack, or create another competing integration
-line. Preserve unrelated local changes. One implementation owner coordinates
-changes and one test runner owns disposable Office sessions at a time.
+Continue from `codex/development` through reviewable follow-up changes. PR #41
+merged the integration plan, and PRs #20–#40 were consolidated and closed with
+their source branches preserved. Do not reopen the phase stack or create a
+competing integration line. Preserve unrelated local changes. One
+implementation owner coordinates changes and one test runner owns disposable
+Office sessions at a time.
 
 This document supersedes the execution order, branch prerequisites, dated
 budget figures, ownership instructions, and acceptance-policy conflicts in
@@ -71,11 +72,16 @@ prompt exceptions to compensate for a broken source or execution contract.
 
 ## 3. Verified starting position
 
+This section records the position before native execution. The current
+candidate's measured progress and remaining gates are in
+[DELIVERY_STATUS.md](DELIVERY_STATUS.md); do not treat the historical pending
+rows below as the latest status.
+
 Status at implementation commit `05c02212a89b2798a185e6412679869aad6949ea`:
 
 | Item | Evidence and current status |
 | --- | --- |
-| Integration | PR #41 is the single delivery PR; inherited implementation and evidence are preserved |
+| Integration | PR #41 was the single integration PR; inherited implementation and evidence are preserved in `codex/development` |
 | Build and offline checks | Local Release build, all 218 guardrails, static capability scan and delivery-script parsing passed |
 | Windows CI | [Run 36157065102](https://github.com/datap0nd/scribble/actions/runs/36157065102) passed on `05c0221`, including browser fixtures, build, guardrails, native-harness upload, ordinary/pilot installer checks and release protection |
 | Typed analysis and output compilers | Implemented with offline coverage; earlier native component evidence exists, but acceptance is not transferable to a new binary |
@@ -199,11 +205,10 @@ pending, but later acceptance cannot skip an unresolved prerequisite.
 CI and a truthful ledger. The code baseline above meets the offline/CI part;
 subsequent code changes require the affected gates again.
 
-### D1 — qualify bounded native execution (next gate; not run on this binary)
+### D1 — qualify bounded native execution
 
-- Obtain the pending current-task permission required by the supplied AGENTS.md
-  before desktop/Office automation. A broad coding mandate does not replace
-  that explicit permission. Prepare commands and disposable inputs beforehand.
+- The owner granted current-task computer-use permission on 26 September 2026.
+  Keep Office runs on disposable inputs and preserve existing sessions.
 - Run chartless revision acceptance on the exact candidate: text and font edits,
   table edits, annotation/notes, move/insert/replace/delete within authorization,
   preservation, revert, injected failure and concurrent-edit behavior.
@@ -577,10 +582,10 @@ approval requirements unless the user introduces another explicit constraint.
 
 ## 11. Operating rules and immediate handoff
 
-Work on the first unresolved dependency. D1 native permission/execution is the
-next gate; planning, offline verification and evidence preparation can continue
-without it. D2 is prepared, but has no native pass. D3 has two known reference
-rejections and still requires review of current output. D4–D9 remain open.
+Work on the first unresolved dependency. The scoped D1 native receipts and the
+positive PP01 D2 route are recorded in [DELIVERY_STATUS.md](DELIVERY_STATUS.md).
+The complete XA01 route and D2 negative paths are next. D3 calibration and
+D4–D9 remain open.
 
 Each change must name its defect, owning layer, intended behavior, relevant
 regression and acceptance evidence. After a failure, preserve the smallest

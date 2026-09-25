@@ -1683,7 +1683,7 @@ namespace Scribble.Office
                     slideChart.Legend.Position = -4107;
                     dynamic legendFont = slideChart.Legend.Format
                         .TextFrame2.TextRange.Font;
-                    legendFont.Size = MetoTheme.ChartLabelSize;
+                    legendFont.Size = MetoTheme.ChartLegendSize;
                     legendFont.Name = MetoTheme.LabelFont;
                     legendFont.Fill.ForeColor.RGB =
                         MetoTheme.Rgb(MetoTheme.CharcoalHex);
