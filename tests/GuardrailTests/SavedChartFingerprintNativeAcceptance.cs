@@ -61,9 +61,19 @@ namespace GuardrailTests
                     var before = PresentationInspection.Fingerprint(
                         (object)slide);
                     series.Name = "Boundary changed";
+                    var dirtyEditRejected = false;
+                    try { PresentationInspection.Fingerprint((object)slide); }
+                    catch (InvalidOperationException error)
+                    {
+                        dirtyEditRejected = error.Message.Contains(
+                            "CHART_SAVED_STATE_UNAVAILABLE");
+                    }
+                    savedDeckPreserved = sourceHash == Hash(
+                        File.ReadAllBytes(path));
+                    deck.Save(); // Only the disposable fixture is saved.
                     var after = PresentationInspection.Fingerprint(
                         (object)slide);
-                    chartEditDetected = before != after;
+                    chartEditDetected = dirtyEditRejected && before != after;
                     var method = typeof(PresentationInspection).GetMethod(
                         "PackageSlideFingerprint", BindingFlags.NonPublic |
                         BindingFlags.Static);
@@ -78,11 +88,10 @@ namespace GuardrailTests
                     }
                     Thread.Sleep(300);
                 }
-                savedDeckPreserved = sourceHash == Hash(File.ReadAllBytes(path));
                 Check(copyEvents == 0,
                     "A saved presentation triggered SaveCopyAs.");
                 Check(chartEditDetected,
-                    "A saved chart edit escaped the fingerprint.");
+                    "A dirty chart was accepted or a saved edit escaped the fingerprint.");
                 Check(packageRejected,
                     "A saved deck passed the package ownership guard.");
                 Check(savedDeckPreserved,

@@ -292,14 +292,19 @@ namespace Scribble.Office
         {
             var json = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
             var chart = ContainsNativeChart(slide);
-            // The pilot can inspect its own unsaved draft through a temporary
-            // package. A saved or unowned deck must stay in memory: read its
-            // chart through the prior structured COM path without exporting
-            // the slide or copying the user's presentation to disk.
-            var package = chart && PilotCanPackageChart(slide);
-            var content = json.Serialize(Capture(slide, !package));
+            // An owned unsaved pilot draft may be copied to a temporary
+            // package. A saved deck is read directly from its existing file;
+            // PowerPoint's chart COM getter can terminate the Office process.
+            var pilotPackage = chart && PilotCanPackageChart(slide);
+            dynamic page = slide;
+            string savedPath = Convert.ToString(page.Parent.Path);
+            var savedPackage = chart && !pilotPackage &&
+                !string.IsNullOrEmpty(savedPath);
+            var content = json.Serialize(Capture(slide,
+                !(pilotPackage || savedPackage)));
             return TaskCheckpointStore.Fingerprint(content +
-                (chart ? (package ? PackageSlideFingerprint(slide) :
+                (chart ? (pilotPackage ? PackageSlideFingerprint(slide) :
+                    savedPackage ? SavedChartPackageFingerprint(slide) :
                     string.Empty) : Preview(slide)));
         }
         // The native chart COM getter can terminate some PowerPoint builds
@@ -375,35 +380,69 @@ namespace Scribble.Office
                     throw new InvalidOperationException(
                         "CHART_PACKAGE_DRAFT_BOUNDARY_CHANGED");
                 using (var archive = ZipFile.OpenRead(temporary))
-                {
-                    const string presentationPart = "ppt/presentation.xml";
-                    var xml = LoadPackageXml(archive, presentationPart);
-                    var id = xml.Descendants().FirstOrDefault(element =>
-                        element.Name.LocalName == "sldId" &&
-                        (string)element.Attribute("id") ==
-                            slideId.ToString());
-                    if (id == null)
-                        throw new InvalidOperationException(
-                            "CHART_PACKAGE_SLIDE_MISSING");
-                    var relationshipId = (string)id.Attribute(
-                        XName.Get("id",
-                            "http://schemas.openxmlformats.org/officeDocument/2006/relationships"));
-                    var slidePart = RelationshipTarget(archive,
-                        presentationPart, relationshipId);
-                    if (slidePart == null)
-                        throw new InvalidOperationException(
-                            "CHART_PACKAGE_RELATIONSHIP_MISSING");
-                    var visited = new HashSet<string>(
-                        StringComparer.OrdinalIgnoreCase);
-                    var parts = new SortedDictionary<string, string>(
-                        StringComparer.Ordinal);
-                    CollectPackageParts(archive, slidePart, visited, parts,
-                        0);
-                    return TaskCheckpointStore.Fingerprint(string.Join("|",
-                        parts.Select(part => part.Key + ":" + part.Value)));
-                }
+                    return PackageSlideFingerprintFromArchive(archive,
+                        slideId);
             }
             finally { if (File.Exists(temporary)) File.Delete(temporary); }
+        }
+
+        private static string SavedChartPackageFingerprint(object slide)
+        {
+            dynamic page = slide;
+            dynamic deck = page.Parent;
+            var path = Convert.ToString(deck.FullName);
+            if (string.IsNullOrEmpty(Convert.ToString(deck.Path)) ||
+                Convert.ToInt32(deck.Saved) == 0 ||
+                string.IsNullOrEmpty(path) || !File.Exists(path))
+                throw new InvalidOperationException(
+                    "CHART_SAVED_STATE_UNAVAILABLE: Save the deck before a chart edit can be verified.");
+            var before = new FileInfo(path);
+            if (before.Length > 50 * 1024 * 1024)
+                throw new InvalidOperationException(
+                    "CHART_SAVED_STATE_UNAVAILABLE: Deck exceeds the chart fingerprint limit.");
+            var length = before.Length;
+            var modified = before.LastWriteTimeUtc;
+            string fingerprint;
+            using (var stream = new FileStream(path, FileMode.Open,
+                FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+            using (var archive = new ZipArchive(stream, ZipArchiveMode.Read))
+                fingerprint = PackageSlideFingerprintFromArchive(archive,
+                    (int)page.SlideID);
+            var after = new FileInfo(path);
+            if (Convert.ToInt32(deck.Saved) == 0 ||
+                Convert.ToString(deck.FullName) != path ||
+                after.Length != length || after.LastWriteTimeUtc != modified)
+                throw new InvalidOperationException(
+                    "CHART_SAVED_STATE_CHANGED: The saved deck changed during fingerprinting.");
+            return fingerprint;
+        }
+
+        private static string PackageSlideFingerprintFromArchive(
+            ZipArchive archive, int slideId)
+        {
+            const string presentationPart = "ppt/presentation.xml";
+            var xml = LoadPackageXml(archive, presentationPart);
+            var id = xml.Descendants().FirstOrDefault(element =>
+                element.Name.LocalName == "sldId" &&
+                (string)element.Attribute("id") == slideId.ToString());
+            if (id == null)
+                throw new InvalidOperationException(
+                    "CHART_PACKAGE_SLIDE_MISSING");
+            var relationshipId = (string)id.Attribute(
+                XName.Get("id",
+                    "http://schemas.openxmlformats.org/officeDocument/2006/relationships"));
+            var slidePart = RelationshipTarget(archive,
+                presentationPart, relationshipId);
+            if (slidePart == null)
+                throw new InvalidOperationException(
+                    "CHART_PACKAGE_RELATIONSHIP_MISSING");
+            var visited = new HashSet<string>(
+                StringComparer.OrdinalIgnoreCase);
+            var parts = new SortedDictionary<string, string>(
+                StringComparer.Ordinal);
+            CollectPackageParts(archive, slidePart, visited, parts, 0);
+            return TaskCheckpointStore.Fingerprint(string.Join("|",
+                parts.Select(part => part.Key + ":" + part.Value)));
         }
 
         // PowerPoint may round a native table frame by two EMU while making a

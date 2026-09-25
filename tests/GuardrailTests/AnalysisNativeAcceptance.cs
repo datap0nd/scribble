@@ -687,12 +687,18 @@ namespace GuardrailTests
                     dynamic savedSeries = savedChart.SeriesCollection(1);
                     var savedSeriesName = Convert.ToString(savedSeries.Name);
                     savedSeries.Name = savedSeriesName + " changed";
-                    var afterChart = PresentationInspection.Fingerprint(
-                        (object)savedSlide);
+                    var dirtyChartRejected = false;
+                    try { PresentationInspection.Fingerprint(
+                        (object)savedSlide); }
+                    catch (InvalidOperationException error)
+                    {
+                        dirtyChartRejected = error.Message.Contains(
+                            "CHART_SAVED_STATE_UNAVAILABLE");
+                    }
                     savedSeries.Name = savedSeriesName;
                     Thread.Sleep(300);
-                    Check(beforeChart != afterChart,
-                        "A saved chart edit escaped the default fingerprint.");
+                    Check(dirtyChartRejected && beforeChart.Length == 64,
+                        "An unsaved chart edit escaped the default fingerprint boundary.");
                     Check(copyEvents == 0,
                         "Fingerprint copied a saved deck to temp.");
                 }
