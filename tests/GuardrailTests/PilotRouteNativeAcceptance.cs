@@ -59,6 +59,7 @@ namespace GuardrailTests
             var stage = "setup";
             var requestCount = 0;
             var promptCharacters = 0;
+            Endpoint endpoint = null;
             var terminal = false;
             var inspected = 0;
             try
@@ -82,7 +83,7 @@ namespace GuardrailTests
                     SourceFingerprint = document.SourceFingerprint }).ToList() }.PersistTo(task.State);
                 task.Checkpoint();
                 var proposed = Replacement((object)source, json);
-                using (var endpoint = new Endpoint(proposed))
+                using (endpoint = new Endpoint(proposed))
                 using (var client = new OpenAiCompatibleClient())
                 using (var host = new DocumentDraftHost("powerpoint", (object)app))
                 {
@@ -153,6 +154,8 @@ namespace GuardrailTests
             catch (Exception error) { failure = stage + ": " + error; }
             finally
             {
+                // Preserve request diagnostics even when the native route fails.
+                if (endpoint != null) { requestCount = endpoint.Count; promptCharacters = endpoint.PromptCharacters; }
                 if ((object)draft != null) try { draft.Close(); } catch { }
                 if ((object)source != null) try { source.Close(); } catch { }
                 if ((object)app != null) try { if ((int)app.Presentations.Count == 0) app.Quit(); } catch { }

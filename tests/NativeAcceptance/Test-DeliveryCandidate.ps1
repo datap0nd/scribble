@@ -11,10 +11,13 @@ $ErrorActionPreference = 'Stop'
 $testPath = (Resolve-Path -LiteralPath $TestExecutable).Path
 $assemblyPath = Join-Path (Split-Path $testPath) 'Scribble.dll'
 $candidateHash = (Get-FileHash -LiteralPath $assemblyPath -Algorithm SHA256).Hash.ToLowerInvariant()
-$outputPath = [IO.Path]::GetFullPath($OutputDirectory)
+$attemptId = [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffZ') + '-' + [Guid]::NewGuid().ToString('N')
+$outputPath = Join-Path ([IO.Path]::GetFullPath($OutputDirectory)) $attemptId
 New-Item -ItemType Directory -Force -Path $outputPath | Out-Null
+Write-Host "Candidate evidence: $outputPath"
 $report = [ordered]@{
     schema = 1
+    attempt_id = $attemptId
     assembly_sha256 = $candidateHash
     guardrail_executable_sha256 = (Get-FileHash -LiteralPath $testPath -Algorithm SHA256).Hash.ToLowerInvariant()
     offline = 'pending'
@@ -24,6 +27,7 @@ $report = [ordered]@{
     visual = 'pending'
     generalization = 'pending'
     full_acceptance_passed = $false
+    failure = $null
 }
 
 function Invoke-NativeCheck([string[]]$Arguments, [string]$ResultPath) {
@@ -95,6 +99,9 @@ try {
             elseif (Test-Path -LiteralPath $receiptPath) { Remove-Item -LiteralPath $receiptPath }
         }
     }
+} catch {
+    $report.failure = $_.Exception.Message
+    throw
 } finally {
     $report | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $outputPath 'candidate.json') -Encoding UTF8
 }

@@ -360,7 +360,7 @@ jobs:
             "installer\Scribble.iss"
 
       - name: Build opt-in analysis pilot installer
-        if: startsWith(github.head_ref, 'codex/reliability-') || startsWith(github.ref_name, 'codex/reliability-')
+        if: startsWith(github.head_ref, 'codex/reliability-') || startsWith(github.ref_name, 'codex/reliability-') || github.head_ref == 'codex/scribble-2-delivery' || github.ref_name == 'codex/scribble-2-delivery'
         shell: pwsh
         run: |
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" `

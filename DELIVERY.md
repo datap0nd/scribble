@@ -28,6 +28,8 @@ The immediate dependency order is:
 `tests/NativeAcceptance/Test-DeliveryCandidate.ps1` binds offline and native
 receipts to one assembly and retains separate model, visual and generalization
 gates. It does not equate a successful native helper with a complete product.
+Each invocation creates a fresh attempt directory beneath the output directory,
+so stale receipts cannot satisfy a later run. Failures retain their request counts.
 It refuses to reuse an existing PowerPoint process. Native execution requires
 the current task's desktop-automation permission, as specified by AGENTS.md.
 
