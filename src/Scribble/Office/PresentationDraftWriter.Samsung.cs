@@ -368,6 +368,53 @@ namespace Scribble.Office
         private static void AddStructuredCards(List<SamsungElement> elements, DraftSlide draft, RectangleF region)
         {
             var count = draft.Cards.Count;
+            if (draft.Layout == "cards" && count == 3 &&
+                draft.Cards.All(card => card.Points.Count == 2 &&
+                    card.Heading.Length <= 28 &&
+                    card.Points.All(point => point.Length <= 95) &&
+                    !Regex.IsMatch(card.Points[0], @"^\s*[\d,.%]+\s*$")))
+            {
+                // Three short evidence pairs read as a sequence rather than
+                // isolated equal-weight panels. Preserve every source line.
+                var rail = new RectangleF(region.X, region.Y + 8f,
+                    region.Width * .28f, region.Height - 16f);
+                elements.Add(TextElement("", rail,
+                    fill: SamsungSlideDesign.Navy));
+                elements.Add(TextElement("", new RectangleF(rail.X,
+                    rail.Y, rail.Width, 5f),
+                    fill: SamsungSlideDesign.SoftBlue));
+                var bodyX = rail.Right + 27f;
+                var bodyWidth = region.Right - bodyX;
+                var rowHeight = rail.Height / 3f;
+                for (var index = 0; index < 3; index++)
+                {
+                    var card = draft.Cards[index];
+                    var top = rail.Y + index * rowHeight;
+                    if (index > 0)
+                    {
+                        elements.Add(TextElement("", new RectangleF(
+                            rail.X + 20f, top, rail.Width - 40f, 1f),
+                            fill: "#596674"));
+                        elements.Add(TextElement("", new RectangleF(
+                            bodyX, top, bodyWidth, 1f),
+                            fill: "#D7DDE3"));
+                    }
+                    elements.Add(TextElement(card.Heading.ToUpperInvariant(),
+                        new RectangleF(rail.X + 22f, top + 21f,
+                            rail.Width - 44f, rowHeight - 28f),
+                        18, 16, "Arial", true, null,
+                        "#B8D8FF"));
+                    elements.Add(TextElement(card.Points[0],
+                        new RectangleF(bodyX, top + 4f, bodyWidth, 39f),
+                        19, 16, MetoTheme.TitleFont, true, null,
+                        SamsungSlideDesign.Blue));
+                    elements.Add(TextElement(card.Points[1],
+                        new RectangleF(bodyX, top + 43f,
+                            bodyWidth, rowHeight - 47f),
+                        16, 14, "Arial", false, null, "#202A35"));
+                }
+                return;
+            }
             if (draft.Layout == "scorecard" && count == 2 &&
                 draft.Cards.All(card => card.Points.Count == 2 &&
                     card.Heading.Length <= 32 && card.Points[1].Length <= 46 &&

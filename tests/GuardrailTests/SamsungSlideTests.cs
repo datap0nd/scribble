@@ -305,6 +305,33 @@ namespace GuardrailTests
                 Convert.ToDouble(e["height"]) > 100).ToArray();
             if (cardPanels.Length != 3 || cardPanels.Any(e => Convert.ToDouble(e["height"]) > 260))
                 throw new Exception("Short evidence cards must not leave a half-empty full-height gray panel.");
+            var pairedEvidence = SamsungPresentationReview.InspectPlan(json.Serialize(new[] { new {
+                title = "Data quality checks", layout = "cards",
+                cards = new[] {
+                    new { heading = "Coverage", points = new[] { "144 source rows", "Six complete periods" } },
+                    new { heading = "Integrity", points = new[] { "0 duplicate IDs", "Every row counted once" } },
+                    new { heading = "Method", points = new[] { "Rates use aggregate totals", "Missing inputs stay unknown" } }
+                } } }));
+            var pairedEvidencePage = ((IEnumerable)json.DeserializeObject(
+                json.Serialize(pairedEvidence)))
+                .Cast<Dictionary<string, object>>().Single();
+            var pairedEvidenceElements = ((IEnumerable)pairedEvidencePage["elements"])
+                .Cast<Dictionary<string, object>>().ToArray();
+            if (pairedEvidenceElements.Count(element =>
+                    Convert.ToString(element["fill"]) ==
+                        SamsungSlideDesign.Navy &&
+                    Convert.ToDouble(element["height"]) > 200) != 1 ||
+                pairedEvidenceElements.Any(element =>
+                    Convert.ToString(element["fill"]) ==
+                        SamsungSlideDesign.Gray &&
+                    Convert.ToDouble(element["height"]) > 100) ||
+                new[] { "144 source rows", "Six complete periods",
+                    "0 duplicate IDs", "Every row counted once",
+                    "Rates use aggregate totals",
+                    "Missing inputs stay unknown" }.Any(value =>
+                    pairedEvidenceElements.Count(element =>
+                        Convert.ToString(element["text"]) == value) != 1))
+                throw new Exception("Three evidence pairs must preserve every exact line in one native sequence.");
             var qualityPlan = SamsungPresentationReview.InspectPlan(json.Serialize(new[] { new {
                 title = "Data quality and evidence limits", layout = "cards", subtitle = "Each ID counted once",
                 cards = new[] {
