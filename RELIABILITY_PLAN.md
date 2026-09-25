@@ -1,5 +1,13 @@
 # Scribble reliability: architecture and implementation plan
 
+> **Historical design baseline — superseded for execution on 25 September 2026.**
+> Use [DELIVERY.md](DELIVERY.md), the complete current master plan in PR #41,
+> for scope, work order, current evidence, acceptance, budget and release gates.
+> The baseline/current-state language below describes 22 September, not today's
+> implementation. Its PR #20 prerequisite, phase-branch instructions, dated
+> spending figures and conflicting review requirements are historical only.
+> Preserve the technical rationale; do not restart the old phase stack.
+
 Prepared 22 September 2026. Reviewed and corrected the same day against the
 repository; [RELIABILITY_PLAN_REVIEW.md](RELIABILITY_PLAN_REVIEW.md) lists each
 correction and its evidence.

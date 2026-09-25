@@ -1,5 +1,10 @@
 # Scribble 2.0 pilot closure checkpoint
 
+> **Historical component checkpoint.** Follow the current
+> [master delivery plan](../../../DELIVERY.md) in PR #41. The branch/merge route,
+> CI status and visual-review status below have been superseded. Native results
+> remain evidence for their recorded binaries only, not current acceptance.
+
 25 September 2026, branch `codex/reliability-pilot-closure` on top of PR #40.
 This is development evidence. Public release remains frozen at 2.0.91.
 

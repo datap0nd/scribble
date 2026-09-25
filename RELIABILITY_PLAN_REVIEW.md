@@ -1,5 +1,10 @@
 # Review of the Scribble reliability plan
 
+> **Historical review of the 22 September design baseline.** The current,
+> consolidated implementation and acceptance plan is [DELIVERY.md](DELIVERY.md)
+> in PR #41. Branch prerequisites, balances and implementation-status statements
+> below are dated findings, not instructions for the current delivery candidate.
+
 Review target: [RELIABILITY_PLAN.md](RELIABILITY_PLAN.md), as submitted on
 22 September 2026.
 
