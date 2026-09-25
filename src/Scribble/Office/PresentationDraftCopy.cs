@@ -401,11 +401,14 @@ namespace Scribble.Office
                 throw new InvalidOperationException(
                     "REVISION_CHART_RECREATE_NOT_NATIVE");
             var replacementId = (int)replacement.Id;
-            try { if ((object)oldChart != null) oldChart.Delete(); }
-            catch
+            if ((object)oldChart != null)
             {
-                replacement.Delete();
-                throw;
+                try { oldChart.Delete(); }
+                catch
+                {
+                    replacement.Delete();
+                    throw;
+                }
             }
             _shapeIds[sourceSlideId][sourceShapeId] =
                 replacementId;
