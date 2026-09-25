@@ -89,8 +89,9 @@ with no more stacked PRs.
 
 ## Phase 5 scope and CI
 
-CI run 36134976779 passed on `f001c1d`, including build, guardrail tests,
-static scan, installer checks, and the public 2.0.91 release freeze. A later
-test-harness-only change to report PowerPoint exits still needs CI. The diff
-from PR #40 contains no LegacySamsung path changes or tool renames. Native
-PowerPoint acceptance is an open local gate, independent of CI.
+CI run 36136961925 passed on `2111281`, including build, guardrail tests,
+static scan, installer checks, and the public 2.0.91 release freeze. The
+general native harness now records `powerpoint_exited` when its Office process
+dies. The diff from PR #40 contains no LegacySamsung path changes or tool
+renames. Native PowerPoint acceptance is an open local gate, independent of
+CI.
