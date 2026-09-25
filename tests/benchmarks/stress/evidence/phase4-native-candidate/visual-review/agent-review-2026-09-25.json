@@ -1,0 +1,143 @@
+{
+  "schema": 1,
+  "reviewed_at_utc": "2026-09-25T15:49:21.6658085Z",
+  "reviewer": "Codex agent",
+  "reviewer_kind": "agent",
+  "scope": "Visual inspection of 18 existing full-size synthetic reference PNGs",
+  "authorization": "Owner delegated product decisions on 2026-09-25",
+  "status": "changes_required",
+  "visual_approved_pages": 16,
+  "visual_rejected_pages": 2,
+  "fact_checks_repeated": false,
+  "native_editability_retested": false,
+  "current_candidate_output_reviewed": false,
+  "full_acceptance_passed": false,
+  "pages": [
+    {
+      "page_id": "D1P1",
+      "image": "../reference/phase4-reference-1-1.png",
+      "sha256": "b158ca7c0fd52e76461ca806a25bec43dc13c13f8ff614cd8224987bd2580c7f",
+      "visual_verdict": "approve",
+      "reason": "Two measures have clear contrast, hierarchy and generous separation."
+    },
+    {
+      "page_id": "D1P2",
+      "image": "../reference/phase4-reference-1-2.png",
+      "sha256": "2cb5ee9eea6f971a2896f71add29a4eef2303c006f5803a98a5d0071dc235bda",
+      "visual_verdict": "approve",
+      "reason": "Long heading and three metric cards remain legible without collision."
+    },
+    {
+      "page_id": "D1P3",
+      "image": "../reference/phase4-reference-1-3.png",
+      "sha256": "ac4b1d3e43f2413510fcafd1e3882aaf5a93cd45120a50d6a3f71d801c4fa04d",
+      "visual_verdict": "approve",
+      "reason": "Four metric cards retain readable values and distinct labels."
+    },
+    {
+      "page_id": "D1P4",
+      "image": "../reference/phase4-reference-1-4.png",
+      "sha256": "eacf571953eb2fa608c47f605ac0c4b1d909ababf1b701eb4510e94ede7bd46d",
+      "visual_verdict": "approve",
+      "reason": "Table and zero-based chart agree visually on the displayed revenue values; no clipping observed."
+    },
+    {
+      "page_id": "D1P5",
+      "image": "../reference/phase4-reference-1-5.png",
+      "sha256": "3ba4da1ba7abfbc95f47dcad0cac6529304e031694be79eec3936a82c5456eed",
+      "visual_verdict": "approve",
+      "reason": "Long labels fit; table and chart remain separated and readable."
+    },
+    {
+      "page_id": "D1P6",
+      "image": "../reference/phase4-reference-1-6.png",
+      "sha256": "fa52c962653f56a1619e2c44dfe6aab95b48ba6e68395f7bec10d9656c6ad0fa",
+      "visual_verdict": "approve",
+      "reason": "Dense table is readable at the supplied full size; condensed text is the lower acceptable density boundary."
+    },
+    {
+      "page_id": "D2P1",
+      "image": "../reference/phase4-reference-2-1.png",
+      "sha256": "89b429a055a980dd3b153702a246a771b0adf37f6d716dc45d36e419f6bf5e42",
+      "visual_verdict": "approve",
+      "reason": "Four categories and the common zero-based axis are clear."
+    },
+    {
+      "page_id": "D2P2",
+      "image": "../reference/phase4-reference-2-2.png",
+      "sha256": "439ec222db65ec28005cb92fb897aea710476a7cf1eb61b84ca0cfafdd01abd5",
+      "visual_verdict": "reject",
+      "reason": "Reject as a visual baseline: the essential May/June legend is much too small relative to axis labels, and similar blue series require that legend to identify periods. Enlarge or directly label series before approval."
+    },
+    {
+      "page_id": "D2P3",
+      "image": "../reference/phase4-reference-2-3.png",
+      "sha256": "8d5e31630912fac0c2d0ace65c14e5dbd401c725dce340d87836742c8fc7e8a8",
+      "visual_verdict": "reject",
+      "reason": "Reject as a visual baseline: three monthly series depend on a tiny legend. Increase legend text and spacing or directly label series before approval."
+    },
+    {
+      "page_id": "D2P4",
+      "image": "../reference/phase4-reference-2-4.png",
+      "sha256": "399134c549e92848ab6cad6d0909456ac1574a552ccd26f6c71914c7b6ee0a9f",
+      "visual_verdict": "approve",
+      "reason": "Three cards show clear headings and short evidence statements without collision."
+    },
+    {
+      "page_id": "D2P5",
+      "image": "../reference/phase4-reference-2-5.png",
+      "sha256": "96b1cb9c61bf102f804fe62a9187185c29ad1c439580fcff8f334257559bcbe7",
+      "visual_verdict": "approve",
+      "reason": "Long card text wraps cleanly and retains a visible heading/body hierarchy."
+    },
+    {
+      "page_id": "D2P6",
+      "image": "../reference/phase4-reference-2-6.png",
+      "sha256": "e0360e5359355f6227902ec079881437d63fc4e52e3cb18cdc1058712a8c3c5e",
+      "visual_verdict": "approve",
+      "reason": "Four cards retain readable values, methods and limitations with consistent spacing."
+    },
+    {
+      "page_id": "D3P1",
+      "image": "../reference/phase4-reference-3-1.png",
+      "sha256": "5525f66298be4beee82e617dd07ca58213dc35b652e271c5efc15540db16d3df",
+      "visual_verdict": "approve",
+      "reason": "Table rows, numeric alignment and emphasized total are clear."
+    },
+    {
+      "page_id": "D3P2",
+      "image": "../reference/phase4-reference-3-2.png",
+      "sha256": "d404874697f4689a57a5c4973ce5f0e0653bcfa5fd6ca9b60ce89fbb7a7c2cf2",
+      "visual_verdict": "approve",
+      "reason": "Long row and column labels remain readable without clipping."
+    },
+    {
+      "page_id": "D3P3",
+      "image": "../reference/phase4-reference-3-3.png",
+      "sha256": "cdbbc1fb81bf4eb69085ae4eb3a1881fec17a5f7d61d01cb95b7c6255264ee8d",
+      "visual_verdict": "approve",
+      "reason": "All twelve specification rows remain readable at full size; suitable as a dense reference page, not a projected summary."
+    },
+    {
+      "page_id": "D3P4",
+      "image": "../reference/phase4-reference-3-4.png",
+      "sha256": "40f372bd823e3d965a991f6bdd72d5b7b6ba6c1fdd0268480cda989f5b8b86a7",
+      "visual_verdict": "approve",
+      "reason": "Cover title and subtitle are clearly separated with no clipping."
+    },
+    {
+      "page_id": "D3P5",
+      "image": "../reference/phase4-reference-3-5.png",
+      "sha256": "6ee8d89ae41f6159c218ee4642c8773b950ce3812c26dc36ca013124bcbfbf13",
+      "visual_verdict": "approve",
+      "reason": "Long cover title wraps to two lines within its bounds; subtitle is separated."
+    },
+    {
+      "page_id": "D3P6",
+      "image": "../reference/phase4-reference-3-6.png",
+      "sha256": "ff55207ece4263675c3649bbf86fd3c1df11817454873fc064a93566d21c36eb",
+      "visual_verdict": "approve",
+      "reason": "White title and closing line have clear contrast against the blue field."
+    }
+  ]
+}

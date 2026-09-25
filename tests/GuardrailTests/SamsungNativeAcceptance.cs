@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
+using System.Linq;
 using System.Web.Script.Serialization;
 using Scribble.Office;
 
@@ -24,10 +25,11 @@ namespace GuardrailTests
         }
         private static string Content(object slide)
         { return (string)typeof(PresentationInspection).GetMethod("ContentFingerprint", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, new[] { slide }); }
-        internal static int Run(string reportPath)
+        internal static int Run(string reportPath, bool chartless = false)
         {
             dynamic app = null; dynamic deck = null;
-            var temps = new List<object>(); var passed = false; var failure = "";
+            var temps = new List<object>(); var passed = false;
+            var powerpointExited = false; var failure = "";
             try
             {
                 app = Activator.CreateInstance(Type.GetTypeFromProgID("PowerPoint.Application", true));
@@ -78,20 +80,42 @@ namespace GuardrailTests
                 table.Table.Cell(2, 2).Shape.TextFrame.TextRange.Text = "100";
                 table.Table.Cell(3, 1).Shape.TextFrame.TextRange.Text = "Q2";
                 table.Table.Cell(3, 2).Shape.TextFrame.TextRange.Text = "120";
-                dynamic chart = slide.Shapes.AddChart2(201, 51, 470, 150, 400, 250);
+                dynamic chart = null;
+                if (!chartless)
+                {
+                chart = slide.Shapes.AddChart2(201, 51, 470, 150, 400, 250);
                 if ((int)chart.Chart.SeriesCollection().Count == 0) chart.Chart.SeriesCollection().NewSeries();
                 chart.Chart.SeriesCollection(1).Name = "Sales";
                 chart.Chart.ChartData.Activate();
-                dynamic dataWorkbook = chart.Chart.ChartData.Workbook;
+                dynamic dataWorkbook = null;
+                for (var attempt = 0; attempt < 5 && dataWorkbook == null;
+                    attempt++)
+                {
+                    try { dataWorkbook = chart.Chart.ChartData.Workbook; }
+                    catch (System.Runtime.InteropServices.COMException)
+                    {
+                        if (attempt == 4) throw;
+                        System.Threading.Thread.Sleep(350 * (attempt + 1));
+                        try { chart.Chart.ChartData.Activate(); } catch { }
+                    }
+                }
                 dynamic sourceSheet = dataWorkbook.Worksheets[1];
                 sourceSheet.Cells[1, 1].Value2 = "Period"; sourceSheet.Cells[1, 2].Value2 = "Sales";
                 sourceSheet.Cells[2, 1].Value2 = "Q1"; sourceSheet.Cells[2, 2].Value2 = 100d;
                 sourceSheet.Cells[3, 1].Value2 = "Q2"; sourceSheet.Cells[3, 2].Value2 = 120d;
                 chart.Chart.SetSourceData("'" + Convert.ToString(sourceSheet.Name).Replace("'", "''") + "'!$A$1:$B$3", 2);
                 dataWorkbook.Close(true);
+                }
                 var scenarios = new[] {
                     new Dictionary<string, object> { { "kind", "table_cell" }, { "shape_id", (int)table.Id }, { "row", 2 }, { "column", 2 }, { "before", "100" }, { "text", "125" } },
-                    new Dictionary<string, object> { { "kind", "chart_point" }, { "shape_id", (int)chart.Id }, { "series", 1 }, { "category", 1 }, { "before_value", 100d }, { "value", 125d } },
+                    new Dictionary<string, object> { { "kind", "table_cell_fill" }, { "shape_id", (int)table.Id }, { "row", 1 }, { "column", 1 }, { "before_color", (int)table.Table.Cell(1, 1).Shape.Fill.ForeColor.RGB }, { "color", MetoTheme.Rgb("#4F81BD") } },
+                    new Dictionary<string, object> { { "kind", "shape_geometry" }, { "shape_id", (int)title.Id },
+                        { "before_left", (double)title.Left }, { "before_top", (double)title.Top },
+                        { "before_width", (double)title.Width }, { "before_height", (double)title.Height },
+                        { "left", (double)title.Left }, { "top", (double)title.Top },
+                        { "width", (double)title.Width + 10 }, { "height", (double)title.Height } },
+                    new Dictionary<string, object> { { "kind", "shape_font_size" }, { "shape_id", (int)title.Id }, { "before_size", (float)title.TextFrame.TextRange.Font.Size }, { "size", 26f } },
+                    new Dictionary<string, object> { { "kind", "chart_point" }, { "shape_id", chartless ? 0 : (int)chart.Id }, { "series", 1 }, { "category", 1 }, { "before_value", 100d }, { "value", 125d } },
                     new Dictionary<string, object> { { "kind", "annotate" }, { "shape_id", (int)table.Id }, { "row", 2 }, { "column", 2 } },
                     new Dictionary<string, object> { { "kind", "notes_append" }, { "notes", "Additional source reference" } },
                     new Dictionary<string, object> { { "kind", "move" }, { "new_index", 2 } },
@@ -105,6 +129,13 @@ namespace GuardrailTests
                 };
                 foreach (var scenario in scenarios)
                 {
+                    if (chartless && Convert.ToString(scenario["kind"]) == "chart_point") continue;
+                    if (chartless && Convert.ToString(scenario["kind"]) == "replace_slide")
+                    {
+                        var replacement = (Dictionary<string, object>)scenario["slide"];
+                        replacement.Remove("chart");
+                        replacement["layout"] = "table";
+                    }
                     slide = deck.Slides[1];
                     var baseline = Content((object)slide); var otherBaseline = Content((object)deck.Slides[2]);
                     scenario["slide_id"] = (int)slide.SlideID; scenario["fingerprint"] = PresentationInspection.Fingerprint((object)slide);
@@ -117,6 +148,14 @@ namespace GuardrailTests
                         Check(Convert.ToDouble(dataCheck.Worksheets[1].Cells[2, 2].Value2) == 125d, "Chart edit lost its embedded data association.");
                         dataCheck.Close(false);
                     }
+                    if (Convert.ToString(scenario["kind"]) == "table_cell_fill")
+                        Check((int)table.Table.Cell(1, 1).Shape.Fill.ForeColor.RGB ==
+                            MetoTheme.Rgb("#4F81BD"),
+                            "Native table fill did not reach the requested cell.");
+                    if (Convert.ToString(scenario["kind"]) == "shape_geometry")
+                        Check(Math.Abs((double)title.Width -
+                            Convert.ToDouble(scenario["width"])) < .25,
+                            "Native shape geometry did not reach the requested width.");
                     var snapshot = Invoke(native, "Snapshot");
                     var recovered = Transaction.GetMethod("Recover", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, new object[] { (object)app, (object)deck, snapshot });
                     Check(Convert.ToString(Invoke(recovered, "Reconcile")) == "applied", "Interrupted completed batch was not reconciled.");
@@ -127,18 +166,44 @@ namespace GuardrailTests
                 }
                 passed = true;
             }
-            catch (Exception ex) { failure = ex.ToString(); }
+            catch (Exception ex)
+            {
+                failure = ex.ToString();
+                powerpointExited = PowerPointExited(ex);
+            }
             finally
             {
                 foreach (dynamic temp in temps) try { temp.Close(); } catch { }
-                if (deck != null) try { deck.Close(); } catch { }
+                if ((object)deck != null) try { deck.Close(); }
+                    catch (Exception ex) { powerpointExited |= PowerPointExited(ex); }
+                if ((object)app != null) try
+                {
+                    if ((int)app.Presentations.Count == 0) app.Quit();
+                }
+                catch (Exception ex) { powerpointExited |= PowerPointExited(ex); }
             }
             var report = new { execution_kind = "native", policy = SamsungAuthoringPolicy.Version, assembly_sha256 = PresentationRevisionAcceptance.AssemblyHash(),
-                revision_passed = passed, preservation_passed = passed, rollback_passed = passed, all_operations_passed = passed, full_acceptance_passed = false,
+                revision_passed = passed, preservation_passed = passed, rollback_passed = passed,
+                scope = chartless ? PresentationRevisionAcceptance.ChartlessScope : null,
+                chartless_operations_passed = chartless && passed,
+                all_operations_passed = !chartless && passed, full_acceptance_passed = false,
+                powerpoint_exited = powerpointExited,
                 note = "Native operation, preservation, rollback and concurrency checks only. Model/UI workflows and real Samsung fidelity require additional acceptance.", failure };
             var json = new JavaScriptSerializer().Serialize(report);
             File.WriteAllText(reportPath, json); Console.WriteLine(json);
             return passed ? 0 : 1;
+        }
+
+        private static bool PowerPointExited(Exception error)
+        {
+            for (var current = error; current != null;
+                current = current.InnerException)
+            {
+                var code = unchecked((uint)current.HResult);
+                if (code == 0x800706BA || code == 0x800706BE ||
+                    code == 0x80010108) return true;
+            }
+            return false;
         }
     }
 }

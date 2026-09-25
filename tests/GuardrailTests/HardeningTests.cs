@@ -8,7 +8,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 using Scribble.Chat;
+using Scribble.Office;
 using Scribble.Outlook;
+using Scribble.Security;
 using Scribble.Utilities;
 
 namespace GuardrailTests
@@ -86,6 +88,101 @@ namespace GuardrailTests
             } finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
         }
 
+        public static void RejectedDraftFormulaAllowsFreshMarkedSheet()
+        {
+            var root = Path.Combine(Path.GetTempPath(), "scribble-formula-recovery-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var request = Request(); request.tools = new List<ChatToolDefinition> { WorkbookToolCatalog.DraftDefinition() };
+                var task = new TaskContextManager(request, "excel", "Create a draft analysis", new TaskCheckpointStore(root));
+                var first = Call(WorkbookToolCatalog.WriteDraftSheet, "{\"rows\":[[\"Metric\",\"Value\"],[\"Revenue\",\"=BAD(\"]]}");
+                Check(task.ValidateArguments(first) == null, "The formula-rejection fixture failed schema validation.");
+                task.BeforeTool(first, true);
+                task.AfterTool(first, new MailboxToolResult(first.id,
+                    "{\"ok\":false,\"error_code\":\"DRAFT_FORMULA_INVALID\",\"permission_consumed\":true}",
+                    "Formula rejected after marked sheet creation"));
+                Check(task.State.Writes.Single().Status == "verified" &&
+                    !task.State.HostData.ContainsKey("generic_write_spent"),
+                    "A known, incomplete draft formula was treated as an unknown write or completed deliverable.");
+                var corrected = Call(WorkbookToolCatalog.WriteDraftSheet,
+                    "{\"rows\":[[\"Metric\",\"Value\"],[\"Revenue\",\"=SUM(A1:A2)\"]]}");
+                Check(task.ValidateArguments(corrected) == null, "A corrected fresh draft was blocked after a known formula rejection.");
+                task.BeforeTool(corrected, true);
+                Check(task.State.Writes.Count == 2 && task.State.Writes[0].Status == "verified" &&
+                    task.State.Writes[1].Status == "pending", "The corrected draft did not preserve the first write receipt.");
+            }
+            finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+        }
+
+        public static void FormulaRejectionFollowsNativeGridWrite()
+        {
+            var events = new List<string>();
+            var application = new CrossAppFixture("excel", events);
+            var rows = new List<IReadOnlyList<string>>
+            {
+                new List<string> { "Metric", "Value" },
+                new List<string> { "Revenue", "=SUM(B4:B4)" }
+            };
+            // Use a valid, allowed formula so the injected native rejection
+            // reaches both Formula and FormulaLocal after the bulk grid write.
+            var writer = typeof(DraftFormulaPolicy).Assembly.GetType("Scribble.Office.WorkbookDraftWriter");
+            var method = writer.GetMethods(System.Reflection.BindingFlags.Static |
+                System.Reflection.BindingFlags.NonPublic).Single(item =>
+                    item.Name == "WriteDraftSheet" && item.GetParameters().Length == 5);
+            try
+            {
+                CrossAppFixture.BeforeNativeSet = (path, value) =>
+                {
+                    if (!path.EndsWith(".Formula", StringComparison.Ordinal) &&
+                        !path.EndsWith(".FormulaLocal", StringComparison.Ordinal)) return;
+                    events.Add("rejected:" + path);
+                    throw new InvalidOperationException("Synthetic Excel formula rejection");
+                };
+                try
+                {
+                    method.Invoke(null, new object[] { application, "Analysis", rows, null, true });
+                    throw new Exception("The rejected formula was accepted.");
+                }
+                catch (System.Reflection.TargetInvocationException error)
+                {
+                    Check(error.InnerException is InvalidOperationException &&
+                        error.InnerException.Message.Contains("DRAFT_FORMULA_INVALID"),
+                        "The native formula rejection did not surface as a failed draft.");
+                }
+            }
+            finally { CrossAppFixture.BeforeNativeSet = null; }
+            var gridWrite = events.FindIndex(item => item.EndsWith(".Value2=Metric|Value|Revenue|", StringComparison.Ordinal));
+            var formulaReject = events.FindIndex(item => item.StartsWith("rejected:", StringComparison.Ordinal));
+            Check(gridWrite >= 0 && formulaReject > gridWrite &&
+                events.Any(item => item.Contains(".Name=Scribble Draft")),
+                "Formula validation no longer exposes the pre-existing partial marked sheet; update the phase-0 mechanism test.");
+        }
+
+        public static void BoundDraftIgnoresActiveWorkbook()
+        {
+            var events = new List<string>();
+            var application = new CrossAppFixture("excel", events);
+            var bound = new CrossAppFixture("bound-workbook", events);
+            var rows = new List<IReadOnlyList<string>>
+            {
+                new List<string> { "Metric", "Value" },
+                new List<string> { "Revenue", "42" }
+            };
+            var writer = typeof(DraftFormulaPolicy).Assembly.GetType(
+                "Scribble.Office.WorkbookDraftWriter");
+            var method = writer.GetMethods(System.Reflection.BindingFlags.Static |
+                System.Reflection.BindingFlags.NonPublic).Single(item =>
+                    item.Name == "WriteDraftSheet" &&
+                    item.GetParameters().Length == 6);
+            method.Invoke(null, new object[] {
+                application, "Analysis", rows, null, false, bound });
+            Check(events.Any(item => item.StartsWith(
+                "bound-workbook.Worksheets", StringComparison.Ordinal)) &&
+                !events.Any(item => item.StartsWith(
+                    "excel.ActiveWorkbook", StringComparison.Ordinal)),
+                "A focus change redirected the bound draft write.");
+        }
+
         public static void PowerPointArgumentsGiveRepair()
         {
             var root = Path.Combine(Path.GetTempPath(), "scribble-slide-contract-" + Guid.NewGuid().ToString("N"));
@@ -95,6 +192,8 @@ namespace GuardrailTests
                 var task = new TaskContextManager(request, "powerpoint", "Create a two-slide draft", new TaskCheckpointStore(root));
                 var missing = task.ValidateArguments(Call(PresentationToolCatalog.AddDraftSlides, "{\"plan\":[\"cover\",\"analysis\"]}"));
                 Check(missing != null && missing.Content.Contains("nonempty slides array") && missing.Content.Contains("$.slides") &&
+                    missing.Content.Contains("exactly one complete") && missing.Content.Contains("only tool call") &&
+                    missing.Content.Contains("never {}") &&
                     missing.Outcome.PermissionConsumed == false && task.State.Writes.Count == 0, "A plan-only call did not explain how to repair the missing slide batch without consuming permission.");
                 var empty = task.ValidateArguments(Call(PresentationToolCatalog.AddDraftSlides, "{\"plan\":[\"cover\",\"analysis\"],\"slides\":[]}"));
                 Check(empty != null && empty.Content.Contains("too few items"), "An empty slide batch passed the argument boundary.");
@@ -222,14 +321,51 @@ namespace GuardrailTests
                 Check(!task.State.CanComplete(false), "A requested five-slide deck completed before any slide tool ran.");
                 task.Sources.Add("Source A", "Sales were 10 units.\nLaunch review.");
                 task.Sources.Add("Source B", "Delivery begins on Monday.");
+                var identicalA = task.Sources.Add(
+                    "Attached document",
+                    "Identical workbook text",
+                    "attachment:one");
+                var identicalB = task.Sources.Add(
+                    "Attached document",
+                    "Identical workbook text",
+                    "attachment:two");
+                var identicalReplay = task.Sources.Add(
+                    "Attached document",
+                    "Identical workbook text",
+                    "attachment:one");
+                Check(identicalA.Count == 1 && identicalB.Count == 1 &&
+                    identicalA[0] != identicalB[0] &&
+                    identicalReplay[0] == identicalA[0],
+                    "Content hashes collapsed distinct source instances or failed to deduplicate the same instance.");
                 var spans = task.Sources.Spans();
                 var evidence = task.Sources.Resolve(spans.Select(s => s.Id));
                 Check(evidence.Contains("10 units") && evidence.Contains("Monday"), "Multiple host-issued sources could not be resolved.");
+                var read = Call("read_messages", "{}");
+                read.id = "typed-read";
+                var readResult = new MailboxToolResult(
+                    read.id,
+                    "{\"content\":\"Revenue\",\"count\":3,\"complete\":true,\"missing\":null}",
+                    "Read messages");
+                var readSpans = task.Sources.CaptureRead(read, readResult);
+                var readEvidence = task.Sources.Resolve(readSpans);
+                Check(readEvidence.Contains("content: Revenue") &&
+                    readEvidence.Contains("count: 3") &&
+                    readEvidence.Contains("complete: True") &&
+                    readEvidence.Contains("missing: null"),
+                    "Generic read capture dropped object keys or typed scalar values: " +
+                    readEvidence);
                 var rejected = false;
                 try { task.Sources.Resolve(new[] { "fabricated-span" }); } catch (InvalidOperationException) { rejected = true; }
                 Check(rejected, "An invented source span was trusted.");
                 var valid = Call(PresentationToolCatalog.AddDraftSlides, "{\"plan\":[\"a\"],\"slides\":\"[{\\\"id\\\":\\\"a\\\",\\\"title\\\":\\\"Unicode € 한글\\\"}]\"}");
                 Check(task.ValidateArguments(valid) == null && !valid.function.arguments.Contains("\\\"id\\\""), "Known encoded arrays did not normalize before validation.");
+                var recoverable = Call(PresentationToolCatalog.AddDraftSlides,
+                    "{\"plan\":[\"a\",\"b\"],\"slides\":\"[{\\\"id\\\":\\\"a\\\",\\\"title\\\":\\\"First\\\"},{\\\"id\\\":\\\"b\\\",\\\"title\\\":\\\"Second\\\"},\\\"highlight_rows\\\":[3]}\"}");
+                Check(task.ValidateArguments(recoverable) == null &&
+                    recoverable.function.arguments.Contains("First") &&
+                    recoverable.function.arguments.Contains("Second") &&
+                    !recoverable.function.arguments.Contains("highlight_rows"),
+                    "Complete slide objects were not retained from a malformed encoded-array tail.");
                 var invalid = Call(PresentationToolCatalog.AddDraftSlides, "{\"slides\":[{\"title\":false}],\"plan\":[\"a\"]}");
                 var error = task.ValidateArguments(invalid);
                 Check(error != null && error.Outcome.PermissionConsumed == false && error.Content.Contains("$.slides[0].title"), "Malformed slide fields reached the write boundary.");

@@ -518,13 +518,33 @@ namespace Scribble.UI
         }
 
         private readonly Scribble.Testing.TestLabSuitePane _suiteDriver = new Scribble.Testing.TestLabSuitePane();
+        private bool _stressSettingsLoaded;
         public string StopTestLabRun(string runId) { return _suiteDriver.RecoverStop(runId, () => _busy, () => HandleStop()); }
         public string RunTestLabCommand(string suiteId, string commandId, string action, int phase)
         {
             return _suiteDriver.Command(suiteId, commandId, action, phase, HostName, _webReady && !_shutdown,
-                () => _busy, () => HandleNewChat(), c => {
+                () => _busy, () => { ReloadStressSettings(); HandleNewChat(); }, c => {
                     AddExternalFiles(Scribble.Testing.TestLabPreparation.ContextFiles(c));
-                }, prompt => HandleSendMessageCore(prompt), () => HandleStop());
+                }, prompt => {
+                    Scribble.Testing.TestLab.ActivateOfficeSource(
+                        _hostApplication,
+                        _hostKind);
+                    return HandleSendMessageCore(prompt);
+                }, () => HandleStop());
+        }
+
+        private void ReloadStressSettings()
+        {
+            var stress = Scribble.Testing.TestLabSuite.Active()?.fixtureSuiteId == "scribble-stress-v1";
+            if (!stress && !_stressSettingsLoaded) return;
+            if (_busy) throw new InvalidOperationException("Stop the active request before changing test configuration.");
+            var saved = _settingsStore.Load();
+            _settings = stress ? Scribble.Testing.TestLabStressSettings.Isolate(saved) : saved;
+            ContextScale.Apply(GeminiCodeAssistGateway.IsGeminiModel(_settings.Model));
+            _settings.ApplyLimits();
+            _mcpTools?.Dispose(); _mcpTools = new McpToolHost(_settings.McpServers);
+            _stressSettingsLoaded = stress;
+            RefreshModelPicker(); PushSkillsToWeb(); PushTopicsToWeb(false);
         }
 
         private void PostToWeb(IDictionary<string, object> payload)
@@ -798,13 +818,20 @@ namespace Scribble.UI
         }
 
         private bool EnsureExcelSelectionForTranslation(
-            out KoreanWorkbookSnapshot koreanWorkbookSnapshot)
+            out KoreanWorkbookSnapshot koreanWorkbookSnapshot,
+            bool wholeWorkbook = false,
+            string targetLanguage = null)
         {
             koreanWorkbookSnapshot = null;
+            var toKorean = string.Equals(
+                targetLanguage,
+                ExcelSelectionOutputPolicy.TargetKorean,
+                StringComparison.Ordinal);
+            var sourceLanguage = toKorean ? "English" : "Korean";
             var attached = _externalContext
                 .Where(entry => entry.ExcelSelection != null)
                 .ToArray();
-            if (attached.Length > 1)
+            if (!wholeWorkbook && attached.Length > 1)
             {
                 SetStatus(
                     "Translate from Korean needs exactly one attached " +
@@ -814,7 +841,7 @@ namespace Scribble.UI
                 return false;
             }
 
-            if (attached.Length == 1)
+            if (!wholeWorkbook && attached.Length == 1)
             {
                 var attachedError =
                     ExcelSelectionOutputPolicy.TranslationSelectionError(
@@ -831,10 +858,15 @@ namespace Scribble.UI
             try
             {
                 SetStatus(
-                    "Finding Korean text throughout the workbook...",
+                    "Finding " + sourceLanguage +
+                    " text throughout the workbook...",
                     false);
-                koreanWorkbookSnapshot = new WorkbookToolHost(
-                    _hostApplication).CaptureKoreanWorkbook();
+                koreanWorkbookSnapshot = toKorean
+                    ? new WorkbookToolHost(_hostApplication)
+                        .CaptureWorkbookTranslation(
+                            ExcelSelectionOutputPolicy.TargetKorean)
+                    : new WorkbookToolHost(
+                        _hostApplication).CaptureKoreanWorkbook();
                 if (koreanWorkbookSnapshot.Cells.Count == 0)
                 {
                     var skipped =
@@ -842,17 +874,19 @@ namespace Scribble.UI
                         koreanWorkbookSnapshot.SkippedMergedCells;
                     SetStatus(
                         skipped > 0
-                            ? "No replaceable Korean text cells were found. " +
+                            ? "No replaceable " + sourceLanguage +
+                              " text cells were found. " +
                               skipped + " formula or merged cells were left " +
                               "unchanged"
-                            : "No Korean text was found in the workbook",
+                            : "No " + sourceLanguage +
+                              " text was found in the workbook",
                         false);
                     return false;
                 }
 
                 SetStatus(
                     "Found " + koreanWorkbookSnapshot.Cells.Count +
-                    " Korean text cells. Translating...",
+                    " " + sourceLanguage + " text cells. Translating...",
                     false);
                 return true;
             }
@@ -1159,7 +1193,9 @@ namespace Scribble.UI
             string name,
             string content,
             string subtitle,
-            ExcelSelectionSnapshot excelSelection = null)
+            ExcelSelectionSnapshot excelSelection = null,
+            string sourcePath = null,
+            bool hasMoreContent = false)
         {
             if (_externalContext.Count >=
                 ExternalContextDocument.MaxDocuments)
@@ -1193,14 +1229,19 @@ namespace Scribble.UI
 
             var document = new ExternalContextDocument(
                 name,
-                content);
+                content,
+                sourcePath,
+                hasMoreContent);
             var warn = document.Content.Length <
                 (content ?? string.Empty).Length;
             if (document.Content.Length > remaining)
             {
                 document = new ExternalContextDocument(
                     name,
-                    document.Content.Substring(0, remaining));
+                    document.Content.Substring(0, remaining),
+                    document.SourcePath,
+                    true,
+                    document.SourceFingerprint);
                 warn = true;
             }
 
@@ -1335,7 +1376,10 @@ namespace Scribble.UI
                             : content.Truncated
                             ? "truncated to the text cap"
                             : content.Text.Length +
-                              " text characters");
+                              " text characters",
+                        null,
+                        loadedFile.Path,
+                        content.Truncated);
                     added++;
                 }
 
@@ -1629,6 +1673,25 @@ namespace Scribble.UI
                 return;
             }
 
+            // Either direction of an explicit whole-workbook translation
+            // takes the deterministic snapshot path; the destination
+            // language, not the language pair, selects the discovery.
+            var workbookTranslationTarget =
+                _resumeRecovery == null &&
+                koreanWorkbookSnapshot == null &&
+                _hostKind == "excel"
+                    ? ExcelSelectionOutputPolicy
+                        .WholeWorkbookTranslationTarget(prompt)
+                    : null;
+            if (workbookTranslationTarget != null &&
+                !EnsureExcelSelectionForTranslation(
+                    out koreanWorkbookSnapshot,
+                    true,
+                    workbookTranslationTarget))
+            {
+                return;
+            }
+
             if (!_settings.IsConfigured)
             {
                 OpenSettings();
@@ -1750,10 +1813,16 @@ namespace Scribble.UI
                 requestExternalContext.Insert(
                     0,
                     new ExternalContextDocument(
-                        "Detected Korean workbook cells",
+                        "Detected " +
+                        koreanWorkbookRequest.Snapshot.SourceLanguage +
+                        " workbook cells",
                         "The local Excel host detected " +
                         koreanWorkbookRequest.Snapshot.Cells.Count +
-                        " replaceable Korean text cells across the active " +
+                        " replaceable " +
+                        koreanWorkbookRequest.Snapshot.SourceLanguage +
+                        " text cells to translate into " +
+                        koreanWorkbookRequest.Snapshot.TargetLanguage +
+                        " across the active " +
                         "workbook. This is the complete sparse scope.\n" +
                         "Workbook handle: " +
                         koreanWorkbookRequest.Handle +
@@ -1804,6 +1873,7 @@ namespace Scribble.UI
             var generation = ++_requestGeneration;
             var cancellation = new CancellationTokenSource();
             _requestCancellation = cancellation;
+            _draftHost?.BeginExcelDraftRequest();
             _draftHost?.BeginExcelSelectionRequest(
                 selectionRequest);
             _draftHost?.BeginKoreanWorkbookRequest(
@@ -1991,7 +2061,8 @@ namespace Scribble.UI
                 mcpTools,
                 activeTopic,
                 selectionRequest != null,
-                koreanWorkbookRequest != null);
+                koreanWorkbookRequest != null,
+                koreanWorkbookRequest?.Snapshot.TargetLanguage);
             var topicTools = activeTopic == null
                 ? null
                 : new TopicToolHost(
@@ -2037,7 +2108,9 @@ namespace Scribble.UI
                     ReplaceSource = selectionRequest != null && selectionRequest.AllowSourceReplacement,
                     KoreanHandle = koreanWorkbookRequest?.Handle,
                     Korean = TaskRecoveryInput.Copy<SavedKoreanWorkbook>(koreanWorkbookRequest?.Snapshot),
-                    Documents = externalContext.Select(d => new SavedReference { Name = d.Name, Content = d.Content }).ToList(),
+                    Documents = externalContext.Select(d => new SavedReference { Name = d.Name, Content = d.Content,
+                        SourcePath = d.SourcePath, SourceFingerprint = d.SourceFingerprint,
+                        HasMoreContent = d.HasMoreContent }).ToList(),
                     Images = externalImages.Select(i => new SavedImage { FileName = i.FileName, DataUrl = i.DataUrl }).ToList()
                 }.PersistTo(taskContext.State);
                 taskContext.Checkpoint();
@@ -2047,6 +2120,13 @@ namespace Scribble.UI
                 await _draftHost.BindTaskAsync(taskContext, cancellationToken);
                 await _draftHost.ResumeReadyExcelAsync(cancellationToken, (done, total) => SetStatus(_hostKind == "powerpoint" ? "Reviewing slide " + done + " of " + total : "Verified " + done + " of " + total + " output rows", false));
                 if (_draftHost.RecoveryNote.Length > 0) request.messages.Add(new ChatCompletionInputMessage { role = "user", content = _draftHost.RecoveryNote });
+                taskContext.SaveRequest(request);
+            }
+            var restoredAnalysis = taskContext.LoadAnalysis();
+            if (restoredAnalysis != null)
+            {
+                DocumentChatRequestFactory.ApplyAnalysisPilot(request,
+                    restoredAnalysis, _hostKind);
                 taskContext.SaveRequest(request);
             }
             _resumeRecovery = null;
@@ -2076,7 +2156,7 @@ namespace Scribble.UI
                             "The model stopped without returning text.");
                     }
 
-                    var blocker = _draftHost?.CompletionBlocker;
+                    var blocker = _draftHost?.CompletionBlocker ?? taskContext.Sources.CompletionBlocker;
                     if (!string.IsNullOrEmpty(blocker))
                     {
                         request.messages.Add(new ChatCompletionInputMessage { role = "user", content = blocker });
@@ -2084,6 +2164,39 @@ namespace Scribble.UI
                         continue;
                     }
                     taskContext.State.EnumerationComplete = true;
+                    if (!taskContext.State.CanComplete(false))
+                    {
+                        if (++completionAttempts > 3)
+                            throw new InvalidOperationException(
+                                "Task coverage or write recovery is incomplete.");
+                        request.messages.Add(
+                            new ChatCompletionInputMessage
+                            {
+                                role = "assistant",
+                                content = response.content
+                            });
+                        var requiredSlides =
+                            taskContext.State.RequiredPresentationSlides;
+                        var completedSlides = taskContext.State.Batches
+                            .Where(batch => batch.Failures.Count == 0)
+                            .SelectMany(batch => batch.CoveredSourceIds)
+                            .Count(id => id.StartsWith(
+                                "ppt:",
+                                StringComparison.Ordinal));
+                        request.messages.Add(
+                            new ChatCompletionInputMessage
+                            {
+                                role = "user",
+                                content = requiredSlides > completedSlides
+                                    ? "The task is not complete: you described the requested deck, but the host has only " +
+                                      completedSlides + " of " + requiredSlides +
+                                      " verified native slides. Call the exposed PowerPoint draft tool now as the only tool call with a nonempty slides array; continue its retained plan until every slide is written and reviewed. Do not repeat the prose summary or claim the deck exists before the tool receipt confirms it."
+                                    : "The task is not complete because its verified write or review receipt is still missing. Continue with the exposed draft tool as the only tool call and finish the retained work. Do not repeat the prose summary or claim completion before the host receipt confirms it."
+                            });
+                        taskContext.SaveRequest(request);
+                        SetStatus("Finishing the verified draft...", false);
+                        continue;
+                    }
                     taskContext.CompleteTask(request);
                     return response.content;
                 }
@@ -2130,16 +2243,22 @@ namespace Scribble.UI
                     MailboxToolResult result;
                     var invalidArguments = taskContext.ValidateArguments(toolCall);
                     if (invalidArguments != null) { results.Add(invalidArguments); continue; }
-                    taskContext.BeforeTool(toolCall, isDraftCall && name != WorkbookToolCatalog.WriteSelectionOutput && name != WorkbookToolCatalog.WriteKoreanTranslations);
+                    var changesDocument = isDraftCall && name != WorkbookToolCatalog.WriteSelectionOutput && name != WorkbookToolCatalog.WriteKoreanTranslations;
+                    var writeConflict = taskContext.RecoverableWriteConflict(toolCall, changesDocument);
+                    if (writeConflict != null) { results.Add(writeConflict); continue; }
+                    taskContext.BeforeTool(toolCall, changesDocument);
                     if (TaskContextManager.IsTaskTool(name))
                     {
                         result = taskContext.ReadEvidence(toolCall);
                     }
                     else if (PromptHelperTool.IsTool(name))
                     {
-                        result = await _promptHelper.AskAsync(
-                            toolCall,
-                            cancellationToken);
+                        // A started deck continues its retained plan; the
+                        // host answers contract questions itself.
+                        result = taskContext.DeferClarification(toolCall) ??
+                            await _promptHelper.AskAsync(
+                                toolCall,
+                                cancellationToken);
                         if (SelectionAnswerAllowsSourceReplacement(
                             selectionRequest,
                             result))
@@ -2152,10 +2271,24 @@ namespace Scribble.UI
                     }
                     else if (isDraftCall)
                     {
-                        result = await _draftHost.ExecuteAsync(
-                            toolCall, draftAuthorization, toolCalls.Count == 1, prompt,
-                            _client, _settings.ForModel(activeModel), cancellationToken,
-                            (done, total) => SetStatus(_hostKind == "powerpoint" ? "Reviewing slide " + done + " of " + total : "Verified " + done + " of " + total + " output rows", false));
+                        // Model/network continuations are allowed to arrive on a
+                        // pool thread, but sibling Office attachment and every
+                        // subsequent COM write require a pumped STA. The browser
+                        // host uses this same boundary for cross-app drafts.
+                        result = await OfficeThread.RunAsync(
+                            () => _draftHost.ExecuteAsync(
+                                toolCall, draftAuthorization, toolCalls.Count == 1, prompt,
+                                _client, _settings.ForModel(activeModel), cancellationToken,
+                                (done, total) =>
+                                {
+                                    if (IsDisposed || Disposing || !IsHandleCreated) return;
+                                    BeginInvoke((Action)(() => SetStatus(
+                                        _hostKind == "powerpoint"
+                                            ? "Reviewing slide " + done + " of " + total
+                                            : "Verified " + done + " of " + total + " output rows",
+                                        false)));
+                                }),
+                            cancellationToken);
                     }
                     else if (McpToolHost.IsMcpTool(name) &&
                              mcpHost != null)
@@ -2187,14 +2320,26 @@ namespace Scribble.UI
                     }
                     else if (workbookTools != null)
                     {
+                        OfficeTaskBinding.Validate(
+                            taskContext.State,
+                            _hostKind,
+                            _hostApplication);
                         result = workbookTools.Execute(toolCall);
                     }
                     else if (wordTools != null)
                     {
+                        OfficeTaskBinding.Validate(
+                            taskContext.State,
+                            _hostKind,
+                            _hostApplication);
                         result = wordTools.Execute(toolCall);
                     }
                     else
                     {
+                        OfficeTaskBinding.Validate(
+                            taskContext.State,
+                            _hostKind,
+                            _hostApplication);
                         result = presentationTools.Execute(
                             toolCall);
                     }
@@ -2230,6 +2375,8 @@ namespace Scribble.UI
                     response,
                     results,
                     activeModel);
+                DocumentChatRequestFactory.ApplyAnalysisPilot(request,
+                    taskContext.LoadAnalysis(), _hostKind);
                 taskContext.FinishExchange(request);
 
                 if (selectionRequest != null ||
@@ -2424,6 +2571,9 @@ namespace Scribble.UI
             {
                 return;
             }
+
+            if (_stressSettingsLoaded && Scribble.Testing.TestLabSuite.Active()?.fixtureSuiteId != "scribble-stress-v1")
+                ReloadStressSettings();
 
             _history.Clear();
             _externalContext.Clear();

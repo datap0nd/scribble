@@ -24,11 +24,28 @@ foreach ($pattern in $forbidden) {
             -not ($_.Path -like '*\Testing\TestLabSuite.cs' -and
                 ($_.Line.Trim() -eq 'if (File.Exists(Descriptor)) File.Replace(temporary, Descriptor, null); else File.Move(temporary, Descriptor);' -or
                  $_.Line.Trim() -eq 'if (File.Exists(file)) File.Replace(temp, file, null); else File.Move(temp, file);')) -and
+            # Atomic publication of an operator-owned DPAPI Office receipt.
+            -not ($_.Path -like '*\Testing\TestLabOfficeConnection.cs' -and
+                $_.Line.Trim() -eq 'if (File.Exists(path)) File.Replace(temporary, path, null); else File.Move(temporary, path);') -and
+            # The operator publishes its protected fixture binding and places
+            # a newly created, unsaved synthetic item in the verified PST.
+            # No model tool reaches the import method or can move user mail.
+            -not ($_.Path -like '*\Testing\TestLabMailbox.cs' -and
+                ($_.Line.Trim() -eq 'try { File.WriteAllBytes(temporary, bytes); File.Move(temporary, Descriptor(state)); }' -or
+                 $_.Line.Trim() -eq 'moved = mail.Move(folder);')) -and
             # Reporter-only cleanup of its fresh, validated staging directory.
             -not ($_.Path -like '*\Testing\TestLabPdfWriter.cs' -and
                 $_.Line.Trim() -eq 'try { Directory.Delete(staging, true); } catch (IOException) { } catch (UnauthorizedAccessException) { }') -and
             -not ($pattern -eq "\.Delete\s*\(" -and
                 ($_.Path -like '*\Office\PresentationRevision.cs' -or $_.Path -like '*\Office\PresentationDraftWriter.Samsung.cs')) -and
+            # The owned, unsaved deck copy replaces one chart. Partial new
+            # shapes are removed only before the original chart is deleted.
+            -not ($pattern -eq "\.Delete\s*\(" -and
+                $_.Path -like '*\Office\PresentationDraftCopy.cs' -and
+                $_.Line.Trim() -in @(
+                    'slide.Shapes[(int)slide.Shapes.Count].Delete();',
+                    'try { oldChart.Delete(); }',
+                    'replacement.Delete();')) -and
             -not ($_.Path -like '*\Chat\TaskCoordinator.cs' -and
                 ($_.Line.Trim() -eq 'if (Directory.Exists(path)) Directory.Delete(path, true);' -or
                  $_.Line.Trim() -eq 'else File.Move(temporary, path);')) -and
@@ -466,6 +483,17 @@ foreach ($guardedFile in $officeGuardedFiles) {
                 $_.Line -notmatch '_settingsStore\.Save' -and
                 $_.Line -notmatch 'SuiteExchange\.Save' -and
                 $_.Line -notmatch 'dataWorkbook\.Close' -and
+                # Read-only protection status blocks an edit before it starts.
+                -not ($_.Path -like '*\Office\WorkbookDraftWriter.cs' -and
+                    $_.Line.Trim() -eq 'if (Convert.ToBoolean(sheet.ProtectContents))') -and
+                # PresentationInspection permits this copy only after
+                # OwnedUnsavedDraft has checked an unsaved presentation with
+                # a task tag and matching slide/journal owner tags, or the
+                # revision-draft ownership tag.
+                # Saved and unowned decks use in-memory chart readback.
+                # The bounded temporary PPTX is deleted after fingerprinting.
+                -not ($_.Path -like '*\Office\PresentationInspection.cs' -and
+                    $_.Line.Trim() -eq 'deck.SaveCopyAs(temporary);') -and
                 -not (($_.Path -like '*\Office\PresentationDraftWriter.Samsung.cs' -or $_.Path -like '*\Office\LegacySamsung\PresentationDraftWriter.Samsung.cs') -and $_.Line.Trim() -eq 'image.Save(path, System.Drawing.Imaging.ImageFormat.Png);') -and
                 -not ($_.Path -like '*\Office\PresentationDraftWriter.Samsung.cs' -and $_.Line.Trim() -eq 'temporary.Close();') -and
                 -not ($_.Path -like '*\Office\PresentationRevision.cs' -and ($_.Line -match 'working\.Close\(\)' -or $_.Line -match 'recovery\.Close\(\)'))
@@ -494,6 +522,7 @@ $workbookToolNames = [regex]::Matches(
 if (Compare-Object $workbookToolNames (@(
     "list_worksheets",
     "read_cells",
+    "read_grouped_totals",
     "write_draft_sheet",
     "write_cells",
     "write_selection_output",
@@ -675,6 +704,20 @@ if (-not $wordWriterSource.Contains(
         'DraftMarker = "[Scribble draft]"') -or
     -not $wordWriterSource.Contains("Documents.Add()")) {
     throw "Word drafts must stay marked, new, and unsaved."
+}
+foreach ($requiredWordTableBoundary in @(
+    'FormatTableHeaders(document)',
+    'wordTable.ApplyStyleFirstColumn = false',
+    'wordTable.ApplyStyleHeadingRows = true',
+    'wordTable.Cell(1, column + 1).Range.Font.Bold = 1'
+)) {
+    if (-not $wordWriterSource.Contains($requiredWordTableBoundary)) {
+        throw "Word draft tables are missing header formatting boundary $requiredWordTableBoundary."
+    }
+}
+if ($wordWriterSource.IndexOf('wordTable.Style = "Grid Table 4 - Accent 1"') -gt
+    $wordWriterSource.IndexOf('wordTable.Cell(1, column + 1).Range.Font.Bold = 1')) {
+    throw "Word draft table styles must be applied before explicit header formatting."
 }
 
 foreach ($requiredDocumentBoundary in @(
@@ -936,6 +979,7 @@ $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $browserExtensionRoot = Join-Path $repositoryRoot "src\Scribble.BrowserExtension"
 $browserHostRoot = Join-Path $repositoryRoot "src\Scribble.BrowserHost"
 $browserInstallerPath = Join-Path $repositoryRoot "installer\Scribble.iss"
+$payloadRetirementPath = Join-Path $repositoryRoot "installer\PayloadRetirement.iss"
 $browserManifestPath = Join-Path $browserExtensionRoot "manifest.json"
 $nativeManifestPath = Join-Path $browserHostRoot "com.scribble.browser.json"
 $browserHostProgramPath = Join-Path $browserHostRoot "Program.cs"
@@ -961,7 +1005,8 @@ foreach ($requiredBrowserFile in @(
     $browserFactoryPath,
     $browserServicePath,
     $browserActionPolicyPath,
-    $browserInstallerPath
+    $browserInstallerPath,
+    $payloadRetirementPath
 )) {
     if (-not (Test-Path -LiteralPath $requiredBrowserFile -PathType Leaf)) {
         throw "Browser companion file is missing: $requiredBrowserFile"
@@ -1118,6 +1163,57 @@ foreach ($dangerousBrowserPattern in $dangerousBrowserPatterns) {
 
 $browserInstallerSource = Get-Content -LiteralPath $browserInstallerPath -Raw
 $browserInstallerLines = Get-Content -LiteralPath $browserInstallerPath
+$payloadRetirementSource = Get-Content -LiteralPath $payloadRetirementPath -Raw
+foreach ($transactionalBrowserPayload in @(
+    "ScribbleBrowserHost.exe.config",
+    "com.scribble.browser.json",
+    "BrowserExtension\manifest.json",
+    "BrowserExtension\background.js",
+    "BrowserExtension\sidepanel.html",
+    "BrowserExtension\sidepanel.css",
+    "BrowserExtension\sidepanel.js",
+    "BrowserExtension\README.md"
+)) {
+    $transactionalLines = @($browserInstallerLines | Where-Object {
+        $_.Contains("RetirePayload('$transactionalBrowserPayload'") -and
+        $_.Contains("VerifyPayload('$transactionalBrowserPayload'")
+    })
+    if ($transactionalLines.Count -ne 1 -or
+        $payloadRetirementSource -notmatch
+            ("(?i)(?:\||')" + [regex]::Escape($transactionalBrowserPayload) + "\|")) {
+        throw "Installer payload is outside the explicit recovery transaction: $transactionalBrowserPayload."
+    }
+}
+$installDeleteMatch = [regex]::Match(
+    $browserInstallerSource,
+    '(?ms)^\[InstallDelete\]\s*(?<body>.*?)(?=^\[)')
+if (-not $installDeleteMatch.Success) {
+    throw "Installer cleanup section is missing."
+}
+foreach ($currentDeleteTarget in @(
+    "{app}\BrowserExtension",
+    "{app}\ScribbleBrowserHost.exe",
+    "{app}\ScribbleBrowserHost.exe.config",
+    "{app}\com.scribble.browser.json"
+)) {
+    if ($installDeleteMatch.Groups['body'].Value.Contains($currentDeleteTarget)) {
+        throw "Current payload is deleted before its recovery journal is active: $currentDeleteTarget."
+    }
+}
+foreach ($deselectedBrowserPayload in @(
+    "com.scribble.browser.json",
+    "BrowserExtension\manifest.json",
+    "BrowserExtension\background.js",
+    "BrowserExtension\sidepanel.html",
+    "BrowserExtension\sidepanel.css",
+    "BrowserExtension\sidepanel.js",
+    "BrowserExtension\README.md"
+)) {
+    if (-not $payloadRetirementSource.Contains(
+        "RetireRemovedPayload('" + $deselectedBrowserPayload + "')")) {
+        throw "Browser component deselection is not journaled: $deselectedBrowserPayload."
+    }
+}
 if ($browserInstallerSource -notmatch
     '(?m)^PrivilegesRequired=lowest\s*$') {
     throw "Browser support must preserve the per-user, non-elevated installer."

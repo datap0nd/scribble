@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using Scribble.Security;
 
 namespace Scribble.Office
@@ -17,6 +18,44 @@ namespace Scribble.Office
         internal const string DraftMarker = "[Scribble draft]";
         internal const int MaxDraftCharacters = 48000;
         internal const int MaxTitleCharacters = 180;
+
+        internal static string[] OnePageIssues(string body)
+        {
+            var tables = 0;
+            var tableRows = 0;
+            var proseWords = 0;
+            foreach (var block in DraftTextLayout.ParseBlocks(body ?? string.Empty))
+            {
+                var table = block as DraftTextLayout.Table;
+                if (table != null) { tables++; tableRows += table.Rows.Count; continue; }
+                var paragraph = (DraftTextLayout.Paragraph)block;
+                proseWords += Regex.Matches(paragraph.Text, @"\b[\p{L}\p{N}][\p{L}\p{N}\-]*\b").Count;
+            }
+            var issues = new List<string>();
+            if (tables > 2) issues.Add("Use at most two tables: one compact results table and one action table; summarize segment details in a sentence.");
+            if (tableRows > 10) issues.Add("Keep the two tables to at most ten total rows including headers.");
+            if (proseWords > 190) issues.Add("Reduce prose to at most 190 words, including headings and citations; keep only two concise risk bullets.");
+            return issues.ToArray();
+        }
+
+        // A model-supplied placement is not authorization to modify the
+        // source document. Creation requests go to a separate draft even if
+        // the model mistakes the open source for the destination.
+        internal static string ResolvePlacement(string requested, string userPrompt)
+        {
+            var prompt = userPrompt ?? string.Empty;
+            if (string.Equals(requested, "selection", StringComparison.Ordinal))
+                return Regex.IsMatch(prompt,
+                    @"\b(replace|edit|rewrite|change|insert|fill)\b.{0,80}\b(selection|selected text)\b",
+                    RegexOptions.IgnoreCase | RegexOptions.Singleline)
+                    ? "selection" : "new_document";
+            if (string.Equals(requested, "end", StringComparison.Ordinal))
+                return Regex.IsMatch(prompt,
+                    @"\b(append|insert|add|write|put)\b.{0,100}\b(to|in|into|onto)\s+(my|this|the|current|active|existing)\s+(document|doc|file)\b|\b(edit|update|revise|rewrite|replace|fill|fix|continue|change)\b.{0,80}\b(my|this|the|current|active|existing)\s+(document|doc|file)\b",
+                    RegexOptions.IgnoreCase | RegexOptions.Singleline)
+                    ? "end" : "new_document";
+            return "new_document";
+        }
 
         // WdBuiltinStyle ids work in every localized Word.
         private const int StyleNormal = -1;
@@ -64,6 +103,8 @@ namespace Scribble.Office
                     title,
                     MaxTitleCharacters).PlainText,
                 MaxTitleCharacters);
+            while (boundedTitle.StartsWith(DraftMarker, StringComparison.OrdinalIgnoreCase))
+                boundedTitle = boundedTitle.Substring(DraftMarker.Length).TrimStart();
             if (boundedTitle.Length > 0)
             {
                 heading += " " + boundedTitle;
@@ -124,8 +165,24 @@ namespace Scribble.Office
             }
 
             var tables = 0;
-            foreach (var block in blocks)
+            var firstBodyBlock = true;
+            for (var blockIndex = 0; blockIndex < blocks.Count; blockIndex++)
             {
+                var block = blocks[blockIndex];
+                // The new-document surface already writes the supplied title
+                // into its marked Heading 1. Small models often repeat the
+                // same text as the body's first Markdown H1, producing two
+                // adjacent report titles. Drop only that exact structural
+                // duplicate; in-place and selection writes remain untouched.
+                var leading = block as DraftTextLayout.Paragraph;
+                if (mode == 2 && leading != null && string.IsNullOrWhiteSpace(leading.Text))
+                    continue;
+                if (mode == 2 && firstBodyBlock && leading != null &&
+                    leading.Kind == DraftTextLayout.KindHeading1 &&
+                    string.Equals(leading.Text.Trim(), boundedTitle.Trim(),
+                        StringComparison.OrdinalIgnoreCase))
+                    continue;
+                firstBodyBlock = false;
                 var table = block as DraftTextLayout.Table;
                 if (table != null)
                 {
@@ -160,6 +217,11 @@ namespace Scribble.Office
                     document,
                     paragraph,
                     StyleFor(paragraph.Kind));
+            }
+
+            if (tables > 0)
+            {
+                FormatTableHeaders(document);
             }
 
             try
@@ -338,18 +400,6 @@ namespace Scribble.Office
 
                 try
                 {
-                    // 1 = wdAutoFitContent.
-                    wordTable.AutoFitBehavior(1);
-                    wordTable.Rows[1].Range.Font.Bold = 1;
-                    // 1 = enable default single-line borders.
-                    wordTable.Borders.Enable = 1;
-                }
-                catch
-                {
-                }
-
-                try
-                {
                     wordTable.Style = "Grid Table 4 - Accent 1";
                 }
                 catch
@@ -357,6 +407,57 @@ namespace Scribble.Office
                     // The built-in style name is language-specific;
                     // the manual borders above already keep the
                     // table readable.
+                }
+
+                try
+                {
+                    // Apply the structural formatting after the style. Word
+                    // table styles can otherwise clear an explicitly bolded
+                    // header and enable first-column emphasis instead.
+                    wordTable.ApplyStyleFirstColumn = false;
+                }
+                catch
+                {
+                }
+
+                try
+                {
+                    wordTable.ApplyStyleHeadingRows = true;
+                }
+                catch
+                {
+                }
+
+                try
+                {
+                    // 1 = wdAutoFitContent.
+                    wordTable.AutoFitBehavior(1);
+                }
+                catch
+                {
+                }
+
+                // Header formatting is a hard table requirement. Keep it
+                // independent from optional style and autofit calls because
+                // Word can reject either operation for an individual table.
+                for (var column = 0; column < columnCount; column++)
+                {
+                    try
+                    {
+                        wordTable.Cell(1, column + 1).Range.Font.Bold = 1;
+                    }
+                    catch
+                    {
+                    }
+                }
+
+                try
+                {
+                    // 1 = enable default single-line borders.
+                    wordTable.Borders.Enable = 1;
+                }
+                catch
+                {
                 }
 
                 // A spacer paragraph after the table keeps the next
@@ -368,6 +469,85 @@ namespace Scribble.Office
             catch
             {
                 return false;
+            }
+        }
+
+        // Word may temporarily reject table-formatting calls while later
+        // tables are still being inserted. Reapply the hard header contract
+        // after the complete document structure exists so every table gets
+        // the same result, including tables near the end of a long draft.
+        private static void FormatTableHeaders(dynamic document)
+        {
+            int tableCount;
+            try
+            {
+                tableCount = (int)document.Tables.Count;
+            }
+            catch
+            {
+                return;
+            }
+
+            for (var tableIndex = 1;
+                 tableIndex <= tableCount;
+                 tableIndex++)
+            {
+                dynamic table;
+                try
+                {
+                    table = document.Tables.Item(tableIndex);
+                }
+                catch
+                {
+                    continue;
+                }
+
+                try
+                {
+                    table.ApplyStyleFirstColumn = false;
+                }
+                catch
+                {
+                }
+
+                try
+                {
+                    table.ApplyStyleHeadingRows = true;
+                }
+                catch
+                {
+                }
+
+                try
+                {
+                    table.Rows.Item(1).Range.Font.Bold = 1;
+                }
+                catch
+                {
+                }
+
+                int columnCount;
+                try
+                {
+                    columnCount = (int)table.Columns.Count;
+                }
+                catch
+                {
+                    continue;
+                }
+
+                for (var column = 1;
+                     column <= columnCount;
+                     column++)
+                {
+                    try
+                    {
+                        table.Cell(1, column).Range.Font.Bold = 1;
+                    }
+                    catch
+                    {
+                    }
+                }
             }
         }
 

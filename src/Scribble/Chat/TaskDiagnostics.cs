@@ -20,6 +20,29 @@ namespace Scribble.Chat
         public TaskDiagnostics(TaskCheckpointStore store, DurableTaskState state) { _store = store; _state = state; }
         public string Id { get { return _state.Id; } }
 
+        // Reserve at the transport boundary, so authoring, internal reviewers,
+        // compaction and HTTP retries share one durable allowance.
+        public void ReserveModelRequest()
+        {
+            lock (_gate)
+            {
+                string rawLimit;
+                if (!_state.HostData.TryGetValue("delivery_request_limit", out rawLimit)) return;
+                int limit;
+                if (!int.TryParse(rawLimit, out limit) || limit != 18)
+                    throw new InvalidOperationException("DELIVERY_REQUEST_BUDGET_INVALID");
+                string rawCount;
+                var count = 0;
+                if (_state.HostData.TryGetValue("delivery_request_count", out rawCount) &&
+                    (!int.TryParse(rawCount, out count) || count < 0 || count > limit))
+                    throw new InvalidOperationException("DELIVERY_REQUEST_BUDGET_INVALID");
+                if (count >= limit)
+                    throw new InvalidOperationException("DELIVERY_REQUEST_LIMIT: The complete task reached its model-request budget. Retain the draft and inspect the first unresolved stage; do not restart the same repair loop.");
+                _state.HostData["delivery_request_count"] = (count + 1).ToString();
+                _store.Save(_state);
+            }
+        }
+
         public void Record(string stage, object detail)
         {
             Scribble.Testing.TestLab.Record(_benchmarkRun, Id, stage, detail);

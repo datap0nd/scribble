@@ -100,13 +100,24 @@ namespace Scribble.Outlook
 
         public static MailboxAttachmentPage LoadLocalPage(string path, int offset, int count, CancellationToken token)
         {
+            return LoadLocalPage(path, offset, count, token, true);
+        }
+
+        internal static MailboxAttachmentPage LoadVerifiedLocalPage(string path, int offset, int count, CancellationToken token)
+        {
+            return LoadLocalPage(path, offset, count, token, false);
+        }
+
+        private static MailboxAttachmentPage LoadLocalPage(string path, int offset, int count,
+            CancellationToken token, bool validateTestInput)
+        {
             if (offset < 0 || count < 1 || count > 12000 || offset > int.MaxValue - count - 1024)
                 throw new ArgumentOutOfRangeException();
             var previous = _pageExtractionLimit;
             try
             {
                 _pageExtractionLimit = offset + count + 1024;
-                var content = LoadLocalFile(path, token);
+                var content = LoadLocalFile(path, token, validateTestInput);
                 if (content == null || content.Kind == "unreadable" || content.Kind == "limit" || content.Kind == "resource-limited" ||
                     (content.Kind == "image" && string.IsNullOrEmpty(content.ImageDataUrl)) ||
                     content.Text.Contains("No machine-readable text") || content.Text.Contains("resource limit"))
@@ -553,7 +564,18 @@ namespace Scribble.Outlook
             string path,
             CancellationToken cancellationToken)
         {
-            Scribble.Testing.TestLab.CheckInputFile(path);
+            return LoadLocalFile(path, cancellationToken, true);
+        }
+
+        private static EmailAttachmentContent LoadLocalFile(
+            string path,
+            CancellationToken cancellationToken,
+            bool validateTestInput)
+        {
+            if (validateTestInput)
+            {
+                Scribble.Testing.TestLab.CheckInputFile(path);
+            }
             try
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -1898,6 +1920,7 @@ namespace Scribble.Outlook
 
                 string cellType = null;
                 var rowValues = new List<string>();
+                var cellColumn = -1;
                 while (!reader.EOF)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
@@ -1925,9 +1948,10 @@ namespace Scribble.Outlook
                                     : string.Empty;
                         }
 
-                        if (content.Length > 0)
+                        if (cellColumn >= 0 &&
+                            cellColumn < rowValues.Count)
                         {
-                            rowValues.Add(content);
+                            rowValues[cellColumn] += content;
                         }
 
                         continue;
@@ -1938,20 +1962,37 @@ namespace Scribble.Outlook
                         reader.LocalName == "c")
                     {
                         cellType = reader.GetAttribute("t");
+                        var reference = reader.GetAttribute("r");
+                        var referencedColumn = XlsxColumnIndex(reference);
+                        cellColumn = referencedColumn >= 0
+                            ? referencedColumn
+                            : rowValues.Count;
+                        if (cellColumn >= 0 && cellColumn < 16384)
+                            while (rowValues.Count <= cellColumn)
+                                rowValues.Add(string.Empty);
+                        else
+                            cellColumn = -1;
+                    }
+                    else if (reader.NodeType ==
+                                 System.Xml.XmlNodeType.EndElement &&
+                             reader.LocalName == "c")
+                    {
+                        cellColumn = -1;
                     }
                     else if (reader.NodeType ==
                                  System.Xml.XmlNodeType
                                      .EndElement &&
                              reader.LocalName == "row")
                     {
-                        if (rowValues.Count > 0)
+                        if (rowValues.Any(value =>
+                                !string.IsNullOrEmpty(value)))
                         {
                             builder.AppendLine(
                                 string.Join(
                                     "\t",
                                     rowValues));
-                            rowValues.Clear();
                         }
+                        rowValues.Clear();
 
                         if (builder.Length >
                             ScaledCharactersPerAttachment)
@@ -1966,6 +2007,22 @@ namespace Scribble.Outlook
                     }
                 }
             }
+        }
+
+        private static int XlsxColumnIndex(string reference)
+        {
+            if (string.IsNullOrWhiteSpace(reference)) return -1;
+            var column = 0;
+            var index = 0;
+            while (index < reference.Length &&
+                   reference[index] >= 'A' && reference[index] <= 'Z')
+            {
+                column = column * 26 + reference[index] - 'A' + 1;
+                if (column > 16384) return -1;
+                index++;
+            }
+            return index > 0 && index < reference.Length &&
+                char.IsDigit(reference[index]) ? column - 1 : -1;
         }
 
         private static IList<string> ReadSharedStrings(

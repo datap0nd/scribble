@@ -13,6 +13,7 @@ namespace GuardrailTests
     public sealed class CrossAppFixture : DynamicObject, IEnumerable
     {
         [ThreadStatic] internal static Action<string> BeforeNativeCall;
+        [ThreadStatic] internal static Action<string, object> BeforeNativeSet;
         private readonly Dictionary<string, object> _values = new Dictionary<string, object>();
         private readonly List<CrossAppFixture> _items = new List<CrossAppFixture>();
         private readonly string _path;
@@ -38,6 +39,7 @@ namespace GuardrailTests
                 case "HasTable": case "HasChart": case "Hidden": case "FollowMasterBackground": case "Bold": case "RGB": case "Rotation": case "ZOrderPosition": result = 0; return true;
                 case "Type": result = 1; return true;
                 case "Width": case "Height": case "Top": case "Left": case "BoundLeft": case "BoundTop": case "Transparency": case "Size": result = 0f; return true;
+                case "ColumnWidth": result = 8.43d; return true;
                 case "Text": case "Name": case "Path": case "FullName": result = ""; return true;
                 case "HasTextFrame": result = -1; return true;
                 case "Worksheets":
@@ -49,6 +51,7 @@ namespace GuardrailTests
         }
         public override bool TrySetMember(SetMemberBinder binder, object value)
         {
+            BeforeNativeSet?.Invoke(_path + "." + binder.Name, value);
             _values[binder.Name] = value;
             var grid = value as object[,];
             _events.Add(_path + "." + binder.Name + "=" + (grid == null ? Convert.ToString(value) : string.Join("|", grid.Cast<object>())));

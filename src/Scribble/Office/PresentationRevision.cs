@@ -18,6 +18,7 @@ namespace Scribble.Office
             internal bool Started, Applied, Deleted;
             internal string LastKnownContent;
             internal string BackupFingerprint;
+            internal string BackupContentFingerprint;
             internal readonly List<int> InsertedIds = new List<int>();
             internal readonly List<int> AddedShapeIds = new List<int>();
             internal readonly List<object> StagedInserts = new List<object>();
@@ -60,7 +61,8 @@ namespace Scribble.Office
                     Items.Add(item);
                 }
                 if (item.Before != SamsungAuthoringPolicy.Text(operation, "fingerprint"))
-                    throw new InvalidOperationException("SLIDE_CHANGED: Read the original slide again before editing.");
+                    throw new InvalidOperationException("SLIDE_CHANGED: Slide " + id +
+                        " changed before staging. Read it again before editing.");
                 ValidateOperation(item.Original, operation);
                 if (item.Operations.Any(o => SamsungAuthoringPolicy.Text(o, "kind") == "delete") ||
                     (SamsungAuthoringPolicy.Text(operation, "kind") == "delete" && item.Operations.Count > 0))
@@ -84,7 +86,6 @@ namespace Scribble.Office
             {
                 item.Staged = CopySlide(item.Original, Working);
                 item.Backup = CopySlide(item.Original, Recovery);
-                item.BackupFingerprint = PresentationInspection.Fingerprint(item.Backup);
                 foreach (var operation in item.Operations)
                 {
                     if (SamsungAuthoringPolicy.Text(operation, "kind") == "insert")
@@ -99,6 +100,15 @@ namespace Scribble.Office
                 var serializer = new JavaScriptSerializer();
                 if (serializer.Serialize(PresentationInspection.Hyperlinks(item.Original)) != serializer.Serialize(PresentationInspection.Hyperlinks(item.Staged)))
                     throw new InvalidOperationException("REVISION_PRESERVATION: The proposed edit changed existing hyperlinks.");
+            }
+            // Native chart packages can finish normalizing while later slides
+            // are copied. Seal recovery after the complete staging deck exists.
+            foreach (var item in Items)
+            {
+                item.BackupContentFingerprint = PresentationInspection
+                    .CopyContentFingerprint(item.Backup);
+                item.BackupFingerprint = PresentationInspection
+                    .Fingerprint(item.Backup);
             }
             var proposedOrder = ReviewedSlides();
             foreach (var item in Items)
@@ -136,16 +146,12 @@ namespace Scribble.Office
         }
         private static object CopySlide(object slide, object target)
         {
-            dynamic original = slide; dynamic deck = target;
+            dynamic deck = target;
             var beforeCount = (int)deck.Slides.Count;
-            original.Copy();
-            deck.Slides.Paste(beforeCount + 1);
+            object copy = PresentationInspection.CopySlideTo(slide, target);
             var afterCount = (int)deck.Slides.Count;
             if (afterCount != beforeCount + 1)
-                throw new InvalidOperationException("REVISION_COPY_INCOMPLETE: Native paste must add exactly one slide. Before: " + beforeCount + "; after: " + afterCount + ". No paste was retried.");
-            // Read the actual collection mutation, including when native Paste
-            // returns no range. Never blindly repeat a clipboard write.
-            object copy = deck.Slides[beforeCount + 1];
+                throw new InvalidOperationException("REVISION_COPY_INCOMPLETE: Native paste must add exactly one slide. Before: " + beforeCount + "; after: " + afterCount + ".");
             if (PresentationInspection.ContentFingerprint(slide) != PresentationInspection.ContentFingerprint(copy))
                 throw new InvalidOperationException("REVISION_COPY_PRESERVATION: Native staging did not preserve the source content and formatting.");
             return copy;
@@ -174,7 +180,7 @@ namespace Scribble.Office
         private static void ValidateOperation(object slide, Dictionary<string, object> operation)
         {
             var kind = SamsungAuthoringPolicy.Text(operation, "kind");
-            if (!new[] { "replace_text", "table_cell", "chart_point", "move", "delete", "replace_slide", "insert", "annotate", "notes_append" }.Contains(kind))
+            if (!new[] { "replace_text", "table_cell", "table_cell_fill", "shape_geometry", "shape_font_size", "chart_point", "move", "delete", "replace_slide", "insert", "annotate", "notes_append" }.Contains(kind))
                 throw new InvalidOperationException("REVISION_UNSUPPORTED: Use a supported targeted operation.");
             if (kind == "move" || kind == "notes_append") return;
             if (kind == "delete")
@@ -218,6 +224,60 @@ namespace Scribble.Office
                 return;
             }
             dynamic shape = PresentationInspection.FindShape(slide, Convert.ToInt32(operation["shape_id"]));
+            if (kind == "shape_geometry")
+            {
+                foreach (var dimension in new[] { "left", "top", "width", "height" })
+                {
+                    var before = RevisionNumber(operation, "before_" + dimension);
+                    var actual = Convert.ToDouble(
+                        dimension == "left" ? shape.Left :
+                        dimension == "top" ? shape.Top :
+                        dimension == "width" ? shape.Width : shape.Height);
+                    if (Math.Abs(before - actual) > .25)
+                        throw new InvalidOperationException(
+                            "REVISION_GEOMETRY_CHANGED: Inspect the shape again.");
+                    RevisionNumber(operation, dimension);
+                }
+                if (RevisionNumber(operation, "width") < 4 ||
+                    RevisionNumber(operation, "height") < 4)
+                    throw new InvalidOperationException("REVISION_GEOMETRY_INVALID");
+                return;
+            }
+            if (kind == "shape_font_size")
+            {
+                if ((int)shape.HasTextFrame == 0 ||
+                    (int)shape.TextFrame.HasText == 0)
+                    throw new InvalidOperationException("REVISION_TEXT_REQUIRED");
+                var before = RevisionNumber(operation, "before_size");
+                var size = RevisionNumber(operation, "size");
+                if (size < 7 || size > 72 ||
+                    Math.Abs(before - (float)shape.TextFrame.TextRange
+                        .Font.Size) > .01)
+                    throw new InvalidOperationException(
+                        "REVISION_FONT_CHANGED: Inspect the shape again.");
+                return;
+            }
+            if (kind == "table_cell_fill")
+            {
+                if ((int)shape.HasTable == 0)
+                    throw new InvalidOperationException("REVISION_TABLE_REQUIRED");
+                var row = Convert.ToInt32(operation["row"]);
+                var column = Convert.ToInt32(operation["column"]);
+                if (row < 1 || column < 1 || row >
+                    (int)shape.Table.Rows.Count || column >
+                    (int)shape.Table.Columns.Count)
+                    throw new InvalidOperationException("REVISION_CELL_INVALID");
+                var before = Convert.ToInt32(operation["before_color"]);
+                var color = Convert.ToInt32(operation["color"]);
+                if (before < 0 || before > 0xFFFFFF || color < 0 ||
+                    color > 0xFFFFFF)
+                    throw new InvalidOperationException("REVISION_COLOR_INVALID");
+                if ((int)shape.Table.Cell(row, column).Shape.Fill
+                    .ForeColor.RGB != before)
+                    throw new InvalidOperationException(
+                        "REVISION_CELL_CHANGED: Inspect the table again.");
+                return;
+            }
             if (kind == "replace_text")
             {
                 if ((int)shape.HasTextFrame == 0 || string.IsNullOrEmpty(SamsungAuthoringPolicy.Text(operation, "before")))
@@ -232,6 +292,21 @@ namespace Scribble.Office
                 throw new InvalidOperationException("REVISION_ANNOTATION_TARGET: Select a table or chart.");
             if (kind == "chart_point" && ((int)shape.HasChart == 0 || (bool)shape.Chart.ChartData.IsLinked))
                 throw new InvalidOperationException("REVISION_CHART_UNSUPPORTED: Linked charts cannot be refreshed or changed.");
+        }
+        private static double RevisionNumber(
+            Dictionary<string, object> operation, string key)
+        {
+            object value;
+            if (!operation.TryGetValue(key, out value) || value == null ||
+                value is string || value is bool)
+                throw new InvalidOperationException(
+                    "REVISION_GEOMETRY_INVALID: " + key);
+            var number = Convert.ToDouble(value);
+            if (double.IsNaN(number) || double.IsInfinity(number) ||
+                Math.Abs(number) > 100000)
+                throw new InvalidOperationException(
+                    "REVISION_GEOMETRY_INVALID: " + key);
+            return number;
         }
         private static bool HasActions(object shape)
         {
@@ -260,6 +335,29 @@ namespace Scribble.Office
                 notes.InsertAfter("\n" + SamsungAuthoringPolicy.Text(operation, "notes")); return;
             }
             dynamic shape = CorrespondingShape(original, target, Convert.ToInt32(operation["shape_id"]));
+            if (kind == "shape_geometry")
+            {
+                shape.Left = (float)RevisionNumber(operation, "left");
+                shape.Top = (float)RevisionNumber(operation, "top");
+                shape.Width = (float)RevisionNumber(operation, "width");
+                shape.Height = (float)RevisionNumber(operation, "height");
+                return;
+            }
+            if (kind == "shape_font_size")
+            {
+                shape.TextFrame.TextRange.Font.Size = (float)
+                    RevisionNumber(operation, "size");
+                return;
+            }
+            if (kind == "table_cell_fill")
+            {
+                dynamic cell = shape.Table.Cell(Convert.ToInt32(
+                    operation["row"]), Convert.ToInt32(
+                    operation["column"])).Shape;
+                cell.Fill.ForeColor.RGB = Convert.ToInt32(
+                    operation["color"]);
+                return;
+            }
             if (kind == "annotate")
             {
                 dynamic page = target;
@@ -337,10 +435,21 @@ namespace Scribble.Office
                 if ((int)shape.HasTextFrame != 0 && (int)shape.HasTable == 0 && (int)shape.HasChart == 0)
                 {
                     dynamic range = shape.TextFrame.TextRange;
-                    if ((float)range.BoundHeight > (float)shape.Height + 1 || (float)range.BoundWidth > (float)shape.Width + 1)
+                    // Filled accent rules and card backgrounds have a text
+                    // frame but no text. PowerPoint reports default font
+                    // bounds for that empty frame, even on a 4–6pt rule.
+                    if (NativeTextOverflows(Convert.ToString(range.Text),
+                        (float)range.BoundHeight, (float)range.BoundWidth,
+                        (float)shape.Height, (float)shape.Width))
                         throw new InvalidOperationException("SLIDE_NATIVE_OVERFLOW: Text does not fit.");
                 }
             }
+        }
+        internal static bool NativeTextOverflows(string text, float boundHeight,
+            float boundWidth, float height, float width)
+        {
+            return !string.IsNullOrWhiteSpace(text) &&
+                (boundHeight > height + 1 || boundWidth > width + 1);
         }
         private static void CheckChartLabel(object value, float width, float height)
         {
@@ -377,6 +486,27 @@ namespace Scribble.Office
                 var id = Convert.ToInt32(operation["shape_id"]);
                 dynamic source = CorrespondingShape(item.Original, item.Backup, id);
                 dynamic target = PresentationInspection.FindShape(item.Original, id);
+                if (kind == "shape_geometry")
+                {
+                    target.Left = source.Left; target.Top = source.Top;
+                    target.Width = source.Width;
+                    target.Height = source.Height;
+                    continue;
+                }
+                if (kind == "shape_font_size")
+                {
+                    target.TextFrame.TextRange.Font.Size =
+                        source.TextFrame.TextRange.Font.Size;
+                    continue;
+                }
+                if (kind == "table_cell_fill")
+                {
+                    var row = Convert.ToInt32(operation["row"]);
+                    var column = Convert.ToInt32(operation["column"]);
+                    target.Table.Cell(row, column).Shape.Fill.ForeColor.RGB =
+                        source.Table.Cell(row, column).Shape.Fill.ForeColor.RGB;
+                    continue;
+                }
                 if (kind == "replace_text")
                 {
                     source.TextFrame.TextRange.Copy(); target.TextFrame.TextRange.PasteSpecial(9);
@@ -390,8 +520,8 @@ namespace Scribble.Office
                 else if (kind == "chart_point")
                 {
                     var series = Convert.ToInt32(operation["series"]); var category = Convert.ToInt32(operation["category"]);
-                    var before = ((System.Collections.IEnumerable)source.Chart.SeriesCollection(series).Values).Cast<object>().ToArray();
-                    var current = ((System.Collections.IEnumerable)target.Chart.SeriesCollection(series).Values).Cast<object>().ToArray();
+                    var before = PresentationDraftWriter.ComArrayItems((object)source.Chart.SeriesCollection(series), "Values");
+                    var current = PresentationDraftWriter.ComArrayItems((object)target.Chart.SeriesCollection(series), "Values");
                     PresentationChartEdit.SetPoint((object)target.Chart, series, category, Convert.ToDouble(current[category - 1]), Convert.ToDouble(before[category - 1]));
                 }
             }
@@ -526,7 +656,13 @@ namespace Scribble.Office
         private void VerifyRecoveryOriginals()
         {
             foreach (var item in Items)
-                if (PresentationInspection.Fingerprint(item.Backup) != item.BackupFingerprint) throw new InvalidOperationException("REVISION_RECOVERY_ORIGINAL_CHANGED");
+                if (PresentationInspection.Fingerprint(item.Backup) != item.BackupFingerprint)
+                    throw new InvalidOperationException(
+                        "REVISION_RECOVERY_ORIGINAL_CHANGED: slide " +
+                        item.Index + "; " +
+                        (PresentationInspection.CopyContentFingerprint(
+                            item.Backup) == item.BackupContentFingerprint ?
+                            "package" : "native content"));
         }
         internal void Revert() { RevertWithJournal(null); }
         internal void RevertWithJournal(Action<string> journal)

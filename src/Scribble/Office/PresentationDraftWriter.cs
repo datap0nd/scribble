@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using Scribble.Security;
 
@@ -253,7 +254,8 @@ namespace Scribble.Office
             Action<SamsungOutput> onRendered,
             object boundPresentation,
             SamsungGenerationJournal journal,
-            Action beforeNativeWrite)
+            Action beforeNativeWrite,
+            bool skipChartPreview = false)
         {
             if (slides == null || slides.Count == 0)
             {
@@ -322,17 +324,23 @@ namespace Scribble.Office
             foreach (var page in planned)
             {
                 var index = anchor + added + 1;
-                var output = journal?.Resume(page, added);
+                var output = journal?.Resume(page, added,
+                    skipChartPreview);
                 if (output == null)
                 {
                     dynamic nativeSlides = presentation.Slides;
                     beforeNativeWrite?.Invoke();
-                    dynamic created = nativeSlides.Add(index, PpLayoutBlank);
-                    output = DrawSamsungPage((object)created, page, owner);
-                    output.Image = ExportSamsung(output);
+                    TraceNativeChartStage("before-draw-page-" + index);
+                    output = DrawNewSamsungSlide((object)nativeSlides, index,
+                        page, owner, skipChartPreview);
+                    TraceNativeChartStage("after-draw-page-" + index);
+                    TraceNativeChartStage("before-receipt-page-" + index);
                     journal?.Record(output, added);
+                    TraceNativeChartStage("after-receipt-page-" + index);
                 }
+                TraceNativeChartStage("before-render-callback-page-" + index);
                 onRendered?.Invoke(output);
+                TraceNativeChartStage("after-render-callback-page-" + index);
                 var drawn = (page.Elements.Any(e => e.Chart != null) ? 1 : 0) | (page.Elements.Any(e => e.Table != null) ? 2 : 0);
                 if ((drawn & 1) != 0)
                 {
@@ -1315,7 +1323,44 @@ namespace Scribble.Office
         // own embedded store inside the unsaved draft presentation -
         // closing it only closes the editing grid; no user file is
         // touched or saved.
-        private static bool AddChartToSlide(
+        // Office returns series values as a one-based SAFEARRAY. The C# dynamic
+        // binder converts such a result to object[] and fails with "Unable to
+        // cast System.Object[*] to System.Object[]", so the property is read by
+        // reflection and enumerated as a plain Array.
+        internal static object[] ComArrayItems(object comObject, string property)
+        {
+            var raw = comObject.GetType().InvokeMember(
+                property,
+                System.Reflection.BindingFlags.GetProperty,
+                null,
+                comObject,
+                null,
+                System.Globalization.CultureInfo.InvariantCulture);
+            var array = raw as Array;
+            if (array == null) return raw == null ? new object[0] : new[] { raw };
+            var items = new object[array.Length];
+            var index = 0;
+            foreach (var item in array) items[index++] = item;
+            return items;
+        }
+
+        // The failing automation step and its error, for the rejection text.
+        // Native chart creation crosses PowerPoint and an embedded Excel data
+        // grid; "could not be created" alone cannot be diagnosed or repaired.
+        [ThreadStatic]
+        internal static string LastChartFailure;
+
+        // COM's dynamic binder cannot assign an empty Nullable<double> to a
+        // chart-data cell ("Nullable object must have a value"). Box only a
+        // real number; a missing point is a blank cell, never numeric zero.
+        internal static object ChartCellValue(IReadOnlyList<double?> values, int category)
+        {
+            if (values == null || category < 0 || category >= values.Count || !values[category].HasValue)
+                return null;
+            return values[category].Value;
+        }
+
+        internal static bool AddChartToSlide(
             dynamic slide,
             DraftChart chart,
             double left,
@@ -1323,8 +1368,12 @@ namespace Scribble.Office
             double width,
             double height)
         {
+            var step = "AddChart2";
+            LastChartFailure = null;
+            dynamic dataWorkbook = null;
             try
             {
+                TraceNativeChartStage("before-chart-AddChart2");
                 dynamic shape = slide.Shapes.AddChart2(
                     -1,
                     chart.TypeCode,
@@ -1333,12 +1382,46 @@ namespace Scribble.Office
                     (float)width,
                     (float)(height * 0.94),
                     true);
+                TraceNativeChartStage("after-chart-AddChart2");
                 dynamic slideChart = shape.Chart;
-                slideChart.ChartData.Activate();
-                dynamic dataWorkbook =
-                    slideChart.ChartData.Workbook;
+                step = "ChartData.Activate";
+                TraceNativeChartStage("before-chart-activate");
+                try
+                {
+                    slideChart.ChartData.Activate();
+                }
+                catch (Exception activation)
+                    when (activation is System.Runtime.InteropServices.COMException ||
+                          activation is InvalidOperationException)
+                {
+                    // The windowless data grid does not need a foreground
+                    // Excel window, which is unavailable from some hosts.
+                    step = "ChartData.ActivateChartDataWindow";
+                    slideChart.ChartData.ActivateChartDataWindow();
+                }
+
+                step = "ChartData.Workbook";
+                TraceNativeChartStage("before-chart-workbook");
+                Exception workbookFailure = null;
+                for (var attempt = 0; attempt < 3 && dataWorkbook == null; attempt++)
+                {
+                    try { dataWorkbook = slideChart.ChartData.Workbook; }
+                    catch (Exception exception) when (
+                        exception is System.Runtime.InteropServices.COMException ||
+                        exception is OutOfMemoryException)
+                    {
+                        workbookFailure = exception;
+                        if (attempt == 2) break;
+                        System.Threading.Thread.Sleep(350);
+                        try { slideChart.ChartData.Activate(); } catch { }
+                    }
+                }
+                if (dataWorkbook == null)
+                    throw new InvalidOperationException("Embedded chart workbook did not become available after three attempts.", workbookFailure);
                 dynamic dataSheet =
                     dataWorkbook.Worksheets[1];
+                step = "write chart data";
+                TraceNativeChartStage("before-chart-write-data");
                 dataSheet.Cells[1, 1].Value2 = " ";
                 for (var series = 0;
                      series < chart.Series.Count;
@@ -1366,12 +1449,10 @@ namespace Scribble.Office
                     {
                         var values =
                             chart.Series[series].Values;
-                        dataSheet.Cells[
-                            category + 2,
-                            series + 2].Value2 =
-                            category < values.Count
-                                ? values[category]
-                                : (double?)null;
+                        dynamic pointCell = dataSheet.Cells[category + 2, series + 2];
+                        var pointValue = ChartCellValue(values, category);
+                        if (pointValue == null) pointCell.ClearContents();
+                        else pointCell.Value2 = pointValue;
                     }
                 }
 
@@ -1415,46 +1496,105 @@ namespace Scribble.Office
                 {
                 }
 
+                step = "SetSourceData";
+                TraceNativeChartStage("before-chart-source-data");
                 slideChart.SetSourceData("='" + ((string)dataSheet.Name).Replace("'", "''") + "'!$A$1:$" +
                     (char)('A' + chart.Series.Count) + "$" + (chart.Categories.Count + 1), 2);
-                if ((int)slideChart.SeriesCollection().Count != chart.Series.Count) throw new InvalidOperationException("Chart source series were not applied.");
+                step = "series readback";
+                TraceNativeChartStage("before-chart-readback");
                 for (var s = 0; s < chart.Series.Count; s++)
-                {
-                    var actual = ((IEnumerable)slideChart.SeriesCollection(s + 1).Values).Cast<object>().Select(Convert.ToDouble).ToArray();
                     for (var point = 0; point < chart.Series[s].Values.Count; point++)
                     {
                         var expected = chart.Series[s].Values[point];
-                        // Native series may expose a blank as zero; verify the
-                        // embedded cell itself so a missing value is never written as zero.
                         object cellValue = dataSheet.Cells[point + 2, s + 2].Value2;
-                        if (!expected.HasValue ? cellValue != null : point >= actual.Length || actual[point] != expected.Value)
-                            throw new InvalidOperationException("Chart data readback failed.");
+                        // A native series may expose a blank as zero. The
+                        // embedded cell is the source of truth for missingness.
+                        if (!expected.HasValue ? cellValue != null :
+                            cellValue == null || Convert.ToDouble(cellValue,
+                                CultureInfo.InvariantCulture) != expected.Value)
+                            throw new InvalidOperationException("Chart workbook data readback failed.");
                     }
-                    var labels = ((IEnumerable)slideChart.SeriesCollection(s + 1).XValues).Cast<object>().Select(Convert.ToString).ToArray();
-                    if (!labels.SequenceEqual(chart.Categories)) throw new InvalidOperationException("Chart category readback failed.");
+                // SetSourceData may update the chart cache asynchronously.
+                // Retry only readback, never another write or chart creation.
+                var chartReadback = false;
+                for (var attempt = 0; attempt < 4 && !chartReadback; attempt++)
+                {
+                    try
+                    {
+                        chartReadback = (int)slideChart.SeriesCollection().Count ==
+                            chart.Series.Count;
+                        for (var s = 0; chartReadback && s < chart.Series.Count; s++)
+                        {
+                            var actual = ComArrayItems((object)slideChart.SeriesCollection(s + 1),
+                                "Values").ToArray();
+                            for (var point = 0; point < chart.Series[s].Values.Count; point++)
+                                if (chart.Series[s].Values[point].HasValue &&
+                                    (point >= actual.Length || actual[point] == null ||
+                                    Convert.ToDouble(actual[point],
+                                        CultureInfo.InvariantCulture) !=
+                                    chart.Series[s].Values[point].Value))
+                                { chartReadback = false; break; }
+                            if (chartReadback)
+                            {
+                                var labels = ComArrayItems((object)slideChart.SeriesCollection(s + 1),
+                                    "XValues").Select(Convert.ToString).ToArray();
+                                chartReadback = labels.SequenceEqual(chart.Categories);
+                            }
+                        }
+                    }
+                    catch (System.Runtime.InteropServices.COMException error)
+                        when (unchecked((uint)error.ErrorCode) == 0x800A01A8 &&
+                            attempt < 3)
+                    { chartReadback = false; }
+                    if (!chartReadback && attempt < 3)
+                        System.Threading.Thread.Sleep(250);
                 }
+                if (!chartReadback)
+                    throw new InvalidOperationException(
+                        "Chart data or category readback failed after bounded cache refresh.");
+                step = "style";
+                TraceNativeChartStage("before-chart-style");
                 slideChart.DisplayBlanksAs = 1; // xlNotPlotted: preserve gaps.
                 StyleChart(slideChart, chart);
 
-                try
+                // A still-open embedded grid can block the next AddChart2.
+                // Never report this chart complete if its grid did not close.
+                step = "close chart data";
+                Exception closeFailure = null;
+                var closed = false;
+                for (var attempt = 0; attempt < 3 && !closed; attempt++)
                 {
-                    // Alerts off so closing the embedded grid can
-                    // never raise a modal prompt and hang the
-                    // draft.
-                    dataWorkbook.Application.DisplayAlerts = false;
-                    dataWorkbook.Close(true);
+                    try
+                    {
+                        dataWorkbook.Application.DisplayAlerts = false;
+                        dataWorkbook.Close(true);
+                        closed = true;
+                    }
+                    catch (System.Runtime.InteropServices.COMException error)
+                    {
+                        closeFailure = error;
+                        if (attempt < 2)
+                            System.Threading.Thread.Sleep(350 * (attempt + 1));
+                    }
                 }
-                catch
-                {
-                    // Leaving the data grid window open is only
-                    // cosmetic; the chart itself already holds the
-                    // data.
-                }
+                if (!closed)
+                    throw new InvalidOperationException(
+                        "The embedded chart data grid did not close.",
+                        closeFailure);
 
+                TraceNativeChartStage("after-chart-complete");
                 return true;
             }
-            catch
+            catch (Exception exception)
             {
+                // A failed embedded-grid write must not leave its Excel
+                // workbook open before the owning slide retries the chart.
+                try { if (dataWorkbook != null) dataWorkbook.Close(false); } catch { }
+                var com = exception as System.Runtime.InteropServices.COMException;
+                LastChartFailure = step + ": " + exception.GetType().Name +
+                    (com != null ? " 0x" + com.ErrorCode.ToString("X8") : string.Empty) + " " +
+                    TextBoundary.SingleLine(exception.Message, 200);
+                Scribble.Utilities.Log.Error("PresentationChart." + step, exception);
                 return false;
             }
         }
@@ -1466,6 +1606,26 @@ namespace Scribble.Office
             dynamic slideChart,
             DraftChart chart)
         {
+            if (DraftChartTypes.ShouldUseZeroBasedValueAxis(
+                chart.TypeCode,
+                chart.Series.SelectMany(series => series.Values)))
+            {
+                try
+                {
+                    dynamic valueAxis = slideChart.Axes(2);
+                    valueAxis.MinimumScaleIsAuto = false;
+                    valueAxis.MinimumScale = 0d;
+                    if (Convert.ToDouble(valueAxis.MinimumScale) != 0d)
+                        throw new InvalidOperationException("PowerPoint did not retain a zero chart baseline.");
+                }
+                catch (Exception exception)
+                {
+                    throw new InvalidOperationException(
+                        "The native chart value axis could not be fixed at zero.",
+                        exception);
+                }
+            }
+
             try
             {
                 slideChart.ChartArea.Format.Line.Visible = MsoFalse;
@@ -1568,6 +1728,26 @@ namespace Scribble.Office
                 catch
                 {
                 }
+            }
+
+            // Two-period executive comparisons need the exact figures on the
+            // marks, not only a distant axis; distinguish prior and current
+            // period while keeping the chart's native data and zero baseline.
+            if (chart.TypeCode == 51 && chart.Series.Count == 1 && chart.Categories.Count == 2)
+            {
+                try
+                {
+                    dynamic single = slideChart.SeriesCollection(1);
+                    single.ApplyDataLabels();
+                    single.DataLabels().ShowValue = true;
+                    single.DataLabels().NumberFormat = "#,##0";
+                    single.DataLabels().Format.TextFrame2.TextRange.Font.Size = 16f;
+                    single.Points(1).Format.Fill.Solid();
+                    single.Points(1).Format.Fill.ForeColor.RGB = MetoTheme.Rgb(SamsungSlideDesign.SoftBlue);
+                    single.Points(2).Format.Fill.Solid();
+                    single.Points(2).Format.Fill.ForeColor.RGB = MetoTheme.Rgb(SamsungSlideDesign.Blue);
+                }
+                catch { }
             }
         }
 
@@ -1888,7 +2068,13 @@ namespace Scribble.Office
                     Takeaway = SamsungString(map, "takeaway", 400),
                     Caption = SamsungString(map, "caption", 180),
                     Sources = SamsungString(map, "sources", 2000),
-                    Evidence = SamsungString(map, "evidence", 12000),
+                    // A source-backed slide can legitimately cite several
+                    // 3,000-character retained passages (for example six
+                    // monthly chart observations). The old 12k ceiling
+                    // rejected valid slide batches after authorization was
+                    // already underway and sent the model into repeated
+                    // source reads instead of finishing the deck.
+                    Evidence = SamsungString(map, "evidence", 32000),
                     Id = SamsungString(map, "id", 80),
                     Annotations = SamsungAuthoringPolicy.Array(map, "annotations"),
                     ImageNames = ValidateArray(SamsungValue(map, "image_names"), 4, 250).Select(Convert.ToString).ToArray(),
@@ -2157,7 +2343,7 @@ namespace Scribble.Office
             return new DraftChart(
                 DraftChartTypes.Resolve(
                     Convert.ToString(typeValue)),
-                Clean(Convert.ToString(titleValue), 180),
+                SamsungAuthoringPolicy.AudienceChartTitle(Clean(Convert.ToString(titleValue), 180)),
                 categories,
                 series);
         }

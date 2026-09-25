@@ -138,14 +138,26 @@ namespace Scribble.Updater
                 cancel.ThrowIfCancellationRequested();
                 var hosts = Hosts();
                 if (hosts.Length == 0) break;
+                var waiting = new List<Process>();
                 try
                 {
-                    report("Waiting for: " + string.Join(", ", hosts.Select(p => p.ProcessName).Distinct()) + ". Save your work and close any remaining windows. Update continues automatically.");
                     foreach (var host in hosts)
                     {
-                        try { if (requested.Add(host.Id + ":" + host.StartTime.ToUniversalTime().Ticks)) host.CloseMainWindow(); }
+                        try
+                        {
+                            // Empty Office processes can retain mapped DLLs
+                            // after their last window has closed. Setup keeps
+                            // those old images while replacing the payload.
+                            // A headless Test Bench can still own an active run.
+                            if (host.MainWindowHandle == IntPtr.Zero && host.ProcessName != "ScribbleBrowserHost") continue;
+                            waiting.Add(host);
+                            var identity = host.Id + ":" + host.StartTime.ToUniversalTime().Ticks;
+                            if (!requested.Contains(identity) && host.CloseMainWindow()) requested.Add(identity);
+                        }
                         catch (InvalidOperationException) { }
                     }
+                    if (waiting.Count == 0) break;
+                    report("Waiting for: " + string.Join(", ", waiting.Select(p => p.ProcessName).Distinct()) + ". Save your work and close any remaining windows. Update continues automatically.");
                 }
                 finally { foreach (var host in hosts) host.Dispose(); }
                 if (DateTime.UtcNow >= deadline) throw new TimeoutException("Office or Test Bench is still open. Close the listed app, then retry Update. The installer and logs are preserved.");

@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "source_commit": "bffd25e",
+  "endpoint": "https://openrouter.ai/api/v1",
+  "model": "qwen/qwen3.8-27b",
+  "tool_provider_only": ["reka", "mancer", "phala", "coreweave", "dekallm", "chutes"],
+  "tool_provider_short_call_order": ["reka", "mancer", "phala", "coreweave", "dekallm", "chutes"],
+  "tool_provider_long_call_sort": "throughput",
+  "tool_provider_allow_fallbacks": true,
+  "review_provider": "openrouter_default",
+  "parallel_tool_calls": false,
+  "native_slide_draft_reasoning": "disabled",
+  "compact_toolless_reasoning": "none",
+  "other_reasoning": "low",
+  "max_tokens_presentation_draft": 32768,
+  "max_tokens_other_draft": 8192,
+  "stress_key_total_cap_usd": 40,
+  "stress_key_reserve_usd": 0.05,
+  "structured_schema_enforcement": "not_configured"
+}

@@ -47,13 +47,18 @@ namespace Scribble.Outlook
         private bool _reviewAll;
         private bool _requiresEnumeration;
         private bool _metadataOnly;
+        private bool _enumerationOnly;
         private bool _skipAttachments;
+        private bool _requireAttachments;
         private readonly Dictionary<string, MailboxAttachmentPage> _attachmentPages = new Dictionary<string, MailboxAttachmentPage>();
 
         internal void ConfigureRequestScope(string prompt)
         {
             _metadataOnly = _workingSetOnly && ChatRequestFactory.IsMetadataOnly(prompt);
-            _skipAttachments = _metadataOnly || ChatRequestFactory.ForbidsAttachmentReads(prompt);
+            _enumerationOnly = !_workingSetOnly && ChatRequestFactory.IsMailboxEnumerationOnly(prompt);
+            _skipAttachments = _metadataOnly || _enumerationOnly || ChatRequestFactory.ForbidsAttachmentReads(prompt);
+            _requireAttachments = !_skipAttachments &&
+                ChatRequestFactory.RequiresAttachmentReads(prompt);
         }
 
         public async Task BindTaskAsync(TaskContextManager task, CancellationToken token)
@@ -101,8 +106,9 @@ namespace Scribble.Outlook
             try
             {
                 var identity = "";
-                if (folder != "sent") { inbox = session.GetDefaultFolder(6); dynamic item = inbox; identity += Convert.ToString(item.StoreID); }
-                if (folder != "inbox") { sent = session.GetDefaultFolder(5); dynamic item = sent; identity += ":" + Convert.ToString(item.StoreID); }
+                Scribble.Testing.TestLabMailbox.AssertScope(_fixtureScope);
+                if (folder != "sent") { inbox = _fixtureScope == null ? session.GetDefaultFolder(6) : Scribble.Testing.TestLabMailbox.GetFolder(_application, 6); dynamic item = inbox; identity += Convert.ToString(item.StoreID); }
+                if (folder != "inbox") { sent = _fixtureScope == null ? session.GetDefaultFolder(5) : Scribble.Testing.TestLabMailbox.GetFolder(_application, 5); dynamic item = sent; identity += ":" + Convert.ToString(item.StoreID); }
                 return identity;
             }
             finally
@@ -125,7 +131,8 @@ namespace Scribble.Outlook
                 saved.Body = "";
                 entry = new MailboxTaskMessage { Handle = handle, Source = saved };
                 _ledger.Messages.Add(entry);
-                if (!_task.State.ExpectedSourceIds.Contains(entry.Id)) _task.State.ExpectedSourceIds.Add(entry.Id);
+                if (!_enumerationOnly && !_task.State.ExpectedSourceIds.Contains(entry.Id))
+                    _task.State.ExpectedSourceIds.Add(entry.Id);
                 _metadataHandles.Add(handle);
             }
             return entry;
@@ -140,6 +147,7 @@ namespace Scribble.Outlook
                     return "Mailbox coverage is incomplete: enumerate the user's requested mailbox/time window with search_mailbox before answering.";
                 var cursor = _ledger.Searches.FirstOrDefault(s => !s.Complete);
                 if (cursor != null) return "Mailbox enumeration is incomplete. Continue search_mailbox with cursor " + cursor.Id + " (empty pages do not mean completion).";
+                if (_enumerationOnly) return null;
                 var pending = _ledger.Messages.Where(m => !m.Analysed && !_task.State.Exclusions.ContainsKey(m.Id)).ToArray();
                 if (pending.Length > 0) return pending.Length + " messages still need analysis receipts. Read every body/attachment page, then call record_mailbox_analysis. Next handles: " + string.Join(", ", pending.Take(10).Select(m => m.Handle));
                 return null;
@@ -174,7 +182,7 @@ namespace Scribble.Outlook
                     (entry.AttachmentCount >= 0 && MailboxAttachmentPages.Count(_application, current) != entry.AttachmentCount))
                     return Error(callId, "MAILBOX_SOURCE_CHANGED", "The message body or attachment collection changed during analysis. Its old coverage cannot be used.");
                 if (entry.BodyLength < 0 || entry.ReadUntil < entry.BodyLength || entry.AttachmentCount < 0 ||
-                    (!_skipAttachments && entry.CompleteAttachments.Count != entry.AttachmentCount))
+                    (_requireAttachments && entry.CompleteAttachments.Count != entry.AttachmentCount))
                     return Error(callId, "MAILBOX_COVERAGE_INCOMPLETE", "Read the complete body and every attachment before recording analysis. Body offset " + entry.ReadUntil + "; attachments complete " + entry.CompleteAttachments.Count + " of " + entry.AttachmentCount + ".");
                 var summary = GetString(arguments, "summary", "");
                 if (summary.Length == 0) return Error(callId, "MAILBOX_ANALYSIS_REQUIRED", "Provide a source-grounded summary, including actions and important evidence.");

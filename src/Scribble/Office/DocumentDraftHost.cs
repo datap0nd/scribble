@@ -40,7 +40,8 @@ namespace Scribble.Office
             {
                 "title",
                 "rows",
-                "chart"
+                "chart",
+                "analysis_id"
             };
 
         private static readonly HashSet<string> CellsArguments =
@@ -101,6 +102,8 @@ namespace Scribble.Office
         private bool _selectionReplaceSource;
         private KoreanWorkbookRequestContext _koreanWorkbookRequest;
         private KoreanWorkbookOutputSession _koreanWorkbookOutput;
+        private ExcelDraftBinding _excelDraftBinding;
+        private string _excelDraftBindingError;
 
         public DocumentDraftHost(
             string hostKind,
@@ -233,6 +236,11 @@ namespace Scribble.Office
                         "DRAFT_ARGUMENTS_INVALID"));
             }
 
+            if (name == WorkbookToolCatalog.WriteDraftSheet &&
+                arguments.ContainsKey("analysis_id"))
+                return ExecuteAnalysisWorkbookDraft(call.id, arguments,
+                    authorization);
+
             if (string.Equals(
                 name,
                 WorkbookToolCatalog.WriteSelectionOutput,
@@ -253,6 +261,138 @@ namespace Scribble.Office
                     call.id,
                     arguments,
                     authorization);
+            }
+
+            // A new draft sheet has a deterministic layout, so misassociated
+            // formulas are rejected before any permission or COM write.
+            if (name == WorkbookToolCatalog.WriteDraftSheet ||
+                name == CrossAppToolCatalog.SendToExcel)
+            {
+                IReadOnlyList<string> formulaIssues;
+                IReadOnlyList<string> requiredFormulaIssues;
+                try
+                {
+                    var draftRows = ParsedRows(arguments);
+                    requiredFormulaIssues = DraftFormulaAssociation.ValidatePromptRequirements(
+                        _latestUserPrompt,
+                        draftRows);
+                    formulaIssues = DraftFormulaAssociation.Validate(draftRows);
+                }
+                catch (Exception exception) when (
+                    exception is InvalidOperationException ||
+                    exception is ArgumentException)
+                {
+                    // Malformed rows are reported by the write path.
+                    requiredFormulaIssues = new string[0];
+                    formulaIssues = new string[0];
+                }
+
+                if (requiredFormulaIssues.Count > 0)
+                {
+                    return Error(
+                        call.id,
+                        authorization,
+                        "DRAFT_LIVE_FORMULAS_REQUIRED",
+                        "No sheet was written and no draft permission was consumed. " +
+                        "The user required live formulas linked to source worksheets. " +
+                        "Replace pasted constants in every named cell and resend the complete table. " +
+                        string.Join(" ", requiredFormulaIssues));
+                }
+
+                if (formulaIssues.Count > 0)
+                {
+                    return Error(
+                        call.id,
+                        authorization,
+                        "DRAFT_FORMULA_ASSOCIATION",
+                        DraftFormulaAssociation.RepairMessage(
+                            formulaIssues));
+                }
+            }
+
+            // A one-page request must fit before consuming its draft
+            // permission. The model can then shorten and retry safely.
+            if ((name == WordToolCatalog.WriteDraftDocument ||
+                 name == CrossAppToolCatalog.SendToWord) &&
+                System.Text.RegularExpressions.Regex.IsMatch(
+                    _latestUserPrompt ?? string.Empty,
+                    @"\bone[- ]page\b",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+            {
+                var pageIssues = WordDraftWriter.OnePageIssues(
+                    GetLongString(arguments, "body"));
+                if (pageIssues.Length > 0)
+                    return Error(
+                        call.id,
+                        authorization,
+                        "WORD_ONE_PAGE_LIMIT",
+                        "No document was written and no draft permission was consumed. " +
+                        string.Join(" ", pageIssues));
+            }
+
+            object boundExcelWorkbook = null;
+            object boundExcelSheet = null;
+            IReadOnlyList<IReadOnlyList<string>> boundCellRows = null;
+            if (name == WorkbookToolCatalog.WriteDraftSheet ||
+                name == WorkbookToolCatalog.WriteCells)
+            {
+                try
+                {
+                    if (_excelDraftBinding == null)
+                        throw new InvalidOperationException(
+                            _excelDraftBindingError ??
+                            "EXCEL_DRAFT_TARGET_NOT_CAPTURED: Submit the Excel request again.");
+                    boundExcelWorkbook = _excelDraftBinding.Workbook();
+                    if (name == WorkbookToolCatalog.WriteCells)
+                        boundExcelSheet = _excelDraftBinding.Sheet();
+                }
+                catch (Exception error) when (
+                    error is InvalidOperationException ||
+                    error is System.Runtime.InteropServices.COMException)
+                {
+                    return Error(call.id, authorization,
+                        "EXCEL_DRAFT_TARGET_CHANGED", error.Message);
+                }
+            }
+            if (name == WorkbookToolCatalog.WriteCells)
+            {
+                try
+                {
+                    boundCellRows = ParsedRows(arguments);
+                    var cellAnchor = ToolArguments.GetString(arguments,
+                        "start_cell", string.Empty);
+                    if (_taskContext == null)
+                        WorkbookDraftWriter.ValidateCellsTarget(
+                            _hostApplication, cellAnchor, boundCellRows,
+                            boundExcelSheet);
+                    else
+                    {
+                        var receipt = WorkbookDraftWriter
+                            .CaptureCellsReceipt(_hostApplication,
+                                cellAnchor, boundCellRows,
+                                boundExcelSheet, call.id);
+                        var receiptJson = new JavaScriptSerializer
+                        {
+                            MaxJsonLength = int.MaxValue
+                        }.Serialize(receipt);
+                        var receiptId = _taskContext.Store.PutEvidence(
+                            _taskContext.State.Id, receiptJson);
+                        _taskContext.State.HostData[
+                            "excel_grid_receipt"] = receiptId;
+                        _taskContext.State.HostData[
+                            "excel_grid_call_id"] = call.id;
+                        _taskContext.Checkpoint();
+                    }
+                }
+                catch (Exception error) when (
+                    error is InvalidOperationException ||
+                    error is System.Runtime.InteropServices.COMException ||
+                    error is System.IO.IOException ||
+                    error is UnauthorizedAccessException)
+                {
+                    return Error(call.id, authorization,
+                        "DRAFT_PREFLIGHT_FAILED", error.Message);
+                }
             }
 
             // A deck or workbook may be built over several bounded
@@ -308,7 +448,10 @@ namespace Scribble.Office
                             "title",
                             string.Empty),
                         ParsedRows(arguments),
-                        ParsedChart(arguments));
+                        ParsedChart(arguments),
+                        false,
+                        boundExcelWorkbook,
+                        true);
                 }
                 else if (string.Equals(
                              name,
@@ -321,7 +464,8 @@ namespace Scribble.Office
                             arguments,
                             "start_cell",
                             string.Empty),
-                        ParsedRows(arguments));
+                        boundCellRows,
+                        boundExcelSheet);
                 }
                 else if (string.Equals(
                              name,
@@ -380,10 +524,12 @@ namespace Scribble.Office
                             "title",
                             string.Empty),
                         GetLongString(arguments, "body"),
-                        ToolArguments.GetString(
-                            arguments,
-                            "placement",
-                            "end"));
+                        WordDraftWriter.ResolvePlacement(
+                            ToolArguments.GetString(
+                                arguments,
+                                "placement",
+                                "new_document"),
+                            _latestUserPrompt));
                 }
                 else if (string.Equals(
                              name,
@@ -429,6 +575,31 @@ namespace Scribble.Office
             catch (Exception exception)
             {
                 Log.Error("DocumentDraft." + name, exception);
+                if (name == WorkbookToolCatalog.WriteCells &&
+                    exception is InvalidOperationException &&
+                    (exception.Message.StartsWith(
+                        "DRAFT_WRITE_ROLLED_BACK:", StringComparison.Ordinal) ||
+                     exception.Message.StartsWith(
+                        "DRAFT_WRITE_UNCERTAIN:", StringComparison.Ordinal)))
+                    return Error(call.id, authorization,
+                        exception.Message.StartsWith(
+                            "DRAFT_WRITE_ROLLED_BACK:",
+                            StringComparison.Ordinal)
+                            ? "DRAFT_WRITE_ROLLED_BACK"
+                            : "DRAFT_WRITE_UNCERTAIN",
+                        exception.Message);
+                if ((name == WorkbookToolCatalog.WriteDraftSheet || name == CrossAppToolCatalog.SendToExcel) &&
+                    exception is InvalidOperationException &&
+                    exception.Message.StartsWith("DRAFT_FORMULA_INVALID:", StringComparison.Ordinal))
+                {
+                    // The writer reached its explicit post-write formula check:
+                    // the rejected formula is visible as text on a uniquely
+                    // numbered draft sheet, while originals are untouched.
+                    // Report that known incomplete side effect separately from
+                    // a crash or unknown write so another fresh draft can be
+                    // attempted without overwriting this one.
+                    return Error(call.id, authorization, "DRAFT_FORMULA_INVALID", exception.Message);
+                }
                 return Error(
                     call.id,
                     authorization,
@@ -457,6 +628,25 @@ namespace Scribble.Office
             _allowSelectionSourceReplacement =
                 context != null && context.AllowSourceReplacement;
             _selectionReplaceSource = false;
+        }
+
+        internal void BeginExcelDraftRequest()
+        {
+            _excelDraftBinding = null;
+            _excelDraftBindingError = null;
+            if (_hostKind != "excel") return;
+            try
+            {
+                _excelDraftBinding = ExcelDraftBinding.Capture(
+                    _hostApplication);
+            }
+            catch (Exception error) when (
+                error is InvalidOperationException ||
+                error is System.Runtime.InteropServices.COMException)
+            {
+                _excelDraftBindingError =
+                    "EXCEL_DRAFT_TARGET_UNAVAILABLE: " + error.Message;
+            }
         }
 
         internal void BeginKoreanWorkbookRequest(
@@ -529,7 +719,11 @@ namespace Scribble.Office
                     _koreanWorkbookOutput =
                         new KoreanWorkbookOutputSession(
                             handle,
-                            _koreanWorkbookRequest.Snapshot.Cells.Count);
+                            _koreanWorkbookRequest.Snapshot.Cells.Count,
+                            _koreanWorkbookRequest.Snapshot.TargetLanguage,
+                            _koreanWorkbookRequest.Snapshot.Cells
+                                .Select(cell => cell.SourceText)
+                                .ToArray());
                 }
 
                 var values = ParseSelectionValues(arguments);
@@ -615,8 +809,9 @@ namespace Scribble.Office
             var status = committed
                 ? committedStatus
                 : "Prepared " + staged + " of " +
-                  snapshot.Cells.Count +
-                  " Korean cell translations. Excel is unchanged.";
+                  snapshot.Cells.Count + " " +
+                  snapshot.SourceLanguage +
+                  " cell translations. Excel is unchanged.";
             return new MailboxToolResult(
                 callId,
                 _serializer.Serialize(
@@ -1192,6 +1387,10 @@ namespace Scribble.Office
 
         private static object ResolveSiblingApplication(string progId)
         {
+            if ((progId == "Excel.Application" || progId == "PowerPoint.Application") &&
+                (Scribble.Testing.TestLab.Status() != null || Scribble.Testing.TestLabSuite.Active() != null))
+                return Scribble.Testing.TestLabOfficeConnection.ResolvePreparedSibling(progId);
+
             object application = null;
             try
             {

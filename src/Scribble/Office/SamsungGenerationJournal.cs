@@ -80,6 +80,7 @@ namespace Scribble.Office
                 dynamic tags = deck.Tags;
                 beforeNativeWrite?.Invoke();
                 tags.Add("ScribbleTask", _task.State.Id);
+                tags.Add("ScribbleJournalOwner", Data.Owner);
                 _task.State.HostData["samsung_destination"] = _task.State.Id;
                 _task.State.HostData["samsung_recovery_payload"] = _task.RegisterEvidence(Data.Arguments);
                 Persist(); // Before the first slide mutation.
@@ -87,7 +88,12 @@ namespace Scribble.Office
             else
             {
                 if (!SamsungSlideDesign.SameOwner(Convert.ToString(deck.Tags["ScribbleTask"]), _task.State.Id)) throw new InvalidOperationException("SLIDE_RECOVERY_WRONG_DECK");
-                ValidateReceipts(Data, pages, Ids(value), id => PresentationInspection.Fingerprint(PresentationInspection.FindSlide(value, id)));
+                var journalOwner = Convert.ToString(deck.Tags["ScribbleJournalOwner"]);
+                if (string.IsNullOrEmpty(journalOwner))
+                    deck.Tags.Add("ScribbleJournalOwner", Data.Owner);
+                else if (!SamsungSlideDesign.SameOwner(journalOwner, Data.Owner))
+                    throw new InvalidOperationException("SLIDE_RECOVERY_WRONG_JOURNAL");
+                ValidateReceipts(Data, pages, Ids(value), id => PresentationInspection.FingerprintForJournal(PresentationInspection.FindSlide(value, id)));
                 // These receipts prove that the original attempt already wrote.
                 // A subsequent review failure must retain its recovery boundary.
                 beforeNativeWrite?.Invoke();
@@ -100,7 +106,8 @@ namespace Scribble.Office
             foreach (var receipt in state.Receipts)
                 if (fingerprint(receipt.SlideId) != receipt.Fingerprint) throw new InvalidOperationException("SLIDE_RECOVERY_USER_EDIT: A surviving slide changed; no user content was overwritten.");
         }
-        internal PresentationDraftWriter.SamsungOutput Resume(PresentationDraftWriter.SamsungPage page, int index)
+        internal PresentationDraftWriter.SamsungOutput Resume(PresentationDraftWriter.SamsungPage page, int index,
+            bool skipChartPreview = false)
         {
             var receipt = Data.Receipts.SingleOrDefault(r => r.Page == index);
             if (receipt == null) return null;
@@ -117,14 +124,16 @@ namespace Scribble.Office
             var output = new PresentationDraftWriter.SamsungOutput { Slide = PresentationInspection.FindSlide(_deck, receipt.SlideId), Page = page, Owner = Data.Owner };
             dynamic slide = output.Slide;
             for (var i = 1; i <= (int)slide.Shapes.Count; i++) output.ShapeIds.Add((int)slide.Shapes[i].Id);
-            output.Image = PresentationDraftWriter.ExportSamsung(output);
+            output.Image = skipChartPreview &&
+                PresentationInspection.ContainsNativeChart(output.Slide)
+                    ? null : PresentationDraftWriter.ExportSamsung(output);
             return output;
         }
         internal void Record(PresentationDraftWriter.SamsungOutput output, int index, string content = null)
         {
             var receipt = Data.Receipts.SingleOrDefault(r => r.Page == index);
             if (receipt == null) { receipt = new Receipt { Page = index, SlideId = (int)((dynamic)output.Slide).SlideID, SourceId = output.Page.Source.Id, PageOrdinal = Data.Receipts.Count(r => r.SourceId == output.Page.Source.Id) }; Data.Receipts.Add(receipt); }
-            receipt.Fingerprint = PresentationInspection.Fingerprint(output.Slide);
+            receipt.Fingerprint = PresentationInspection.FingerprintForJournal(output.Slide);
             if (content != null) receipt.RepairedContent = content;
             Data.LastOrder = Ids(_deck); Persist();
         }
@@ -138,6 +147,35 @@ namespace Scribble.Office
         {
             foreach (var write in _task.State.Writes.Where(w => Data.AttemptCalls.Any(id => w.Id == "tool:" + id) || w.Id == "tool:" + Data.ToolCall || w.BeforeFingerprint == Data.FunctionFingerprint)) { write.Status = "verified"; write.AfterFingerprint = "native_generation_reconciled"; }
             _task.State.HostData.Remove("samsung_pending"); _task.Checkpoint();
+        }
+        internal bool ReleaseRolledBackWrite()
+        {
+            // DrawNewSamsungSlide deletes its own newly created slide when
+            // native text/layout drawing fails. Only if the deck is still
+            // exactly at the pre-write slide IDs, owned by this task, and no
+            // slide was receipted may a corrected payload replace the failed
+            // attempt. Anything partial or user-edited retains the journal.
+            if (_deck == null || Data.OriginalIds == null || Data.LastOrder == null ||
+                Data.Receipts == null || Data.Receipts.Count != 0) return false;
+            try
+            {
+                var currentIds = Ids(_deck);
+                if (!SamsungSlideDesign.SameOwner(Convert.ToString(((dynamic)_deck).Tags["ScribbleTask"]), _task.State.Id) ||
+                    !currentIds.SequenceEqual(Data.OriginalIds) || !currentIds.SequenceEqual(Data.LastOrder)) return false;
+            }
+            catch (Exception)
+            {
+                // A closed or inaccessible host cannot prove a complete
+                // rollback. Keep the journal and its uncertain-write fence.
+                return false;
+            }
+            foreach (var write in _task.State.Writes.Where(w => Data.AttemptCalls.Any(id => w.Id == "tool:" + id) ||
+                w.Id == "tool:" + Data.ToolCall || w.BeforeFingerprint == Data.FunctionFingerprint))
+            { write.Status = "verified"; write.AfterFingerprint = "native_slide_rolled_back_no_receipt"; }
+            _task.State.HostData.Remove("samsung_pending");
+            _task.State.HostData.Remove("samsung_recovery_payload");
+            _task.Checkpoint();
+            return true;
         }
         private void Persist() { _task.State.HostData["samsung_pending"] = _json.Serialize(Data); _task.Checkpoint(); }
     }

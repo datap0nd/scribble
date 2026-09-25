@@ -33,6 +33,14 @@ namespace GuardrailTests
         private static int Main(string[] args)
         {
             if (args.Length == 2 && args[0] == "--native-powerpoint") return SamsungNativeAcceptance.Run(args[1]);
+            if (args.Length == 2 && args[0] == "--native-powerpoint-chartless") return SamsungNativeAcceptance.Run(args[1], true);
+            if (args.Length == 2 && args[0] == "--native-analysis-pilot") return AnalysisNativeAcceptance.Run(args[1]);
+            if (args.Length == 2 && args[0] == "--native-saved-chart-fingerprint") return SavedChartFingerprintNativeAcceptance.Run(args[1]);
+            if (args.Length == 2 && args[0] == "--native-phase4-reference") return SamsungPhase4NativeAcceptance.Run(args[1]);
+            if (args.Length == 2 && args[0] == "--native-phase4-defects") return SamsungPhase4NativeAcceptance.RunDefects(args[1]);
+            if (args.Length == 4 && args[0] == "--native-phase4-pp01-copy") return SamsungPhase4RepairNativeAcceptance.Run(args[1], args[2], args[3]);
+            if (args.Length == 4 && args[0] == "--native-pilot-route") return PilotRouteNativeAcceptance.Run(args[1], args[2], args[3]);
+            if (args.Length == 2 && args[0] == "--native-phase5-excel-binding") return Phase5NativeExcelAcceptance.Run(args[1]);
             // The MCP round-trip test relaunches this same exe as a
             // scripted stdio MCP server, so the test needs no
             // external interpreter and stays deterministic. The
@@ -73,7 +81,27 @@ namespace GuardrailTests
             {
                 if (args.Length == 2 && args[0] == "--filter") _filter = args[1];
                 Run("Native report readback retains scalar cell formulas", HardeningTests.NativeReportReadback);
+                Run("Typed analysis snapshots preserve identity and serialization", AnalysisContractTests.SnapshotIdentityInvalidationAndSerialization);
+                Run("Explicit typed table bindings issue only verified facts", AnalysisContractTests.ExplicitTableBindingsIssueOnlyVerifiedFacts);
+                Run("Typed analysis calculations preserve source authority", AnalysisContractTests.DeterministicCalculationsPreserveAuthority);
+                Run("Native revision acceptance cannot expand its certified scope", PresentationAcceptanceTests.ScopedReceiptCannotCertifyCharts);
+                Run("Delivery transport budget persists across restart", PresentationAcceptanceTests.TransportBudgetSurvivesRestart);
+                Run("Delivery fake endpoint separates planning review and completion", PilotRouteNativeAcceptance.FakeTransportSeparatesChatAndReview);
+                Run("OpenXML typed capture retains formulas formats dates and blanks", AnalysisContractTests.OpenXmlCaptureRetainsTypedCells);
+                Run("One verified analysis compiles workbook formulas and four slides", AnalysisDocumentCompilerTests.OneAnalysisSuppliesWorkbookAndFourSlides);
+                Run("Typed deck tool accepts only fact references", AnalysisDocumentCompilerTests.DeckToolAcceptsOnlyFactReferencedPlan);
+                Run("Shared analysis scopes each destination write", AnalysisDocumentCompilerTests.SharedAnalysisAllowsOneDraftPerDestination);
+                Run("Analysis native writer requires an explicit development flag", AnalysisDocumentCompilerTests.PilotRequiresExplicitFeatureFlag);
+                Run("Typed review findings cannot override facts or pages", AnalysisReviewContractTests.FindingsCannotOverrideVerifiedFactsOrPages);
+                Run("One repair budget spans review and patch stages", AnalysisReviewContractTests.SharedBudgetSurvivesEveryStage);
+                Run("PDF export permits only metadata and two EMU table rounding", AnalysisReviewContractTests.PdfExportOnlyPermitsMetadataAndTableRoundoff);
+                Run("Chart fingerprint keeps workbook data while ignoring revision metadata", AnalysisReviewContractTests.ChartFingerprintPreservesEmbeddedWorkbookData);
+                Run("Saved decks cannot use chart package fingerprints", AnalysisReviewContractTests.SavedDeckCannotUseChartPackageFingerprint);
+                Run("Excel DBNull mixed formats resolve a date column", AnalysisContractTests.MixedExcelFormatsResolveDates);
                 Run("Duplicate document writes return a recoverable result", HardeningTests.DuplicateDraftIsRecoverable);
+                Run("Known invalid Excel draft formulas permit a fresh marked sheet", HardeningTests.RejectedDraftFormulaAllowsFreshMarkedSheet);
+                Run("Excel formula rejection occurs after a native grid write", HardeningTests.FormulaRejectionFollowsNativeGridWrite);
+                Run("Bound Excel draft ignores an active workbook change", HardeningTests.BoundDraftIgnoresActiveWorkbook);
                 Run("PowerPoint outline-only calls get a concrete repair before any write", HardeningTests.PowerPointArgumentsGiveRepair);
                 Run("Test Bench extracts the actual operations PDF filters", TestBenchRegressionTests.OperationsPdf);
                 Run("Test Bench detects work-PC Excel error representations", TestBenchRegressionTests.ExcelErrors);
@@ -86,26 +114,57 @@ namespace GuardrailTests
                 Run("Test Lab operator arguments and outcomes", PowerPointRecoveryBoundaryTests.OperatorArgumentsAndOutcomes);
                 Run("Test Lab operator logging failure waits for terminal runner", PowerPointRecoveryBoundaryTests.OperatorLoggingFailureRetainsTerminalBoundary);
                 Run("PowerPoint rejected outline can be corrected before writing", RejectedSlideOutlineCanChange);
+                Run("PowerPoint partial batches defer outline review", PartialSlideBatchesDeferOutlineReview);
+                Run("PowerPoint number failures suggest exact retained spans", NumberFailuresSuggestSourceSpans);
                 Run("QA metadata followup forbids reads and old task continuation", QaMetadataScope);
                 Run("QA repeated attachments reuse extraction and invalidate changed bytes", QaAttachmentCache);
                 Run("QA structured XLS preserves positions multilingual values and sheets", QaStructuredXls);
                 Run("QA sample slide evidence accepts user values without external quotes", QaSampleEvidence);
                 Run("QA draft grounding rejects invented facts and stale future dates", QaDraftGrounding);
                 Run("Samsung v2 interrupted native generation reconciles without duplication", SamsungRecoveryTests.GenerationRecovery);
+                Run("Samsung v2 permits correction only after complete native slide rollback", SamsungRecoveryTests.FullyRolledBackWriteCanBeCorrected);
                 Run("Samsung v2 revision snapshots reconcile and preserve user edits", SamsungRecoveryTests.RevisionRecovery);
                 Run("Samsung v2 repair scope and chart source bindings", SamsungRecoveryTests.RepairScopeAndChartBindings);
+                Run("Geometry findings currently request a complete slide repair", SamsungRecoveryTests.GeometryRepairOwnershipBaseline);
                 Run("Samsung legacy renderer remains version pinned", SamsungRecoveryTests.LegacyRenderer);
                 Run("Samsung v2 evidence calculations and sample isolation", SamsungWorkflowTests.Evidence);
+                Run("Complete attached workbook totals are auditable", SamsungWorkflowTests.CompleteAttachedWorkbookTotalsAreAuditable);
+                Run("Cited ISO due dates and grouped table rankings stay factual", SamsungWorkflowTests.CitedDueDatesAndTableRankings);
+                Run("Retained slide plan rejects new IDs but tolerates stale model echo", SamsungWorkflowTests.RetainedPlanOverridesModelEcho);
                 Run("Samsung v2 native chart gaps and semantic annotations", SamsungWorkflowTests.ChartGapsAndAnnotations);
                 Run("Samsung v2 shared policy and final completion gate", SamsungWorkflowTests.PolicyAndCompletion);
+                Run("Source reads expose stable Samsung citation spans", SamsungWorkflowTests.ReadReceiptsExposeSourceSpans);
+                Run("Derived gross margin requires host-recomputed source operands", SamsungWorkflowTests.DerivedMarginCalculation);
+                Run("Period labels verify against read sources and operands inherit table headers", SamsungWorkflowTests.PeriodLabelsAndOperandHeaders);
+                Run("Started decks continue instead of asking contract questions", SamsungWorkflowTests.ClarificationDeferral);
+                Run("An interrupted slide write redirects a revised payload to its original arguments", SamsungWorkflowTests.InterruptedWriteRedirectsToOriginalPayload);
+                Run("Draft sheet formulas must associate with their own rows and data blocks", SamsungWorkflowTests.DraftFormulaAssociations);
+                Run("Whole-workbook translation routes by destination language", WorkbookTranslationTests.DirectionRouting);
+                Run("English-to-Korean discovery skips codes, links and existing Korean", WorkbookTranslationTests.EnglishCellEligibility);
+                Run("Korean-target output accepts names but refuses an echoed window once", WorkbookTranslationTests.KoreanTargetSession);
+                Run("Korean-target request exposes direction-specific tool and instruction", WorkbookTranslationTests.RequestSurface);
+                Run("Grouped totals are host arithmetic with disclosed gaps", WorkbookTranslationTests.GroupedTotals);
                 Run("Samsung layouts preserve content and enforce overflow bounds", SamsungSlideTests.LayoutsAndOverflow);
+                Run("Phase 4 reference matrix covers six native layout families and three densities", SamsungSlideTests.Phase4ReferenceMatrix);
+                Run("Phase 4 defect matrix seeds one labeled blocker per reference", SamsungSlideTests.Phase4DefectMatrix);
                 Run("Samsung slide numbers require verified source evidence", SamsungSlideTests.EvidenceAndNumbers);
                 Run("PowerPoint and Outlook slide tool calls reach independent review", SlideToolCallsReachReview);
                 Run("Empty endpoint responses retry once without replaying tools", EmptyEndpointResponsesRecover);
+                Run("Repeated evidence expands model request payloads", RepeatedEvidenceExpandsRequestPayloads);
+                Run("Embedded provider errors retry without executing partial tools", EmbeddedProviderErrorsRecover);
+                Run("Provider and empty response retries stay independent", ProviderAndEmptyResponseRetriesAreIndependent);
+                Run("Stalled endpoint responses time out without partial actions", StalledEndpointTimesOut);
+                Run("OpenRouter Qwen requests use bounded serial reasoning", OpenRouterQwenPolicy);
                 Run("Every Office source launches the requested sibling draft and preserves content", CrossApplicationWriters);
                 Run("Chrome model tool calls create Office drafts on a pumped STA", BrowserOfficeRoundTrip);
                 Run("Semantic repairs retain source alignment", TaskContinuationTests.ReviewRepairsAndAlignment);
                 Run("Changed source and occupied destination stop all writes", DurableTransformTests.ChangedRangesFailClosed);
+                Run("Ordinary Excel drafts retain request-bound workbook and sheet", ExcelDraftBindingTests.FocusChangesStayBoundAndRenamesFail);
+                Run("Oversized Excel draft rows are rejected without silent loss", ExcelDraftBindingTests.OversizedRowsFailRatherThanDisappear);
+                Run("Failed bounded Excel edits restore earlier cells", ExcelDraftBindingTests.FailedCellWriteRestoresEarlierCells);
+                Run("Restored Excel edits clear uncertain task state", ExcelDraftBindingTests.RestoredEditDoesNotPoisonTaskRecovery);
+                Run("Excel grid receipts retain typed before-images", ExcelDraftBindingTests.GridReceiptRetainsTypedBeforeImages);
+                Run("Interrupted Excel grid writes reconcile safely", ExcelDraftBindingTests.InterruptedGridWriteReconcilesSafely);
                 Run("Attachment pages preserve evidence beyond 130000 characters", DurableTransformTests.AttachmentTail);
                 Run("All twelve attachments are required including late evidence", DurableTransformTests.EveryAttachmentIsRequired);
                 Run("Task checkpoints reconcile 20000 rows across restart", ScaleTaskTests.RestartAndCoverage);
@@ -297,6 +356,9 @@ namespace GuardrailTests
                     "External context is explicit and bounded",
                     ExternalContextIsBounded);
                 Run(
+                    "Truncated external documents require verified contiguous paging",
+                    ExternalDocumentPagingIsCompleteAndBound);
+                Run(
                     "Local Topics are explicit, bounded, and isolated",
                     LocalTopicsAreExplicitBoundedAndIsolated);
                 Run(
@@ -391,6 +453,31 @@ namespace GuardrailTests
                 Run("Web reads cache and preserve redirect identity", HardeningTests.WebCacheAndRedirects);
                 Run("Source spans and shared tool contracts reject malformed writes", HardeningTests.SourceSpansAndContracts);
                 Run("Actual 20000-row writes reconcile before/after interruption", DurableTransformTests.TwentyThousandRows);
+                Run("Stress external options retain exact requested scope", StressKitTests.ExternalOptionsAndExactScope);
+                Run("Stress kit snapshots isolate only selected case inputs", StressKitTests.ExternalSnapshotAndProjection);
+                Run("Stress presentation grading checks table fills and native text roles", StressKitTests.PresentationMeasurementsDistinguishBodyAndTables);
+                Run("Stress native tables retain exact owner and due-date pairs", StressKitTests.NativeTableOracleKeepsOwnerDueDatePairs);
+                Run("Stress API budget requires a finite total cap", StressGradingTests.BudgetRequiresFiniteTotal);
+                Run("Stress numeric outputs require native recalculation", StressGradingTests.NativeCellsRequireRecalculation);
+                Run("Stress charts stay in their requested Office host", StressGradingTests.NativeChartsStayInRequestedHost);
+                Run("Stress cover source line remains footer metadata", StressGradingTests.CoverSourceLineIsFooterMetadata);
+                Run("Stress known-outcome oracle rejects false month direction", StressGradingTests.FalsePeriodDirectionFailsKnownOutcome);
+                Run("Stress mailbox grading requires complete search and exact IDs", StressGradingTests.MailRequiresCompleteSearchAndExactIds);
+                Run("Stress incomplete cells and draft metric labels stay grounded", StressGradingTests.IncompleteCellsAndDraftMetricsRemainGrounded);
+                Run("Stress hero cases require exact native and verified browser evidence", StressGradingTests.HeroCasesRequireExactNativeAndBrowserEvidence);
+                Run("Stress PDF and HTML retain 200 explicit results", StressGradingTests.ReportRetainsTwoHundredResults);
+                Run("Office bootstrap documents contain no task data or external content", OfficeBootstrapTests.NeutralEmbeddedDocuments);
+                Run("Office bootstrap respects Stop before launching Office", OfficeBootstrapTests.CancelledStartupDoesNotReachOffice);
+                Run("Outlook embedding startup waits for the registered add-in", OfficeBootstrapTests.OutlookEmbeddingStartupWaitsForAddIn);
+                Run("Word creation cannot overwrite the source document", OfficeBootstrapTests.WordCreationCannotOverwriteSource);
+                Run("Word one-page drafts preflight their layout", OfficeBootstrapTests.WordOnePagePreflightLimitsLayout);
+                Run("Read-only worksheet inventory ignores inert hints", OfficeBootstrapTests.ReadOnlyWorksheetInventoryIgnoresInertHints);
+                Run("Encoded slide table rows retain content after one bracket repair", OfficeBootstrapTests.EncodedSlideWithOneTransposedTableRowsBracketKeepsContent);
+                Run("Deck review warnings retain repair targets", OfficeBootstrapTests.DeckReviewWarningsHaveRepairTargets);
+                Run("Word source preservation survives draft reordering", OfficeBootstrapTests.WordSourcePreservationSurvivesDraftReordering);
+                Run("Word memo rejects universal budget claims", OfficeBootstrapTests.WordMemoRejectsUniversalBudgetClaim);
+                Run("PowerPoint bootstrap tracks reused and fresh native processes", OfficeBootstrapTests.PowerPointLaunchTracksReusedOrFreshProcess);
+                Run("Office bootstrap rejects missing, foreign, stale and finished sibling bindings", OfficeBootstrapTests.UnverifiedSiblingCannotStartOffice);
                 Console.WriteLine("PASS: " + _passed + " guardrail tests");
                 if (_passed == 0) throw new InvalidOperationException("No tests matched the requested filter.");
                 return 0;
@@ -3912,6 +3999,71 @@ namespace GuardrailTests
                     content.Text.Contains("777"),
                     "The second worksheet was not extracted: " +
                     content.Text);
+
+                var sparsePath = Path.Combine(temp, "sparse.xlsx");
+                WriteZipEntries(sparsePath,
+                    new[] { "xl/worksheets/sheet1.xml" },
+                    new[] {
+                        "<worksheet xmlns=\"" + sheetNamespace + "\"><sheetData>" +
+                        "<row r=\"1\"><c r=\"A1\" t=\"inlineStr\"><is><t>RowID</t></is></c>" +
+                        "<c r=\"C1\" t=\"inlineStr\"><is><t>Revenue</t></is></c>" +
+                        "<c r=\"D1\" t=\"inlineStr\"><is><t>Period</t></is></c></row>" +
+                        "<row r=\"2\"><c r=\"A2\" t=\"inlineStr\"><is><t>R1</t></is></c>" +
+                        "<c r=\"B2\"/><c r=\"C2\"><v>0</v></c>" +
+                        "<c r=\"D2\" t=\"inlineStr\"><is><t>2026-06</t></is></c></row>" +
+                        "<row r=\"3\"><c r=\"A3\" s=\"1\"/><c r=\"D3\" s=\"1\"/></row>" +
+                        "</sheetData></worksheet>"
+                    });
+                var sparse = EmailAttachmentReader.LoadLocalFile(sparsePath);
+                Assert(sparse.Text.Contains("RowID\t\tRevenue\tPeriod") &&
+                    sparse.Text.Contains("R1\t\t0\t2026-06"),
+                    "Blank XLSX cells shifted values under the wrong header: " + sparse.Text);
+                Assert(!sparse.Text.Contains("2026-06\n\t") &&
+                    !sparse.Text.Contains("2026-06\r\n\t"),
+                    "Styled empty cells emitted a blank ledger row: " + sparse.Text);
+                var styledLedgerPath = Path.Combine(temp, "styled-ledger.xlsx");
+                var ledgerXml = "<worksheet xmlns=\"" + sheetNamespace +
+                    "\"><sheetData><row r=\"1\">" +
+                    string.Concat(new[] { "RowID", "Period", "Group",
+                        "RevenueEUR", "CostEUR" }.Select((name, index) =>
+                        "<c r=\"" + (char)('A' + index) +
+                        "1\" t=\"inlineStr\"><is><t>" + name +
+                        "</t></is></c>")) + "</row>" +
+                    string.Concat(Enumerable.Range(1, 12).Select(index =>
+                        "<row r=\"" + (index + 1) + "\">" +
+                        "<c r=\"A" + (index + 1) +
+                        "\" t=\"inlineStr\"><is><t>R" + index +
+                        "</t></is></c><c r=\"B" + (index + 1) +
+                        "\" t=\"inlineStr\"><is><t>2026-" +
+                        (index <= 6 ? "05" : "06") +
+                        "</t></is></c><c r=\"C" + (index + 1) +
+                        "\" t=\"inlineStr\"><is><t>North</t></is></c>" +
+                        "<c r=\"D" + (index + 1) +
+                        "\"><v>10</v></c><c r=\"E" + (index + 1) +
+                        "\"><v>2</v></c></row>")) +
+                    "<row r=\"14\"><c r=\"A14\" s=\"1\"/>" +
+                    "<c r=\"E14\" s=\"1\"/></row>" +
+                    "</sheetData></worksheet>";
+                WriteZipEntries(styledLedgerPath,
+                    new[] { "xl/worksheets/sheet1.xml",
+                        "xl/worksheets/sheet2.xml" },
+                    new[] { ledgerXml,
+                        "<worksheet xmlns=\"" + sheetNamespace +
+                        "\"><sheetData><row r=\"1\"><c r=\"A1\" " +
+                        "t=\"inlineStr\"><is><t>Notes</t></is></c>" +
+                        "</row></sheetData></worksheet>" });
+                var styledLedger = EmailAttachmentReader.LoadLocalFile(
+                    styledLedgerPath);
+                var totalMethod = typeof(TaskSources).GetMethod(
+                    "CompleteWorkbookTotals",
+                    System.Reflection.BindingFlags.Static |
+                    System.Reflection.BindingFlags.NonPublic);
+                var styledTotals = (string)totalMethod.Invoke(null,
+                    new object[] { styledLedger.Text });
+                Assert(styledTotals != null &&
+                    styledTotals.Contains("12 unique RowIDs") &&
+                    styledTotals.Contains("RevenueEUR 60 EUR; CostEUR 12 EUR"),
+                    "Styled empty rows below the ledger hid host totals.");
             }
             finally
             {
@@ -4045,11 +4197,11 @@ namespace GuardrailTests
                         stream,
                         7,
                         BiffCell(0, isstOne));
-                    WriteBiffRecord(stream, 5, BiffCell(1, real));
+                    WriteBiffRecord(stream, 5, BiffCell(2, real));
                     WriteBiffRecord(
                         stream,
                         4,
-                        BiffCell(2, new byte[] { 1 }));
+                        BiffCell(4, new byte[] { 1 }));
                     sheet = stream.ToArray();
                 }
 
@@ -4078,8 +4230,8 @@ namespace GuardrailTests
                     (content == null ? "null" : content.Text));
                 Assert(
                     content.Text.Contains(
-                        "Northern office\t98.5\tTRUE"),
-                    "BIFF12 real and boolean cells were not " +
+                        "Northern office\t\t98.5\t\tTRUE"),
+                    "BIFF12 sparse real and boolean cells were not " +
                     "decoded: " + content.Text);
 
                 // The same bytes with an unknown extension must be
@@ -5548,6 +5700,22 @@ namespace GuardrailTests
 
         private static void DraftFormulasStayInsideTheWorkbook()
         {
+            var writer = typeof(DraftFormulaPolicy).Assembly.GetType("Scribble.Office.WorkbookDraftWriter");
+            var normalize = writer.GetMethod("NormalizeSheetReferences",
+                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+            Func<string, string[], string> repair = (formula, sheets) =>
+                (string)normalize.Invoke(null, new object[] { formula, sheets });
+            Assert(
+                repair(
+                    "=SUMIFS(Ledger$B$2:$B$145,Ledger$C$2:$C$145,\"Ledger$B$2\")",
+                    new[] { "Ledger", "Other" }) ==
+                "=SUMIFS(Ledger!$B$2:$B$145,Ledger!$C$2:$C$145,\"Ledger$B$2\")" &&
+                repair(
+                    "=SUM(Ledger!$B$2,Ledger$B$3)", new[] { "Ledger" }) ==
+                "=SUM(Ledger!$B$2,Ledger!$B$3)" &&
+                repair(
+                    "=Ledger$B$2", new[] { "Other" }) == "=Ledger$B$2",
+                "Only unambiguous references to an existing sheet should be repaired.");
             Assert(
                 DraftFormulaPolicy.IsAllowedFormula(
                     "=SUM(A1:A5)") &&
@@ -6696,7 +6864,8 @@ namespace GuardrailTests
                 workbookNames.SequenceEqual(new[]
                 {
                     "list_worksheets",
-                    "read_cells"
+                    "read_cells",
+                    "read_grouped_totals"
                 }) &&
                 readCellsJson.Contains("row_offset") &&
                 readCellsJson.Contains("column_offset") &&
@@ -6917,6 +7086,26 @@ namespace GuardrailTests
                 "The email draft tool must state that sending is impossible.");
         }
 
+        private static string PilotCopyPolicyError(
+            params Dictionary<string, object>[] operations)
+        {
+            var policy = typeof(DocumentDraftHost).GetMethod(
+                "ValidatePilotCopyOperations",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert(policy != null,
+                "The PP01 pilot operation policy is missing.");
+            try
+            {
+                policy.Invoke(null, new object[] { operations,
+                    4, 2, 100 });
+                return string.Empty;
+            }
+            catch (TargetInvocationException error)
+            {
+                return error.InnerException?.Message ?? error.Message;
+            }
+        }
+
         private static void DocumentFactoryGatesDraftTools()
         {
             var unauthorized = DocumentChatRequestFactory.Create(
@@ -6933,6 +7122,7 @@ namespace GuardrailTests
                 {
                     "list_worksheets",
                     "read_cells",
+                    "read_grouped_totals",
                     "fetch_web_page",
                     "ask_user"
                 }),
@@ -6974,6 +7164,73 @@ namespace GuardrailTests
             var authorizedSystem = Convert.ToString(
                 ((ChatCompletionInputMessage)
                     authorized.messages[0]).content);
+            var previousPilotFlag = Environment.GetEnvironmentVariable(
+                AnalysisDocumentPilot.FeatureFlag);
+            try
+            {
+                Environment.SetEnvironmentVariable(
+                    AnalysisDocumentPilot.FeatureFlag, "1");
+                var repair = DocumentChatRequestFactory.Create(
+                    "test-model", "powerpoint", "Presentation: Deck1",
+                    new List<ChatTurn>(),
+                    "Create a repaired draft of the source deck into exactly 6 output slides; preserve the original slides.",
+                    true,
+                    new[] { new ExternalContextDocument("WB01",
+                        "Attached workbook", "C:\\pilot\\WB01.xlsx") });
+                Assert(!repair.tools.Any(tool =>
+                        tool.function.name == "add_draft_slides") &&
+                    !repair.tools.Any(tool =>
+                        tool.function.name == "send_to_excel" ||
+                        tool.function.name == "send_to_word" ||
+                        tool.function.name == "create_email_draft") &&
+                    Convert.ToString(((ChatCompletionInputMessage)
+                        repair.messages[0]).content).Contains(
+                            PresentationRevisionAcceptance.Enabled
+                                ? "copies the source into an unsaved draft"
+                                : "lacks a current native acceptance receipt"),
+                    "The workbook-backed PP01 pilot must expose the copy-and-patch route.");
+                if (!repair.tools.Any(tool => tool.function.name ==
+                        PresentationToolCatalog.ReviseSlides))
+                    repair.tools.Add(new ChatToolDefinition
+                    {
+                        type = "function",
+                        function = new ChatToolFunctionDefinition
+                        {
+                            name = PresentationToolCatalog.ReviseSlides
+                        }
+                    });
+                var repairTask = new TaskContextManager(repair,
+                    "powerpoint",
+                    "Create a repaired draft of the source deck into exactly 6 output slides; preserve the original slides.");
+                Assert(repairTask.State.RequiredPresentationSlides == 6,
+                    "The PP01 copy route lost its six-slide task count.");
+                var replacement = new Dictionary<string, object>
+                {
+                    { "kind", "replace_slide" },
+                    { "slide_id", 4 }
+                };
+                Assert(PilotCopyPolicyError(replacement,
+                        replacement).StartsWith(
+                            "ANALYSIS_MULTI_PAGE_REPLACEMENT_UNSUPPORTED") &&
+                    PilotCopyPolicyError(new Dictionary<string, object>
+                    {
+                        { "kind", "chart_point" },
+                        { "slide_id", 2 }, { "shape_id", 100 }
+                    }).StartsWith("ANALYSIS_CHART_REFLOW_UNSUPPORTED") &&
+                    PilotCopyPolicyError(new Dictionary<string, object>
+                    {
+                        { "kind", "shape_geometry" },
+                        { "slide_id", 2 }, { "shape_id", 100 }
+                    }).StartsWith("ANALYSIS_GEOMETRY_UNSUPPORTED") &&
+                    PilotCopyPolicyError(replacement) == string.Empty,
+                    "The PP01 pilot must reject unsupported chart, geometry, and multi-page edits before copying.");
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(
+                    AnalysisDocumentPilot.FeatureFlag,
+                    previousPilotFlag);
+            }
             Assert(
                 authorizedSystem.Contains(
                     "authorized ONE deliverable") &&
@@ -7706,19 +7963,20 @@ namespace GuardrailTests
                 var launches = 0;
                 try
                 {
-                    using (var server = new FakeEndpoint(target == "outlook" ? new[] { callResponse, approved, done } : target != "powerpoint" ? new[] { callResponse, done } : new[] { callResponse, approved, approved, approved, continuation, approved, approved, approved, approved, done }))
+                    using (var server = new FakeEndpoint(target == "outlook" ? new[] { callResponse, approved, done } : target != "powerpoint" ? new[] { callResponse, done } : new[] { callResponse, approved, approved, continuation, approved, approved, approved, approved, done }))
                     {
                         var settings = EndpointSettings(server.BaseUrl); settings.Model = "qwen3-vl";
                         using (var service = new BrowserChatService(settings, progId => {
-                            Assert(Thread.CurrentThread.GetApartmentState() == ApartmentState.STA && SynchronizationContext.Current != null, "Browser launched Office outside the pumped STA.");
-                            launches++; return target == "outlook" ? (object)outlook : office;
+                             Assert(Thread.CurrentThread.GetApartmentState() == ApartmentState.STA && SynchronizationContext.Current != null, "Browser launched Office outside the pumped STA.");
+                             launches++; return target == "outlook" ? (object)outlook : office;
                         }))
+                        using (var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30)))
                         {
                             BrowserChatResult result;
                             try
                             {
                                 result = service.CompleteAsync(new ChatTurn[0], "Create a " + target + " draft from this page", "Source page", "https://example.com/", "", "SOURCE CONTENT", "", null,
-                                    new BrowserExchangeTurn[0], chat, "1", null, null, CancellationToken.None).GetAwaiter().GetResult();
+                                    new BrowserExchangeTurn[0], chat, "1", null, null, timeout.Token).GetAwaiter().GetResult();
                             }
                             catch (Exception exception)
                             {
@@ -7755,8 +8013,10 @@ namespace GuardrailTests
                 };
                 var args = target == "powerpoint"
                     ? json.Serialize(new { plan = new[] { "intro" }, slides = new[] { new { id = "intro", layout = "cover", title = "SOURCE CONTENT" } } })
-                    : target == "excel" ? "{\"title\":\"Draft\",\"rows\":[[\"SOURCE CONTENT\"]]}"
+                    : target == "excel" ? "{\"title\":\"Draft\",\"rows\":[[\"Metric\",\"May\",\"June\"],[\"SOURCE CONTENT\",\"85519\",\"82992\"],[\"Gross margin\",\"0.5708\",\"0.5576\"]]}"
                     : "{\"title\":\"Draft\",\"body\":\"SOURCE CONTENT\"}";
+                if (target == "word")
+                    args = "{\"title\":\"Draft\",\"body\":\"# Draft\\nSOURCE CONTENT\"}";
                 if (target == "outlook") args = "{\"subject\":\"Draft\",\"body\":\"SOURCE CONTENT\"}";
                 if (target == "chrome") args = "{\"url\":\"https://example.com/\"}";
                 const string approved = "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"approved\\\":true}\"}}]}";
@@ -7788,6 +8048,23 @@ namespace GuardrailTests
                         Assert(events.Any(e => e.Contains("SOURCE CONTENT")), target + " lost the source content.");
                         var collection = target == "powerpoint" ? "Presentations" : target == "excel" ? "Workbooks" : "Documents";
                         Assert(events.Count(e => e.StartsWith(target + "." + collection + ".Add(")) == 1, "Handoff must create exactly one new destination.");
+                        if (target == "excel")
+                        {
+                            Assert(events.Any(e => e.Contains(".Interior.Color=7949855")) &&
+                                events.Any(e => e.Contains(".Font.Color=16777215")),
+                                source + " -> Excel lost the professional draft-table header styling.");
+                            var numberFormat = events.FindIndex(e => e.Contains(".NumberFormat=#,##0.#####"));
+                            Assert(events.Any(e => e.Contains(".NumberFormat=0.00%")),
+                                source + " -> Excel did not format a clearly labeled percentage row as a percentage.");
+                            var finalAutoFit = events.FindLastIndex(e => e.EndsWith(".AutoFit()", StringComparison.Ordinal));
+                            Assert(numberFormat >= 0 && finalAutoFit > numberFormat,
+                                source + " -> Excel did not size columns against the final displayed number format.");
+                            Assert(events.Count(e => e.Contains(".ColumnWidth=14")) >= 2,
+                                source + " -> Excel left numeric result columns too narrow for displayed values.");
+                        }
+                        if (target == "word")
+                            Assert(!events.Any(e => e.EndsWith(".Text=Draft\r", StringComparison.Ordinal)),
+                                source + " -> Word repeated the supplied title as an adjacent body heading.");
                     }
                     matrix.Add(new { source, target, tool, passed = true, verification = "production writer with simulated application API", launches });
                 }
@@ -7823,6 +8100,39 @@ namespace GuardrailTests
                 reuseTask.CompleteTask(request);
             }
             Assert(!ChatRequestFactory.IsMetadataOnly("Compare the contents of only the selected emails"), "Content analysis was mistaken for metadata.");
+            Assert(ChatRequestFactory.IsMailboxEnumerationOnly(
+                "Find every message in July 2026 and report every matching message ID plus Total matches: N."),
+                "Mailbox ID enumeration was mistaken for content analysis.");
+            var enumerationRequest = ChatRequestFactory.Create(
+                "test",
+                null,
+                new ChatTurn[0],
+                "Find every message in July 2026 and report every matching message ID plus Total matches: N.");
+            var enumerationBoundary = Convert.ToString(
+                ((ChatCompletionInputMessage)
+                    enumerationRequest.messages[0]).content);
+            Assert(
+                enumerationBoundary.Contains("Never mention an excluded or nonmatching identifier"),
+                "Enumeration-only output did not forbid leaking rejected identifiers into the final answer.");
+            Assert(!ChatRequestFactory.IsMailboxEnumerationOnly(
+                "Find every message in July 2026 and summarize each body and attachment."),
+                "Mailbox content analysis was mistaken for enumeration-only work.");
+            Assert(
+                !ChatRequestFactory.RequiresAttachmentReads(
+                    "Find the complete thread and summarize every message body.") &&
+                ChatRequestFactory.RequiresAttachmentReads(
+                    "Find five related emails, read their attachments, and build a deck.") &&
+                !ChatRequestFactory.RequiresAttachmentReads(
+                    "Summarize the thread but do not read attachments."),
+                "Mailbox attachment coverage did not follow the user's requested scope.");
+            Assert(
+                ExcelSelectionOutputPolicy
+                    .IsWholeWorkbookKoreanToEnglishRequest(
+                        "Translate every Korean text cell in every worksheet of the active workbook into English.") &&
+                !ExcelSelectionOutputPolicy
+                    .IsWholeWorkbookKoreanToEnglishRequest(
+                        "Explain how Korean translation works in Excel."),
+                "Natural-language workbook translation intent was not bounded correctly.");
         }
 
         private static void QaAttachmentCache()
@@ -7971,10 +8281,530 @@ namespace GuardrailTests
                             "Rejected outline changed write permission or committed the deck plan.");
                     }
                     endpoint.Wait();
-                    Assert(endpoint.Bodies.All(body => body.Contains("proposed_slides") && body.Contains("current batch only")), "Outline review did not receive stage-specific evidence.");
+                    Assert(endpoint.Bodies.All(body => body.Contains("proposed_briefs") && body.Contains("proposed_slides") &&
+                        body.Contains("current batch only")), "Outline review did not receive stage-specific evidence.");
                 }
             }
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+        }
+
+        private static void PartialSlideBatchesDeferOutlineReview()
+        {
+            var root = Path.Combine(Path.GetTempPath(), "scribble-partial-outline-" + Guid.NewGuid().ToString("N"));
+            var json = new JavaScriptSerializer();
+            var sourceReview = json.Serialize(new { choices = new[] { new { message = new {
+                role = "assistant", content = "{\"approved\":false,\"issues\":\"SOURCE_REVIEW_ONLY\"}" } } } });
+            try
+            {
+                using (var endpoint = new FakeEndpoint(sourceReview))
+                using (var client = new OpenAiCompatibleClient())
+                using (var host = new DocumentDraftHost("powerpoint", new object()))
+                {
+                    var request = MakeRequest(new List<ChatTurn>());
+                    request.tools = new List<ChatToolDefinition> { PresentationToolCatalog.DraftDefinition() };
+                    var task = new TaskContextManager(request, "powerpoint", "Create a two-slide launch presentation", new TaskCheckpointStore(root));
+                    host.BindTaskAsync(task, CancellationToken.None).GetAwaiter().GetResult();
+                    var settings = EndpointSettings(endpoint.BaseUrl); settings.Model = "qwen3-vl";
+                    var arguments = json.Serialize(new {
+                        plan = new[] { "intro", "close" },
+                        briefs = new object[] {
+                            new { id = "intro", purpose = "explanatory", message = "Launch", layout = "cover", required_content = new[] { "Launch" } },
+                            new { id = "close", purpose = "explanatory", message = "Close", layout = "closing", required_content = new[] { "Close" } }
+                        },
+                        slides = new[] { new { id = "intro", title = "Launch", layout = "cover" } }
+                    });
+                    var result = host.ExecuteAsync(MailboxCall("partial", PresentationToolCatalog.AddDraftSlides, arguments),
+                        new OneShotDraftAuthorization(true), true, task.State.Objective, client, settings,
+                        CancellationToken.None, null).GetAwaiter().GetResult();
+                    endpoint.Wait();
+                    Assert(result.Content.Contains("SOURCE_REVIEW_ONLY") && endpoint.Bodies.Count == 1 &&
+                        endpoint.Bodies[0].Contains("Review source accuracy") && !endpoint.Bodies[0].Contains("proposed_slides"),
+                        "A partial slide batch was incorrectly blocked by whole-outline review: " + result.Content);
+                }
+            }
+            finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+        }
+
+        private static void NumberFailuresSuggestSourceSpans()
+        {
+            var root = Path.Combine(Path.GetTempPath(), "scribble-number-hints-" + Guid.NewGuid().ToString("N"));
+            var json = new JavaScriptSerializer();
+            try
+            {
+                using (var client = new OpenAiCompatibleClient())
+                using (var host = new DocumentDraftHost("powerpoint", new object()))
+                {
+                    var request = MakeRequest(new List<ChatTurn>());
+                    request.tools = new List<ChatToolDefinition> { PresentationToolCatalog.DraftDefinition() };
+                    var task = new TaskContextManager(request, "powerpoint", "Create a two-slide financial presentation", new TaskCheckpointStore(root));
+                    host.BindTaskAsync(task, CancellationToken.None).GetAwaiter().GetResult();
+                    var cited = task.Sources.Add("Monthly source", "2026-02 Revenue EUR 86,227 Cost EUR 35,861").Single();
+                    var candidate = task.Sources.Add("June summary", "2026-06 Revenue EUR 82,992 Cost EUR 36,714").Single();
+                    var arguments = json.Serialize(new {
+                        plan = new[] { "trend", "close" },
+                        briefs = new object[] {
+                            new { id = "trend", purpose = "analytical", message = "June results", layout = "chart", source_spans = new[] { cited }, required_content = new[] { "June values" } },
+                            new { id = "close", purpose = "explanatory", message = "Close", layout = "closing", required_content = new[] { "Close" } }
+                        },
+                        slides = new[] { new { id = "trend", title = "June revenue EUR 82,992 and cost EUR 36,714", subtitle = "June results", layout = "chart",
+                            source_spans = new[] { cited }, sources = "June summary", evidence = "2026-02 Revenue EUR 86,227 Cost EUR 35,861" } }
+                    });
+                    var settings = EndpointSettings("http://127.0.0.1:9/v1"); settings.Model = "qwen3-vl";
+                    var authorization = new OneShotDraftAuthorization(true);
+                    var result = host.ExecuteAsync(MailboxCall("number-hint", PresentationToolCatalog.AddDraftSlides, arguments), authorization,
+                        true, task.State.Objective, client, settings, CancellationToken.None, null).GetAwaiter().GetResult();
+                    Assert(result.Content.Contains("SLIDE_NUMBERS_UNVERIFIED") && result.Content.Contains(candidate) &&
+                        result.Content.Contains("supports [") && result.Content.Contains("82992") && result.Content.Contains("36714") &&
+                        result.Content.Contains("do not repeat the unchanged payload") &&
+                        authorization.RemainingCalls == 1,
+                        "Missing-number recovery did not identify the exact retained source span: " + result.Content);
+                }
+            }
+            finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+        }
+
+        private static void ExternalDocumentPagingIsCompleteAndBound()
+        {
+            var root = Path.Combine(Path.GetTempPath(), "scribble-external-page-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(root);
+            var path = Path.Combine(root, "long-report.txt");
+            try
+            {
+                var terminal = "FINAL-PAGE-MARKER";
+                File.WriteAllText(path, new string('x', 70000) + terminal, new UTF8Encoding(false));
+                var document = new ExternalContextDocument(
+                    "long-report.txt",
+                    new string('x', ExternalContextDocument.MaxCharactersPerDocument),
+                    path,
+                    true);
+                var request = MakeRequest(new List<ChatTurn>(), externalContext: new[] { document });
+                var task = new TaskContextManager(
+                    request,
+                    "outlook",
+                    "Read the attached report in full.",
+                    new TaskCheckpointStore(Path.Combine(root, "checkpoint")));
+                new TaskRecoveryInput
+                {
+                    Prompt = task.State.Objective,
+                    Documents = new List<SavedReference>
+                    {
+                        new SavedReference
+                        {
+                            Name = document.Name,
+                            Content = document.Content,
+                            SourcePath = document.SourcePath,
+                            SourceFingerprint = document.SourceFingerprint,
+                            HasMoreContent = true
+                        }
+                    }
+                }.PersistTo(task.State);
+                task.Checkpoint();
+
+                Assert(
+                    request.tools.Any(tool => tool.function.name == TaskSources.ReadDocumentTool) &&
+                    MessageContent(request.messages[1]).Contains("bounded preview only") &&
+                    task.Sources.CompletionBlocker != null,
+                    "A clipped document did not expose and require verified paging.");
+                var gap = task.ReadEvidence(MailboxCall(
+                    "gap", TaskSources.ReadDocumentTool,
+                    "{\"document_index\":1,\"offset\":6000}"));
+                Assert(gap.Content.Contains("pages cannot be skipped"),
+                    "The external document reader accepted a page gap.");
+
+                var json = new JavaScriptSerializer();
+                var offset = 0;
+                var collected = new StringBuilder();
+                while (true)
+                {
+                    var result = task.ReadEvidence(MailboxCall(
+                        "page-" + offset,
+                        TaskSources.ReadDocumentTool,
+                        "{\"document_index\":1,\"offset\":" + offset + "}"));
+                    var page = json.Deserialize<Dictionary<string, object>>(result.Content);
+                    collected.Append(Convert.ToString(page["content"]));
+                    if (page["next_offset"] == null) break;
+                    offset = Convert.ToInt32(page["next_offset"]);
+                }
+                Assert(
+                    collected.ToString().EndsWith(terminal, StringComparison.Ordinal) &&
+                    task.Sources.CompletionBlocker == null,
+                    "The external document reader did not reach and record the final page.");
+
+                File.AppendAllText(path, "changed");
+                var changed = task.ReadEvidence(MailboxCall(
+                    "changed", TaskSources.ReadDocumentTool,
+                    "{\"document_index\":1,\"offset\":0}"));
+                Assert(changed.Content.Contains("changed after it was selected"),
+                    "Changed external document bytes reused prior coverage.");
+            }
+            finally
+            {
+                if (Directory.Exists(root)) Directory.Delete(root, true);
+            }
+        }
+
+        private static void OpenRouterQwenPolicy()
+        {
+            var retryAfterMethod = typeof(OpenAiCompatibleClient).GetMethod(
+                "RateLimitRetryAfter", BindingFlags.Static | BindingFlags.NonPublic);
+            Assert(retryAfterMethod != null,
+                "The OpenRouter rate-limit backoff helper is missing.");
+            using (var rateLimited = new System.Net.Http.HttpResponseMessage(
+                (HttpStatusCode)429))
+            {
+                var body = "{\"error\":{\"metadata\":{\"headers\":{\"Retry-After\":\"10\"}}}}";
+                Assert((TimeSpan)retryAfterMethod.Invoke(null,
+                    new object[] { rateLimited, body }) == TimeSpan.FromSeconds(10),
+                    "OpenRouter's admission-control Retry-After must be read from its error body.");
+                rateLimited.Headers.RetryAfter =
+                    new System.Net.Http.Headers.RetryConditionHeaderValue(
+                        TimeSpan.FromSeconds(3));
+                Assert((TimeSpan)retryAfterMethod.Invoke(null,
+                    new object[] { rateLimited, body }) == TimeSpan.FromSeconds(3),
+                    "The real HTTP Retry-After header must take precedence over body metadata.");
+            }
+            var timeoutMethod = typeof(OpenAiCompatibleClient).GetMethod(
+                "CompletionRequestTimeoutFor",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert(timeoutMethod != null,
+                "The endpoint-specific completion timeout helper is missing.");
+            var defaultTimeout = TimeSpan.FromMinutes(3);
+            Assert(
+                (TimeSpan)timeoutMethod.Invoke(null, new object[]
+                {
+                    new Uri("https://openrouter.ai/api/v1/chat/completions"),
+                    "qwen/qwen3.8-27b",
+                    defaultTimeout
+                }) == TimeSpan.FromMinutes(5) &&
+                (TimeSpan)timeoutMethod.Invoke(null, new object[]
+                {
+                    new Uri("https://api.example.test/v1/chat/completions"),
+                    "qwen/qwen3.8-27b",
+                    defaultTimeout
+                }) == defaultTimeout,
+                "Only the exact OpenRouter Qwen route should receive the five-minute completion window.");
+
+            // The buffered client's deadline bounds generation time, so it
+            // grows with the output a request allows, within a ceiling.
+            var deadlineMethod = typeof(OpenAiCompatibleClient).GetMethod(
+                "CompletionDeadlineFor",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert(deadlineMethod != null,
+                "The output-scaled completion deadline helper is missing.");
+            Func<string, TimeSpan, int?, TimeSpan> deadline = (url, injected, tokens) =>
+                (TimeSpan)deadlineMethod.Invoke(null, new object[]
+                {
+                    new Uri(url), "qwen/qwen3.8-27b", injected, tokens
+                });
+            const string localUrl = "http://127.0.0.1:8000/v1/chat/completions";
+            const string openRouterUrl = "https://openrouter.ai/api/v1/chat/completions";
+            Assert(
+                deadline(localUrl, defaultTimeout, null) == defaultTimeout &&
+                deadline(localUrl, defaultTimeout, 4000) == TimeSpan.FromSeconds(580) &&
+                deadline(localUrl, defaultTimeout, 2048) > defaultTimeout &&
+                deadline(openRouterUrl, defaultTimeout, 32768) == TimeSpan.FromMinutes(15) &&
+                deadline(localUrl, defaultTimeout, 1000000) == TimeSpan.FromMinutes(15) &&
+                deadline(localUrl, TimeSpan.FromSeconds(2), 4000) == TimeSpan.FromSeconds(2),
+                "A slow local model needs an output-scaled, capped deadline for draft-sized tool calls, and injected test timeouts must stay exact.");
+
+            var method = typeof(OpenAiCompatibleClient).GetMethod(
+                "SerializablePayload",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert(method != null, "The bounded request serializer is missing.");
+            var malformedHistory = new ChatToolCall
+            {
+                id = "bad-draft",
+                type = "function",
+                function = new ChatToolCallFunction
+                {
+                    name = PresentationToolCatalog.AddDraftSlides,
+                    arguments = "{\"plan\":[\"s1\",\"s2\"]"
+                        .TrimEnd('}')
+                }
+            };
+            var historicalRequest = new ChatCompletionRequest
+            {
+                model = "qwen/qwen3.8-27b",
+                messages = new List<object>
+                {
+                    new ChatCompletionAssistantToolMessage
+                    {
+                        role = "assistant",
+                        content = "",
+                        tool_calls = new List<ChatToolCall> { malformedHistory }
+                    },
+                    new ChatCompletionToolResultMessage
+                    {
+                        role = "tool",
+                        tool_call_id = "bad-draft",
+                        content = "{\"error_code\":\"TOOL_ARGUMENTS_INVALID\"}"
+                    }
+                }
+            };
+            var historicalPayload = (Dictionary<string, object>)method.Invoke(null,
+                new object[] { historicalRequest, new Uri(openRouterUrl), true });
+            var safeHistory = (List<object>)historicalPayload["messages"];
+            var safeCall = ((ChatCompletionAssistantToolMessage)safeHistory[0]).tool_calls[0];
+            Assert(safeCall.function.arguments == "{}" &&
+                malformedHistory.function.arguments != safeCall.function.arguments &&
+                ((ChatCompletionToolResultMessage)safeHistory[1]).content.Contains("TOOL_ARGUMENTS_INVALID"),
+                "A malformed historical tool call must not poison the next provider request or mutate the validator's original evidence.");
+            var authoring = (Dictionary<string, object>)method.Invoke(
+                null,
+                new object[]
+                {
+                    new ChatCompletionRequest
+                    {
+                        model = "qwen/qwen3.8-27b",
+                        messages = new List<object>(),
+                        tools = new List<ChatToolDefinition>
+                        {
+                            new ChatToolDefinition
+                            {
+                                function = new ChatToolFunctionDefinition
+                                {
+                                    name = CrossAppToolCatalog.SendToPowerPoint
+                                }
+                            }
+                        },
+                        max_tokens = DocumentChatRequestFactory.DraftResponseTokens
+                    },
+                    new Uri(openRouterUrl),
+                    true
+                });
+            var authoringProvider = authoring["provider"] as Dictionary<string, object>;
+            Assert(
+                (int)authoring["max_tokens"] == 32768 &&
+                authoringProvider != null &&
+                (string)authoringProvider["sort"] == "throughput" &&
+                !authoringProvider.ContainsKey("order") &&
+                ((string[])authoringProvider["only"]).Length == 6,
+                "Long deck-authoring completions must stay on the allow-list but prefer its fastest route.");
+            var nativeDraft = (Dictionary<string, object>)method.Invoke(null,
+                new object[]
+                {
+                    new ChatCompletionRequest
+                    {
+                        model = "qwen/qwen3.8-27b",
+                        messages = new List<object>(),
+                        tools = new List<ChatToolDefinition>
+                        {
+                            new ChatToolDefinition
+                            {
+                                function = new ChatToolFunctionDefinition
+                                {
+                                    name = PresentationToolCatalog.AddDraftSlides
+                                }
+                            }
+                        },
+                        max_tokens = DocumentChatRequestFactory.DraftResponseTokens
+                    },
+                    new Uri(openRouterUrl),
+                    true
+                });
+            var nativeReasoning = (Dictionary<string, object>)nativeDraft["reasoning"];
+            Assert(nativeReasoning.ContainsKey("enabled") &&
+                !(bool)nativeReasoning["enabled"] &&
+                !nativeReasoning.ContainsKey("effort") &&
+                (string)((Dictionary<string, object>)authoring["reasoning"])["effort"] == "low",
+                "Only native multi-slide authoring should disable Qwen reasoning after a 32K-token truncation; other source handoffs retain low reasoning.");
+            var request = new ChatCompletionRequest
+            {
+                model = "qwen/qwen3.8-27b",
+                messages = new List<object>(),
+                tools = new List<ChatToolDefinition>
+                {
+                    new ChatToolDefinition()
+                },
+                stream = false,
+                max_tokens = 2048,
+                parallel_tool_calls = true
+            };
+            var openRouter = (Dictionary<string, object>)method.Invoke(
+                null,
+                new object[]
+                {
+                    request,
+                    new Uri("https://openrouter.ai/api/v1/chat/completions"),
+                    true
+                });
+            var reasoning = openRouter["reasoning"] as Dictionary<string, object>;
+            Assert(
+                reasoning != null &&
+                (string)reasoning["effort"] == "low" &&
+                (bool)openRouter["parallel_tool_calls"] == false,
+                "The exact OpenRouter Qwen route must use its smallest supported reasoning effort and serial tools.");
+            var providerPolicy = openRouter["provider"] as
+                Dictionary<string, object>;
+            var expectedProviders = new[]
+            {
+                "reka", "mancer", "phala", "coreweave", "dekallm", "chutes"
+            };
+            Assert(
+                providerPolicy != null &&
+                ((string[])providerPolicy["order"]).SequenceEqual(expectedProviders) &&
+                ((string[])providerPolicy["only"]).SequenceEqual(expectedProviders) &&
+                (bool)providerPolicy["allow_fallbacks"] &&
+                !providerPolicy.ContainsKey("require_parameters"),
+                "Qwen tool calls must remain on the ordered provider allow-list without rejecting the serial-control flag.");
+            Assert(
+                TaskContextManager.ContextBudgetForModel(request.model) ==
+                    TaskContextManager.Qwen38ContextBudget &&
+                TaskContextManager.ContextBudgetForModel("local-model") ==
+                    TaskContextManager.DefaultContextBudget,
+                "Qwen long-document tasks need a larger model-specific context ledger without changing generic endpoints.");
+            Assert(
+                (int)openRouter["max_tokens"] == 2048,
+                "Compact OpenRouter review requests must retain their bounded response allowance.");
+
+            var compactReview = new ChatCompletionRequest
+            {
+                model = request.model,
+                messages = new List<object>(),
+                max_tokens = 2048
+            };
+            var compact = (Dictionary<string, object>)method.Invoke(
+                null,
+                new object[]
+                {
+                    compactReview,
+                    new Uri("https://openrouter.ai/api/v1/chat/completions"),
+                    true
+                });
+            var compactReasoning = compact["reasoning"] as
+                Dictionary<string, object>;
+            Assert(
+                compactReasoning != null &&
+                (string)compactReasoning["effort"] == "none" &&
+                !compact.ContainsKey("provider"),
+                "Compact OpenRouter reviewers must reserve their response budget for the verdict.");
+
+            var exclude = typeof(OpenAiCompatibleClient).GetMethod(
+                "ApplyTransientProviderExclusion",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert(exclude != null,
+                "The transient provider exclusion helper is missing.");
+            exclude.Invoke(null, new object[]
+            {
+                openRouter,
+                new Uri("https://openrouter.ai/api/v1/chat/completions"),
+                "Reka"
+            });
+            var retryProvider = openRouter["provider"] as
+                Dictionary<string, object>;
+            Assert(
+                retryProvider != null &&
+                ((string[])retryProvider["ignore"]).Single() == "Reka" &&
+                ((string[])retryProvider["order"]).SequenceEqual(expectedProviders) &&
+                ((string[])retryProvider["only"]).SequenceEqual(expectedProviders),
+                "An interrupted OpenRouter retry must exclude the failed provider without discarding the allow-list.");
+            exclude.Invoke(null, new object[]
+            {
+                openRouter,
+                new Uri("https://openrouter.ai/api/v1/chat/completions"),
+                "DekaLLM\nReka"
+            });
+            retryProvider = openRouter["provider"] as Dictionary<string, object>;
+            Assert(
+                retryProvider != null &&
+                ((string[])retryProvider["ignore"]).SequenceEqual(new[] { "DekaLLM", "Reka" }),
+                "Repeated OpenRouter retries must retain every failed provider exclusion.");
+
+            var presentationRequest = new ChatCompletionRequest
+            {
+                model = request.model,
+                messages = new List<object>(),
+                tools = new List<ChatToolDefinition>
+                {
+                    new ChatToolDefinition
+                    {
+                        function = new ChatToolFunctionDefinition
+                        {
+                            name = PresentationToolCatalog.AddDraftSlides
+                        }
+                    }
+                },
+                max_tokens = DocumentChatRequestFactory.DraftResponseTokens
+            };
+            var presentation = (Dictionary<string, object>)method.Invoke(
+                null,
+                new object[]
+                {
+                    presentationRequest,
+                    new Uri("https://openrouter.ai/api/v1/chat/completions"),
+                    true
+                });
+            Assert(
+                (int)presentation["max_tokens"] == 32768,
+                "OpenRouter Qwen PowerPoint drafts need the route's full tool-payload allowance.");
+
+            presentationRequest.tools[0].function.name =
+                CrossAppToolCatalog.SendToPowerPoint;
+            var crossAppPresentation = (Dictionary<string, object>)method.Invoke(
+                null,
+                new object[]
+                {
+                    presentationRequest,
+                    new Uri("https://openrouter.ai/api/v1/chat/completions"),
+                    true
+                });
+            Assert(
+                (int)crossAppPresentation["max_tokens"] == 32768,
+                "Cross-app PowerPoint drafts need the same complete payload allowance as native slide drafts.");
+
+            var ordinaryDraft = new ChatCompletionRequest
+            {
+                model = request.model,
+                messages = new List<object>(),
+                tools = new List<ChatToolDefinition>
+                {
+                    new ChatToolDefinition
+                    {
+                        function = new ChatToolFunctionDefinition
+                        {
+                            name = "create_word_draft"
+                        }
+                    }
+                },
+                max_tokens = DocumentChatRequestFactory.DraftResponseTokens
+            };
+            var ordinary = (Dictionary<string, object>)method.Invoke(
+                null,
+                new object[]
+                {
+                    ordinaryDraft,
+                    new Uri("https://openrouter.ai/api/v1/chat/completions"),
+                    true
+                });
+            Assert(
+                (int)ordinary["max_tokens"] == 8192,
+                "Non-presentation OpenRouter Qwen drafts should remain bounded at 8K.");
+
+            var fallback = (Dictionary<string, object>)method.Invoke(
+                null,
+                new object[]
+                {
+                    request,
+                    new Uri("https://openrouter.ai/api/v1/chat/completions"),
+                    false
+                });
+            Assert(
+                fallback.ContainsKey("reasoning") &&
+                !fallback.ContainsKey("parallel_tool_calls"),
+                "Optional-control fallback must retain bounded reasoning and remove parallel controls.");
+
+            var unrelated = (Dictionary<string, object>)method.Invoke(
+                null,
+                new object[]
+                {
+                    request,
+                    new Uri("https://api.example.test/v1/chat/completions"),
+                    true
+                });
+            Assert(
+                !unrelated.ContainsKey("reasoning") &&
+                (bool)unrelated["parallel_tool_calls"],
+                "Provider-specific policy must not change unrelated endpoints.");
         }
 
         private static void EmptyEndpointResponsesRecover()
@@ -7999,14 +8829,194 @@ namespace GuardrailTests
             }
         }
 
+        private static void RepeatedEvidenceExpandsRequestPayloads()
+        {
+            var responses = Enumerable.Range(0, 3).Select(index =>
+                "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":null," +
+                "\"tool_calls\":[{\"id\":\"read" + index + "\",\"type\":\"function\"," +
+                "\"function\":{\"name\":\"read_task_evidence\",\"arguments\":\"{}\"}}]}}]}").ToArray();
+            using (var server = new FakeEndpoint(responses))
+            using (var client = new OpenAiCompatibleClient())
+            {
+                var request = new ChatCompletionRequest
+                {
+                    model = "synthetic",
+                    messages = new List<object>
+                    {
+                        new ChatCompletionInputMessage { role = "system", content = "Synthetic context-growth check." },
+                        new ChatCompletionInputMessage { role = "user", content = "Inspect the source." }
+                    },
+                    tools = new List<ChatToolDefinition>
+                    {
+                        new ChatToolDefinition { type = "function", function = new ChatToolFunctionDefinition
+                        { name = "read_task_evidence", parameters = new { type = "object" } } }
+                    }
+                };
+                var evidence = "unique-evidence:" + new string('E', 9000);
+                for (var index = 0; index < 3; index++)
+                {
+                    var response = client.CompleteAsync(EndpointSettings(server.BaseUrl),
+                        request, CancellationToken.None).GetAwaiter().GetResult();
+                    Assert(response.tool_calls != null && response.tool_calls.Count == 1,
+                        "The fake evidence read did not return one tool call.");
+                    ChatRequestFactory.AppendToolExchange(request, response,
+                        new[] { new MailboxToolResult(response.tool_calls[0].id, evidence,
+                            "Synthetic source read", null, 12000) }, request.model);
+                }
+                server.Wait();
+                Assert(server.Bodies.Count == 3 &&
+                    server.Bodies[0].Split(new[] { "unique-evidence:" }, StringSplitOptions.None).Length == 1 &&
+                    server.Bodies[1].Split(new[] { "unique-evidence:" }, StringSplitOptions.None).Length == 2 &&
+                    server.Bodies[2].Split(new[] { "unique-evidence:" }, StringSplitOptions.None).Length == 3 &&
+                    server.Bodies[2].Length > server.Bodies[1].Length + 8000,
+                    "Repeated tool evidence no longer grows the request payload; update the phase-0 baseline.");
+            }
+        }
+
+        private static void EmbeddedProviderErrorsRecover()
+        {
+            const string interrupted =
+                "{\"choices\":[{\"finish_reason\":\"error\",\"error\":{" +
+                "\"code\":\"502\",\"message\":\"Network connection lost.\"," +
+                "\"type\":\"provider_unavailable\"},\"message\":{" +
+                "\"role\":\"assistant\",\"content\":\"Writing now.\"," +
+                "\"tool_calls\":[{\"id\":\"partial\",\"function\":{" +
+                "\"name\":\"add_draft_slides\",\"arguments\":\"{\"}}]}}]}";
+            const string success =
+                "{\"choices\":[{\"finish_reason\":\"tool_calls\"," +
+                "\"message\":{\"role\":\"assistant\",\"content\":null," +
+                "\"tool_calls\":[{\"id\":\"complete\",\"function\":{" +
+                "\"name\":\"add_draft_slides\",\"arguments\":\"{}\"}}]}}]}";
+            foreach (var persistent in new[] { false, true })
+            using (var server = new FakeEndpoint(
+                interrupted,
+                persistent ? interrupted : success))
+            using (var client = new OpenAiCompatibleClient())
+            {
+                try
+                {
+                    var result = client.CompleteAsync(
+                        EndpointSettings(server.BaseUrl),
+                        MakeRequest(new List<ChatTurn>()),
+                        CancellationToken.None).GetAwaiter().GetResult();
+                    Assert(
+                        !persistent && result.tool_calls.Single().id == "complete",
+                        "Embedded provider error recovery returned a partial tool call.");
+                }
+                catch (AiEndpointException exception)
+                {
+                    Assert(
+                        persistent &&
+                        exception.Code == "PROVIDER_RESPONSE_ERROR" &&
+                        exception.ProviderCode == "502",
+                        "Unexpected embedded provider recovery error: " +
+                        exception.Message);
+                }
+
+                server.Wait();
+                Assert(
+                    server.Bodies.Count == 2 &&
+                    server.Bodies[0] == server.Bodies[1],
+                    "Embedded provider recovery must retry the identical inference once.");
+            }
+        }
+
+        private static void ProviderAndEmptyResponseRetriesAreIndependent()
+        {
+            const string interrupted =
+                "{\"choices\":[{\"finish_reason\":\"error\",\"error\":{" +
+                "\"code\":\"502\",\"message\":\"Provider stopped.\"," +
+                "\"type\":\"provider_unavailable\"},\"message\":{" +
+                "\"role\":\"assistant\",\"content\":null}}]}";
+            const string empty =
+                "{\"provider\":\"reasoning-only\",\"choices\":[{" +
+                "\"finish_reason\":\"length\",\"message\":{" +
+                "\"role\":\"assistant\",\"content\":null}}]}";
+            const string success =
+                "{\"choices\":[{\"message\":{" +
+                "\"role\":\"assistant\",\"content\":\"Recovered\"}}]}";
+            using (var server = new FakeEndpoint(
+                interrupted,
+                empty,
+                success))
+            using (var client = new OpenAiCompatibleClient())
+            {
+                var result = client.CompleteAsync(
+                    EndpointSettings(server.BaseUrl),
+                    MakeRequest(new List<ChatTurn>()),
+                    CancellationToken.None).GetAwaiter().GetResult();
+                Assert(
+                    result.content == "Recovered",
+                    "An embedded provider retry consumed the independent empty-response recovery.");
+                server.Wait();
+                Assert(
+                    server.Bodies.Count == 3 &&
+                    server.Bodies.Distinct().Count() == 1,
+                    "Provider and empty-response recovery must retry the identical inference without replaying tools.");
+            }
+        }
+
+        private static void StalledEndpointTimesOut()
+        {
+            const string success =
+                "{\"choices\":[{\"message\":{" +
+                "\"role\":\"assistant\",\"content\":\"Too late\"}}]}";
+            using (var server = new FakeEndpoint(
+                TimeSpan.FromMilliseconds(500),
+                success))
+            {
+                var constructor = typeof(OpenAiCompatibleClient)
+                    .GetConstructor(
+                        BindingFlags.Instance | BindingFlags.NonPublic,
+                        null,
+                        new[] { typeof(TimeSpan) },
+                        null);
+                Assert(
+                    constructor != null,
+                    "The bounded-timeout test constructor is unavailable.");
+                using (var client = (OpenAiCompatibleClient)
+                    constructor.Invoke(new object[]
+                    {
+                        TimeSpan.FromMilliseconds(100)
+                    }))
+                {
+                    try
+                    {
+                        client.CompleteAsync(
+                            EndpointSettings(server.BaseUrl),
+                            MakeRequest(new List<ChatTurn>()),
+                            CancellationToken.None).GetAwaiter().GetResult();
+                        throw new InvalidOperationException(
+                            "A stalled endpoint completed past its deadline.");
+                    }
+                    catch (AiEndpointException exception)
+                    {
+                        Assert(
+                            exception.Code == "AI_TIMEOUT",
+                            "Unexpected stalled-endpoint error: " +
+                            exception.Message);
+                    }
+                }
+            }
+        }
+
         private sealed class FakeEndpoint : IDisposable
         {
             private readonly TcpListener _listener;
             private readonly Task _requestTask;
             private readonly string[] _responseBodies;
+            private readonly TimeSpan _responseDelay;
 
             public FakeEndpoint(params string[] responseBodies)
+                : this(TimeSpan.Zero, responseBodies)
             {
+            }
+
+            public FakeEndpoint(
+                TimeSpan responseDelay,
+                params string[] responseBodies)
+            {
+                _responseDelay = responseDelay;
                 _responseBodies = responseBodies;
                 _listener = new TcpListener(
                     IPAddress.Loopback,
@@ -8138,6 +9148,10 @@ namespace GuardrailTests
                     }
 
                     Bodies.Add(Body);
+                    if (_responseDelay > TimeSpan.Zero)
+                    {
+                        Thread.Sleep(_responseDelay);
+                    }
                     var responseBytes =
                         Encoding.UTF8.GetBytes(
                             responseBody);

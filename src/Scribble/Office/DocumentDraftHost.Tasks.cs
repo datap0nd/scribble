@@ -14,6 +14,7 @@ namespace Scribble.Office
         private TaskContextManager _taskContext;
         private DurableExcelTransform _durableExcel;
         private ExcelTransformTarget _excelTarget;
+        private string _excelGridRecoveryNote;
 
         public async Task BindTaskAsync(TaskContextManager task, CancellationToken token)
         {
@@ -23,6 +24,9 @@ namespace Scribble.Office
                 _samsungPresentation = null;
             }
             _taskContext = task;
+            _excelGridRecoveryNote = null;
+            if (_hostKind == "excel")
+                ReconcileExcelGridWrite(task);
             // Older checkpoints archived these payloads without registering them
             // for read_task_evidence. Migrate only the two host-owned references,
             // reading from this task's encrypted store before granting access.
@@ -51,7 +55,8 @@ namespace Scribble.Office
                 }
                 else
                 {
-                    _koreanWorkbookOutput = new KoreanWorkbookOutputSession(_koreanWorkbookRequest.Handle, _durableExcel.State.Expected);
+                    _koreanWorkbookOutput = new KoreanWorkbookOutputSession(_koreanWorkbookRequest.Handle, _durableExcel.State.Expected,
+                        _koreanWorkbookRequest.Snapshot.TargetLanguage, null);
                     _koreanWorkbookOutput.Stage(_koreanWorkbookRequest.Handle, 0, _durableExcel.Values,
                         _durableExcel.State.Staged == _durableExcel.State.Expected);
                 }
@@ -80,6 +85,8 @@ namespace Scribble.Office
         {
             get
             {
+                if (!string.IsNullOrEmpty(_excelGridRecoveryNote))
+                    return _excelGridRecoveryNote;
                 if (_taskContext != null && _taskContext.State.HostData.ContainsKey("samsung_pending"))
                 {
                     var pending = _serializer.Deserialize<SamsungGenerationJournal.State>(_taskContext.State.HostData["samsung_pending"]);
@@ -114,6 +121,47 @@ namespace Scribble.Office
             }
         }
 
+        private void ReconcileExcelGridWrite(TaskContextManager task)
+        {
+            string receiptId;
+            string callId;
+            if (!task.State.HostData.TryGetValue("excel_grid_receipt",
+                    out receiptId) ||
+                !task.State.HostData.TryGetValue("excel_grid_call_id",
+                    out callId))
+                return;
+            var result = ExcelGridWriteRecovery.Uncertain;
+            try
+            {
+                var json = task.Store.ReadEvidence(task.State.Id,
+                    receiptId);
+                var receipt = new System.Web.Script.Serialization
+                    .JavaScriptSerializer { MaxJsonLength = int.MaxValue }
+                    .Deserialize<ExcelGridWriteReceipt>(json);
+                if (receipt != null && receipt.CallId == callId &&
+                    task.State.Writes.Count(write =>
+                        write.Id == "tool:" + callId &&
+                        write.Status != "verified") == 1)
+                    result = ExcelGridWriteRecovery.Reconcile(
+                        _hostApplication, receipt);
+            }
+            catch
+            {
+                // Damaged evidence or a missing target cannot authorize a retry.
+            }
+            if (result != ExcelGridWriteRecovery.Uncertain &&
+                task.ResolveExcelGridWrite(callId, receiptId, result))
+            {
+                _excelGridRecoveryNote = result ==
+                    ExcelGridWriteRecovery.Applied
+                    ? "The interrupted Excel cell edit is fully present in its original workbook and worksheet. The host verified every target cell and recorded the write as complete. Do not repeat it."
+                    : "The interrupted Excel cell edit left no changes in its original workbook and worksheet. The host verified or restored every target cell and cleared the pending write. A new authorized edit may now be attempted.";
+                return;
+            }
+            _excelGridRecoveryNote =
+                "The interrupted Excel cell edit cannot be verified against its encrypted before-image. No cell was overwritten unless it still matched the planned write. Inspect the original workbook and worksheet; this task remains blocked from another document write.";
+        }
+
         internal async Task ResumeReadyExcelAsync(CancellationToken token, Action<int, int> progress)
         {
             if (_durableExcel != null && _durableExcel.State.Staged == _durableExcel.State.Expected)
@@ -134,7 +182,18 @@ namespace Scribble.Office
             if (name == PresentationToolCatalog.ReviseSlides || name == PresentationToolCatalog.RevertSlides)
                 return await ExecuteRevisionAsync(call, authorization, exclusive, prompt, client, settings, token, progress);
             if (name == PresentationToolCatalog.AddDraftSlides || name == CrossAppToolCatalog.SendToPowerPoint)
+            {
+                if (name == CrossAppToolCatalog.SendToPowerPoint &&
+                    _hostKind == "excel" && _taskContext != null &&
+                    !string.IsNullOrWhiteSpace(
+                        _taskContext.State.AnalysisArtifactEvidenceId) &&
+                    string.Equals(Environment.GetEnvironmentVariable(
+                        AnalysisDocumentPilot.FeatureFlag), "1",
+                        StringComparison.Ordinal))
+                    return await ExecuteAnalysisDeckAsync(call, authorization,
+                        exclusive, client, settings, token);
                 return await ExecuteSamsungAsync(call, authorization, exclusive, prompt, client, settings, token, progress);
+            }
             if (_durableExcel == null || (name != WorkbookToolCatalog.WriteSelectionOutput && name != WorkbookToolCatalog.WriteKoreanTranslations))
                 return Execute(call, authorization, exclusive, prompt);
             // Keep the original host argument and permission preflights; a review

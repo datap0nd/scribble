@@ -19,15 +19,54 @@ namespace Scribble.Chat
                 var args = json.DeserializeObject(call.function.arguments ?? "{}");
                 var schema = json.DeserializeObject(json.Serialize(definition.function.parameters)) as IDictionary<string, object>;
                 var map = args as IDictionary<string, object>;
+                // This read-only inventory has no parameters. Some compatible
+                // providers invent conventional paging/visibility hints, or
+                // copy sheet/range arguments from read_cells, even when this
+                // schema is {}. The inventory ignores all of these fields;
+                // discard only known inert hints so a repeated malformed
+                // call cannot strand a cross-app task.
+                if (map != null && call.function.name == WorkbookToolCatalog.ListWorksheets)
+                {
+                    map.Remove("limit");
+                    map.Remove("include_hidden");
+                    map.Remove("sheet");
+                    map.Remove("range");
+                    map.Remove("rows");
+                    map.Remove("columns");
+                    map.Remove("run_in_background");
+                }
                 // Known compatibility case only: decode one encoded slide/plan array.
+                // Some OpenAI-compatible gateways preserve a model's nested JSON
+                // array as a string. Qwen can also append one structurally misplaced
+                // optional field after otherwise complete slide objects. Retain only
+                // independently valid, complete slide objects from that array prefix;
+                // the accepted deck plan makes the model continue with any missing
+                // slides in a later call. Never attempt general JSON repair.
                 if (map != null && (call.function.name == "add_draft_slides" || call.function.name == "send_to_powerpoint"))
                     foreach (var key in new[] { "slides", "plan" })
                     {
                         object raw;
                         if (map.TryGetValue(key, out raw) && raw is string && ((string)raw).TrimStart().StartsWith("["))
                         {
-                            var decoded = json.DeserializeObject((string)raw);
-                            if (decoded is IList) map[key] = decoded;
+                            try
+                            {
+                                var decoded = json.DeserializeObject((string)raw);
+                                if (decoded is IList) map[key] = decoded;
+                            }
+                            catch (ArgumentException)
+                            {
+                                IList decodedPrefix;
+                                if (key == "slides" &&
+                                    (TrySwapOneTableRowsCloser((string)raw, json, out decodedPrefix) ||
+                                     TryDecodeCompleteObjectArrayPrefix((string)raw, json, out decodedPrefix)))
+                                {
+                                    map[key] = decodedPrefix;
+                                }
+                                else
+                                {
+                                    throw;
+                                }
+                            }
                         }
                     }
                 Visit(args, schema, "$", errors);
@@ -35,6 +74,118 @@ namespace Scribble.Chat
             }
             catch (ArgumentException) { errors.Add("$: arguments must be valid JSON matching the tool schema."); }
             return errors;
+        }
+
+        // Qwen sometimes quotes the whole slides array and transposes the
+        // closing ]} of a table's rows/object to }], while every cell and
+        // subsequent slide field is intact. Swap those two bytes only; schema,
+        // source and visual gates still run. Never synthesize content.
+        private static bool TrySwapOneTableRowsCloser(string raw, JavaScriptSerializer json, out IList decoded)
+        {
+            decoded = null;
+            if (string.IsNullOrWhiteSpace(raw) ||
+                (raw.IndexOf("\"table\"", StringComparison.Ordinal) < 0 &&
+                 raw.IndexOf("\"secondary_table\"", StringComparison.Ordinal) < 0)) return false;
+            var rows = raw.IndexOf("\"rows\"", StringComparison.Ordinal);
+            if (rows < 0) return false;
+            var start = raw.IndexOf('[', rows + 6);
+            if (start < 0) return false;
+            var depth = 0;
+            var inString = false;
+            var escaped = false;
+            for (var i = start; i < raw.Length; i++)
+            {
+                var c = raw[i];
+                if (inString)
+                {
+                    if (escaped) escaped = false;
+                    else if (c == '\\') escaped = true;
+                    else if (c == '"') inString = false;
+                    continue;
+                }
+                if (c == '"') { inString = true; continue; }
+                if (c == '[') { depth++; continue; }
+                if (c == ']') { if (--depth == 0) return false; continue; }
+                if (c != '}' || depth != 1 || i == 0 || raw[i - 1] != ']' ||
+                    i + 1 >= raw.Length || raw[i + 1] != ']') continue;
+                try
+                {
+                    var fixedArray = json.DeserializeObject(raw.Substring(0, i) + "]}" + raw.Substring(i + 2)) as IList;
+                    if (fixedArray == null || fixedArray.Count == 0 ||
+                        fixedArray.Cast<object>().Any(item => !(item is IDictionary<string, object>))) return false;
+                    decoded = fixedArray;
+                    return true;
+                }
+                catch (ArgumentException) { return false; }
+            }
+            return false;
+        }
+
+        private static bool TryDecodeCompleteObjectArrayPrefix(
+            string raw,
+            JavaScriptSerializer json,
+            out IList decoded)
+        {
+            var items = new ArrayList();
+            decoded = items;
+            if (string.IsNullOrWhiteSpace(raw)) return false;
+
+            var cursor = 0;
+            while (cursor < raw.Length && char.IsWhiteSpace(raw[cursor])) cursor++;
+            if (cursor >= raw.Length || raw[cursor] != '[') return false;
+            cursor++;
+
+            while (cursor < raw.Length)
+            {
+                while (cursor < raw.Length &&
+                       (char.IsWhiteSpace(raw[cursor]) || raw[cursor] == ','))
+                    cursor++;
+                if (cursor >= raw.Length || raw[cursor] == ']') break;
+                if (raw[cursor] != '{') break;
+
+                var start = cursor;
+                var depth = 0;
+                var inString = false;
+                var escaped = false;
+                var complete = false;
+                for (; cursor < raw.Length; cursor++)
+                {
+                    var character = raw[cursor];
+                    if (inString)
+                    {
+                        if (escaped) escaped = false;
+                        else if (character == '\\') escaped = true;
+                        else if (character == '"') inString = false;
+                        continue;
+                    }
+
+                    if (character == '"') inString = true;
+                    else if (character == '{') depth++;
+                    else if (character == '}' && --depth == 0)
+                    {
+                        complete = true;
+                        break;
+                    }
+                }
+
+                if (!complete) break;
+                object item;
+                try
+                {
+                    item = json.DeserializeObject(
+                        raw.Substring(start, cursor - start + 1));
+                }
+                catch (ArgumentException)
+                {
+                    break;
+                }
+
+                if (!(item is IDictionary<string, object>)) break;
+                items.Add(item);
+                cursor++;
+            }
+
+            return items.Count > 0;
         }
 
         private static void Visit(object value, IDictionary<string, object> schema, string path, List<string> errors)

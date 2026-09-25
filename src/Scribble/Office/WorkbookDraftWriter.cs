@@ -23,6 +23,31 @@ namespace Scribble.Office
         internal const int MaxDraftColumns = 30;
         internal const int MaxCellCharacters = 500;
 
+        // A model occasionally omits the separator in an otherwise
+        // unambiguous existing-sheet reference (Ledger$B$2). Repair only
+        // that narrow form; never guess at a bare name or at quoted text.
+        internal static string NormalizeSheetReferences(
+            string formula,
+            IEnumerable<string> worksheetNames)
+        {
+            if (string.IsNullOrEmpty(formula) || worksheetNames == null)
+                return formula;
+            var names = worksheetNames.Where(name =>
+                    !string.IsNullOrWhiteSpace(name) &&
+                    Regex.IsMatch(name, @"^[A-Za-z_][A-Za-z0-9_]*$"))
+                .OrderByDescending(name => name.Length).ToArray();
+            var parts = formula.Split('"');
+            for (var part = 0; part < parts.Length; part += 2)
+                foreach (var name in names)
+                    parts[part] = Regex.Replace(
+                        parts[part],
+                        @"(?<![A-Za-z0-9_.!'])" + Regex.Escape(name) +
+                        @"(?=\$[A-Z]{1,3}\$?\d+\b)",
+                        match => match.Value + "!",
+                        RegexOptions.IgnoreCase);
+            return string.Join("\"", parts);
+        }
+
         internal static string WriteDraftSheet(
             object excelApplication,
             string title,
@@ -60,6 +85,33 @@ namespace Scribble.Office
             DraftSheetChart chart,
             bool inNewWorkbook)
         {
+            return WriteDraftSheet(excelApplication, title, rows, chart,
+                inNewWorkbook, null);
+        }
+
+        // The analysis pilot captures its disposable workbook before writing.
+        // A focus change cannot redirect the native write to another workbook.
+        internal static string WriteDraftSheet(
+            object excelApplication,
+            string title,
+            IReadOnlyList<IReadOnlyList<string>> rows,
+            DraftSheetChart chart,
+            bool inNewWorkbook,
+            object boundWorkbook)
+        {
+            return WriteDraftSheet(excelApplication, title, rows, chart,
+                inNewWorkbook, boundWorkbook, false);
+        }
+
+        internal static string WriteDraftSheet(
+            object excelApplication,
+            string title,
+            IReadOnlyList<IReadOnlyList<string>> rows,
+            DraftSheetChart chart,
+            bool inNewWorkbook,
+            object boundWorkbook,
+            bool requireBoundWorkbook)
+        {
             if (rows == null || rows.Count == 0)
             {
                 throw new InvalidOperationException(
@@ -69,7 +121,8 @@ namespace Scribble.Office
             dynamic application = excelApplication;
             dynamic workbook = inNewWorkbook
                 ? null
-                : application.ActiveWorkbook;
+                : requireBoundWorkbook ? boundWorkbook :
+                    boundWorkbook ?? application.ActiveWorkbook;
             if (workbook == null)
             {
                 workbook = application.Workbooks.Add();
@@ -193,7 +246,7 @@ namespace Scribble.Office
                             formulas.Add(
                                 new KeyValuePair<int[], string>(
                                     new[] { row, column },
-                                    cell));
+                                    NormalizeSheetReferences(cell, existingNames)));
                             continue;
                         }
 
@@ -219,6 +272,7 @@ namespace Scribble.Office
             target.Rows[1].NumberFormat = "@";
             target.Value2 = grid;
             var formulaCount = 0;
+            var rejectedFormulas = new List<string>();
             var liveFormulas =
                 new List<KeyValuePair<int[], string>>();
             foreach (var formula in formulas)
@@ -253,9 +307,18 @@ namespace Scribble.Office
                         catch
                         {
                         }
+                        rejectedFormulas.Add("R" + (startRow + formula.Key[0]) +
+                            "C" + (formula.Key[1] + 1));
                     }
                 }
             }
+
+            if (rejectedFormulas.Count > 0)
+                throw new InvalidOperationException(
+                    "DRAFT_FORMULA_INVALID: Excel rejected " +
+                    rejectedFormulas.Count + " formula(s) at " +
+                    string.Join(", ", rejectedFormulas.Take(8)) +
+                    ". They remain visible as text on the new draft sheet, but this is not a valid analytical output. Correct the syntax and create a fresh draft before continuing to PowerPoint or claiming completion.");
 
             // A formula that parses but evaluates to an Excel error is
             // definitely wrong: repair a one-row header offset when safe,
@@ -304,7 +367,9 @@ namespace Scribble.Office
                 boundedTitle,
                 startRow,
                 rowCount,
-                target);
+                columnCount,
+                target,
+                rows);
             var chartAdded =
                 chart != null &&
                 AddDraftChart(
@@ -350,7 +415,189 @@ namespace Scribble.Office
                 " Nothing was saved.";
         }
 
-        // Writes a bounded grid into the ACTIVE worksheet starting
+        private sealed class CellWriteTarget
+        {
+            internal object Sheet;
+            internal string AnchorName;
+            internal int StartRow;
+            internal int StartColumn;
+            internal int RowCount;
+            internal List<string> ExistingNames;
+            internal List<CellBeforeImage> Before;
+        }
+
+        private sealed class CellBeforeImage
+        {
+            internal int Row;
+            internal int Column;
+            internal object Value;
+            internal object Formula;
+            internal object NumberFormat;
+            internal bool HasFormula;
+            internal object WrittenValue;
+            internal object WrittenFormula;
+            internal bool WrittenHasFormula;
+            internal bool WriteReadBack;
+        }
+
+        internal static void ValidateCellsTarget(object excelApplication,
+            string startCell, IReadOnlyList<IReadOnlyList<string>> rows,
+            object boundSheet)
+        {
+            PrepareCellsTarget(excelApplication, startCell, rows,
+                boundSheet);
+        }
+
+        internal static ExcelGridWriteReceipt CaptureCellsReceipt(
+            object excelApplication, string startCell,
+            IReadOnlyList<IReadOnlyList<string>> rows,
+            object boundSheet, string callId)
+        {
+            var target = PrepareCellsTarget(excelApplication, startCell,
+                rows, boundSheet);
+            dynamic sheet = target.Sheet;
+            dynamic workbook = sheet.Parent;
+            var receipt = new ExcelGridWriteReceipt
+            {
+                CallId = callId,
+                WorkbookName = Convert.ToString(workbook.Name),
+                WorkbookFullName = Convert.ToString(workbook.FullName),
+                SheetName = Convert.ToString(sheet.Name),
+                StartCell = target.AnchorName
+            };
+            var index = 0;
+            for (var row = 0; row < rows.Count; row++)
+                for (var column = 0; column <
+                        (rows[row] == null ? 0 : rows[row].Count);
+                    column++)
+                {
+                    var before = target.Before[index++];
+                    var value = before.HasFormula ? null : before.Value;
+                    string kind;
+                    string literal;
+                    if (value == null)
+                    {
+                        kind = "empty";
+                        literal = null;
+                    }
+                    else if (value is string)
+                    {
+                        kind = "text";
+                        literal = (string)value;
+                    }
+                    else if (value is bool)
+                    {
+                        kind = "boolean";
+                        literal = (bool)value ? "true" : "false";
+                    }
+                    else if (value is double || value is float ||
+                        value is decimal || value is int ||
+                        value is long)
+                    {
+                        if (ExcelErrorValue.Text(value) != null)
+                            throw new InvalidOperationException(
+                                "DRAFT_BEFORE_IMAGE_UNSUPPORTED: An Excel error cell cannot be safely restored.");
+                        kind = "number";
+                        literal = Convert.ToString(value,
+                            CultureInfo.InvariantCulture);
+                    }
+                    else
+                        throw new InvalidOperationException(
+                            "DRAFT_BEFORE_IMAGE_UNSUPPORTED: The target has an unsupported native cell value.");
+                    if (!(before.NumberFormat is string))
+                        throw new InvalidOperationException(
+                            "DRAFT_BEFORE_IMAGE_UNSUPPORTED: The target cell format was not scalar.");
+                    receipt.Cells.Add(new ExcelGridCellReceipt
+                    {
+                        Row = before.Row,
+                        Column = before.Column,
+                        HasFormula = before.HasFormula,
+                        Formula = before.HasFormula
+                            ? Convert.ToString(before.Formula)
+                            : null,
+                        ValueKind = kind,
+                        Value = literal,
+                        NumberFormat = (string)before.NumberFormat,
+                        Planned = rows[row][column]
+                    });
+                }
+            return receipt;
+        }
+
+        private static CellWriteTarget PrepareCellsTarget(
+            object excelApplication, string startCell,
+            IReadOnlyList<IReadOnlyList<string>> rows,
+            object boundSheet)
+        {
+            if (rows == null || rows.Count == 0)
+                throw new InvalidOperationException(
+                    "At least one row of cells is required.");
+            var anchorName = TextBoundary.SingleLine(startCell,
+                12).Replace("$", string.Empty);
+            if (!IsCellName(anchorName))
+                throw new InvalidOperationException(
+                    "start_cell must be a single A1-style cell such as B2.");
+            dynamic application = excelApplication;
+            dynamic sheet = boundSheet ?? application.ActiveSheet;
+            if (sheet == null)
+                throw new InvalidOperationException(
+                    "No worksheet is active.");
+            var existingNames = new List<string>();
+            foreach (dynamic candidate in sheet.Parent.Worksheets)
+                existingNames.Add(Convert.ToString(candidate.Name) ??
+                    string.Empty);
+            dynamic anchor = sheet.Range(anchorName);
+            int startRow = anchor.Row;
+            int startColumn = anchor.Column;
+            if (rows.Count > MaxDraftRows || rows.Any(row =>
+                    row != null && row.Count > MaxDraftColumns))
+                throw new InvalidOperationException(
+                    "DRAFT_GRID_LIMIT: The target grid exceeds the supported write size.");
+            var rowCount = rows.Count;
+            var largestRow = rows.Where(row => row != null)
+                .Select(row => row.Count).DefaultIfEmpty(0).Max();
+            if (startRow + rowCount - 1 >
+                    ExcelSelectionOutputPolicy.MaxExcelRows ||
+                startColumn + largestRow - 1 >
+                    ExcelSelectionOutputPolicy.MaxExcelColumns)
+                throw new InvalidOperationException(
+                    "DRAFT_TARGET_RANGE_INVALID: The requested cells extend past the worksheet bounds.");
+            if (Convert.ToBoolean(sheet.ProtectContents))
+                throw new InvalidOperationException(
+                    "DRAFT_TARGET_PROTECTED: The request-bound worksheet is protected.");
+            // Scan every destination before the first mutation. A late merged
+            // cell must not leave earlier rows partially written.
+            var before = new List<CellBeforeImage>();
+            for (var row = 0; row < rowCount; row++)
+                for (var column = 0; column <
+                        (rows[row] == null ? 0 : rows[row].Count);
+                    column++)
+                {
+                    dynamic cell = sheet.Cells[startRow + row,
+                        startColumn + column];
+                    if (Convert.ToBoolean(cell.MergeCells))
+                        throw new InvalidOperationException(
+                            "DRAFT_TARGET_MERGED: The target grid contains a merged cell.");
+                    before.Add(new CellBeforeImage
+                    {
+                        Row = startRow + row,
+                        Column = startColumn + column,
+                        Value = cell.Value2,
+                        Formula = cell.Formula,
+                        NumberFormat = cell.NumberFormat,
+                        HasFormula = Convert.ToBoolean(cell.HasFormula)
+                    });
+                }
+            return new CellWriteTarget
+            {
+                Sheet = (object)sheet, AnchorName = anchorName,
+                StartRow = startRow, StartColumn = startColumn,
+                RowCount = rowCount, ExistingNames = existingNames,
+                Before = before
+            };
+        }
+
+        // Writes a bounded grid into the request-bound worksheet starting
         // at the given A1-style cell - the user explicitly asked to
         // work on their own sheet. Existing cells in the target
         // area are overwritten in memory; nothing is ever saved,
@@ -361,39 +608,33 @@ namespace Scribble.Office
             string startCell,
             IReadOnlyList<IReadOnlyList<string>> rows)
         {
-            if (rows == null || rows.Count == 0)
-            {
-                throw new InvalidOperationException(
-                    "At least one row of cells is required.");
-            }
+            return WriteCells(excelApplication, startCell, rows, null);
+        }
 
-            var anchorName = TextBoundary.SingleLine(
-                startCell,
-                12).Replace("$", string.Empty);
-            if (!IsCellName(anchorName))
-            {
-                throw new InvalidOperationException(
-                    "start_cell must be a single A1-style cell " +
-                    "such as B2.");
-            }
-
-            dynamic application = excelApplication;
-            dynamic sheet = application.ActiveSheet;
-            if (sheet == null)
-            {
-                throw new InvalidOperationException(
-                    "No worksheet is active.");
-            }
-
-            dynamic anchor = sheet.Range(anchorName);
-            int startRow = anchor.Row;
-            int startColumn = anchor.Column;
-            var rowCount = Math.Min(rows.Count, MaxDraftRows);
+        internal static string WriteCells(
+            object excelApplication,
+            string startCell,
+            IReadOnlyList<IReadOnlyList<string>> rows,
+            object boundSheet)
+        {
+            var writeTarget = PrepareCellsTarget(excelApplication, startCell,
+                rows, boundSheet);
+            dynamic sheet = writeTarget.Sheet;
+            var anchorName = writeTarget.AnchorName;
+            var startRow = writeTarget.StartRow;
+            var startColumn = writeTarget.StartColumn;
+            var rowCount = writeTarget.RowCount;
+            var existingNames = writeTarget.ExistingNames;
             var written = 0;
             var formulaCount = 0;
             var brokenFormulas = 0;
+            var rejectedFormulas = new List<string>();
             var liveFormulas =
                 new List<KeyValuePair<int[], string>>();
+            var touched = new List<CellBeforeImage>();
+            var beforeIndex = 0;
+            try
+            {
             for (var row = 0; row < rowCount; row++)
             {
                 var source = rows[row];
@@ -428,15 +669,19 @@ namespace Scribble.Office
                     dynamic target = sheet.Cells[
                         startRow + row,
                         startColumn + column];
+                    var beforeCell = writeTarget.Before[beforeIndex++];
+                    touched.Add(beforeCell);
                     if (cell.Length > 0 && cell[0] == '=')
                     {
                         if (!DraftFormulaPolicy.IsAllowedFormula(
                             cell))
                         {
                             target.Value2 = "'" + cell;
+                            CaptureWritten(target, beforeCell);
                             written++;
                             continue;
                         }
+                        cell = NormalizeSheetReferences(cell, existingNames);
 
                         try
                         {
@@ -475,16 +720,39 @@ namespace Scribble.Office
                                 catch
                                 {
                                 }
+                                rejectedFormulas.Add("R" + (startRow + row) +
+                                    "C" + (startColumn + column));
                             }
                         }
 
+                        CaptureWritten(target, beforeCell);
                         written++;
                         continue;
                     }
 
                     target.Value2 = cell;
+                    CaptureWritten(target, beforeCell);
                     written++;
                 }
+            }
+
+            if (rejectedFormulas.Count > 0)
+                throw new InvalidOperationException(
+                    "DRAFT_FORMULA_INVALID: Excel rejected " +
+                    rejectedFormulas.Count + " formula(s) at " +
+                    string.Join(", ", rejectedFormulas.Take(8)) +
+                    ". Correct the syntax before continuing.");
+            }
+            catch (Exception error)
+            {
+                if (touched.Count == 0) throw;
+                var uncertain = RestoreTouched(sheet, touched);
+                throw new InvalidOperationException(
+                    uncertain.Count == 0
+                        ? "DRAFT_WRITE_ROLLED_BACK: The bounded edit failed and its captured cells were restored. " + error.Message
+                        : "DRAFT_WRITE_UNCERTAIN: The bounded edit failed and some cells could not be safely restored: " +
+                            string.Join(", ", uncertain.Take(8)) + ". " + error.Message,
+                    error);
             }
 
             if (liveFormulas.Count > 0)
@@ -495,6 +763,7 @@ namespace Scribble.Office
                 }
                 catch
                 {
+                    brokenFormulas++;
                 }
 
                 foreach (var formula in liveFormulas)
@@ -506,34 +775,34 @@ namespace Scribble.Office
                             formula.Key[1]];
                         object value = cell.Value2;
                         if (IsExcelError(value))
-                        {
-                            if (TryRepairAdjacentRowFormula(
-                                sheet,
-                                cell,
-                                formula.Value,
-                                formula.Key[0]))
-                                continue;
                             brokenFormulas++;
-                        }
                     }
                     catch
                     {
+                        brokenFormulas++;
                     }
                 }
             }
 
+            if (brokenFormulas > 0)
+            {
+                var uncertain = RestoreTouched(sheet, touched);
+                throw new InvalidOperationException(
+                    uncertain.Count == 0
+                        ? "DRAFT_WRITE_ROLLED_BACK: " +
+                          brokenFormulas + " live formula(s) evaluated to an Excel error or could not be read back. The captured cells were restored."
+                        : "DRAFT_WRITE_UNCERTAIN: " +
+                          brokenFormulas + " live formula(s) failed native recalculation, and some cells could not be safely restored: " +
+                          string.Join(", ", uncertain.Take(8)) + ".");
+            }
+
             return "Wrote " + written + " cells starting at " +
-                anchorName + " on the active sheet" +
+                anchorName + " on the request-bound sheet" +
                 (formulaCount > 0
                     ? " including " + formulaCount +
                       " live formulas"
                     : string.Empty) +
                 "." +
-                (brokenFormulas > 0
-                    ? " " + brokenFormulas +
-                      " formula(s) evaluated to an Excel error " +
-                      "and remain visible for correction. Do not claim the analysis is complete."
-                    : string.Empty) +
                 " Nothing was saved, but Excel cannot undo " +
                 "add-in changes - close without saving to " +
                 "discard.";
@@ -542,6 +811,64 @@ namespace Scribble.Office
         private static bool IsExcelError(object value)
         {
             return ExcelErrorValue.Text(value) != null;
+        }
+
+        private static void CaptureWritten(dynamic cell,
+            CellBeforeImage image)
+        {
+            image.WrittenValue = cell.Value2;
+            image.WrittenFormula = cell.Formula;
+            image.WrittenHasFormula = Convert.ToBoolean(cell.HasFormula);
+            image.WriteReadBack = true;
+        }
+
+        private static bool MatchesCell(dynamic cell, bool hasFormula,
+            object formula, object value)
+        {
+            if (Convert.ToBoolean(cell.HasFormula) != hasFormula)
+                return false;
+            return hasFormula
+                ? string.Equals(Convert.ToString(cell.Formula),
+                    Convert.ToString(formula),
+                    StringComparison.OrdinalIgnoreCase)
+                : Equals((object)cell.Value2, value);
+        }
+
+        private static List<string> RestoreTouched(dynamic sheet,
+            List<CellBeforeImage> touched)
+        {
+            var uncertain = new List<string>();
+            foreach (var image in touched.AsEnumerable().Reverse())
+            {
+                var address = "R" + image.Row + "C" + image.Column;
+                try
+                {
+                    dynamic cell = sheet.Cells[image.Row, image.Column];
+                    if (MatchesCell(cell, image.HasFormula, image.Formula,
+                            image.Value))
+                        continue;
+                    if (!image.WriteReadBack ||
+                        !MatchesCell(cell, image.WrittenHasFormula,
+                            image.WrittenFormula, image.WrittenValue))
+                    {
+                        uncertain.Add(address);
+                        continue;
+                    }
+                    cell.NumberFormat = image.NumberFormat;
+                    if (image.HasFormula) cell.Formula = image.Formula;
+                    else cell.Value2 = image.Value;
+                    if (!MatchesCell(cell, image.HasFormula, image.Formula,
+                            image.Value) ||
+                        !Equals((object)cell.NumberFormat,
+                            image.NumberFormat))
+                        uncertain.Add(address);
+                }
+                catch
+                {
+                    uncertain.Add(address);
+                }
+            }
+            return uncertain;
         }
 
         private static bool TryRepairAdjacentRowFormula(
@@ -812,15 +1139,18 @@ namespace Scribble.Office
                 out number);
         }
 
-        // Cosmetic polish for the draft sheet: bold title, bold
-        // header row with a divider, and autofitted columns. Any
-        // failure here must never fail the draft itself.
+        // Cosmetic polish for the draft sheet. Formatting is deliberately
+        // applied after values and formulas, so it can improve readability
+        // without changing the model's data, formula text, or source links.
+        // Any failure here must never fail the draft itself.
         private static void ApplyDraftFormatting(
             dynamic sheet,
             string boundedTitle,
             int startRow,
             int rowCount,
-            dynamic target)
+            int columnCount,
+            dynamic target,
+            IReadOnlyList<IReadOnlyList<string>> rows)
         {
             try
             {
@@ -828,18 +1158,104 @@ namespace Scribble.Office
                 {
                     dynamic titleCell = sheet.Cells[1, 1];
                     titleCell.Font.Bold = true;
-                    titleCell.Font.Size = 12;
+                    titleCell.Font.Size = 16;
+                    titleCell.Font.Name = "Aptos Display";
+                    // RGB(31, 78, 121), Excel's OLE/BGR integer.
+                    titleCell.Font.Color = 0x794E1F;
                 }
 
-                if (rowCount > 1)
-                {
-                    dynamic header = target.Rows[1];
-                    header.Font.Bold = true;
-                    // 9 = xlEdgeBottom, 1 = xlContinuous.
-                    header.Borders[9].LineStyle = 1;
-                }
+                dynamic header = target.Rows[1];
+                header.Font.Bold = true;
+                header.Font.Color = 0xFFFFFF;
+                header.Font.Name = "Aptos";
+                header.Interior.Color = 0x794E1F;
+                header.HorizontalAlignment = -4108; // xlCenter.
+                header.VerticalAlignment = -4108;
+                header.RowHeight = 22;
+                // 9 = xlEdgeBottom, 1 = xlContinuous.
+                header.Borders[9].LineStyle = 1;
+                header.Borders[9].Color = 0x794E1F;
 
                 target.EntireColumn.AutoFit();
+            }
+            catch
+            {
+            }
+
+            if (rowCount > 1)
+            {
+                try
+                {
+                    dynamic body = sheet.Range(
+                        sheet.Cells[startRow + 1, 1],
+                        sheet.Cells[startRow + rowCount - 1, columnCount]);
+                    body.Font.Name = "Aptos";
+                    // Add separators while preserving up to five displayed
+                    // decimals. Formula precision remains unchanged.
+                    body.NumberFormat = "#,##0.#####";
+                    body.Borders.LineStyle = 1; // xlContinuous.
+                    body.Borders.Color = 0xD9D9D9;
+                    body.VerticalAlignment = -4108;
+                    for (var offset = 1; offset < rowCount; offset += 2)
+                    {
+                        dynamic band = target.Rows[offset + 1];
+                        band.Interior.Color = 0xF7EBDD;
+                    }
+                    if (columnCount > 1)
+                        for (var offset = 1; offset < rowCount; offset++)
+                        {
+                            var label = rows != null && offset < rows.Count && rows[offset] != null && rows[offset].Count > 0
+                                ? rows[offset][0] ?? "" : "";
+                            if (!Regex.IsMatch(label, @"(?i)(?:\bmargin\b|\brate\b|\bpercent(?:age)?\b|\bshare\b|%)"))
+                                continue;
+                            dynamic percentageRow = sheet.Range(
+                                sheet.Cells[startRow + offset, 2],
+                                sheet.Cells[startRow + offset, columnCount]);
+                            percentageRow.NumberFormat = "0.00%";
+                        }
+                }
+                catch
+                {
+                }
+
+                try
+                {
+                    target.AutoFilter();
+                }
+                catch
+                {
+                }
+            }
+
+            try
+            {
+                // AutoFit can make a prose/disclosure column hundreds of
+                // characters wide. Refit after applying the displayed number
+                // format so numeric columns reserve room for separators and
+                // decimals, then cap prose columns and wrap only when needed.
+                target.EntireColumn.AutoFit();
+                for (var column = 1; column <= columnCount; column++)
+                {
+                    dynamic draftColumn = sheet.Columns[column];
+                    var width = Convert.ToDouble(draftColumn.ColumnWidth);
+                    if (width > 36d)
+                    {
+                        draftColumn.ColumnWidth = 36d;
+                        draftColumn.WrapText = true;
+                        width = 36d;
+                    }
+                    // Excel can AutoFit a formula column against its short
+                    // header before the recalculated value is displayed.
+                    // Reserve enough space for separators and decimals in
+                    // numeric output columns, including formula results.
+                    var numeric = column > 1 && rows != null &&
+                        rows.Skip(1).Any(row => row != null &&
+                            row.Count >= column &&
+                            IsChartValue(row[column - 1]));
+                    if (numeric && width < 14d)
+                        draftColumn.ColumnWidth = 14d;
+                }
+                target.EntireRow.AutoFit();
             }
             catch
             {
@@ -863,7 +1279,9 @@ namespace Scribble.Office
             {
                 if (rows.Count == MaxDraftRows)
                 {
-                    break;
+                    throw new InvalidOperationException(
+                        "DRAFT_ROWS_LIMIT: A single write can contain at most " +
+                        MaxDraftRows + " rows. Split the request into another batch.");
                 }
 
                 var inner = AsEnumerable(rowValue);
@@ -878,11 +1296,17 @@ namespace Scribble.Office
                 {
                     if (cells.Count == MaxDraftColumns)
                     {
-                        break;
+                        throw new InvalidOperationException(
+                            "DRAFT_COLUMNS_LIMIT: A row can contain at most " +
+                            MaxDraftColumns + " cells.");
                     }
 
-                    cells.Add(TextBoundary.SingleLine(
-                        Convert.ToString(cell),
+                    var cellText = Convert.ToString(cell) ?? string.Empty;
+                    if (cellText.Length > MaxCellCharacters)
+                        throw new InvalidOperationException(
+                            "DRAFT_CELL_LIMIT: A cell exceeds " +
+                            MaxCellCharacters + " characters.");
+                    cells.Add(TextBoundary.SingleLine(cellText,
                         MaxCellCharacters));
                 }
 

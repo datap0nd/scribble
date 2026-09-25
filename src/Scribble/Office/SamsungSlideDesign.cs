@@ -11,14 +11,15 @@ namespace Scribble.Office
     public static class SamsungSlideDesign
     {
         public const string Version = "Samsung MD 2.0";
-        public const float TitleSize = 24, BodySize = 18, BodyMinimum = 14, ActionSize = 14;
-        public const float TableSize = 10, TableMinimum = 7.5f;
+        public const float TitleSize = 30, BodySize = 18, BodyMinimum = 16, ActionSize = 16;
+        public const float TableSize = 14, TableMinimum = 7.5f;
         public static string RecipePurpose(string layout)
         {
             switch (layout)
             {
                 case "matrix": case "table": return "Dense specification or performance comparison with complete rows.";
                 case "two_pane": return "Executive commentary beside two evidence tables.";
+                case "scorecard": return "Two to four large KPI values with short labels and source-backed context.";
                 case "annotated_chart": return "Two related charts with semantic evidence highlights.";
                 case "roadmap": return "Proposed or confirmed actions with explicitly sourced dates and owners.";
                 case "stack": return "Layered strategy or operating model.";
@@ -28,8 +29,9 @@ namespace Scribble.Office
         }
         public const float Width = 960f, Height = 540f;
         public const string Blue = "#4F81BD", SoftBlue = "#5B9BD5", Border = "#41719C";
+        public const string Navy = "#17365D";
         public const string Gray = "#F2F2F2", Red = "#C00000", Green = "#00B050";
-        public static readonly string[] Layouts = { "cover", "divider", "agenda", "bullets", "cards", "action_list",
+        public static readonly string[] Layouts = { "cover", "divider", "agenda", "bullets", "cards", "scorecard", "action_list",
             "two_pane", "table", "matrix", "chart", "annotated_chart", "visual_grid", "dual_visual",
             "large_visual", "landscape", "centered_visual", "visual_comments", "roadmap", "stack", "closing" };
         public static RectangleF Percent(float x, float y, float w, float h)
@@ -38,7 +40,8 @@ namespace Scribble.Office
         public static RectangleF Action { get { return Percent(3.8f, 16.1f, 92.3f, 4.5f); } }
         public static RectangleF Footer { get { return Percent(3.8f, 93.5f, 87f, 3f); } }
         public static RectangleF Page { get { return Percent(94f, 96.8f, 6f, 3.2f); } }
-        public static RectangleF Takeaway { get { return Percent(16.5f, 85.1f, 60.6f, 7.6f); } }
+        public static RectangleF Takeaway { get { return Percent(11.5f, 85.1f, 77f, 7.6f); } }
+        public static RectangleF ScorecardTakeaway { get { return Percent(11.5f, 79.5f, 77f, 7.6f); } }
         public static RectangleF[] Regions(string layout)
         {
             switch (layout)
@@ -47,7 +50,8 @@ namespace Scribble.Office
                 case "divider": return new[] { Percent(24.1f, 36.8f, 71.9f, 48f) };
                 case "closing": return new[] { Percent(7.8f, 18.6f, 63.8f, 68.7f) };
                 case "two_pane": return new[] { Percent(3.8f, 25.1f, 59f, 58f), Percent(67f, 28.7f, 29.2f, 24f), Percent(67f, 60f, 29.2f, 23f) };
-                case "table": case "matrix": return new[] { Percent(16.5f, 32.1f, 60.7f, 52.1f) };
+                case "scorecard": return new[] { Percent(5.2f, 28f, 89.6f, 48f) };
+                case "table": case "matrix": return new[] { Percent(8.5f, 28f, 83f, 55f) };
                 case "annotated_chart": return new[] { Percent(11.8f, 34f, 41.9f, 46f), Percent(55.8f, 38f, 36.6f, 42f) };
                 case "dual_visual": return new[] { Percent(3.8f, 25f, 43f, 56f), Percent(51.1f, 25f, 45.1f, 56f) };
                 case "visual_comments": return new[] { Percent(3.8f, 25f, 53.3f, 56f), Percent(60f, 25f, 36.2f, 56f) };
@@ -58,6 +62,14 @@ namespace Scribble.Office
                 default: return new[] { Percent(3.8f, 25f, 92.4f, 57f) };
             }
         }
+        // A comparison that has a table and a chart needs both to be readable.
+        // The ordinary two_pane recipe reserves its first region for commentary
+        // and gives the later evidence region much less space.
+        public static RectangleF[] ChartTableRegions()
+        {
+            return new[] { Percent(4.8f, 30f, 42.2f, 45f),
+                Percent(51f, 27f, 44.2f, 51f) };
+        }
         public static bool InBounds(RectangleF rectangle)
         { return rectangle.Width > 0 && rectangle.Height > 0 && rectangle.Left >= 0 && rectangle.Top >= 0 && rectangle.Right <= Width + .01 && rectangle.Bottom <= Height + .01; }
         public static bool SameOwner(string tag, string owner)
@@ -65,6 +77,9 @@ namespace Scribble.Office
         public static string FontFor(string text, string preferred)
         {
             if ((text ?? "").Any(c => (c >= '\uAC00' && c <= '\uD7AF') || (c >= '\u1100' && c <= '\u11FF'))) return "Malgun Gothic";
+            // Samsung Sharp Sans can substitute these comparison glyphs with '#'
+            // in native PowerPoint export. Use a font that preserves their meaning.
+            if ((text ?? "").IndexOfAny(new[] { '\u2260', '\u2264', '\u2265' }) >= 0) return "Arial";
             using (var installed = new InstalledFontCollection())
                 return installed.Families.Any(f => f.Name.Equals(preferred, StringComparison.OrdinalIgnoreCase)) ? preferred : "Arial";
         }

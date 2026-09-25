@@ -13,8 +13,13 @@ namespace Scribble.Office
     public sealed partial class DocumentDraftHost
     {
         private async Task<MailboxToolResult> ExecuteRevisionAsync(ChatToolCall call, OneShotDraftAuthorization authorization,
-            bool exclusive, string prompt, OpenAiCompatibleClient client, AppSettings settings, CancellationToken token, Action<int, int> progress)
+            bool exclusive, string prompt, OpenAiCompatibleClient client, AppSettings settings, CancellationToken token, Action<int, int> progress,
+            bool pilotInternal = false)
         {
+            if (!pilotInternal && PilotCopyRequested(call))
+                return await ExecutePilotCopyRevisionAsync(call,
+                    authorization, exclusive, prompt, client, settings,
+                    token, progress);
             PresentationRevision revision = null;
             var written = false;
             try
@@ -24,7 +29,16 @@ namespace Scribble.Office
                     throw new InvalidOperationException("REVISION_NOT_AUTHORIZED: Use the PowerPoint pane and an explicit editing request.");
                 if (!ModelCatalog.IsVisionCapable(settings.Model)) throw new InvalidOperationException("SLIDE_VISION_REQUIRED");
                 dynamic app = _hostApplication; object deck = app.ActivePresentation;
+                if (call.function.name == PresentationToolCatalog.RevertSlides &&
+                    !string.IsNullOrEmpty(Convert.ToString(
+                        ((dynamic)deck).Tags["ScribbleRevisionDraft"])))
+                    throw new InvalidOperationException(
+                        "REVISION_COPY_REVERT_UNSUPPORTED: Close the unsaved draft to discard the copied repair.");
                 var args = ToolArguments.Parse(_serializer, call.function.arguments);
+                // Reject unsafe chart paths before fingerprinting, staging or
+                // consuming permission. The pilot's internal deck is chartless.
+                PresentationRevisionAcceptance.RequireSupportedOperations(deck,
+                    SamsungAuthoringPolicy.Array(args, "operations"));
                 if (SamsungAuthoringPolicy.Text(args, "presentation_id") != PresentationInspection.IdentityFor(deck))
                     throw new InvalidOperationException("REVISION_PRESENTATION_CHANGED: Inspect the original presentation again.");
                 if (call.function.name == PresentationToolCatalog.RevertSlides)

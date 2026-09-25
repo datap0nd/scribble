@@ -1,4 +1,5 @@
 #define AppName "Scribble"
+#define PayloadHash(str Name) FileExists(AddBackslash(SourcePath) + Name) ? GetSHA256OfFile(AddBackslash(SourcePath) + Name) : ""
 #ifndef AppVersion
   #define AppVersion "2.0.0"
 #endif
@@ -47,13 +48,18 @@ DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x86 x64compatible
 OutputDir=..\artifacts
+#ifdef AnalysisPilotPayload
+OutputBaseFilename=ScribblePilotSetup
+#else
 OutputBaseFilename=ScribbleSetup
+#endif
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 DisableWelcomePage=no
 CloseApplications=yes
-CloseApplicationsFilter=outlook.exe,excel.exe,powerpnt.exe,winword.exe,ScribbleBrowserHost.exe,{#LegacyBrowserHostFile}
+; Restart Manager filters installed file names, not the names of their hosts.
+CloseApplicationsFilter=*.exe,*.dll
 RestartApplications=no
 UninstallDisplayName={#AppName}
 VersionInfoVersion={#AppVersion}
@@ -81,51 +87,60 @@ Source: "..\marketing\assets\excel.png"; Flags: dontcopy noencryption
 Source: "..\marketing\assets\powerpoint.png"; Flags: dontcopy noencryption
 Source: "..\marketing\assets\word.png"; Flags: dontcopy noencryption
 Source: "..\marketing\assets\chrome.png"; Flags: dontcopy noencryption
-Source: "..\src\Scribble\bin\Release\Scribble.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\src\Scribble.Updater\bin\Release\ScribbleUpdater.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\src\Scribble\bin\Release\ExcelDataReader.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\src\Scribble\bin\Release\PdfSharp-gdi.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\src\Scribble\bin\Release\PdfSharp.System.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
-Source: "..\src\Scribble\bin\Release\PdfSharp.Cryptography.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
-Source: "..\src\Scribble\bin\Release\PdfSharp.Shared.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
-Source: "..\src\Scribble\bin\Release\Microsoft.Extensions.Logging.Abstractions.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\src\Scribble\bin\Release\System.Security.Cryptography.Pkcs.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\src\Scribble\bin\Release\Microsoft.Extensions.DependencyInjection.Abstractions.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\src\Scribble\bin\Release\Microsoft.Bcl.AsyncInterfaces.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\src\Scribble\bin\Release\System.Buffers.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\src\Scribble\bin\Release\System.Memory.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\src\Scribble\bin\Release\System.Numerics.Vectors.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\src\Scribble\bin\Release\System.Runtime.CompilerServices.Unsafe.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\src\Scribble\bin\Release\System.Threading.Tasks.Extensions.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\src\Scribble\bin\Release\System.ValueTuple.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\src\Scribble\bin\Release\Scribble.dll"; DestDir: "{app}"; Flags: ignoreversion; BeforeInstall: RetirePayload('Scribble.dll', '{#PayloadHash("..\src\Scribble\bin\Release\Scribble.dll")}'); AfterInstall: VerifyPayload('Scribble.dll', '{#PayloadHash("..\src\Scribble\bin\Release\Scribble.dll")}')
+Source: "..\src\Scribble.Updater\bin\Release\ScribbleUpdater.exe"; DestDir: "{app}"; Flags: ignoreversion; BeforeInstall: RetirePayload('ScribbleUpdater.exe', '{#PayloadHash("..\src\Scribble.Updater\bin\Release\ScribbleUpdater.exe")}'); AfterInstall: VerifyPayload('ScribbleUpdater.exe', '{#PayloadHash("..\src\Scribble.Updater\bin\Release\ScribbleUpdater.exe")}')
+Source: "..\src\Scribble\bin\Release\ExcelDataReader.dll"; DestDir: "{app}"; Flags: ignoreversion; BeforeInstall: RetirePayload('ExcelDataReader.dll', '{#PayloadHash("..\src\Scribble\bin\Release\ExcelDataReader.dll")}'); AfterInstall: VerifyPayload('ExcelDataReader.dll', '{#PayloadHash("..\src\Scribble\bin\Release\ExcelDataReader.dll")}')
+Source: "..\src\Scribble\bin\Release\PdfSharp-gdi.dll"; DestDir: "{app}"; Flags: ignoreversion; BeforeInstall: RetirePayload('PdfSharp-gdi.dll', '{#PayloadHash("..\src\Scribble\bin\Release\PdfSharp-gdi.dll")}'); AfterInstall: VerifyPayload('PdfSharp-gdi.dll', '{#PayloadHash("..\src\Scribble\bin\Release\PdfSharp-gdi.dll")}')
+Source: "..\src\Scribble\bin\Release\PdfSharp.System.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist; BeforeInstall: RetirePayload('PdfSharp.System.dll', '{#PayloadHash("..\src\Scribble\bin\Release\PdfSharp.System.dll")}'); AfterInstall: VerifyPayload('PdfSharp.System.dll', '{#PayloadHash("..\src\Scribble\bin\Release\PdfSharp.System.dll")}')
+Source: "..\src\Scribble\bin\Release\PdfSharp.Cryptography.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist; BeforeInstall: RetirePayload('PdfSharp.Cryptography.dll', '{#PayloadHash("..\src\Scribble\bin\Release\PdfSharp.Cryptography.dll")}'); AfterInstall: VerifyPayload('PdfSharp.Cryptography.dll', '{#PayloadHash("..\src\Scribble\bin\Release\PdfSharp.Cryptography.dll")}')
+Source: "..\src\Scribble\bin\Release\PdfSharp.Shared.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist; BeforeInstall: RetirePayload('PdfSharp.Shared.dll', '{#PayloadHash("..\src\Scribble\bin\Release\PdfSharp.Shared.dll")}'); AfterInstall: VerifyPayload('PdfSharp.Shared.dll', '{#PayloadHash("..\src\Scribble\bin\Release\PdfSharp.Shared.dll")}')
+; These native PDF review dependencies belong only to the development
+; analysis pilot. The ordinary installer does not embed or install them.
+; Build the opt-in pilot installer with /DAnalysisPilotPayload=1.
+#ifdef AnalysisPilotPayload
+Source: "..\src\Scribble\bin\Release\PDFtoImage.dll"; DestDir: "{app}"; Flags: ignoreversion; BeforeInstall: RetirePayload('PDFtoImage.dll', '{#PayloadHash("..\src\Scribble\bin\Release\PDFtoImage.dll")}'); AfterInstall: VerifyPayload('PDFtoImage.dll', '{#PayloadHash("..\src\Scribble\bin\Release\PDFtoImage.dll")}')
+Source: "..\src\Scribble\bin\Release\SkiaSharp.dll"; DestDir: "{app}"; Flags: ignoreversion; BeforeInstall: RetirePayload('SkiaSharp.dll', '{#PayloadHash("..\src\Scribble\bin\Release\SkiaSharp.dll")}'); AfterInstall: VerifyPayload('SkiaSharp.dll', '{#PayloadHash("..\src\Scribble\bin\Release\SkiaSharp.dll")}')
+Source: "..\src\Scribble\bin\Release\x86\pdfium.dll"; DestDir: "{app}\x86"; Flags: ignoreversion; BeforeInstall: RetirePayload('x86\pdfium.dll', '{#PayloadHash("..\src\Scribble\bin\Release\x86\pdfium.dll")}'); AfterInstall: VerifyPayload('x86\pdfium.dll', '{#PayloadHash("..\src\Scribble\bin\Release\x86\pdfium.dll")}')
+Source: "..\src\Scribble\bin\Release\x64\pdfium.dll"; DestDir: "{app}\x64"; Flags: ignoreversion; BeforeInstall: RetirePayload('x64\pdfium.dll', '{#PayloadHash("..\src\Scribble\bin\Release\x64\pdfium.dll")}'); AfterInstall: VerifyPayload('x64\pdfium.dll', '{#PayloadHash("..\src\Scribble\bin\Release\x64\pdfium.dll")}')
+Source: "..\src\Scribble\bin\Release\arm64\pdfium.dll"; DestDir: "{app}\arm64"; Flags: ignoreversion; BeforeInstall: RetirePayload('arm64\pdfium.dll', '{#PayloadHash("..\src\Scribble\bin\Release\arm64\pdfium.dll")}'); AfterInstall: VerifyPayload('arm64\pdfium.dll', '{#PayloadHash("..\src\Scribble\bin\Release\arm64\pdfium.dll")}')
+Source: "..\src\Scribble\bin\Release\x86\libSkiaSharp.dll"; DestDir: "{app}\x86"; Flags: ignoreversion; BeforeInstall: RetirePayload('x86\libSkiaSharp.dll', '{#PayloadHash("..\src\Scribble\bin\Release\x86\libSkiaSharp.dll")}'); AfterInstall: VerifyPayload('x86\libSkiaSharp.dll', '{#PayloadHash("..\src\Scribble\bin\Release\x86\libSkiaSharp.dll")}')
+Source: "..\src\Scribble\bin\Release\x64\libSkiaSharp.dll"; DestDir: "{app}\x64"; Flags: ignoreversion; BeforeInstall: RetirePayload('x64\libSkiaSharp.dll', '{#PayloadHash("..\src\Scribble\bin\Release\x64\libSkiaSharp.dll")}'); AfterInstall: VerifyPayload('x64\libSkiaSharp.dll', '{#PayloadHash("..\src\Scribble\bin\Release\x64\libSkiaSharp.dll")}')
+Source: "..\src\Scribble\bin\Release\arm64\libSkiaSharp.dll"; DestDir: "{app}\arm64"; Flags: ignoreversion; BeforeInstall: RetirePayload('arm64\libSkiaSharp.dll', '{#PayloadHash("..\src\Scribble\bin\Release\arm64\libSkiaSharp.dll")}'); AfterInstall: VerifyPayload('arm64\libSkiaSharp.dll', '{#PayloadHash("..\src\Scribble\bin\Release\arm64\libSkiaSharp.dll")}')
+#endif
+Source: "..\src\Scribble\bin\Release\Microsoft.Extensions.Logging.Abstractions.dll"; DestDir: "{app}"; Flags: ignoreversion; BeforeInstall: RetirePayload('Microsoft.Extensions.Logging.Abstractions.dll', '{#PayloadHash("..\src\Scribble\bin\Release\Microsoft.Extensions.Logging.Abstractions.dll")}'); AfterInstall: VerifyPayload('Microsoft.Extensions.Logging.Abstractions.dll', '{#PayloadHash("..\src\Scribble\bin\Release\Microsoft.Extensions.Logging.Abstractions.dll")}')
+Source: "..\src\Scribble\bin\Release\System.Security.Cryptography.Pkcs.dll"; DestDir: "{app}"; Flags: ignoreversion; BeforeInstall: RetirePayload('System.Security.Cryptography.Pkcs.dll', '{#PayloadHash("..\src\Scribble\bin\Release\System.Security.Cryptography.Pkcs.dll")}'); AfterInstall: VerifyPayload('System.Security.Cryptography.Pkcs.dll', '{#PayloadHash("..\src\Scribble\bin\Release\System.Security.Cryptography.Pkcs.dll")}')
+Source: "..\src\Scribble\bin\Release\Microsoft.Extensions.DependencyInjection.Abstractions.dll"; DestDir: "{app}"; Flags: ignoreversion; BeforeInstall: RetirePayload('Microsoft.Extensions.DependencyInjection.Abstractions.dll', '{#PayloadHash("..\src\Scribble\bin\Release\Microsoft.Extensions.DependencyInjection.Abstractions.dll")}'); AfterInstall: VerifyPayload('Microsoft.Extensions.DependencyInjection.Abstractions.dll', '{#PayloadHash("..\src\Scribble\bin\Release\Microsoft.Extensions.DependencyInjection.Abstractions.dll")}')
+Source: "..\src\Scribble\bin\Release\Microsoft.Bcl.AsyncInterfaces.dll"; DestDir: "{app}"; Flags: ignoreversion; BeforeInstall: RetirePayload('Microsoft.Bcl.AsyncInterfaces.dll', '{#PayloadHash("..\src\Scribble\bin\Release\Microsoft.Bcl.AsyncInterfaces.dll")}'); AfterInstall: VerifyPayload('Microsoft.Bcl.AsyncInterfaces.dll', '{#PayloadHash("..\src\Scribble\bin\Release\Microsoft.Bcl.AsyncInterfaces.dll")}')
+Source: "..\src\Scribble\bin\Release\System.Buffers.dll"; DestDir: "{app}"; Flags: ignoreversion; BeforeInstall: RetirePayload('System.Buffers.dll', '{#PayloadHash("..\src\Scribble\bin\Release\System.Buffers.dll")}'); AfterInstall: VerifyPayload('System.Buffers.dll', '{#PayloadHash("..\src\Scribble\bin\Release\System.Buffers.dll")}')
+Source: "..\src\Scribble\bin\Release\System.Memory.dll"; DestDir: "{app}"; Flags: ignoreversion; BeforeInstall: RetirePayload('System.Memory.dll', '{#PayloadHash("..\src\Scribble\bin\Release\System.Memory.dll")}'); AfterInstall: VerifyPayload('System.Memory.dll', '{#PayloadHash("..\src\Scribble\bin\Release\System.Memory.dll")}')
+Source: "..\src\Scribble\bin\Release\System.Numerics.Vectors.dll"; DestDir: "{app}"; Flags: ignoreversion; BeforeInstall: RetirePayload('System.Numerics.Vectors.dll', '{#PayloadHash("..\src\Scribble\bin\Release\System.Numerics.Vectors.dll")}'); AfterInstall: VerifyPayload('System.Numerics.Vectors.dll', '{#PayloadHash("..\src\Scribble\bin\Release\System.Numerics.Vectors.dll")}')
+Source: "..\src\Scribble\bin\Release\System.Runtime.CompilerServices.Unsafe.dll"; DestDir: "{app}"; Flags: ignoreversion; BeforeInstall: RetirePayload('System.Runtime.CompilerServices.Unsafe.dll', '{#PayloadHash("..\src\Scribble\bin\Release\System.Runtime.CompilerServices.Unsafe.dll")}'); AfterInstall: VerifyPayload('System.Runtime.CompilerServices.Unsafe.dll', '{#PayloadHash("..\src\Scribble\bin\Release\System.Runtime.CompilerServices.Unsafe.dll")}')
+Source: "..\src\Scribble\bin\Release\System.Threading.Tasks.Extensions.dll"; DestDir: "{app}"; Flags: ignoreversion; BeforeInstall: RetirePayload('System.Threading.Tasks.Extensions.dll', '{#PayloadHash("..\src\Scribble\bin\Release\System.Threading.Tasks.Extensions.dll")}'); AfterInstall: VerifyPayload('System.Threading.Tasks.Extensions.dll', '{#PayloadHash("..\src\Scribble\bin\Release\System.Threading.Tasks.Extensions.dll")}')
+Source: "..\src\Scribble\bin\Release\System.ValueTuple.dll"; DestDir: "{app}"; Flags: ignoreversion; BeforeInstall: RetirePayload('System.ValueTuple.dll', '{#PayloadHash("..\src\Scribble\bin\Release\System.ValueTuple.dll")}'); AfterInstall: VerifyPayload('System.ValueTuple.dll', '{#PayloadHash("..\src\Scribble\bin\Release\System.ValueTuple.dll")}')
 Source: "..\THIRD_PARTY_NOTICES.txt"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\src\Scribble\bin\Release\Microsoft.Web.WebView2.Core.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\src\Scribble\bin\Release\Microsoft.Web.WebView2.WinForms.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\src\Scribble\bin\Release\Microsoft.Web.WebView2.Wpf.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
-Source: "..\src\Scribble\bin\Release\runtimes\win-x86\native\WebView2Loader.dll"; DestDir: "{app}\runtimes\win-x86\native"; Flags: ignoreversion skipifsourcedoesntexist
-Source: "..\src\Scribble\bin\Release\runtimes\win-x64\native\WebView2Loader.dll"; DestDir: "{app}\runtimes\win-x64\native"; Flags: ignoreversion skipifsourcedoesntexist
-Source: "..\src\Scribble\bin\Release\runtimes\win-arm64\native\WebView2Loader.dll"; DestDir: "{app}\runtimes\win-arm64\native"; Flags: ignoreversion skipifsourcedoesntexist
-Source: "..\src\Scribble\bin\Release\WebView2Loader.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "..\src\Scribble\bin\Release\Microsoft.Web.WebView2.Core.dll"; DestDir: "{app}"; Flags: ignoreversion; BeforeInstall: RetirePayload('Microsoft.Web.WebView2.Core.dll', '{#PayloadHash("..\src\Scribble\bin\Release\Microsoft.Web.WebView2.Core.dll")}'); AfterInstall: VerifyPayload('Microsoft.Web.WebView2.Core.dll', '{#PayloadHash("..\src\Scribble\bin\Release\Microsoft.Web.WebView2.Core.dll")}')
+Source: "..\src\Scribble\bin\Release\Microsoft.Web.WebView2.WinForms.dll"; DestDir: "{app}"; Flags: ignoreversion; BeforeInstall: RetirePayload('Microsoft.Web.WebView2.WinForms.dll', '{#PayloadHash("..\src\Scribble\bin\Release\Microsoft.Web.WebView2.WinForms.dll")}'); AfterInstall: VerifyPayload('Microsoft.Web.WebView2.WinForms.dll', '{#PayloadHash("..\src\Scribble\bin\Release\Microsoft.Web.WebView2.WinForms.dll")}')
+Source: "..\src\Scribble\bin\Release\Microsoft.Web.WebView2.Wpf.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist; BeforeInstall: RetirePayload('Microsoft.Web.WebView2.Wpf.dll', '{#PayloadHash("..\src\Scribble\bin\Release\Microsoft.Web.WebView2.Wpf.dll")}'); AfterInstall: VerifyPayload('Microsoft.Web.WebView2.Wpf.dll', '{#PayloadHash("..\src\Scribble\bin\Release\Microsoft.Web.WebView2.Wpf.dll")}')
+Source: "..\src\Scribble\bin\Release\runtimes\win-x86\native\WebView2Loader.dll"; DestDir: "{app}\runtimes\win-x86\native"; Flags: ignoreversion skipifsourcedoesntexist; BeforeInstall: RetirePayload('runtimes\win-x86\native\WebView2Loader.dll', '{#PayloadHash("..\src\Scribble\bin\Release\runtimes\win-x86\native\WebView2Loader.dll")}'); AfterInstall: VerifyPayload('runtimes\win-x86\native\WebView2Loader.dll', '{#PayloadHash("..\src\Scribble\bin\Release\runtimes\win-x86\native\WebView2Loader.dll")}')
+Source: "..\src\Scribble\bin\Release\runtimes\win-x64\native\WebView2Loader.dll"; DestDir: "{app}\runtimes\win-x64\native"; Flags: ignoreversion skipifsourcedoesntexist; BeforeInstall: RetirePayload('runtimes\win-x64\native\WebView2Loader.dll', '{#PayloadHash("..\src\Scribble\bin\Release\runtimes\win-x64\native\WebView2Loader.dll")}'); AfterInstall: VerifyPayload('runtimes\win-x64\native\WebView2Loader.dll', '{#PayloadHash("..\src\Scribble\bin\Release\runtimes\win-x64\native\WebView2Loader.dll")}')
+Source: "..\src\Scribble\bin\Release\runtimes\win-arm64\native\WebView2Loader.dll"; DestDir: "{app}\runtimes\win-arm64\native"; Flags: ignoreversion skipifsourcedoesntexist; BeforeInstall: RetirePayload('runtimes\win-arm64\native\WebView2Loader.dll', '{#PayloadHash("..\src\Scribble\bin\Release\runtimes\win-arm64\native\WebView2Loader.dll")}'); AfterInstall: VerifyPayload('runtimes\win-arm64\native\WebView2Loader.dll', '{#PayloadHash("..\src\Scribble\bin\Release\runtimes\win-arm64\native\WebView2Loader.dll")}')
+Source: "..\src\Scribble\bin\Release\WebView2Loader.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist; BeforeInstall: RetirePayload('WebView2Loader.dll', '{#PayloadHash("..\src\Scribble\bin\Release\WebView2Loader.dll")}'); AfterInstall: VerifyPayload('WebView2Loader.dll', '{#PayloadHash("..\src\Scribble\bin\Release\WebView2Loader.dll")}')
 ; The host also runs the standalone Test Lab, including Office-only installations.
-Source: "..\src\Scribble.BrowserHost\bin\Release\ScribbleBrowserHost.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\src\Scribble.BrowserHost\bin\Release\ScribbleBrowserHost.exe.config"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\src\Scribble.BrowserHost\com.scribble.browser.json"; DestDir: "{app}"; Flags: ignoreversion; Components: browser
-Source: "..\src\Scribble.BrowserExtension\manifest.json"; DestDir: "{app}\BrowserExtension"; Flags: ignoreversion; Components: browser
-Source: "..\src\Scribble.BrowserExtension\background.js"; DestDir: "{app}\BrowserExtension"; Flags: ignoreversion; Components: browser
-Source: "..\src\Scribble.BrowserExtension\sidepanel.html"; DestDir: "{app}\BrowserExtension"; Flags: ignoreversion; Components: browser
-Source: "..\src\Scribble.BrowserExtension\sidepanel.css"; DestDir: "{app}\BrowserExtension"; Flags: ignoreversion; Components: browser
-Source: "..\src\Scribble.BrowserExtension\sidepanel.js"; DestDir: "{app}\BrowserExtension"; Flags: ignoreversion; Components: browser
-Source: "..\src\Scribble.BrowserExtension\README.md"; DestDir: "{app}\BrowserExtension"; Flags: ignoreversion; Components: browser
+Source: "..\src\Scribble.BrowserHost\bin\Release\ScribbleBrowserHost.exe"; DestDir: "{app}"; Flags: ignoreversion; BeforeInstall: RetirePayload('ScribbleBrowserHost.exe', '{#PayloadHash("..\src\Scribble.BrowserHost\bin\Release\ScribbleBrowserHost.exe")}'); AfterInstall: VerifyPayload('ScribbleBrowserHost.exe', '{#PayloadHash("..\src\Scribble.BrowserHost\bin\Release\ScribbleBrowserHost.exe")}')
+Source: "..\src\Scribble.BrowserHost\bin\Release\ScribbleBrowserHost.exe.config"; DestDir: "{app}"; Flags: ignoreversion; BeforeInstall: RetirePayload('ScribbleBrowserHost.exe.config', '{#PayloadHash("..\src\Scribble.BrowserHost\bin\Release\ScribbleBrowserHost.exe.config")}'); AfterInstall: VerifyPayload('ScribbleBrowserHost.exe.config', '{#PayloadHash("..\src\Scribble.BrowserHost\bin\Release\ScribbleBrowserHost.exe.config")}')
+Source: "..\src\Scribble.BrowserHost\com.scribble.browser.json"; DestDir: "{app}"; Flags: ignoreversion; Components: browser; BeforeInstall: RetirePayload('com.scribble.browser.json', '{#PayloadHash("..\src\Scribble.BrowserHost\com.scribble.browser.json")}'); AfterInstall: VerifyPayload('com.scribble.browser.json', '{#PayloadHash("..\src\Scribble.BrowserHost\com.scribble.browser.json")}')
+Source: "..\src\Scribble.BrowserExtension\manifest.json"; DestDir: "{app}\BrowserExtension"; Flags: ignoreversion; Components: browser; BeforeInstall: RetirePayload('BrowserExtension\manifest.json', '{#PayloadHash("..\src\Scribble.BrowserExtension\manifest.json")}'); AfterInstall: VerifyPayload('BrowserExtension\manifest.json', '{#PayloadHash("..\src\Scribble.BrowserExtension\manifest.json")}')
+Source: "..\src\Scribble.BrowserExtension\background.js"; DestDir: "{app}\BrowserExtension"; Flags: ignoreversion; Components: browser; BeforeInstall: RetirePayload('BrowserExtension\background.js', '{#PayloadHash("..\src\Scribble.BrowserExtension\background.js")}'); AfterInstall: VerifyPayload('BrowserExtension\background.js', '{#PayloadHash("..\src\Scribble.BrowserExtension\background.js")}')
+Source: "..\src\Scribble.BrowserExtension\sidepanel.html"; DestDir: "{app}\BrowserExtension"; Flags: ignoreversion; Components: browser; BeforeInstall: RetirePayload('BrowserExtension\sidepanel.html', '{#PayloadHash("..\src\Scribble.BrowserExtension\sidepanel.html")}'); AfterInstall: VerifyPayload('BrowserExtension\sidepanel.html', '{#PayloadHash("..\src\Scribble.BrowserExtension\sidepanel.html")}')
+Source: "..\src\Scribble.BrowserExtension\sidepanel.css"; DestDir: "{app}\BrowserExtension"; Flags: ignoreversion; Components: browser; BeforeInstall: RetirePayload('BrowserExtension\sidepanel.css', '{#PayloadHash("..\src\Scribble.BrowserExtension\sidepanel.css")}'); AfterInstall: VerifyPayload('BrowserExtension\sidepanel.css', '{#PayloadHash("..\src\Scribble.BrowserExtension\sidepanel.css")}')
+Source: "..\src\Scribble.BrowserExtension\sidepanel.js"; DestDir: "{app}\BrowserExtension"; Flags: ignoreversion; Components: browser; BeforeInstall: RetirePayload('BrowserExtension\sidepanel.js', '{#PayloadHash("..\src\Scribble.BrowserExtension\sidepanel.js")}'); AfterInstall: VerifyPayload('BrowserExtension\sidepanel.js', '{#PayloadHash("..\src\Scribble.BrowserExtension\sidepanel.js")}')
+Source: "..\src\Scribble.BrowserExtension\README.md"; DestDir: "{app}\BrowserExtension"; Flags: ignoreversion; Components: browser; BeforeInstall: RetirePayload('BrowserExtension\README.md', '{#PayloadHash("..\src\Scribble.BrowserExtension\README.md")}'); AfterInstall: VerifyPayload('BrowserExtension\README.md', '{#PayloadHash("..\src\Scribble.BrowserExtension\README.md")}')
 Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 
 [InstallDelete]
-; Refresh the shipped helper and browser files. The shared Test Lab helper
-; is reinstalled for every component selection; browser integration is optional.
-Type: filesandordirs; Name: "{app}\BrowserExtension"
-Type: files; Name: "{app}\ScribbleBrowserHost.exe"
-Type: files; Name: "{app}\ScribbleBrowserHost.exe.config"
-Type: files; Name: "{app}\com.scribble.browser.json"
+; Remove retired product identities. Current shipped files are refreshed or
+; removed inside the journaled payload transaction so failure can restore them.
 Type: files; Name: "{app}\{#LegacyAssemblyFile}"
 Type: files; Name: "{app}\{#LegacyBrowserHostFile}"
 Type: files; Name: "{app}\{#LegacyBrowserHostFile}.config"
@@ -468,6 +483,7 @@ Name: "{group}\Set up Scribble in Google Chrome"; Filename: "{app}\ScribbleBrows
 Filename: "{app}\ScribbleBrowserHost.exe"; Parameters: "--setup auto"; Description: "Finish setting up Scribble in Google Chrome"; Flags: nowait postinstall skipifsilent; Components: browser
 
 [Code]
+#include "PayloadRetirement.iss"
 const
   BrandNavy = $003B2317;
   BrandBlue = $00E86F37;

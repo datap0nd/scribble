@@ -1850,7 +1850,7 @@ namespace Scribble.Office.LegacySamsung
                     Takeaway = SamsungString(map, "takeaway", 400),
                     Caption = SamsungString(map, "caption", 180),
                     Sources = SamsungString(map, "sources", 2000),
-                    Evidence = SamsungString(map, "evidence", 12000),
+                    Evidence = SamsungString(map, "evidence", 32000),
                     Id = SamsungString(map, "id", 80),
                     ImageNames = ValidateArray(SamsungValue(map, "image_names"), 4, 250).Select(Convert.ToString).ToArray(),
                     SecondaryTable = ParseTable(new Dictionary<string, object> { { "table", SamsungValue(map, "secondary_table") } }),

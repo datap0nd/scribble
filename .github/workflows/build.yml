@@ -52,6 +52,16 @@ jobs:
       - name: Build solution
         run: msbuild Scribble.sln /m /p:Configuration=Release
 
+      # Native Office is unavailable on the hosted runner. Retain the built
+      # binary early so an explicit workstation pilot can run while CI checks.
+      - name: Upload native acceptance harness
+        if: startsWith(github.head_ref, 'codex/reliability-') || startsWith(github.ref_name, 'codex/reliability-') || github.head_ref == 'codex/scribble-2-delivery' || github.ref_name == 'codex/scribble-2-delivery'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Phase2NativeHarness
+          path: tests/GuardrailTests/bin/Release/
+          if-no-files-found: error
+
       - name: Verify runtime payload in build output
         shell: pwsh
         run: |
@@ -245,6 +255,10 @@ jobs:
         run: |
           python tests/benchmarks/evaluator/test_kit.py
           if ($LASTEXITCODE -ne 0) { throw 'Fixture kit validation failed.' }
+          python tests/benchmarks/stress/test_catalog.py
+          if ($LASTEXITCODE -ne 0) { throw 'The 200-case stress catalog contract failed.' }
+          python tests/benchmarks/stress/test_summarize_usage.py
+          if ($LASTEXITCODE -ne 0) { throw 'The sanitized usage summary contract failed.' }
           Expand-Archive -LiteralPath tests/benchmarks/releases/scribble-test-kit-v1.zip -DestinationPath tests/benchmarks/generated -Force
           foreach ($testScript in @('Test-TestLab.ps1','Test-TestLabLoader.ps1','Test-TestLabPreparation.ps1')) {
             & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path 'tests/benchmarks' $testScript)
@@ -334,12 +348,28 @@ jobs:
         shell: pwsh
         run: choco install innosetup --no-progress --yes
 
+      - name: Verify loaded-payload replacement and recovery
+        shell: powershell
+        run: ./tests/Updater/Test-PayloadRetirement.ps1
+
       - name: Build single-file installer
         shell: pwsh
         run: |
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" `
             "/DAppVersion=2.0.${{ github.run_number }}" `
             "installer\Scribble.iss"
+
+      - name: Build opt-in analysis pilot installer
+        if: startsWith(github.head_ref, 'codex/reliability-') || startsWith(github.ref_name, 'codex/reliability-') || github.head_ref == 'codex/scribble-2-delivery' || github.ref_name == 'codex/scribble-2-delivery'
+        shell: pwsh
+        run: |
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" `
+            "/DAppVersion=2.0.${{ github.run_number }}" `
+            "/DAnalysisPilotPayload=1" `
+            "installer\Scribble.iss"
+          if (-not (Test-Path "artifacts\ScribblePilotSetup.exe")) {
+            throw "The opt-in pilot installer was not produced."
+          }
 
       - name: Sign the installer
         if: env.SIGNING_PFX != ''
@@ -418,6 +448,14 @@ jobs:
             throw "Installed add-in DLL was not found."
           }
           $installedDir = Split-Path $installedDll
+          foreach ($pilotOnly in @("PDFtoImage.dll", "SkiaSharp.dll",
+              "x86\pdfium.dll", "x64\pdfium.dll", "arm64\pdfium.dll",
+              "x86\libSkiaSharp.dll", "x64\libSkiaSharp.dll",
+              "arm64\libSkiaSharp.dll")) {
+            if (Test-Path (Join-Path $installedDir $pilotOnly)) {
+              throw "Ordinary installer deployed pilot renderer: $pilotOnly"
+            }
+          }
           foreach ($legacyFile in @(
             ($legacyNamespace + ".dll"),
             ($legacyBrand + "BrowserHost.exe"),
@@ -814,7 +852,12 @@ jobs:
           }
           foreach ($gone in @(
             (Join-Path $installedDir "com.scribble.browser.json"),
-            (Join-Path $installedDir "BrowserExtension")
+            (Join-Path $installedDir "BrowserExtension\manifest.json"),
+            (Join-Path $installedDir "BrowserExtension\background.js"),
+            (Join-Path $installedDir "BrowserExtension\sidepanel.html"),
+            (Join-Path $installedDir "BrowserExtension\sidepanel.css"),
+            (Join-Path $installedDir "BrowserExtension\sidepanel.js"),
+            (Join-Path $installedDir "BrowserExtension\README.md")
           )) {
             if (Test-Path $gone) {
               throw "Deselected browser component file survived: $gone"
@@ -863,6 +906,33 @@ jobs:
             if (Test-Path $gone) {
               throw "Uninstall left browser component path behind: $gone"
             }
+          }
+
+      - name: Smoke-test opt-in pilot renderer payload
+        if: startsWith(github.head_ref, 'codex/reliability-') || startsWith(github.ref_name, 'codex/reliability-') || github.head_ref == 'codex/scribble-2-delivery' || github.ref_name == 'codex/scribble-2-delivery'
+        shell: pwsh
+        run: |
+          $installer = Resolve-Path "artifacts\ScribblePilotSetup.exe"
+          $installedDir = Join-Path $env:LOCALAPPDATA "Programs\Scribble"
+          $install = Start-Process -FilePath $installer `
+            -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" `
+            -WindowStyle Hidden -Wait -PassThru
+          if ($install.ExitCode -ne 0) {
+            throw "Pilot install failed: $($install.ExitCode)"
+          }
+          foreach ($pilotOnly in @("PDFtoImage.dll", "SkiaSharp.dll",
+              "x86\pdfium.dll", "x64\pdfium.dll", "arm64\pdfium.dll",
+              "x86\libSkiaSharp.dll", "x64\libSkiaSharp.dll",
+              "arm64\libSkiaSharp.dll")) {
+            if (-not (Test-Path (Join-Path $installedDir $pilotOnly))) {
+              throw "Pilot installer omitted renderer: $pilotOnly"
+            }
+          }
+          $uninstall = Start-Process -FilePath (Join-Path $installedDir "unins000.exe") `
+            -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" `
+            -WindowStyle Hidden -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0) {
+            throw "Pilot uninstall failed: $($uninstall.ExitCode)"
           }
 
       - name: Record candidate identity

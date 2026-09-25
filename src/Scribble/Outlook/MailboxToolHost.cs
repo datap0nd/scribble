@@ -35,6 +35,7 @@ namespace Scribble.Outlook
         private readonly HashSet<string> _loadedBodyHandles =
             new HashSet<string>(StringComparer.Ordinal);
         private readonly bool _workingSetOnly;
+        private readonly string _fixtureScope;
         private readonly object _application;
         private readonly Dictionary<string, MailboxPageCursor> _cursors =
             new Dictionary<string, MailboxPageCursor>(StringComparer.Ordinal);
@@ -57,10 +58,11 @@ namespace Scribble.Outlook
             IReadOnlyList<MessageSnapshot> workingMessages)
         {
             _application = outlookApplication;
+            _fixtureScope = Scribble.Testing.TestLabMailbox.ScopeToken();
             _mailbox = new MailboxContextService(outlookApplication);
             var workingSet = MailboxWorkingSet.Normalize(
                 workingMessages);
-            _workingSetOnly = workingSet.Count > 0;
+            _workingSetOnly = workingSet.Count > 0 && _fixtureScope == null;
             if (_workingSetOnly)
             {
                 for (var index = 0;
@@ -73,6 +75,7 @@ namespace Scribble.Outlook
             }
             else if (selectedMessage != null)
             {
+                Scribble.Testing.TestLabMailbox.ValidateIdentity(selectedMessage.EntryId, selectedMessage.StoreId);
                 _handles["selected"] = selectedMessage;
             }
         }
@@ -87,6 +90,7 @@ namespace Scribble.Outlook
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            Scribble.Testing.TestLabMailbox.AssertScope(_fixtureScope);
             if (call?.function == null ||
                 string.IsNullOrWhiteSpace(call.id))
             {
@@ -163,6 +167,7 @@ namespace Scribble.Outlook
         public async Task<MailboxToolResult> ExecuteAsync(ChatToolCall call, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            Scribble.Testing.TestLabMailbox.AssertScope(_fixtureScope);
             if (_metadataOnly || (_skipAttachments && call?.function?.name == MailboxToolCatalog.ReadAttachment))
                 return Error(call?.id, "MAILBOX_REQUEST_SCOPE", "The current user request does not permit this read.");
             if (call?.function?.name == MailboxToolCatalog.RecordAnalysis) return RecordAnalysis(call.id, ParseArguments(call.function.arguments));
@@ -559,8 +564,12 @@ namespace Scribble.Outlook
                 coverage.ReadUntil = Math.Max(coverage.ReadUntil, bodyOffset + bodyLength);
                 coverage.AttachmentCount = MailboxAttachmentPages.Count(_application, message);
                 payload["attachment_count"] = coverage.AttachmentCount;
-                payload["attachment_instruction"] = _skipAttachments
+                payload["attachment_instruction"] = _enumerationOnly
+                    ? "This request asks only for mailbox metadata. Do not read attachments or record content analysis."
+                    : _skipAttachments
                     ? "The user prohibited attachment reads. Use existing evidence only and disclose any missing attachment coverage."
+                    : !_requireAttachments
+                    ? "Attachments are not required by this request. Read one only when it is necessary to answer the user's question; body-only analysis may be recorded without attachment reads."
                     : "Use read_attachment for every index from 1 through attachment_count, following next_offset. Then record_mailbox_analysis with a source-grounded summary.";
                 SaveCoverage();
                 return payload;

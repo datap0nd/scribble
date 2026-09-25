@@ -45,7 +45,7 @@ namespace Scribble.Testing
                             "Output-only native evidence is required when the captured source boundary is missing or already contains draft markers. An invalid boundary flag cannot establish ownership.");
                     var output = memory.outputBoundary ? memory.text : OutputText(memory.extension, memory.text);
                     finalText.AppendLine(output);
-                    if (run.case_id == "OL02" && memory.extension == "msg")
+                    if (run.suite_id != "scribble-stress-v1" && run.case_id == "OL02" && memory.extension == "msg")
                         checks.AddRange(CheckMailReadback(memory.metadata));
                 }
                 foreach (var entry in archive.Entries.Where(e => e.FullName.StartsWith("artifacts/", StringComparison.Ordinal) &&
@@ -63,12 +63,12 @@ namespace Scribble.Testing
                             Add(checks, "output_boundary_" + entry.Name, LegacyBoundaryClear(archive, entry.Name),
                                 "File-only evidence needs a captured source boundary without pre-existing draft markers; otherwise a native output-only readback is required.");
                             finalText.AppendLine(inspection.text);
-                            AddNamedChecks(checks, CheckOutputStructure(run.case_id, Path.GetExtension(entry.Name).TrimStart('.'), inspection.text, true), entry.Name);
+                            if (run.suite_id != "scribble-stress-v1") AddNamedChecks(checks, CheckOutputStructure(run.case_id, Path.GetExtension(entry.Name).TrimStart('.'), inspection.text, true), entry.Name);
                         }
                     }
                     catch (Exception error) { Add(checks, "readable_" + entry.Name, false, error.GetType().Name + ": " + error.Message); }
                 }
-                AddMemoryStructureChecks(checks, run.case_id, memoryOutputs);
+                if (run.suite_id != "scribble-stress-v1") AddMemoryStructureChecks(checks, run.case_id, memoryOutputs);
                 if ((testCase.artifacts ?? new string[0]).Length == 0)
                 {
                     // Input sources and tool observations already contain the
@@ -77,10 +77,11 @@ namespace Scribble.Testing
                     var answer = FinalAnswer(Read(archive, "timeline.jsonl"));
                     finalText.AppendLine(answer);
                 }
-                checks.AddRange(CheckOutputFacts(run.case_id, finalText.ToString(), false));
-                if (run.case_id == "OL02" && !memoryOutputs.Any(m => m.extension == "msg"))
+                if (run.suite_id != "scribble-stress-v1") checks.AddRange(CheckOutputFacts(run.case_id, finalText.ToString(), false));
+                if (run.suite_id != "scribble-stress-v1" && run.case_id == "OL02" && !memoryOutputs.Any(m => m.extension == "msg"))
                     Add(checks, "native_mail_headers", false, "Native draft recipient and unsent metadata are missing.");
-                CheckSourcePreservation(checks, archive);
+                CheckSourcePreservation(checks, archive, testCase.allow_source_edit);
+                if (run.suite_id == "scribble-stress-v1") checks.AddRange(TestLabStressEvaluator.Evaluate(archive, run, testCase, checks));
             }
             var failed = checks.Where(c => c.hard && !c.passed).ToArray();
             var evaluation = new TestLabEvaluation { schema = 1, run_id = run.run_id, case_id = run.case_id,
@@ -92,15 +93,35 @@ namespace Scribble.Testing
             return evaluation;
         }
 
-        private static void CheckSourcePreservation(List<TestLabCheck> checks, ZipArchive archive)
+        private static void CheckSourcePreservation(List<TestLabCheck> checks, ZipArchive archive, bool allowSourceEdit)
         {
+            if (allowSourceEdit) return;
             var before = Readbacks(archive, "-source-source-"); var after = Readbacks(archive, "-final-source-");
+            var matched = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var pair in before)
             {
-                string value;
-                Add(checks, "source_preserved_" + pair.Key, after.TryGetValue(pair.Key, out value) && value == pair.Value,
-                    after.ContainsKey(pair.Key) ? "Native source readback changed between pre-write and final capture." : "Final source readback is missing.");
+                var key = FindUnchangedSource(pair.Key, pair.Value, after, matched);
+                if (key != null) matched.Add(key);
+                var host = pair.Key.Split('-')[0] + "-";
+                Add(checks, "source_preserved_" + pair.Key, key != null,
+                    after.Keys.Any(k => k.StartsWith(host, StringComparison.OrdinalIgnoreCase))
+                        ? "Native source readback changed between pre-write and final capture."
+                        : "Final source readback is missing.");
             }
+        }
+
+        internal static string FindUnchangedSource(string beforeKey, string beforeText,
+            IDictionary<string, string> after, ISet<string> matched)
+        {
+            // Opening a new draft can reorder Word's Documents collection.
+            // Compare source readbacks by host and content, not COM ordinal;
+            // consume each final source at most once so duplicates cannot hide
+            // a removed or altered source.
+            var host = beforeKey.Split('-')[0] + "-";
+            return after.Where(p => p.Key.StartsWith(host, StringComparison.OrdinalIgnoreCase) &&
+                    p.Value == beforeText && !matched.Contains(p.Key))
+                .OrderBy(p => string.Equals(p.Key, beforeKey, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+                .Select(p => p.Key).FirstOrDefault();
         }
 
         private static bool HasMemoryOutput(ZipArchive archive, string extension)
@@ -318,6 +339,10 @@ namespace Scribble.Testing
                 RequirePercent(checks, numbers, "delivery_target", 97);
             }
             if (caseId == "OL01" || caseId == "OL02") CheckFinanceStatements(checks, output ?? "");
+            if (caseId == "WD01")
+                Add(checks, "budget_gap_scope",
+                    !Regex.IsMatch(output ?? "", @"\b(?:every|all)\s+(?:region/product|regions?|products?|segments?|lines?)\b[^\r\n]{0,100}\b(?:below|under|missed?)\s+(?:the\s+)?budget\b|\b(?:below|under|missed?)\s+(?:the\s+)?budget\b[^\r\n]{0,100}\b(?:every|all)\s+(?:region/product|regions?|products?|segments?|lines?)\b", RegexOptions.IgnoreCase),
+                    "The June budget shortfall affects North A and South B, not every region/product line.");
             if (caseId == "OL02")
             {
                 if (checkMailHeaders) checks.AddRange(CheckLegacyMailHeaders(output ?? ""));

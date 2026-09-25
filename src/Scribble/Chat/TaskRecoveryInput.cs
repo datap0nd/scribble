@@ -45,6 +45,9 @@ namespace Scribble.Chat
     {
         public string Name { get; set; }
         public string Content { get; set; }
+        public string SourcePath { get; set; }
+        public string SourceFingerprint { get; set; }
+        public bool HasMoreContent { get; set; }
     }
     public sealed class SavedImage
     {
@@ -105,11 +108,13 @@ namespace Scribble.Chat
         public List<SavedKoreanCell> Cells { get; set; } = new List<SavedKoreanCell>();
         public int SkippedFormulaCells { get; set; }
         public int SkippedMergedCells { get; set; }
+        // Absent in older checkpoints: Korean to English.
+        public string TargetLanguage { get; set; }
         public KoreanWorkbookSnapshot Restore()
         {
             return new KoreanWorkbookSnapshot(Saved, WorkbookIdentity, WorkbookName, WindowHandle,
                 Cells.Select(c => new KoreanWorkbookCellSnapshot(c.WorksheetName, c.Address, c.SourceText)).ToArray(),
-                SkippedFormulaCells, SkippedMergedCells);
+                SkippedFormulaCells, SkippedMergedCells, TargetLanguage);
         }
     }
 
@@ -123,16 +128,27 @@ namespace Scribble.Chat
             if (host == "outlook") return null;
             dynamic app = application;
             dynamic document = host == "excel" ? app.ActiveWorkbook : host == "word" ? app.ActiveDocument : app.ActivePresentation;
+            return CaptureDocument(host, (object)document);
+        }
+
+        // Re-read a retained native object without depending on the active
+        // Office window. In particular, chart creation can change Excel's
+        // ActiveWorkbook while the source workbook remains open and unchanged.
+        internal static TaskSourceBinding CaptureDocument(string host,
+            object document)
+        {
+            if (host == "outlook") return null;
             if (document == null) return null;
-            string name = Convert.ToString(document.Name);
-            string path = Convert.ToString(document.Path);
-            string fullName = Convert.ToString(document.FullName);
+            dynamic native = document;
+            string name = Convert.ToString(native.Name);
+            string path = Convert.ToString(native.Path);
+            string fullName = Convert.ToString(native.FullName);
             var saved = !string.IsNullOrEmpty(path);
             return new TaskSourceBinding
             {
                 Id = host + ":" + (saved ? fullName.ToUpperInvariant() : UnsavedIdentities.GetValue((object)document, key => new DocumentIdentity()).Value),
                 Location = saved ? fullName : name, Saved = saved, SessionId = TaskRecoveryInput.ProcessSession,
-                Fingerprint = host == "word" ? TaskCheckpointStore.Fingerprint(Convert.ToString((object)document.Content.Text)) : saved && File.Exists(fullName) ?
+                Fingerprint = host == "word" ? TaskCheckpointStore.Fingerprint(Convert.ToString((object)native.Content.Text)) : saved && File.Exists(fullName) ?
                     TaskCheckpointStore.Fingerprint(new FileInfo(fullName).Length + ":" + File.GetLastWriteTimeUtc(fullName).Ticks) :
                     TaskCheckpointStore.Fingerprint(name + TaskRecoveryInput.ProcessSession)
             };

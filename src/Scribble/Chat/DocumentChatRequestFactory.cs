@@ -1,5 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text.RegularExpressions;
 using Scribble.Office;
 using Scribble.Security;
 
@@ -13,6 +16,31 @@ namespace Scribble.Chat
     // latest prompt.
     public static class DocumentChatRequestFactory
     {
+        // After a typed Excel read, replace only the draft schema for the
+        // next model turn. The existing tool name keeps the guardrail allowlist
+        // stable, while the host ignores any model-authored rows or formulas.
+        public static void ApplyAnalysisPilot(ChatCompletionRequest request,
+            AnalysisArtifact artifact, string hostKind)
+        {
+            if (request?.tools == null || artifact == null ||
+                hostKind != "excel" ||
+                !string.Equals(Environment.GetEnvironmentVariable(
+                    AnalysisDocumentPilot.FeatureFlag), "1",
+                    StringComparison.Ordinal)) return;
+            AnalysisContract.Serialize(artifact);
+            var index = request.tools.FindIndex(tool =>
+                tool.function.name == WorkbookToolCatalog.WriteDraftSheet);
+            if (index < 0) return;
+            request.tools[index] =
+                WorkbookToolCatalog.AnalysisDraftDefinition();
+            var deckIndex = request.tools.FindIndex(tool =>
+                tool.function.name ==
+                CrossAppToolCatalog.SendToPowerPoint);
+            if (deckIndex >= 0)
+                request.tools[deckIndex] =
+                    CrossAppToolCatalog.AnalysisDeckDefinition();
+        }
+
         public const int TrimmedHistoryCharacters = 1500;
         public const int MaxActiveContextCharacters = 4000;
 
@@ -60,8 +88,26 @@ namespace Scribble.Chat
             IReadOnlyList<ChatToolDefinition> extraTools = null,
             Scribble.Configuration.TopicConfig activeTopic = null,
             bool hasExcelSelection = false,
-            bool hasKoreanWorkbook = false)
+            bool hasKoreanWorkbook = false,
+            string workbookTranslationTarget = null)
         {
+            var pilotRepair = hostKind == "powerpoint" &&
+                allowDraftCreate &&
+                string.Equals(Environment.GetEnvironmentVariable(
+                    AnalysisDocumentPilot.FeatureFlag), "1",
+                    StringComparison.Ordinal) &&
+                Regex.IsMatch(userPrompt ?? "",
+                    @"\b(?:6|six)\b.{0,24}\bslides?\b", RegexOptions.IgnoreCase) &&
+                DocumentDraftHost.ShouldDraftRepairedDeck(hostKind,
+                    userPrompt, 6) &&
+                externalContext != null && externalContext.Any(document =>
+                    new[] { ".xlsx", ".xlsm" }.Contains(
+                        Path.GetExtension(document.SourcePath ?? ""),
+                        StringComparer.OrdinalIgnoreCase));
+            var translateToKorean = hasKoreanWorkbook && string.Equals(
+                workbookTranslationTarget,
+                Scribble.Office.ExcelSelectionOutputPolicy.TargetKorean,
+                StringComparison.Ordinal);
             List<ChatToolDefinition> tools;
             if (hostKind == "excel")
             {
@@ -97,7 +143,8 @@ namespace Scribble.Chat
                     {
                         tools.Add(
                             WorkbookToolCatalog
-                                .KoreanTranslationDefinition());
+                                .KoreanTranslationDefinition(
+                                    translateToKorean));
                     }
                 }
                 else if (hostKind == "word")
@@ -106,14 +153,17 @@ namespace Scribble.Chat
                 }
                 else
                 {
-                    tools.Add(
-                        PresentationToolCatalog.DraftDefinition());
-                    tools.AddRange(PresentationToolCatalog.RevisionDefinitions());
+                    if (!pilotRepair)
+                        tools.Add(PresentationToolCatalog.DraftDefinition());
+                    tools.AddRange(PresentationToolCatalog.RevisionDefinitions()
+                        .Where(tool => !pilotRepair || tool.function.name ==
+                            PresentationToolCatalog.ReviseSlides));
                 }
 
-                tools.AddRange(
-                    CrossAppToolCatalog.CreateDefinitions(
-                        hostKind));
+                if (!pilotRepair)
+                    tools.AddRange(
+                        CrossAppToolCatalog.CreateDefinitions(
+                            hostKind));
             }
 
             if (extraTools != null)
@@ -138,7 +188,9 @@ namespace Scribble.Chat
                         allowDraftCreate,
                         extraTools != null && extraTools.Count > 0,
                         hasExcelSelection,
-                        hasKoreanWorkbook) +
+                        hasKoreanWorkbook,
+                        translateToKorean,
+                        pilotRepair) +
                         BuildTopicBoundary(activeTopic) +
                         PromptHelperTool.SystemInstruction
                 },
@@ -209,12 +261,43 @@ namespace Scribble.Chat
             };
         }
 
+        private const string EnglishToKoreanWorkbookInstruction =
+            " The local Excel host found every literal English text cell " +
+            "across the active workbook before this request. Use " +
+            "write_korean_translations and no other write tool; do not read " +
+            "the workbook again, the supplied source windows are complete. " +
+            "Translate ONLY the supplied source cells into natural, concise " +
+            "business Korean, preserving meaning, punctuation, numbers, " +
+            "units, placeholders, and line structure. Column headers and " +
+            "status labels become short noun phrases (Due date = 마감일; " +
+            "Complete = 완료; In progress = 진행 중; Review required = 검토 " +
+            "필요; Notes = 비고; Owner = 담당자; Status = 상태; Total = 합계; " +
+            "Revenue = 매출; Cost = 비용; Quantity = 수량; Region = 지역). " +
+            "Use one consistent Korean term for a repeated English term " +
+            "throughout the workbook. Keep codes, identifiers, file names, " +
+            "formula-like text, currency codes, and established brand or " +
+            "product names in their original form; transliterate personal " +
+            "names into Hangul only when that is the workbook's evident " +
+            "convention, otherwise keep them. Never add explanations, " +
+            "romanization, or the English original in parentheses. Return " +
+            "exactly one Korean value per source entry in order. After every " +
+            "accepted call, continue from next_source_cells and " +
+            "next_start_offset until complete_next=true, then submit that " +
+            "final window with complete=true. For the initial window, use " +
+            "the attached complete value. Do not ask for confirmation or a " +
+            "destination: the user's request explicitly authorized replacing " +
+            "exactly the detected literal English text cells in memory " +
+            "throughout the workbook. Formula and merged cells, numbers and " +
+            "dates remain unchanged, and the workbook is never saved.";
+
         private static string BuildSystemBoundary(
             string hostKind,
             bool allowDraftCreate,
             bool hasExternalTools,
             bool hasExcelSelection,
-            bool hasKoreanWorkbook)
+            bool hasKoreanWorkbook,
+            bool translateToKorean = false,
+            bool pilotRepair = false)
         {
             var hostName = hostKind == "excel"
                 ? "Excel"
@@ -241,9 +324,16 @@ namespace Scribble.Chat
             {
                 if (hostKind == "powerpoint")
                 {
-                    boundary += " " + SamsungPresentationReview.AuthoringInstructions;
-                    if (PresentationRevisionAcceptance.Enabled) boundary += " The revise_slides tool supports explicitly requested in-place edits to presentation content, including slide deletion/reordering. File deletion, file moving, saving and export remain unavailable. Use inspect_slide first. Revert Scribble changes restores only the latest unchanged revision batch in this Office session.";
+                    if (!pilotRepair)
+                        boundary += " " + SamsungPresentationReview.AuthoringInstructions;
+                    if (PresentationRevisionAcceptance.Enabled && !pilotRepair) boundary += " The revise_slides tool supports explicitly requested in-place edits to presentation content, including slide deletion/reordering. File deletion, file moving, saving and export remain unavailable. Use inspect_slide first. Revert Scribble changes restores only the latest unchanged revision batch in this Office session.";
                 }
+                if (pilotRepair && !PresentationRevisionAcceptance.Enabled)
+                    return boundary +
+                        " The six-slide copy repair is unavailable because this PowerPoint build lacks a current native acceptance receipt. Explain this local gate; do not claim an output was produced.";
+                if (pilotRepair)
+                    return boundary +
+                        " For this six-slide workbook-backed repair, inspect all six saved source slides and the attached workbook completely. Make one exclusive revise_slides call on the inspected presentation ID. The host copies the source into an unsaved draft, applies your bounded content patches and one fourth-page replacement there, repairs known table/font styling from native Office state, and recreates its one native chart from the attached workbook. Do not request chart reflow, multiple full-slide replacements, slide insertion, deletion, or reordering. The source deck and workbook remain unchanged. The draft needs human visual review before sharing. Never claim it was saved.";
                 var selectionInstruction = hasExcelSelection
                     ? " For a one-to-one transformation of the attached " +
                       "Excel selection, including translation, use " +
@@ -271,13 +361,31 @@ namespace Scribble.Chat
                       "is read-only. Ask only if the adjacent destination is " +
                       "occupied, using the returned empty-column candidates."
                     : string.Empty;
-                var koreanWorkbookInstruction = hasKoreanWorkbook
+                var koreanWorkbookInstruction = translateToKorean
+                    ? EnglishToKoreanWorkbookInstruction
+                    : hasKoreanWorkbook
                     ? " The built-in Korean skill found literal Korean text " +
                       "cells across the active workbook before this request. " +
                       "Use write_korean_translations and no other write tool. " +
                       "Translate ONLY the supplied source cells into English, " +
                       "preserving meaning, punctuation, numbers, and line " +
-                      "structure. Return exactly one English value per source " +
+                      "structure. Use sentence case for ordinary labels and " +
+                      "statuses. Render Korean personal names in romanized " +
+                      "given-name family-name order, retaining hyphens in " +
+                      "given names. Render a Korean date-only value as ISO " +
+                      "YYYY-MM-DD. Use consistent office terminology across " +
+                      "the workbook. When the source meaning matches, use " +
+                      "these canonical translations: 마감일 = Due date; 완료 " +
+                      "= Complete; 진행 중 = In progress; 검토 필요 = Review " +
+                      "required; 비고 = Notes; 확인 필요 = Verification " +
+                      "required; 직책 = Role; 재무 담당자 = Finance " +
+                      "specialist; 배송 지연 = Delivery delay; 대체 공급업체 " +
+                      "확인 = Confirm alternate supplier; 환율 변동 = " +
+                      "Exchange-rate volatility; 환율 주간 검토 = Review " +
+                      "exchange rate weekly; 품질 문제 = Quality issue; 추가 " +
+                      "검사 실시 = Perform additional inspection; 인력 부족 " +
+                      "= Staff shortage; 임시 인력 확보 = Secure temporary " +
+                      "staff. Return exactly one English value per source " +
                       "entry in order. After every accepted call, continue from " +
                       "next_source_cells and next_start_offset until " +
                       "complete_next=true, then submit that final window with " +
@@ -289,8 +397,20 @@ namespace Scribble.Chat
                       "and merged cells remain unchanged, and the workbook is " +
                       "never saved."
                     : string.Empty;
+                var excelHandoffInstruction = hostKind == "excel"
+                    ? " In Excel, list_worksheets is an inventory with no required arguments; use {} for it. " +
+                      "Use read_cells with a worksheet name and range to read actual values. A Scribble Draft sheet " +
+                      "listed in the active workbook is available in memory even when the workbook is unsaved. " +
+                      "For a draft audit table, put live formulas only in cells the user asked to calculate; " +
+                      "write optional data-quality observations as sourced text unless the user explicitly " +
+                      "requests additional calculated cells. Keep formulas simple and valid in ordinary Excel " +
+                      "syntax; do not add speculative array formulas or duplicate a metric in extra sections. " +
+                      "For an authorized PowerPoint request, send_to_powerpoint is the live cross-app handoff. " +
+                      "Do not claim that handoff is unavailable or ask the user to repeat values already readable " +
+                      "from the active workbook; read the sheet and continue the requested deck."
+                    : string.Empty;
                 return boundary + selectionInstruction +
-                    koreanWorkbookInstruction +
+                    koreanWorkbookInstruction + excelHandoffInstruction +
                     " The local host recognized an explicit draft request in the " +
                     "user's latest prompt and authorized ONE deliverable for this " +
                     "request, which you may build over several bounded draft calls " +
@@ -304,7 +424,19 @@ namespace Scribble.Chat
                     "Make it DENSE and specific - carry the real numbers, names, " +
                     "dates, and table rows from the source into the output; never " +
                     "reduce a rich source to a thin outline of headings and " +
-                    "one-line bullets, and never invent filler. For slides, choose " +
+                    "one-line bullets, and never invent filler. If the user " +
+                    "requests a one-page Word memo, use at most 190 prose " +
+                    "words and two compact tables (results and actions) with " +
+                    "at most ten total rows including headers. Put segment " +
+                    "details in one sentence instead of a third table; omit " +
+                    "redundant narrative while preserving material facts, " +
+                    "labels, and citations. Never apply an " +
+                    "aggregate variance to every region or product; verify " +
+                    "each subgroup against its own comparison value before " +
+                    "stating which groups missed a budget. A planned review " +
+                    "of a cost category is not evidence that category's " +
+                    "costs rose; separate observed totals from possible " +
+                    "causes under investigation. For slides, choose " +
                     "tables, charts, diagrams or concise summary lists to match the content. When the " +
                     "user asks for tables or charts, put one on most slides, give " +
                     "each data slide its unit indicator and source footnote, and " +
@@ -394,6 +526,10 @@ namespace Scribble.Chat
                         documents[index].Content,
                         ExternalContextDocument
                             .MaxCharactersPerDocument) +
+                    (documents[index].HasMoreContent
+                        ? "\nStatus: bounded preview only. Before claiming full-document coverage, call read_external_document with document_index " +
+                          (index + 1) + " and offset 0, then follow every next_offset until null."
+                        : string.Empty) +
                     "\n</document>");
             }
 

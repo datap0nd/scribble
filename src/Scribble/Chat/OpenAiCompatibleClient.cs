@@ -17,6 +17,11 @@ namespace Scribble.Chat
 {
     public sealed class OpenAiCompatibleClient : IDisposable
     {
+        internal static readonly TimeSpan CompletionRequestTimeout =
+            TimeSpan.FromMinutes(3);
+        internal static readonly TimeSpan OpenRouterQwenCompletionRequestTimeout =
+            TimeSpan.FromMinutes(5);
+        private readonly TimeSpan _completionRequestTimeout;
         private readonly HttpClient _httpClient;
         // Vision requests carry multi-megabyte base64 image parts; the
         // serializer's 2 MB default would reject them. Responses stay
@@ -35,7 +40,16 @@ namespace Scribble.Chat
         private readonly Dictionary<string, DateTime> _emptyResponseCircuits = new Dictionary<string, DateTime>(StringComparer.Ordinal);
 
         public OpenAiCompatibleClient()
+            : this(CompletionRequestTimeout)
         {
+        }
+
+        internal OpenAiCompatibleClient(TimeSpan completionRequestTimeout)
+        {
+            if (completionRequestTimeout <= TimeSpan.Zero)
+                throw new ArgumentOutOfRangeException(
+                    nameof(completionRequestTimeout));
+            _completionRequestTimeout = completionRequestTimeout;
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
             // .NET Framework HTTP latency defaults hurt every
             // request: Expect: 100-continue adds a round trip per
@@ -73,6 +87,7 @@ namespace Scribble.Chat
         {
             if (RoutesToGemini(settings, requestModel))
             {
+                await Scribble.Testing.TestLabStressBudget.GuardRequestAsync(settings, requestModel?.model, cancellationToken).ConfigureAwait(true);
                 return await _gemini.GenerateStreamAsync(
                     _httpClient,
                     settings,
@@ -132,6 +147,7 @@ namespace Scribble.Chat
             ChatCompletionRequest requestModel,
             CancellationToken cancellationToken)
         {
+            await Scribble.Testing.TestLabStressBudget.GuardRequestAsync(settings, requestModel?.model, cancellationToken).ConfigureAwait(true);
             if (settings == null || !settings.IsConfigured)
             {
                 throw new AiEndpointException(
@@ -165,9 +181,13 @@ namespace Scribble.Chat
             }
 
             var capabilityKey = endpoint.AbsoluteUri + "\n" + requestModel.model;
+            var openRouterQwenPolicy = UsesOpenRouterQwenPolicy(
+                endpoint,
+                requestModel.model);
             var hasOptionalToolControls =
                 requestModel.temperature.HasValue ||
-                requestModel.parallel_tool_calls.HasValue;
+                requestModel.parallel_tool_calls.HasValue ||
+                openRouterQwenPolicy;
             var includeOptionalToolControls = hasOptionalToolControls &&
                 !OptionalToolControlsUnsupported(capabilityKey);
             try
@@ -200,7 +220,11 @@ namespace Scribble.Chat
                 ChatCompletionRequest requestModel,
                 bool includeOptionalToolControls,
                 CancellationToken cancellationToken,
-                bool retryEmptyResponse = true)
+                bool retryEmptyResponse = true,
+                bool retryTransientResponse = true,
+                string ignoredProvider = null,
+                int providerRetriesRemaining = 2,
+                int rateLimitRetriesRemaining = 3)
         {
             var circuitKey = endpoint.AbsoluteUri + "\n" + requestModel.model;
             lock (_optionalToolControlSync)
@@ -209,15 +233,36 @@ namespace Scribble.Chat
                 if (retryEmptyResponse && _emptyResponseCircuits.TryGetValue(circuitKey, out until) && until > DateTime.UtcNow)
                     throw new AiEndpointException("MODEL_CIRCUIT_OPEN", "This endpoint/model repeatedly returned empty completions. The task is retained. Wait 30 seconds or select another model before resuming.");
             }
-            var requestJson = _serializer.Serialize(
-                SerializablePayload(
-                    requestModel,
-                    includeOptionalToolControls));
+            var payload = SerializablePayload(
+                requestModel,
+                endpoint,
+                includeOptionalToolControls);
+            ApplyTransientProviderExclusion(
+                payload,
+                endpoint,
+                ignoredProvider);
+            var requestJson = _serializer.Serialize(payload);
             requestModel.Diagnostics?.Record("inference_request", new { endpoint = endpoint.GetLeftPart(UriPartial.Path),
                 model = requestModel.model, request = requestJson });
 
             using (var request = new HttpRequestMessage(HttpMethod.Post, endpoint))
+            using (var requestDeadline =
+                CancellationTokenSource.CreateLinkedTokenSource(
+                    cancellationToken))
             {
+                // ResponseHeadersRead is intentionally used for bounded body
+                // handling below, so HttpClient.Timeout alone would not cover
+                // a provider that stalls before or during the response. Give
+                // every inference attempt its own deadline while preserving
+                // the caller's Stop/cancellation token.
+                object requestedTokens;
+                payload.TryGetValue("max_tokens", out requestedTokens);
+                var completionRequestTimeout = CompletionDeadlineFor(
+                    endpoint,
+                    requestModel.model,
+                    _completionRequestTimeout,
+                    requestedTokens is int ? (int?)requestedTokens : null);
+                requestDeadline.CancelAfter(completionRequestTimeout);
                 request.Headers.Authorization =
                     new AuthenticationHeaderValue("Bearer", settings.ApiKey);
                 request.Headers.Accept.Add(
@@ -228,13 +273,14 @@ namespace Scribble.Chat
                     "application/json");
 
                 HttpResponseMessage response;
+                requestModel.Diagnostics?.ReserveModelRequest();
                 try
                 {
                     response = await _httpClient
                         .SendAsync(
                             request,
                             HttpCompletionOption.ResponseHeadersRead,
-                            cancellationToken)
+                            requestDeadline.Token)
                         .ConfigureAwait(true);
                 }
                 catch (OperationCanceledException exception)
@@ -258,16 +304,32 @@ namespace Scribble.Chat
 
                 using (response)
                 {
+                    Scribble.Testing.TestLabStressBudget.RecordProviderResponse((int)response.StatusCode);
                     string responseText;
                     try
                     {
                         responseText = await ReadBoundedAsync(
                             response.Content,
-                            cancellationToken).ConfigureAwait(true);
+                            requestDeadline.Token).ConfigureAwait(true);
                     }
                     catch (AiEndpointException)
                     {
                         throw;
+                    }
+                    catch (OperationCanceledException exception)
+                    {
+                        if (cancellationToken.IsCancellationRequested)
+                        {
+                            throw;
+                        }
+
+                        throw new AiEndpointException(
+                            "AI_TIMEOUT",
+                            "The AI endpoint did not complete the response " +
+                            "within " + FormatTimeout(completionRequestTimeout) +
+                            ". No partial tool action ran; " +
+                            "the task is preserved and can be resumed.",
+                            exception);
                     }
                     catch (Exception exception)
                     {
@@ -286,14 +348,48 @@ namespace Scribble.Chat
                     {
                         var error = TryReadError(responseText);
                         var status = (int)response.StatusCode;
-                        if (retryEmptyResponse && (status == 429 || status == 502 || status == 503 || status == 504))
+                        if (status == 429 && rateLimitRetriesRemaining > 0)
+                        {
+                            var retryAfter = RateLimitRetryAfter(response, responseText);
+                            if (retryAfter <= TimeSpan.FromSeconds(90))
+                            {
+                                cancellationToken.ThrowIfCancellationRequested();
+                                await Task.Delay(retryAfter, cancellationToken)
+                                    .ConfigureAwait(true);
+                                await Scribble.Testing.TestLabStressBudget
+                                    .GuardRequestAsync(settings, requestModel?.model,
+                                        cancellationToken).ConfigureAwait(true);
+                                return await CompleteOpenAiAsync(settings, endpoint,
+                                    requestModel, includeOptionalToolControls,
+                                    cancellationToken, retryEmptyResponse,
+                                    retryTransientResponse, ignoredProvider,
+                                    providerRetriesRemaining,
+                                    rateLimitRetriesRemaining - 1).ConfigureAwait(true);
+                            }
+                        }
+                        if (retryTransientResponse && (status == 502 || status == 503 || status == 504))
                         {
                             var hint = response.Headers.RetryAfter;
                             var retryAfter = hint?.Delta ?? (hint?.Date.HasValue == true ? hint.Date.Value - DateTimeOffset.UtcNow : TimeSpan.FromSeconds(1));
                             if (retryAfter >= TimeSpan.Zero && retryAfter <= TimeSpan.FromSeconds(2))
                             {
+                                await Scribble.Testing.TestLabStressBudget
+                                    .GuardRequestAsync(
+                                        settings,
+                                        requestModel?.model,
+                                        cancellationToken).ConfigureAwait(true);
                                 await Task.Delay(retryAfter, cancellationToken).ConfigureAwait(true);
-                                return await CompleteOpenAiAsync(settings, endpoint, requestModel, includeOptionalToolControls, cancellationToken, false).ConfigureAwait(true);
+                                return await CompleteOpenAiAsync(
+                                    settings,
+                                    endpoint,
+                                    requestModel,
+                                    includeOptionalToolControls,
+                                    cancellationToken,
+                                    retryEmptyResponse,
+                                    false,
+                                    ignoredProvider,
+                                    providerRetriesRemaining,
+                                    rateLimitRetriesRemaining).ConfigureAwait(true);
                             }
                         }
                         var reason = string.IsNullOrWhiteSpace(response.ReasonPhrase)
@@ -328,11 +424,73 @@ namespace Scribble.Chat
                             responseSnippet: responseText);
                     }
 
-                    var message =
+                    var choice =
                         completion?.choices != null &&
                         completion.choices.Count > 0
-                            ? completion.choices[0]?.message
+                            ? completion.choices[0]
                             : null;
+                    if (choice?.error != null ||
+                        string.Equals(
+                            choice?.finish_reason,
+                            "error",
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        // OpenRouter can return HTTP 200 with a provider-side
+                        // 5xx embedded in the first choice. Its message may
+                        // contain partial text or a truncated tool call, none
+                        // of which is safe to execute. Retry the identical
+                        // inference once on generic endpoints. OpenRouter can
+                        // safely route across up to two other providers before
+                        // surfacing a resumable failure. Every retry is still
+                        // checked by the Test Lab's hard spend guard.
+                        var excludedProviders = SplitProviders(ignoredProvider);
+                        if (!string.IsNullOrWhiteSpace(completion?.provider) &&
+                            !excludedProviders.Contains(completion.provider, StringComparer.OrdinalIgnoreCase))
+                            excludedProviders.Add(completion.provider);
+                        var openRouter = endpoint != null && string.Equals(
+                            endpoint.Host,
+                            "openrouter.ai",
+                            StringComparison.OrdinalIgnoreCase);
+                        if (retryTransientResponse ||
+                            (openRouter && providerRetriesRemaining > 0))
+                        {
+                            cancellationToken.ThrowIfCancellationRequested();
+                            await Scribble.Testing.TestLabStressBudget
+                                .GuardRequestAsync(
+                                    settings,
+                                    requestModel?.model,
+                                    cancellationToken).ConfigureAwait(true);
+                            await Task.Delay(
+                                TimeSpan.FromSeconds(1),
+                                cancellationToken).ConfigureAwait(true);
+                            return await CompleteOpenAiAsync(
+                                settings,
+                                endpoint,
+                                requestModel,
+                                includeOptionalToolControls,
+                                cancellationToken,
+                                retryEmptyResponse,
+                                false,
+                                string.Join("\n", excludedProviders),
+                                providerRetriesRemaining - 1,
+                                rateLimitRetriesRemaining).ConfigureAwait(true);
+                        }
+
+                        var providerError = choice?.error;
+                        throw new AiEndpointException(
+                            "PROVIDER_RESPONSE_ERROR",
+                            "The selected AI provider interrupted the response. " +
+                            "No partial tool action ran. The task is preserved; " +
+                            "resume or choose another provider.",
+                            httpStatus: (int)response.StatusCode,
+                            providerCode:
+                                providerError?.code ?? providerError?.type,
+                            requestId: requestId,
+                            responseSnippet:
+                                providerError?.message ?? responseText);
+                    }
+
+                    var message = choice?.message;
 
                     var hasToolCalls =
                         message?.tool_calls != null &&
@@ -346,10 +504,39 @@ namespace Scribble.Chat
                         // Persistent empty responses remain a resumable failure.
                         if (retryEmptyResponse)
                         {
+                            var excludedProviders =
+                                SplitProviders(ignoredProvider);
+                            var openRouter = endpoint != null &&
+                                string.Equals(
+                                    endpoint.Host,
+                                    "openrouter.ai",
+                                    StringComparison.OrdinalIgnoreCase);
+                            if (openRouter &&
+                                !string.IsNullOrWhiteSpace(
+                                    completion?.provider) &&
+                                !excludedProviders.Contains(
+                                    completion.provider,
+                                    StringComparer.OrdinalIgnoreCase))
+                            {
+                                excludedProviders.Add(completion.provider);
+                            }
                             cancellationToken.ThrowIfCancellationRequested();
-                            return await CompleteOpenAiAsync(settings, endpoint,
-                                requestModel, includeOptionalToolControls,
-                                cancellationToken, false).ConfigureAwait(true);
+                            await Scribble.Testing.TestLabStressBudget
+                                .GuardRequestAsync(
+                                    settings,
+                                    requestModel?.model,
+                                    cancellationToken).ConfigureAwait(true);
+                            return await CompleteOpenAiAsync(
+                                settings,
+                                endpoint,
+                                requestModel,
+                                includeOptionalToolControls,
+                                cancellationToken,
+                                false,
+                                retryTransientResponse,
+                                string.Join("\n", excludedProviders),
+                                providerRetriesRemaining,
+                                rateLimitRetriesRemaining).ConfigureAwait(true);
                         }
                         lock (_optionalToolControlSync) _emptyResponseCircuits[circuitKey] = DateTime.UtcNow.AddSeconds(30);
                         throw new AiEndpointException(
@@ -369,6 +556,50 @@ namespace Scribble.Chat
                     return message;
                 }
             }
+        }
+
+        private static void ApplyTransientProviderExclusion(
+            Dictionary<string, object> payload,
+            Uri endpoint,
+            string provider)
+        {
+            if (payload == null ||
+                endpoint == null ||
+                !string.Equals(
+                    endpoint.Host,
+                    "openrouter.ai",
+                    StringComparison.OrdinalIgnoreCase) ||
+                string.IsNullOrWhiteSpace(provider))
+            {
+                return;
+            }
+
+            var ignored = SplitProviders(provider).ToArray();
+            if (ignored.Length == 0) return;
+
+            Dictionary<string, object> preferences;
+            object existing;
+            if (payload.TryGetValue("provider", out existing))
+            {
+                preferences = existing as Dictionary<string, object>;
+            }
+            else
+            {
+                preferences = null;
+            }
+            if (preferences == null)
+            {
+                preferences = new Dictionary<string, object>();
+                payload["provider"] = preferences;
+            }
+            preferences["ignore"] = ignored;
+        }
+
+        private static List<string> SplitProviders(string providers)
+        {
+            return (providers ?? "").Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(value => value.Trim()).Where(value => value.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         }
 
         // The Gemini tick only decides whether Google models are
@@ -848,12 +1079,13 @@ namespace Scribble.Chat
         // optional fields are included only when they carry a value.
         private static Dictionary<string, object> SerializablePayload(
             ChatCompletionRequest requestModel,
+            Uri endpoint,
             bool includeOptionalToolControls = true)
         {
             var payload = new Dictionary<string, object>
             {
                 { "model", requestModel.model },
-                { "messages", requestModel.messages },
+                { "messages", ProviderSafeMessages(requestModel.messages) },
                 { "stream", requestModel.stream }
             };
             if (requestModel.tools != null &&
@@ -884,7 +1116,301 @@ namespace Scribble.Chat
                     requestModel.parallel_tool_calls.Value;
             }
 
+            // OpenRouter exposes reasoning as provider metadata rather than
+            // part of Scribble's endpoint-neutral request contract. Qwen 3.8
+            // defaults to xhigh reasoning there, which can consume the entire
+            // response allowance before a tool call or answer is emitted.
+            // Office tools also operate on one COM apartment and must not be
+            // dispatched in parallel. Keep both overrides narrowly bound to
+            // the exact stress-suite endpoint/model pair.
+            if (UsesOpenRouterQwenPolicy(endpoint, requestModel.model))
+            {
+                // Dense Office authoring calls carry native table/chart JSON.
+                // Qwen can otherwise truncate a syntactically valid tool call at
+                // the generic 4K draft ceiling and spend more on retries. A full
+                // six-to-eight-slide payload can exceed 8K, while the model route
+                // supports 32K completions. Keep that ceiling exclusive to the
+                // PowerPoint draft tool; other draft calls get 8K and compact
+                // reviewers/summarizers retain their original smaller limits.
+                var isDraftRequest = requestModel.max_tokens ==
+                    DocumentChatRequestFactory.DraftResponseTokens;
+                var hasNativePresentationDraftTool = isDraftRequest &&
+                    requestModel.tools != null &&
+                    requestModel.tools.Any(tool => tool?.function != null &&
+                        string.Equals(tool.function.name,
+                            PresentationToolCatalog.AddDraftSlides,
+                            StringComparison.Ordinal));
+                if (isDraftRequest)
+                {
+                    var hasPresentationDraftTool = requestModel.tools != null &&
+                        requestModel.tools.Any(tool => tool?.function != null &&
+                            (string.Equals(tool.function.name,
+                                 PresentationToolCatalog.AddDraftSlides,
+                                 StringComparison.Ordinal) ||
+                             string.Equals(tool.function.name,
+                                 CrossAppToolCatalog.SendToPowerPoint,
+                                 StringComparison.Ordinal)));
+                    payload["max_tokens"] = hasPresentationDraftTool
+                        ? 32768
+                        : 8192;
+                }
+                // Compact reviewers and summarizers need a verdict, not a
+                // hidden chain of thought. Some OpenRouter providers have
+                // spent the entire 2K response allowance on reasoning,
+                // returning no content. Disable reasoning for those bounded
+                // internal calls. Qwen 3.8 advertises low as its smallest
+                // supported reasoning effort; sending the unsupported minimal
+                // value can fall back to the model's xhigh default and consume
+                // the entire response allowance before a tool call is emitted.
+                // Keep low reasoning on normal task turns. For a native
+                // multi-slide draft, low was ignored by one provider: it spent
+                // 32,154 of 32,768 output tokens on hidden reasoning and cut
+                // the first tool call in the middle of its JSON arguments.
+                // Qwen 3.8 marks reasoning as optional, so disable it only for
+                // this long, contract-checked authoring call.
+                var compactInternalCall =
+                    (requestModel.tools == null ||
+                     requestModel.tools.Count == 0) &&
+                    requestModel.max_tokens.HasValue &&
+                    requestModel.max_tokens.Value <= 2048;
+                payload["reasoning"] = hasNativePresentationDraftTool
+                    ? new Dictionary<string, object> { { "enabled", false } }
+                    : new Dictionary<string, object>
+                    {
+                        { "effort", compactInternalCall ? "none" : "low" }
+                    };
+                if (includeOptionalToolControls &&
+                    requestModel.tools != null &&
+                    requestModel.tools.Count > 0)
+                {
+                    payload["parallel_tool_calls"] = false;
+
+                    // OpenRouter's default price-weighted routing can select
+                    // endpoints that advertise generic tool support but do not
+                    // reliably honor Qwen's bounded reasoning/tool-choice
+                    // contract. Keep tool-bearing requests on the endpoints
+                    // observed to support the required tool parameters,
+                    // ordered by successful Scribble tool-turn latency.
+                    // OpenRouter's endpoint metadata does
+                    // not advertise the optional parallel_tool_calls switch for
+                    // any Qwen 3.8 route, so require_parameters cannot be used
+                    // even though false is the serial-safe value we need. The
+                    // allow-list prevents an outside fallback from reintroducing
+                    // the same empty/timeout failure mode.
+                    var reliableToolProviders = new[]
+                    {
+                        "reka",
+                        "mancer",
+                        "phala",
+                        "coreweave",
+                        "dekallm",
+                        "chutes"
+                    };
+                    // A long authoring completion is bound by generation
+                    // speed, not first-token latency: an 11 token/s route
+                    // needs eight minutes for a deck payload that an
+                    // 80 token/s route returns in one. Keep the allow-list
+                    // but let OpenRouter choose its fastest member there.
+                    object authoringTokens;
+                    var longAuthoringCall =
+                        payload.TryGetValue("max_tokens", out authoringTokens) &&
+                        authoringTokens is int &&
+                        (int)authoringTokens >= 8192;
+                    payload["provider"] = longAuthoringCall
+                        ? new Dictionary<string, object>
+                        {
+                            { "only", reliableToolProviders },
+                            { "sort", "throughput" },
+                            { "allow_fallbacks", true }
+                        }
+                        : new Dictionary<string, object>
+                        {
+                            { "order", reliableToolProviders },
+                            { "only", reliableToolProviders },
+                            { "allow_fallbacks", true }
+                        };
+                }
+            }
+
             return payload;
+        }
+
+        private static List<object> ProviderSafeMessages(List<object> messages)
+        {
+            if (messages == null) return null;
+            var safe = new List<object>(messages.Count);
+            var parser = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
+            foreach (var message in messages)
+            {
+                var assistant = message as ChatCompletionAssistantToolMessage;
+                if (assistant?.tool_calls == null)
+                {
+                    safe.Add(message);
+                    continue;
+                }
+                var calls = new List<ChatToolCall>(assistant.tool_calls.Count);
+                var changed = false;
+                foreach (var call in assistant.tool_calls)
+                {
+                    if (call?.function == null)
+                    {
+                        calls.Add(call);
+                        continue;
+                    }
+                    var validObject = false;
+                    try
+                    {
+                        validObject = parser.DeserializeObject(call.function.arguments ?? "")
+                            is IDictionary<string, object>;
+                    }
+                    catch (ArgumentException) { }
+                    catch (InvalidOperationException) { }
+                    if (validObject)
+                    {
+                        calls.Add(call);
+                        continue;
+                    }
+                    // The tool validator sees and rejects the original malformed
+                    // call. Only the historical wire copy is made parseable:
+                    // strict OpenAI-compatible providers reject a later turn
+                    // before the model can read that validator's repair receipt.
+                    changed = true;
+                    calls.Add(new ChatToolCall
+                    {
+                        id = call.id,
+                        type = call.type,
+                        function = new ChatToolCallFunction
+                        {
+                            name = call.function.name,
+                            arguments = "{}"
+                        }
+                    });
+                }
+                safe.Add(changed ? new ChatCompletionAssistantToolMessage
+                {
+                    role = assistant.role,
+                    content = assistant.content,
+                    tool_calls = calls
+                } : message);
+            }
+            return safe;
+        }
+
+        private static TimeSpan RateLimitRetryAfter(HttpResponseMessage response,
+            string responseText)
+        {
+            var hint = response?.Headers.RetryAfter;
+            if (hint?.Delta.HasValue == true)
+                return hint.Delta.Value < TimeSpan.Zero ? TimeSpan.Zero : hint.Delta.Value;
+            if (hint?.Date.HasValue == true)
+            {
+                var until = hint.Date.Value - DateTimeOffset.UtcNow;
+                return until < TimeSpan.Zero ? TimeSpan.Zero : until;
+            }
+            // OpenRouter's admission-control 429 can put Retry-After only in
+            // error.metadata.headers, not the HTTP header. Respect it before
+            // retrying the identical, side-effect-free inference request.
+            try
+            {
+                var root = new JavaScriptSerializer().DeserializeObject(responseText ?? "")
+                    as IDictionary<string, object>;
+                object errorValue, metadataValue, headersValue, secondsValue;
+                var error = root != null && root.TryGetValue("error", out errorValue)
+                    ? errorValue as IDictionary<string, object> : null;
+                var metadata = error != null && error.TryGetValue("metadata", out metadataValue)
+                    ? metadataValue as IDictionary<string, object> : null;
+                var headers = metadata != null && metadata.TryGetValue("headers", out headersValue)
+                    ? headersValue as IDictionary<string, object> : null;
+                int seconds;
+                if (headers != null && headers.TryGetValue("Retry-After", out secondsValue) &&
+                    int.TryParse(Convert.ToString(secondsValue), out seconds) && seconds >= 0)
+                    return TimeSpan.FromSeconds(seconds);
+            }
+            catch (ArgumentException) { }
+            catch (InvalidOperationException) { }
+            return TimeSpan.FromSeconds(10);
+        }
+
+        private static bool UsesOpenRouterQwenPolicy(
+            Uri endpoint,
+            string model)
+        {
+            return endpoint != null &&
+                string.Equals(
+                    endpoint.Scheme,
+                    Uri.UriSchemeHttps,
+                    StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(
+                    endpoint.Host,
+                    "openrouter.ai",
+                    StringComparison.OrdinalIgnoreCase) &&
+                endpoint.IsDefaultPort &&
+                string.IsNullOrEmpty(endpoint.UserInfo) &&
+                string.IsNullOrEmpty(endpoint.Query) &&
+                string.Equals(
+                    endpoint.AbsolutePath.TrimEnd('/'),
+                    "/api/v1/chat/completions",
+                    StringComparison.Ordinal) &&
+                string.Equals(
+                    model,
+                    "qwen/qwen3.8-27b",
+                    StringComparison.Ordinal);
+        }
+
+        private static TimeSpan CompletionRequestTimeoutFor(
+            Uri endpoint,
+            string model,
+            TimeSpan defaultTimeout)
+        {
+            return UsesOpenRouterQwenPolicy(endpoint, model) &&
+                defaultTimeout == CompletionRequestTimeout
+                    ? OpenRouterQwenCompletionRequestTimeout
+                    : defaultTimeout;
+        }
+
+        internal static readonly TimeSpan MaximumCompletionRequestTimeout =
+            TimeSpan.FromMinutes(15);
+
+        // This client buffers the whole completion, so its deadline bounds
+        // generation time, not idle time. A multi-slide tool call is several
+        // thousand output tokens: a local model at 10-25 tokens per second
+        // cannot finish that inside the chat-sized window. Extend the window
+        // by the output the request itself allows (10 tokens per second),
+        // within a fixed ceiling. An injected test timeout is never widened.
+        private static TimeSpan CompletionDeadlineFor(
+            Uri endpoint,
+            string model,
+            TimeSpan defaultTimeout,
+            int? maxTokens)
+        {
+            var window = CompletionRequestTimeoutFor(
+                endpoint,
+                model,
+                defaultTimeout);
+            if (defaultTimeout != CompletionRequestTimeout ||
+                !maxTokens.HasValue ||
+                maxTokens.Value <= 0)
+            {
+                return window;
+            }
+
+            var scaled = window +
+                TimeSpan.FromSeconds(maxTokens.Value / 10d);
+            return scaled > MaximumCompletionRequestTimeout
+                ? MaximumCompletionRequestTimeout
+                : scaled;
+        }
+
+        private static string FormatTimeout(TimeSpan timeout)
+        {
+            if (timeout.TotalMinutes == Math.Floor(timeout.TotalMinutes))
+            {
+                var minutes = (int)timeout.TotalMinutes;
+                return minutes.ToString() +
+                    (minutes == 1 ? " minute" : " minutes");
+            }
+
+            return Math.Ceiling(timeout.TotalSeconds).ToString() + " seconds";
         }
 
         private bool OptionalToolControlsUnsupported(string capabilityKey)

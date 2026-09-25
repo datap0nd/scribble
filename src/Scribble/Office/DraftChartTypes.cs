@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace Scribble.Office
 {
@@ -60,6 +62,19 @@ namespace Scribble.Office
                 default:
                     return ColumnClustered;
             }
+        }
+
+        public static bool ShouldUseZeroBasedValueAxis(
+            int typeCode,
+            IEnumerable<double?> values)
+        {
+            if (typeCode == Pie || typeCode == Scatter)
+                return false;
+            var points = (values ?? new double?[0])
+                .Where(value => value.HasValue)
+                .Select(value => value.Value)
+                .ToArray();
+            return points.Length > 0 && points.All(value => value >= 0d);
         }
     }
 }

@@ -45,7 +45,7 @@ namespace Scribble.Office
             if ((bool)chart.ChartData.IsLinked || double.IsNaN(replacement) || double.IsInfinity(replacement)) throw new InvalidOperationException("REVISION_CHART_UNSUPPORTED");
             dynamic series = chart.SeriesCollection(seriesIndex);
             var formula = Convert.ToString(series.Formula); var target = Resolve(formula, category);
-            var values = ((IEnumerable)series.Values).Cast<object>().ToArray();
+            var values = PresentationDraftWriter.ComArrayItems((object)series, "Values");
             if (category > values.Length || values[category - 1] == null || Convert.ToDouble(values[category - 1], CultureInfo.InvariantCulture) != expected) throw new InvalidOperationException("REVISION_CHART_CHANGED");
             chart.ChartData.Activate(); dynamic dataWorkbook = chart.ChartData.Workbook;
             var changed = false;
@@ -59,7 +59,7 @@ namespace Scribble.Office
             }
             finally { dataWorkbook.Close(changed); }
             chart.Refresh();
-            values = ((IEnumerable)series.Values).Cast<object>().ToArray();
+            values = PresentationDraftWriter.ComArrayItems((object)series, "Values");
             if (Convert.ToString(series.Formula) != formula || Convert.ToDouble(values[category - 1], CultureInfo.InvariantCulture) != replacement)
                 throw new InvalidOperationException("REVISION_CHART_ASSOCIATION_CHANGED: The chart did not retain the reviewed workbook association.");
         }

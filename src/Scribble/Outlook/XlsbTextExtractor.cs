@@ -190,6 +190,11 @@ namespace Scribble.Outlook
                     continue;
                 }
 
+                var column = (int)ReadUInt32(data, start);
+                if (column < 0 || column >= 16384)
+                {
+                    continue;
+                }
                 var valueOffset = start + 8;
                 var valueLength = length - 8;
                 switch (id)
@@ -197,7 +202,7 @@ namespace Scribble.Outlook
                     case BrtCellRk:
                         if (valueLength >= 4)
                         {
-                            rowValues.Add(RkToString(
+                            SetCell(rowValues, column, RkToString(
                                 ReadUInt32(data, valueOffset)));
                         }
 
@@ -206,7 +211,7 @@ namespace Scribble.Outlook
                     case BrtFmlaBool:
                         if (valueLength >= 1)
                         {
-                            rowValues.Add(
+                            SetCell(rowValues, column,
                                 data[valueOffset] != 0
                                     ? "TRUE"
                                     : "FALSE");
@@ -217,7 +222,7 @@ namespace Scribble.Outlook
                     case BrtFmlaNum:
                         if (valueLength >= 8)
                         {
-                            rowValues.Add(NumberToString(
+                            SetCell(rowValues, column, NumberToString(
                                 BitConverter.ToDouble(
                                     data,
                                     valueOffset)));
@@ -230,10 +235,7 @@ namespace Scribble.Outlook
                             data,
                             valueOffset,
                             valueOffset + valueLength);
-                        if (inline.Length > 0)
-                        {
-                            rowValues.Add(inline);
-                        }
+                        SetCell(rowValues, column, inline);
 
                         break;
                     case BrtCellIsst:
@@ -246,7 +248,9 @@ namespace Scribble.Outlook
                                 index < sharedStrings.Count &&
                                 sharedStrings[index].Length > 0)
                             {
-                                rowValues.Add(
+                                SetCell(
+                                    rowValues,
+                                    column,
                                     sharedStrings[index]);
                             }
                         }
@@ -268,6 +272,19 @@ namespace Scribble.Outlook
                     string.Join("\t", rowValues));
                 rowValues.Clear();
             }
+        }
+
+        private static void SetCell(
+            List<string> rowValues,
+            int column,
+            string value)
+        {
+            while (rowValues.Count <= column)
+            {
+                rowValues.Add(string.Empty);
+            }
+
+            rowValues[column] = value ?? string.Empty;
         }
 
         private static IList<string> ReadSharedStrings(

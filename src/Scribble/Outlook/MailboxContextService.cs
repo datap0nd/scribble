@@ -163,6 +163,7 @@ namespace Scribble.Outlook
 
                         try
                         {
+                            Scribble.Testing.TestLabMailbox.ValidateIdentity(entryId, source.StoreId);
                             item = source.StoreId.Length > 0
                                 ? outlookSession.GetItemFromID(
                                     entryId,
@@ -171,6 +172,7 @@ namespace Scribble.Outlook
                         }
                         catch
                         {
+                            if (Scribble.Testing.TestLabMailbox.Enabled) throw;
                             item = outlookSession.GetItemFromID(entryId);
                         }
 
@@ -229,7 +231,9 @@ namespace Scribble.Outlook
                 dynamic application = _outlookApplication;
                 session = application.Session;
                 dynamic outlookSession = session;
-                folder = outlookSession.GetDefaultFolder(folderKind);
+                folder = Scribble.Testing.TestLabMailbox.Enabled
+                    ? Scribble.Testing.TestLabMailbox.GetFolder(_outlookApplication, folderKind)
+                    : outlookSession.GetDefaultFolder(folderKind);
                 dynamic outlookFolder = folder;
                 items = outlookFolder.Items;
 

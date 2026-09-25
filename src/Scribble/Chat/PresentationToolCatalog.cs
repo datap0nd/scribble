@@ -35,7 +35,7 @@ namespace Scribble.Chat
             return new List<ChatToolDefinition>
             {
                 new ChatToolDefinition { type = "function", function = new ChatToolFunctionDefinition {
-                    name = InspectSlide, description = "Inspect one slide with stable presentation/slide/shape IDs, fingerprint, paginated structured content, tables, chart data, notes, geometry, styling, groups and unsupported objects. Read every page before editing. Optional preview is a private PNG, never a presentation export.",
+                    name = InspectSlide, description = "Inspect one slide with stable presentation/slide/shape IDs, fingerprint, paginated structured content, tables, chart data, notes, geometry, styling, groups and unsupported objects. The first page also provides citation_text: decoded, verbatim native text and table rows for exact source claims; copy from it rather than reconstructing a passage from JSON. Read every page before editing. Optional preview is a private PNG, never a presentation export; the host may omit it for native-chart slides when Office cannot render them safely.",
                     parameters = ToolSchema.Build(new Dictionary<string, object> {
                         { "index", ToolSchema.Integer("1-based position from list_slides; response provides stable slide_id.", 1, 1000) },
                         { "offset", ToolSchema.Integer("Character offset; follow next_offset until null.", 0, int.MaxValue) },
@@ -126,7 +126,7 @@ namespace Scribble.Chat
                                     { "type", "array" },
                                     {
                                         "description",
-                                        "REQUIRED in every call, including the first plan/briefs call: a nonempty batch of slide content objects to add, in order. Plan IDs and briefs alone do not create slides."
+                                        "REQUIRED in every call, including the first plan/briefs call: a nonempty JSON array of slide content objects to add, in order. Do not encode this array as quoted text. Supply one or two complete slides per call, then continue with the remaining plan IDs. Plan IDs and briefs alone do not create slides."
                                     },
                                     { "minItems", 1 },
                                     { "items", SlideSchema() }
@@ -170,9 +170,10 @@ namespace Scribble.Chat
                         "layout",
                         ToolSchema.String(
                             "Host-owned Samsung layout: " + string.Join(", ", SamsungSlideDesign.Layouts) +
-                            ". Use two_pane for commentary plus two tables; annotated_chart for two charts; " +
-                            "visual_grid for up to four data/commentary blocks. roadmap and stack use cards. " +
-                            "action_list uses card heading, description points and final timing point. No pixel positions.")
+                            ". Use scorecard for a numeric headline with two to four KPI cards; two_pane for commentary plus two tables; annotated_chart for two charts; " +
+                            "visual_grid for up to four data/commentary blocks. Use cards for two to four concise evidence boundaries such as coverage, integrity and methodology; never put a long audit report into one bullet panel. roadmap and stack use cards. " +
+                            "action_list uses card heading, description points and final timing point. " +
+                            "Cover, divider and closing accept title and subtitle only; omit all other content fields except sources/footnote. No pixel positions.")
                     },
                     {
                         "bullets",
@@ -181,11 +182,10 @@ namespace Scribble.Chat
                             { "type", "array" },
                             {
                                 "description",
-                                "Body bullet lines, at most " +
+                                "Explanatory body lines only, at most " +
                                 PresentationDraftWriter
                                     .MaxBulletsPerSlide +
-                                ". Keep them short and " +
-                                "action-oriented. Indent " +
+                                ". Never use bullets for a numeric analytical summary or a four-plus-line methodology report; use scorecard, chart, table or structured cards instead. Keep permitted bullets short and action-oriented. Indent " +
                                 "sub-bullets with two leading " +
                                 "spaces per level. On an 'agenda' " +
                                 "slide these are the agenda items."
@@ -207,10 +207,10 @@ namespace Scribble.Chat
                     { "secondary_table", TableSchema() },
                     { "secondary_chart", ChartSchema() },
                     { "takeaway", ToolSchema.String("Evidence-backed conclusion in the bottom blue banner. At most two lines.") },
-                    { "caption", ToolSchema.String("Short table caption; use with matrix/table layouts.") },
+                    { "caption", ToolSchema.String("Short audience-facing table caption for matrix/table layouts only. Omit for charts. Never describe native editability, series count, axis checks, category formatting or other build mechanics.") },
                     { "sources", ToolSchema.String("Exact source references and supporting evidence for claims and numbers. Retained in speaker notes.") },
                     { "evidence", ToolSchema.String("Verbatim source excerpt supporting this slide, copied from user input or a read-tool receipt. Required for data slides. Preserve numbers and units. Never invent an excerpt.") },
-                    { "source_spans", new Dictionary<string, object> { { "type", "array" }, { "items", new { type = "string" } }, { "description", "Host-issued span_id values from read_task_sources. Prefer these over hand-copying evidence. Multiple passages may support a slide; the host resolves their original text." } } },
+                    { "source_spans", new Dictionary<string, object> { { "type", "array" }, { "items", new { type = "string" } }, { "description", "Exact host-issued IDs returned in source_spans by search/read receipts, or rediscovered with read_task_sources. Required for factual non-cover slides when source material was read. Copy IDs exactly; never place prose here. Multiple spans may support one slide and the host resolves their original text." } } },
                     { "image_names", new Dictionary<string, object> { { "type", "array" }, { "items", new { type = "string" } }, { "description", "Up to four exact filenames of images explicitly attached to this task. Use source figures for visual layouts; never supply file paths or URLs. Charts with available data should use editable chart fields." } } },
                     { "highlight_rows", new Dictionary<string, object> { { "type", "array" }, { "items", new { type = "integer", minimum = 1 } }, { "description", "1-based primary table rows or chart categories supporting the action title. The host draws red frames." } } },
                     {
@@ -223,9 +223,9 @@ namespace Scribble.Chat
                     {
                         "footnote",
                         ToolSchema.String(
-                            "Optional small source note shown at " +
+                            "Optional source citation or material caveat shown at " +
                             "the bottom left (e.g. 'GSCM S/I Biz " +
-                            "Plan'). On a 'cover' slide this is the " +
+                            "Plan'). Do not repeat chart construction or validation instructions here. On a 'cover' slide this is the " +
                             "metadata line instead (e.g. 'MENA / " +
                             "Nov 2024').")
                     }
@@ -244,9 +244,7 @@ namespace Scribble.Chat
                     "description",
                     "Optional strategy grid: at most " +
                     PresentationDraftWriter.MaxCards +
-                    " side-by-side numbered cards. Use it for " +
-                    "objectives, pillars, or initiatives - e.g. " +
-                    "'3 strategy objectives to drive in 2025'."
+                    " structured cards. With layout scorecard, use two to four cards, put the metric label in heading, the large display value in the first point, and short comparison context in later points. With cards, roadmap or stack, use the cards for objectives, pillars, initiatives or evidence boundaries."
                 },
                 {
                     "items",
@@ -268,7 +266,7 @@ namespace Scribble.Chat
                                         "At most " +
                                         PresentationDraftWriter
                                             .MaxCardPoints +
-                                        " short sub-points."
+                                        " short sub-points. For scorecard, the first point is the prominent KPI value."
                                     },
                                     {
                                         "items",
@@ -366,6 +364,8 @@ namespace Scribble.Chat
                     "Include it whenever the user asks for a " +
                     "chart, graph, or visualization of data - " +
                     "e.g. 'do a bar chart with this in a slide'. " +
+                    "When the user says primary values only, include " +
+                    "exactly one primary series and omit every secondary measure. " +
                     "At most " +
                     PresentationDraftWriter.MaxChartCategories +
                     " categories and " +
@@ -389,7 +389,7 @@ namespace Scribble.Chat
                         },
                         {
                             "title",
-                            ToolSchema.String("Chart title.")
+                            ToolSchema.String("Audience-facing measure, period and unit. Never mention zero-baseline checks, native editability, series count or other chart-building mechanics.")
                         },
                         {
                             "categories",
@@ -416,7 +416,8 @@ namespace Scribble.Chat
                                 {
                                     "description",
                                     "Named series of numbers, one " +
-                                    "value per category."
+                                    "value per category. Primary values only " +
+                                    "means this array has exactly one series."
                                 },
                                 {
                                     "items",
@@ -477,8 +478,10 @@ namespace Scribble.Chat
         public static IEnumerable<ChatToolDefinition> RevisionDefinitions()
         {
             if (!PresentationRevisionAcceptance.Enabled) yield break;
+            var kinds = new List<string> { "replace_text", "table_cell", "move", "delete", "replace_slide", "insert", "annotate", "notes_append" };
+            if (PresentationRevisionAcceptance.SupportsCharts) kinds.Add("chart_point");
             var operation = ToolSchema.Build(new Dictionary<string, object> {
-                { "kind", new { type = "string", @enum = new[] { "replace_text", "table_cell", "chart_point", "move", "delete", "replace_slide", "insert", "annotate", "notes_append" } } },
+                { "kind", new { type = "string", @enum = kinds.ToArray() } },
                 { "slide_id", ToolSchema.Integer("Stable ID from inspect_slide.", 1, int.MaxValue) },
                 { "fingerprint", ToolSchema.String("Exact current fingerprint from inspect_slide.") },
                 { "shape_id", ToolSchema.Integer("Stable target shape ID, required for text/table/chart edits.", 1, int.MaxValue) },
@@ -494,7 +497,8 @@ namespace Scribble.Chat
                 { "new_index", ToolSchema.Integer("Final 1-based position for an explicitly requested move.", 1, 1000) }
             }, "kind", "slide_id", "fingerprint");
             yield return new ChatToolDefinition { type = "function", function = new ChatToolFunctionDefinition {
-                name = ReviseSlides, description = "Revise explicitly requested existing slides in place. Inspect complete structured content first. Stage and review changes before applying; preserve unrelated content. No saving or export. Native session recovery is available. " + SamsungAuthoringPolicy.Instructions,
+                name = ReviseSlides, description = "Revise explicitly requested existing slides in place. Inspect complete structured content first. Stage and review changes before applying; preserve unrelated content. No saving or export. Native session recovery is available. " +
+                    (PresentationRevisionAcceptance.SupportsCharts ? "" : "This build certifies chartless revisions only. Do not supply chart operations or chart-bearing replacement/insert plans. The workbook-backed copy pilot reconstructs its chart separately. ") + SamsungAuthoringPolicy.Instructions,
                 parameters = ToolSchema.Build(new Dictionary<string, object> {
                     { "presentation_id", ToolSchema.String("Exact live presentation ID returned by inspect_slide.") },
                     { "operations", SamsungWorkflowSchema.List(operation) }

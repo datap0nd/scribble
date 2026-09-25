@@ -65,13 +65,12 @@ namespace Scribble.Chat
                     name = WriteDraftDocument,
                     description =
                         "Write drafted text into Word for the user to " +
-                        "review. By default (placement 'end') it is " +
-                        "appended to the document the user is working " +
-                        "on; 'selection' replaces the current " +
-                        "selection; 'new_document' opens a separate " +
-                        "document headed [Scribble draft]. Nothing is " +
-                        "ever saved and Word's Undo reverts changes " +
-                        "to the active document. Call it only after " +
+                        "review. By default, 'new_document' opens a " +
+                        "separate document headed [Scribble draft]. " +
+                        "Only when the user explicitly asks to edit " +
+                        "their open document may 'end' append there, " +
+                        "or 'selection' replace selected text. " +
+                        "Nothing is ever saved. Call it only after " +
                         "gathering the needed context, as the only " +
                         "tool call in that response.",
                     parameters = ToolSchema.Build(
@@ -86,12 +85,12 @@ namespace Scribble.Chat
                             {
                                 "placement",
                                 ToolSchema.String(
-                                    "Where the text goes: 'end' " +
-                                    "(default, appended to the active " +
-                                    "document), 'selection' (replaces " +
-                                    "the current selection), or " +
-                                    "'new_document' (separate marked " +
-                                    "draft).")
+                                    "Where the text goes: 'new_document' " +
+                                    "(default separate marked draft), " +
+                                    "'end' (append to active document), " +
+                                    "or 'selection' (replace selection). " +
+                                    "The latter two require explicit " +
+                                    "user intent to edit that document.")
                             },
                             {
                                 "body",

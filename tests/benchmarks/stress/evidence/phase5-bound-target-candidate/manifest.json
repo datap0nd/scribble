@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "execution_kind": "native_disposable_phase5_excel_binding",
+  "commit": "54ba4d9dd0eb7b075f94a0372add24813b613957",
+  "ci_run": 36004759291,
+  "assembly_sha256": "cf4d6d6247c960f39b0df95b3092b20dd032558526e84c7296e08767a2b3d4e4",
+  "target_binding_passed": true,
+  "merged_preflight_candidate": {
+    "commit": "3208b4bc57fe543de525c53366ef0f6a769ee27e",
+    "ci_run": 36005648027,
+    "assembly_sha256": "36e26481b87b2984954e65dd70273c5d9d116cf444f2c380362b802ae423485c",
+    "target_binding_passed": true,
+    "merged_preflight_passed": true,
+    "focused_offline_binding_and_limit_tests_passed": true
+  },
+  "prepermission_preflight_candidate": {
+    "commit": "609b11b15e492c750bd3c3297bafd8921ed84fa2",
+    "ci_run": 36006715750,
+    "assembly_sha256": "5ad2ad7167172b99522312f6b279e9ca11fa479d9bea1fadb67b23c569b034fa",
+    "target_binding_passed": true,
+    "merged_preflight_passed": true,
+    "merged_preflight_permission_unconsumed": true,
+    "focused_offline_binding_and_limit_tests_passed": true
+  },
+  "in_process_rollback_candidate": {
+    "commit": "6fb483c3f19fac4c70eae4eb4f2a864a6c9adccd",
+    "ci_run": 36008231688,
+    "assembly_sha256": "2e4d95478d7f9f588ede3c6fc2e393740875f6ca7e5f3b8e2480994792de1b04",
+    "target_binding_passed": true,
+    "merged_preflight_passed": true,
+    "native_syntax_failure_rollback_passed": true,
+    "restart_reconciliation_passed": false
+  },
+  "formula_error_rollback_candidate": {
+    "commit": "e2a7d84175ac35e7a41fd79f1a57ee4b76bcc0c7",
+    "ci_run": 36008735048,
+    "assembly_sha256": "64e1f6b2dd432b33a29801a8e2b553846ffa08cdfca4b6336f67a98ea863d721",
+    "target_binding_passed": true,
+    "merged_preflight_passed": true,
+    "native_syntax_failure_rollback_passed": true,
+    "native_formula_error_rollback_passed": true,
+    "restart_reconciliation_passed": false
+  },
+  "restart_recovery_candidate": {
+    "commit": "32d46bc026e7a25224598d35d415e00469635840",
+    "ci_run": 36011129279,
+    "assembly_sha256": "af27d08a78eb81adb173eb26ac9a21d3a483dab6d9791c34111a337b460ab12f",
+    "native_report_sha256": "3a5149c3a68cc73d6a697cedd490c6c87a4795f6dc803e6c7dd0192e42b4ea52",
+    "target_binding_passed": true,
+    "merged_preflight_passed": true,
+    "in_process_rollback_passed": true,
+    "formula_error_rollback_passed": true,
+    "formula_address_passed": true,
+    "before_image_recovery_passed": true,
+    "full_acceptance_passed": false
+  },
+  "before_image_recovery_passed": true,
+  "full_acceptance_passed": false,
+  "note": "Disposable native workbooks only. The cell edit and draft sheet stayed on the request-bound workbook after an active-window switch. A renamed bound sheet failed before permission. Formula addresses recalculated. Interrupted writes reconciled before, partial, applied, and user-edit states; a date-formatted numeric before-image was restored on partial write. Full Phase 5 acceptance remains pending the latest CI gate and support-scope review."
+}

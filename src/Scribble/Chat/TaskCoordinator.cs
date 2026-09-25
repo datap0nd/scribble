@@ -87,6 +87,10 @@ namespace Scribble.Chat
         public int ContextBudget { get; set; } = 96000;
         public int RequiredPresentationSlides { get; set; }
         public int SamsungWorkflowVersion { get; set; }
+        // Zero means the task predates the typed reliability path. New-path
+        // tasks set this explicitly and never reinterpret a legacy journal.
+        public int AnalysisContractVersion { get; set; }
+        public string AnalysisArtifactEvidenceId { get; set; }
         public bool PresentationReviewRequired { get; set; }
         public string PresentationReviewReceipt { get; set; }
         public bool UserPaused { get; set; }
@@ -107,7 +111,10 @@ namespace Scribble.Chat
         {
             var expected = new HashSet<string>(ExpectedSourceIds, StringComparer.Ordinal);
             var covered = Batches.SelectMany(b => b.CoveredSourceIds).ToArray();
+            string pilotCopyStatus;
             return (!PresentationReviewRequired || !string.IsNullOrEmpty(PresentationReviewReceipt)) &&
+                (!HostData.TryGetValue("pilot_copy_status", out pilotCopyStatus) ||
+                 pilotCopyStatus == "complete") &&
                 EnumerationComplete && Outstanding().Length == 0 &&
                 (RequiredPresentationSlides == 0 || covered.Count(id => id.StartsWith("ppt:", StringComparison.Ordinal)) >= RequiredPresentationSlides) &&
                 covered.Distinct(StringComparer.Ordinal).Count() == covered.Length &&

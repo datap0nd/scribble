@@ -28,8 +28,9 @@ namespace Scribble.Outlook
                 dynamic application = _outlookApplication;
                 session = application.Session;
                 dynamic outlookSession = session;
-                folder = outlookSession.GetDefaultFolder(
-                    SentItemsFolder);
+                folder = Scribble.Testing.TestLabMailbox.Enabled
+                    ? Scribble.Testing.TestLabMailbox.GetFolder(_outlookApplication, SentItemsFolder)
+                    : outlookSession.GetDefaultFolder(SentItemsFolder);
                 dynamic sentFolder = folder;
                 items = sentFolder.Items;
                 dynamic sentItems = items;
