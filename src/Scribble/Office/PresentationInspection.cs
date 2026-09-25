@@ -279,6 +279,17 @@ namespace Scribble.Office
                 new JavaScriptSerializer { MaxJsonLength = int.MaxValue }
                     .Serialize(Normalized(Capture(slide, false))));
         }
+        internal static string CopyContentWithoutChartFingerprint(
+            object slide)
+        {
+            var capture = Capture(slide, false);
+            capture["shapes"] = ((List<object>)capture["shapes"])
+                .Where(shape => !((Dictionary<string, object>)shape)
+                    .ContainsKey("chart")).ToList();
+            return Scribble.Chat.TaskCheckpointStore.Fingerprint(
+                new JavaScriptSerializer { MaxJsonLength = int.MaxValue }
+                    .Serialize(Normalized(capture)));
+        }
         private static object Normalized(object value)
         {
             var map = value as IDictionary<string, object>;

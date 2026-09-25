@@ -58,17 +58,22 @@ namespace Scribble.Office
                 string.IsNullOrWhiteSpace(owner))
                 throw new InvalidOperationException(
                     "REVISION_COPY_SCOPE: The pilot requires six source slides and a task owner.");
-            // On the native acceptance workstation, both clipboard paste and
-            // InsertFromFile terminated PowerPoint in chart.dll when copying
-            // a saved PP01 chart page. Fail before starting a draft. The
-            // source package fingerprint still detects chart changes, but it
-            // cannot make PowerPoint's copy operation safe.
-            if (!string.IsNullOrEmpty(Convert.ToString(source.Path)) &&
-                Enumerable.Range(1, 6).Any(index =>
-                    PresentationInspection.ContainsNativeChart(
-                        (object)source.Slides[index])))
+            // Whole-slide clipboard paste and InsertFromFile both terminated
+            // this Office build in chart.dll for a saved PP01 deck. The pilot
+            // may copy its one chart page only as ordinary shapes, then
+            // reconstruct the chart from the bound workbook. All other
+            // saved-chart geometry fails closed before a draft is opened.
+            var fileBacked = !string.IsNullOrEmpty(
+                Convert.ToString(source.Path));
+            var chartPages = Enumerable.Range(1, 6).Where(index =>
+                PresentationInspection.ContainsNativeChart(
+                    (object)source.Slides[index])).ToArray();
+            var chartlessPage = fileBacked && chartPages.Length == 1 &&
+                chartPages[0] == 2 &&
+                LastShapeIsOnlyChart((object)source.Slides[2]);
+            if (fileBacked && chartPages.Length > 0 && !chartlessPage)
                 throw new InvalidOperationException(
-                    "REVISION_COPY_NATIVE_CHART_UNSUPPORTED: This saved chart deck cannot be safely copied on the validated Office build.");
+                    "REVISION_COPY_NATIVE_CHART_UNSUPPORTED: The pilot supports one last-position chart on slide 2.");
             var order = Enumerable.Range(1, 6).Select(index =>
                 (int)source.Slides[index].SlideID).ToArray();
             dynamic draft = null;
@@ -104,19 +109,31 @@ namespace Scribble.Office
                             PresentationInspection.Fingerprint(
                                 (object)original);
                     stage = "copy_source_slide_" + index;
-                    dynamic copy = PresentationInspection.CopySlideTo(
-                        (object)original, (object)draft);
+                    var shapes = new Dictionary<int, int>();
+                    dynamic copy = chartlessPage && index == 2
+                        ? CopyWithoutNativeChart((object)original,
+                            (object)draft, shapes)
+                        : PresentationInspection.CopySlideTo(
+                            (object)original, (object)draft);
                     if ((int)draft.Slides.Count != index)
                         throw new InvalidOperationException(
                             "REVISION_COPY_INCOMPLETE: Native paste changed the page count.");
-                    if (PresentationInspection.CopyContentFingerprint(
-                            (object)copy) != fingerprint)
+                    var preserved = chartlessPage && index == 2
+                        ? PresentationInspection
+                            .CopyContentWithoutChartFingerprint(
+                                (object)original) ==
+                          PresentationInspection
+                            .CopyContentWithoutChartFingerprint(
+                                (object)copy)
+                        : PresentationInspection.CopyContentFingerprint(
+                            (object)copy) == fingerprint;
+                    if (!preserved)
                         throw new InvalidOperationException(
                             "REVISION_COPY_PRESERVATION: The copied page differs from the source.");
                     result._slideIds[originalId] = (int)copy.SlideID;
-                    var shapes = new Dictionary<int, int>();
-                    MapShapes((object)original.Shapes,
-                        (object)copy.Shapes, shapes);
+                    if (!(chartlessPage && index == 2))
+                        MapShapes((object)original.Shapes,
+                            (object)copy.Shapes, shapes);
                     result._shapeIds[originalId] = shapes;
                 }
                 for (var index = 1; index <= 6; index++)
@@ -338,9 +355,12 @@ namespace Scribble.Office
                     "REVISION_CHART_SOURCE_CHANGED");
             dynamic slide = PresentationInspection.FindSlide(Draft,
                 draftSlideId);
-            dynamic oldChart = PresentationInspection.FindShape(
-                (object)slide, draftShapeId);
-            if ((int)oldChart.HasChart == 0 ||
+            dynamic oldChart = draftShapeId < 0 ? null :
+                PresentationInspection.FindShape((object)slide,
+                    draftShapeId);
+            if (((object)oldChart == null &&
+                    !_sourceChartFingerprints.ContainsKey(sourceSlideId)) ||
+                ((object)oldChart != null && (int)oldChart.HasChart == 0) ||
                 left < 0 || top < 0 || width < 100 || height < 100 ||
                 left + width > (float)((dynamic)Draft).PageSetup.SlideWidth ||
                 top + height > (float)((dynamic)Draft).PageSetup.SlideHeight)
@@ -381,7 +401,7 @@ namespace Scribble.Office
                 throw new InvalidOperationException(
                     "REVISION_CHART_RECREATE_NOT_NATIVE");
             var replacementId = (int)replacement.Id;
-            try { oldChart.Delete(); }
+            try { if ((object)oldChart != null) oldChart.Delete(); }
             catch
             {
                 replacement.Delete();
@@ -523,6 +543,58 @@ namespace Scribble.Office
                     throw new InvalidOperationException(
                         "REVISION_COPY_SOURCE_CHANGED: chart " + id);
             }
+        }
+
+        private static bool LastShapeIsOnlyChart(object slide)
+        {
+            dynamic page = slide;
+            var count = (int)page.Shapes.Count;
+            var charts = 0;
+            for (var index = 1; index <= count; index++)
+            {
+                dynamic shape = page.Shapes[index];
+                if ((int)shape.HasChart == 0) continue;
+                charts++;
+                if (index != count) return false;
+            }
+            return charts == 1;
+        }
+
+        private static object CopyWithoutNativeChart(object sourceSlide,
+            object destinationPresentation, Dictionary<int, int> map)
+        {
+            dynamic original = sourceSlide;
+            dynamic destination = destinationPresentation;
+            var before = (int)destination.Slides.Count;
+            dynamic copy = destination.Slides.Add(before + 1, 12);
+            PresentationInspection.RestoreCopiedBackground(sourceSlide,
+                (object)copy);
+            copy.SlideShowTransition.Hidden =
+                original.SlideShowTransition.Hidden;
+            for (var index = 1; index <= (int)original.Shapes.Count;
+                index++)
+            {
+                dynamic shape = original.Shapes[index];
+                var sourceId = (int)shape.Id;
+                if ((int)shape.HasChart != 0)
+                {
+                    map.Add(sourceId, -1);
+                    continue;
+                }
+                shape.Copy();
+                dynamic pasted = copy.Shapes.Paste();
+                if ((int)pasted.Count != 1)
+                    throw new InvalidOperationException(
+                        "REVISION_COPY_SHAPE_MAPPING_FAILED");
+                dynamic clone = pasted[1];
+                clone.Name = shape.Name;
+                if ((int)clone.Type != (int)shape.Type ||
+                    (int)clone.ZOrderPosition != index)
+                    throw new InvalidOperationException(
+                        "REVISION_COPY_SHAPE_MAPPING_FAILED");
+                map.Add(sourceId, (int)clone.Id);
+            }
+            return (object)copy;
         }
 
         private static void MapShapes(object sourceShapes,
