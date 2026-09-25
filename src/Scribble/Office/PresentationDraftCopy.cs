@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Web.Script.Serialization;
@@ -59,6 +58,18 @@ namespace Scribble.Office
                 string.IsNullOrWhiteSpace(owner))
                 throw new InvalidOperationException(
                     "REVISION_COPY_SCOPE: The pilot requires six source slides and a task owner.");
+            // On the native acceptance workstation, both clipboard paste and
+            // InsertFromFile terminated PowerPoint in chart.dll when copying
+            // a saved PP01 chart page. Fail before starting a draft. The
+            // source package fingerprint still detects chart changes, but it
+            // cannot make PowerPoint's copy operation safe.
+            if ((int)source.Saved != 0 &&
+                !string.IsNullOrEmpty(Convert.ToString(source.Path)) &&
+                Enumerable.Range(1, 6).Any(index =>
+                    PresentationInspection.ContainsNativeChart(
+                        (object)source.Slides[index])))
+                throw new InvalidOperationException(
+                    "REVISION_COPY_NATIVE_CHART_UNSUPPORTED: This saved chart deck cannot be safely copied on the validated Office build.");
             var order = Enumerable.Range(1, 6).Select(index =>
                 (int)source.Slides[index].SlideID).ToArray();
             dynamic draft = null;
@@ -80,21 +91,6 @@ namespace Scribble.Office
                 result._draftId = draftId;
                 result._sourceName = Convert.ToString(source.Name);
                 result._sourceFullName = Convert.ToString(source.FullName);
-                // PowerPoint's clipboard paste can terminate chart.dll when
-                // a native chart slide is copied. A saved source can be read
-                // into the new, unsaved draft without writing the source or
-                // exporting its charts. Verify each inserted page below.
-                var importSavedSource = (int)source.Saved != 0 &&
-                    File.Exists(result._sourceFullName);
-                if (importSavedSource)
-                {
-                    stage = "import_saved_source";
-                    var inserted = (int)draft.Slides.InsertFromFile(
-                        result._sourceFullName, 0, 1, 6);
-                    if (inserted != 6 || (int)draft.Slides.Count != 6)
-                        throw new InvalidOperationException(
-                            "REVISION_COPY_INCOMPLETE: File import changed the page count.");
-                }
                 for (var index = 1; index <= 6; index++)
                 {
                     stage = "inspect_source_slide_" + index;
@@ -109,10 +105,8 @@ namespace Scribble.Office
                             PresentationInspection.Fingerprint(
                                 (object)original);
                     stage = "copy_source_slide_" + index;
-                    dynamic copy = importSavedSource
-                        ? draft.Slides[index]
-                        : PresentationInspection.CopySlideTo(
-                            (object)original, (object)draft);
+                    dynamic copy = PresentationInspection.CopySlideTo(
+                        (object)original, (object)draft);
                     if ((int)draft.Slides.Count != index)
                         throw new InvalidOperationException(
                             "REVISION_COPY_INCOMPLETE: Native paste changed the page count.");
