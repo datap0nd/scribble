@@ -19,6 +19,8 @@ namespace Scribble.Office
             new Dictionary<int, Dictionary<int, int>>();
         private readonly Dictionary<int, string> _sourceContent =
             new Dictionary<int, string>();
+        private readonly Dictionary<int, string> _sourceChartFingerprints =
+            new Dictionary<int, string>();
         private readonly Dictionary<int, string> _draftFingerprints =
             new Dictionary<int, string>();
         private string _owner;
@@ -28,13 +30,16 @@ namespace Scribble.Office
 
         internal sealed class State
         {
-            public int Version { get; set; } = 2;
+            public int Version { get; set; } = 3;
             public string Owner { get; set; }
             public string DraftId { get; set; }
             public string SourceName { get; set; }
             public string SourceFullName { get; set; }
             public int[] SourceOrder { get; set; }
             public Dictionary<string, string> SourceContent { get; set; }
+            public Dictionary<string, string> SourceChartFingerprints {
+                get; set;
+            }
             public Dictionary<string, int> SlideIds { get; set; }
             public Dictionary<string, Dictionary<string, int>> ShapeIds { get; set; }
             public Dictionary<string, string> DraftFingerprints { get; set; }
@@ -79,6 +84,11 @@ namespace Scribble.Office
                     var fingerprint = PresentationInspection
                         .CopyContentFingerprint((object)original);
                     result._sourceContent[originalId] = fingerprint;
+                    if (PresentationInspection.ContainsNativeChart(
+                            (object)original))
+                        result._sourceChartFingerprints[originalId] =
+                            PresentationInspection.Fingerprint(
+                                (object)original);
                     dynamic copy = PresentationInspection.CopySlideTo(
                         (object)original, (object)draft);
                     if ((int)draft.Slides.Count != index)
@@ -124,6 +134,9 @@ namespace Scribble.Office
                     SourceOrder = _sourceOrder,
                     SourceContent = _sourceContent.ToDictionary(pair =>
                         pair.Key.ToString(), pair => pair.Value),
+                    SourceChartFingerprints = _sourceChartFingerprints
+                        .ToDictionary(pair => pair.Key.ToString(),
+                            pair => pair.Value),
                     SlideIds = _slideIds.ToDictionary(pair =>
                         pair.Key.ToString(), pair => pair.Value),
                     ShapeIds = _shapeIds.ToDictionary(pair =>
@@ -149,13 +162,17 @@ namespace Scribble.Office
                 throw new InvalidOperationException(
                     "REVISION_COPY_RECEIPT_INVALID");
             }
-            if (state == null || state.Version != 2 ||
+            if (state == null || state.Version != 3 ||
                 string.IsNullOrWhiteSpace(state.Owner) ||
                 string.IsNullOrWhiteSpace(state.DraftId) ||
                 string.IsNullOrWhiteSpace(state.SourceFullName) ||
                 state.SourceOrder == null || state.SourceOrder.Length != 6 ||
                 state.SourceContent == null ||
                 state.SourceContent.Count != 6 ||
+                state.SourceChartFingerprints == null ||
+                state.SourceChartFingerprints.Any(pair =>
+                    !state.SourceContent.ContainsKey(pair.Key) ||
+                    string.IsNullOrWhiteSpace(pair.Value)) ||
                 state.SlideIds == null || state.SlideIds.Count != 6 ||
                 state.ShapeIds == null || state.ShapeIds.Count != 6 ||
                 state.DraftFingerprints == null ||
@@ -216,6 +233,9 @@ namespace Scribble.Office
             };
             foreach (var pair in state.SourceContent)
                 result._sourceContent.Add(int.Parse(pair.Key), pair.Value);
+            foreach (var pair in state.SourceChartFingerprints)
+                result._sourceChartFingerprints.Add(int.Parse(pair.Key),
+                    pair.Value);
             foreach (var pair in state.SlideIds)
                 result._slideIds.Add(int.Parse(pair.Key), pair.Value);
             foreach (var pair in state.ShapeIds)
@@ -474,6 +494,15 @@ namespace Scribble.Office
                         (object)slide) != _sourceContent[id])
                     throw new InvalidOperationException(
                         "REVISION_COPY_SOURCE_CHANGED");
+                string chartFingerprint;
+                var hadChart = _sourceChartFingerprints.TryGetValue(id,
+                    out chartFingerprint);
+                if (PresentationInspection.ContainsNativeChart(
+                        (object)slide) != hadChart ||
+                    (hadChart && PresentationInspection.Fingerprint(
+                        (object)slide) != chartFingerprint))
+                    throw new InvalidOperationException(
+                        "REVISION_COPY_SOURCE_CHANGED: chart " + id);
             }
         }
 
