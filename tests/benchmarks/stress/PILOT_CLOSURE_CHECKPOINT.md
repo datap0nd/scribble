@@ -73,6 +73,15 @@ new-fixture attempts likewise exited during chart COM fingerprinting, while
 the package-only fingerprint passed. Do not run the paid pilot while the
 generic receipt and fake-endpoint route are unverified.
 
+An independent [PowerPoint COM chart issue](https://github.com/sbroenne/mcp-server-powerpoint/issues/31)
+reports cascading `0x800706BA` failures after repeated embedded-Excel-backed
+chart operations in one session, even after reducing lingering Excel host
+processes. That is a useful architectural lead, not proof of this PC's exact
+fault. Our event log identifies `chart.dll`; the current process inventory
+shows only the user's open Excel workbook, so we will not kill Excel processes
+as a workaround. The native harness now reports a PowerPoint exit explicitly
+instead of dropping its report during cleanup.
+
 Phase 4 has no approved reference pages. The hosted Qwen pilot has not run
 and no new paid calls have been made. The future merge path remains PR #20
 into `codex/development`, then a few consolidated PRs from this branch,

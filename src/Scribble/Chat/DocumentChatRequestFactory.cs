@@ -190,9 +190,6 @@ namespace Scribble.Chat
                         hasKoreanWorkbook,
                         translateToKorean,
                         pilotRepair) +
-                        (pilotRepair ?
-                            " For this six-slide workbook-backed repair, inspect the saved source deck completely, then call revise_slides on its inspected presentation ID. The host copies the source into an unsaved draft, applies your bounded text/table/content patches there, and recreates its one native chart from the attached workbook. Do not request chart reflow, multiple full-slide replacements, slide insertion, deletion, or reordering. The source deck and workbook remain unchanged. The draft needs visual review before completion." :
-                            string.Empty) +
                         BuildTopicBoundary(activeTopic) +
                         PromptHelperTool.SystemInstruction
                 },
@@ -326,9 +323,16 @@ namespace Scribble.Chat
             {
                 if (hostKind == "powerpoint")
                 {
-                    boundary += " " + SamsungPresentationReview.AuthoringInstructions;
+                    if (!pilotRepair)
+                        boundary += " " + SamsungPresentationReview.AuthoringInstructions;
                     if (PresentationRevisionAcceptance.Enabled && !pilotRepair) boundary += " The revise_slides tool supports explicitly requested in-place edits to presentation content, including slide deletion/reordering. File deletion, file moving, saving and export remain unavailable. Use inspect_slide first. Revert Scribble changes restores only the latest unchanged revision batch in this Office session.";
                 }
+                if (pilotRepair && !PresentationRevisionAcceptance.Enabled)
+                    return boundary +
+                        " The six-slide copy repair is unavailable because this PowerPoint build lacks a current native acceptance receipt. Explain this local gate; do not claim an output was produced.";
+                if (pilotRepair)
+                    return boundary +
+                        " For this six-slide workbook-backed repair, inspect all six saved source slides and the attached workbook completely. Make one exclusive revise_slides call on the inspected presentation ID. The host copies the source into an unsaved draft, applies your bounded content patches and one fourth-page replacement there, repairs known table/font styling from native Office state, and recreates its one native chart from the attached workbook. Do not request chart reflow, multiple full-slide replacements, slide insertion, deletion, or reordering. The source deck and workbook remain unchanged. The draft needs human visual review before sharing. Never claim it was saved.";
                 var selectionInstruction = hasExcelSelection
                     ? " For a one-to-one transformation of the attached " +
                       "Excel selection, including translation, use " +

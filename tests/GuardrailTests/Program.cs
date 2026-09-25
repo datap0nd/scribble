@@ -7081,6 +7081,26 @@ namespace GuardrailTests
                 "The email draft tool must state that sending is impossible.");
         }
 
+        private static string PilotCopyPolicyError(
+            params Dictionary<string, object>[] operations)
+        {
+            var policy = typeof(DocumentDraftHost).GetMethod(
+                "ValidatePilotCopyOperations",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert(policy != null,
+                "The PP01 pilot operation policy is missing.");
+            try
+            {
+                policy.Invoke(null, new object[] { operations,
+                    4, 2, 100 });
+                return string.Empty;
+            }
+            catch (TargetInvocationException error)
+            {
+                return error.InnerException?.Message ?? error.Message;
+            }
+        }
+
         private static void DocumentFactoryGatesDraftTools()
         {
             var unauthorized = DocumentChatRequestFactory.Create(
@@ -7156,7 +7176,9 @@ namespace GuardrailTests
                         tool.function.name == "add_draft_slides") &&
                     Convert.ToString(((ChatCompletionInputMessage)
                         repair.messages[0]).content).Contains(
-                            "copies the source into an unsaved draft"),
+                            PresentationRevisionAcceptance.Enabled
+                                ? "copies the source into an unsaved draft"
+                                : "lacks a current native acceptance receipt"),
                     "The workbook-backed PP01 pilot must expose the copy-and-patch route.");
                 if (!repair.tools.Any(tool => tool.function.name ==
                         PresentationToolCatalog.ReviseSlides))
@@ -7173,6 +7195,26 @@ namespace GuardrailTests
                     "Create a repaired draft of the source deck into exactly 6 output slides; preserve the original slides.");
                 Assert(repairTask.State.RequiredPresentationSlides == 6,
                     "The PP01 copy route lost its six-slide task count.");
+                var replacement = new Dictionary<string, object>
+                {
+                    { "kind", "replace_slide" },
+                    { "slide_id", 4 }
+                };
+                Assert(PilotCopyPolicyError(replacement,
+                        replacement).StartsWith(
+                            "ANALYSIS_MULTI_PAGE_REPLACEMENT_UNSUPPORTED") &&
+                    PilotCopyPolicyError(new Dictionary<string, object>
+                    {
+                        { "kind", "chart_point" },
+                        { "slide_id", 2 }, { "shape_id", 100 }
+                    }).StartsWith("ANALYSIS_CHART_REFLOW_UNSUPPORTED") &&
+                    PilotCopyPolicyError(new Dictionary<string, object>
+                    {
+                        { "kind", "shape_geometry" },
+                        { "slide_id", 2 }, { "shape_id", 100 }
+                    }).StartsWith("ANALYSIS_GEOMETRY_UNSUPPORTED") &&
+                    PilotCopyPolicyError(replacement) == string.Empty,
+                    "The PP01 pilot must reject unsupported chart, geometry, and multi-page edits before copying.");
             }
             finally
             {
