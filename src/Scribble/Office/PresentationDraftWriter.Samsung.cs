@@ -371,7 +371,8 @@ namespace Scribble.Office
             if (draft.Layout == "cards" && count == 3 &&
                 draft.Cards.All(card => card.Points.Count == 2 &&
                     card.Heading.Length <= 28 &&
-                    card.Points.All(point => point.Length <= 95) &&
+                    card.Points[0].Length <= 70 &&
+                    card.Points[1].Length <= 60 &&
                     !Regex.IsMatch(card.Points[0], @"^\s*[\d,.%]+\s*$")))
             {
                 // Three short evidence pairs read as a sequence rather than
