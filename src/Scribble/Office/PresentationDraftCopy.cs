@@ -421,8 +421,13 @@ namespace Scribble.Office
             var consecutive = 0;
             for (var attempt = 0; attempt < 8; attempt++)
             {
-                var current = PresentationInspection.Fingerprint(
-                    (object)slide);
+                // Chart COM enumeration has terminated chart.dll on this
+                // Office build after native chart creation. The owned,
+                // unsaved draft may be copied to a bounded temp package;
+                // that package includes this slide and its related chart
+                // and embedded workbook parts.
+                var current = PresentationInspection
+                    .PackageSlideFingerprint((object)slide);
                 consecutive = current == previous ? consecutive + 1 : 1;
                 previous = current;
                 if (attempt >= 4 && consecutive >= 3)
@@ -432,7 +437,7 @@ namespace Scribble.Office
             if (stable == null)
                 throw new InvalidOperationException(
                     "REVISION_CHART_FINGERPRINT_UNSTABLE");
-            _draftFingerprints[draftSlideId] = stable;
+            _draftFingerprints[draftSlideId] = "pkg:" + stable;
             VerifySource();
             VerifyDraft();
             return facts;
@@ -457,8 +462,12 @@ namespace Scribble.Office
                 string expected;
                 if (_slideIds[_sourceOrder[index - 1]] != id ||
                     !_draftFingerprints.TryGetValue(id, out expected) ||
-                    PresentationInspection.Fingerprint((object)slide) !=
-                        expected)
+                    (expected.StartsWith("pkg:",
+                        StringComparison.Ordinal)
+                        ? "pkg:" + PresentationInspection
+                            .PackageSlideFingerprint((object)slide)
+                        : PresentationInspection.Fingerprint(
+                            (object)slide)) != expected)
                     throw new InvalidOperationException(
                         "REVISION_COPY_DRAFT_CHANGED: slide " + id);
             }

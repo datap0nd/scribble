@@ -7148,7 +7148,7 @@ namespace GuardrailTests
                 var repair = DocumentChatRequestFactory.Create(
                     "test-model", "powerpoint", "Presentation: Deck1",
                     new List<ChatTurn>(),
-                    "Repair the source deck into exactly 6 output slides; preserve the original slides.",
+                    "Create a repaired draft of the source deck into exactly 6 output slides; preserve the original slides.",
                     true,
                     new[] { new ExternalContextDocument("WB01",
                         "Attached workbook", "C:\\pilot\\WB01.xlsx") });
@@ -7170,7 +7170,7 @@ namespace GuardrailTests
                     });
                 var repairTask = new TaskContextManager(repair,
                     "powerpoint",
-                    "Repair the source deck into exactly 6 output slides; preserve the original slides.");
+                    "Create a repaired draft of the source deck into exactly 6 output slides; preserve the original slides.");
                 Assert(repairTask.State.RequiredPresentationSlides == 6,
                     "The PP01 copy route lost its six-slide task count.");
             }
