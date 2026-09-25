@@ -46,8 +46,10 @@ The source ledger was read into a separate analysis draft. Revenue and margin tr
 finally {
     if ($null -ne $draft) {
         try { $draft.Close(0) } catch { }
+        try { [void][System.Runtime.InteropServices.Marshal]::FinalReleaseComObject($draft) } catch { }
     }
     if ($null -ne $word) {
         try { $word.Quit(0) } catch { }
+        try { [void][System.Runtime.InteropServices.Marshal]::FinalReleaseComObject($word) } catch { }
     }
 }

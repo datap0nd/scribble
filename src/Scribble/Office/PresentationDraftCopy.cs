@@ -63,8 +63,7 @@ namespace Scribble.Office
             // a saved PP01 chart page. Fail before starting a draft. The
             // source package fingerprint still detects chart changes, but it
             // cannot make PowerPoint's copy operation safe.
-            if ((int)source.Saved != 0 &&
-                !string.IsNullOrEmpty(Convert.ToString(source.Path)) &&
+            if (!string.IsNullOrEmpty(Convert.ToString(source.Path)) &&
                 Enumerable.Range(1, 6).Any(index =>
                     PresentationInspection.ContainsNativeChart(
                         (object)source.Slides[index])))
