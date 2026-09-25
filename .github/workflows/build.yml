@@ -359,6 +359,18 @@ jobs:
             "/DAppVersion=2.0.${{ github.run_number }}" `
             "installer\Scribble.iss"
 
+      - name: Build opt-in analysis pilot installer
+        if: startsWith(github.head_ref, 'codex/reliability-') || startsWith(github.ref_name, 'codex/reliability-')
+        shell: pwsh
+        run: |
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" `
+            "/DAppVersion=2.0.${{ github.run_number }}" `
+            "/DAnalysisPilotPayload=1" `
+            "installer\Scribble.iss"
+          if (-not (Test-Path "artifacts\ScribblePilotSetup.exe")) {
+            throw "The opt-in pilot installer was not produced."
+          }
+
       - name: Sign the installer
         if: env.SIGNING_PFX != ''
         shell: pwsh
@@ -436,6 +448,14 @@ jobs:
             throw "Installed add-in DLL was not found."
           }
           $installedDir = Split-Path $installedDll
+          foreach ($pilotOnly in @("PDFtoImage.dll", "SkiaSharp.dll",
+              "x86\pdfium.dll", "x64\pdfium.dll", "arm64\pdfium.dll",
+              "x86\libSkiaSharp.dll", "x64\libSkiaSharp.dll",
+              "arm64\libSkiaSharp.dll")) {
+            if (Test-Path (Join-Path $installedDir $pilotOnly)) {
+              throw "Ordinary installer deployed pilot renderer: $pilotOnly"
+            }
+          }
           foreach ($legacyFile in @(
             ($legacyNamespace + ".dll"),
             ($legacyBrand + "BrowserHost.exe"),
@@ -886,6 +906,33 @@ jobs:
             if (Test-Path $gone) {
               throw "Uninstall left browser component path behind: $gone"
             }
+          }
+
+      - name: Smoke-test opt-in pilot renderer payload
+        if: startsWith(github.head_ref, 'codex/reliability-') || startsWith(github.ref_name, 'codex/reliability-')
+        shell: pwsh
+        run: |
+          $installer = Resolve-Path "artifacts\ScribblePilotSetup.exe"
+          $installedDir = Join-Path $env:LOCALAPPDATA "Programs\Scribble"
+          $install = Start-Process -FilePath $installer `
+            -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" `
+            -WindowStyle Hidden -Wait -PassThru
+          if ($install.ExitCode -ne 0) {
+            throw "Pilot install failed: $($install.ExitCode)"
+          }
+          foreach ($pilotOnly in @("PDFtoImage.dll", "SkiaSharp.dll",
+              "x86\pdfium.dll", "x64\pdfium.dll", "arm64\pdfium.dll",
+              "x86\libSkiaSharp.dll", "x64\libSkiaSharp.dll",
+              "arm64\libSkiaSharp.dll")) {
+            if (-not (Test-Path (Join-Path $installedDir $pilotOnly))) {
+              throw "Pilot installer omitted renderer: $pilotOnly"
+            }
+          }
+          $uninstall = Start-Process -FilePath (Join-Path $installedDir "unins000.exe") `
+            -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" `
+            -WindowStyle Hidden -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0) {
+            throw "Pilot uninstall failed: $($uninstall.ExitCode)"
           }
 
       - name: Record candidate identity
