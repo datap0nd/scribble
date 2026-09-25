@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "reviewer_kind": "agent",
+  "assembly_sha256": "b729d04a4e7c1064c79a620d404650ad0dc36b0dbbdf74c98a2a3823d1b96c8e",
+  "render_width_px": 1400,
+  "checks": [
+    {
+      "page": "PP01 slide 2",
+      "render_sha256": "48d0077597e469b86b41181fed6f145946d96f9566ff24091b444d26995dd46f",
+      "verdict": "approve",
+      "reason": "Both series names are legible and separated below the chart without colliding with labels or footer."
+    },
+    {
+      "page": "D2P2",
+      "render_sha256": "de88658294418c075f180082bb8e0dc600fc40bcd3aa2918060e6270b9ee24f3",
+      "verdict": "approve",
+      "reason": "May and June are readable at the full-size render and clearly map to the two blue series."
+    },
+    {
+      "page": "D2P3",
+      "render_sha256": "479d9b3d2c046bb3d83e7285dc4cb2956bed6c65e6c9fd676b97e9a93fa082b1",
+      "verdict": "approve",
+      "reason": "April, May, and June are legible and distinguishable below the plot."
+    }
+  ],
+  "pp01_other_pages": "Slides 1 and 3-6 were inspected at full size in the previous native attempt and their 1400px render hashes are unchanged in this binary.",
+  "scope": "Agent visual preflight only. No human approval, model-review calibration, or broad visual acceptance is claimed."
+}

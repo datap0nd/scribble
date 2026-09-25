@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Web.Script.Serialization;
 using Scribble.Chat;
 using Scribble.Office;
@@ -13,6 +15,10 @@ namespace GuardrailTests
     // Explicit workstation run. Only disposable unsaved workbooks are used.
     internal static class Phase5NativeExcelAcceptance
     {
+        [DllImport("user32.dll")]
+        private static extern uint GetWindowThreadProcessId(IntPtr window,
+            out uint processId);
+
         internal static int Run(string reportPath)
         {
             dynamic app = null;
@@ -21,10 +27,21 @@ namespace GuardrailTests
             var passed = false;
             var failure = string.Empty;
             var json = new JavaScriptSerializer();
+            var existingExcel = new HashSet<int>(Process.GetProcessesByName("EXCEL")
+                .Select(process => process.Id));
             try
             {
                 app = Activator.CreateInstance(Type.GetTypeFromProgID(
                     "Excel.Application", true));
+                uint appProcessId;
+                GetWindowThreadProcessId(new IntPtr((int)app.Hwnd),
+                    out appProcessId);
+                if (existingExcel.Contains((int)appProcessId))
+                {
+                    app = null;
+                    throw new InvalidOperationException(
+                        "NATIVE_EXCEL_SESSION_NOT_OWNED");
+                }
                 app.Visible = true;
                 app.DisplayAlerts = false;
                 source = app.Workbooks.Add();

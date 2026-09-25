@@ -49,6 +49,7 @@ namespace Scribble.Office
         public const float TableHeaderSize = 11f;
         public const float TableBodySize = 10f;
         public const float ChartLabelSize = 9f;
+        public const float ChartLegendSize = 14f;
         public const float ChartTitleSize = 10f;
         public const float FootnoteSize = 7f;
 

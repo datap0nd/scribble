@@ -322,7 +322,14 @@ namespace Scribble.Office
             dynamic deck = page.Parent;
             var scale = (float)deck.PageSetup.SlideWidth / SamsungSlideDesign.Width;
             if (Math.Abs(scale - 1) > .001) PresentationDraftWriter.ScaleSamsungPage(composed[0], scale);
-            return PresentationDraftWriter.DrawSamsungPage(target, composed[0], Guid.NewGuid().ToString("N"), displaySlideNumber);
+            var output = PresentationDraftWriter.DrawSamsungPage(target, composed[0], Guid.NewGuid().ToString("N"), displaySlideNumber);
+            // PowerPoint increments automatic shape names across the temporary
+            // and live decks, even when their rendered content is identical.
+            // Assign names to generated shapes so the reviewed slide has the
+            // same native identity when it is applied to the live deck.
+            for (var i = 1; i <= (int)page.Shapes.Count; i++)
+                page.Shapes[i].Name = "Scribble Revision Shape " + i;
+            return output;
         }
         private static void Apply(object original, object target, Dictionary<string, object> operation)
         {
@@ -470,7 +477,16 @@ namespace Scribble.Office
                 {
                     dynamic original = item.Original; dynamic backup = item.Backup;
                     for (var i = (int)original.Shapes.Count; i >= 1; i--) original.Shapes[i].Delete();
-                    if ((int)backup.Shapes.Count > 0) { backup.Shapes.Range().Copy(); original.Shapes.Paste(); }
+                    if ((int)backup.Shapes.Count > 0)
+                    {
+                        backup.Shapes.Range().Copy(); original.Shapes.Paste();
+                        // Paste allocates new automatic names. Restore the
+                        // source names as well as its shape content.
+                        for (var i = 1; i <= (int)backup.Shapes.Count; i++)
+                            original.Shapes[i].Name = "Scribble Recovery " + Guid.NewGuid().ToString("N");
+                        for (var i = 1; i <= (int)backup.Shapes.Count; i++)
+                            original.Shapes[i].Name = backup.Shapes[i].Name;
+                    }
                     original.FollowMasterBackground = 0; original.Background.Fill.Solid();
                     original.Background.Fill.ForeColor.RGB = backup.Background.Fill.ForeColor.RGB;
                     original.Background.Fill.Transparency = backup.Background.Fill.Transparency;
@@ -550,7 +566,9 @@ namespace Scribble.Office
                     }
                     ValidateNativeGeometry(item.Original);
                     if (PresentationInspection.ContentFingerprint(item.Original) != PresentationInspection.ContentFingerprint(item.Staged))
+                    {
                         throw new InvalidOperationException("REVISION_LIVE_MISMATCH: The live result differs from the reviewed staging slide.");
+                    }
                     item.After = PresentationInspection.Fingerprint(item.Original); item.Applied = true;
                     journal("applied:" + item.SlideId);
                 }

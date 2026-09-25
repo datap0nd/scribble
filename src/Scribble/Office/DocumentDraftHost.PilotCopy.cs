@@ -122,7 +122,7 @@ namespace Scribble.Office
                 if (combined.Length > 24)
                     throw new InvalidOperationException(
                         "PILOT_COPY_OPERATIONS_INVALID");
-                ((dynamic)copy.Draft).Activate();
+                ((dynamic)copy.Draft).Windows.Item(1).Activate();
                 var draftCall = new ChatToolCall
                 {
                     id = call.id + ":pilot",
