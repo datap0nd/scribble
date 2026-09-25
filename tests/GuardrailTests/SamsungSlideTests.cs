@@ -133,18 +133,22 @@ namespace GuardrailTests
                 new { heading = "June cost", points = new[] { "EUR 36,714", "Flat versus May" } },
                 new { heading = "Gross margin", points = new[] { "55.76%", "1.32 points below May" } } } } }));
             var scorecardJson = json.Serialize(scorecard);
-            if (!scorecardJson.Contains("EUR 82,992") || !scorecardJson.Contains("\"size\":34") || !scorecardJson.Contains("#596674"))
+            if (!scorecardJson.Contains("EUR 82,992") || !scorecardJson.Contains("\"size\":55") || !scorecardJson.Contains("#596674"))
                 throw new Exception("The scorecard recipe lost its prominent KPI hierarchy.");
             var scorecardPage = ((IEnumerable)json.DeserializeObject(scorecardJson)).Cast<Dictionary<string, object>>().Single();
             var scorecardElements = ((IEnumerable)scorecardPage["elements"]).Cast<Dictionary<string, object>>().ToArray();
             if (scorecardElements.Count(e => Convert.ToString(e["fill"]) ==
-                    SamsungSlideDesign.Blue && Convert.ToDouble(e["height"]) > 150) != 1 ||
+                    SamsungSlideDesign.Navy && Convert.ToDouble(e["height"]) > 150) != 1 ||
                 !scorecardElements.Any(e => Convert.ToString(e["text"]) ==
                     "EUR 82,992" && Convert.ToString(e["color"]) == "#FFFFFF"))
-                throw new Exception("The scorecard needs one readable focal metric rather than equally weighted gray panels.");
+                throw new Exception("The scorecard needs one readable focal metric beside exact secondary measures.");
             if (scorecardElements.Where(e => new[] { "JUNE REVENUE", "JUNE COST", "GROSS MARGIN" }.Contains(Convert.ToString(e["text"])))
                     .Any(e => Convert.ToDouble(e["size"]) < 14))
                 throw new Exception("Scorecard KPI labels must meet the native 14-point body minimum.");
+            if (new[] { "EUR 36,714", "55.76%", "2.95% below May",
+                    "Flat versus May", "1.32 points below May" }.Any(value =>
+                    scorecardElements.Count(e => Convert.ToString(e["text"]) == value) != 1))
+                throw new Exception("The scorecard must retain every planned measure and source context.");
             var pairedScorecard = SamsungPresentationReview.InspectPlan(
                 json.Serialize(new[] { new {
                     title = "June operating snapshot", layout = "scorecard",
@@ -175,6 +179,32 @@ namespace GuardrailTests
                         SamsungSlideDesign.Gray &&
                     Convert.ToDouble(element["height"]) > 100))
                 throw new Exception("A two-measure scorecard must keep both exact values and contexts in one native panel.");
+            var fourScorecard = SamsungPresentationReview.InspectPlan(
+                json.Serialize(new[] { new {
+                    title = "June dashboard", layout = "scorecard",
+                    cards = new[] {
+                        new { heading = "Revenue", points = new[] { "82,992", "EUR" } },
+                        new { heading = "Cost", points = new[] { "36,714", "EUR" } },
+                        new { heading = "Gross profit", points = new[] { "46,278", "EUR" } },
+                        new { heading = "Margin", points = new[] { "55.76%", "Aggregate rate" } } }
+                } }));
+            var fourPage = ((IEnumerable)json.DeserializeObject(
+                json.Serialize(fourScorecard)))
+                .Cast<Dictionary<string, object>>().Single();
+            var fourElements = ((IEnumerable)fourPage["elements"])
+                .Cast<Dictionary<string, object>>().ToArray();
+            if (fourElements.Count(element =>
+                    Convert.ToString(element["fill"]) ==
+                        SamsungSlideDesign.Navy &&
+                    Convert.ToDouble(element["height"]) > 150) != 1 ||
+                new[] { "82,992", "36,714", "46,278", "55.76%" }
+                    .Any(value => fourElements.Count(element =>
+                        Convert.ToString(element["text"]) == value) != 1) ||
+                fourElements.Any(element =>
+                    Convert.ToString(element["fill"]) ==
+                        SamsungSlideDesign.Gray &&
+                    Convert.ToDouble(element["height"]) > 100))
+                throw new Exception("A four-measure scorecard must retain each exact metric in its editorial layout.");
             var statement = SamsungPresentationReview.InspectPlan(
                 json.Serialize(new[] { new {
                     title = "What the ledger supports", layout = "cards",

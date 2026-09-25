@@ -405,6 +405,66 @@ namespace Scribble.Office
                 }
                 return;
             }
+            if (draft.Layout == "scorecard" && (count == 3 || count == 4) &&
+                draft.Cards.All(card => card.Points.Count == 2 &&
+                    card.Heading.Length <= 32 && card.Points[1].Length <= 46 &&
+                    Regex.IsMatch(card.Points[0],
+                        @"^(?:(?:EUR|USD|GBP|AED)\s+)?[+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?%?$")))
+            {
+                // Use the plan's first measure as a visual lead, without
+                // changing the order, values, or relative factual meaning.
+                var leadWidth = region.Width * .43f;
+                var lead = new RectangleF(region.X, region.Y + 10f,
+                    leadWidth, region.Height - 20f);
+                elements.Add(TextElement("", lead,
+                    fill: SamsungSlideDesign.Navy));
+                elements.Add(TextElement("", new RectangleF(lead.X,
+                    lead.Y, lead.Width, 5f),
+                    fill: SamsungSlideDesign.SoftBlue));
+                var leadCard = draft.Cards[0];
+                elements.Add(TextElement(leadCard.Heading.ToUpperInvariant(),
+                    new RectangleF(lead.X + 24f, lead.Y + 31f,
+                        lead.Width - 48f, 42f),
+                    17, 15, "Arial", true, null, "#B8D8FF"));
+                elements.Add(TextElement(leadCard.Points[0],
+                    new RectangleF(lead.X + 24f, lead.Y + 84f,
+                        lead.Width - 48f, 85f),
+                    55, 36, MetoTheme.TitleFont, true, null, "#FFFFFF"));
+                elements.Add(TextElement(leadCard.Points[1],
+                    new RectangleF(lead.X + 24f, lead.Bottom - 47f,
+                        lead.Width - 48f, 28f),
+                    16, 14, "Arial", false, null, "#B8D8FF"));
+                var rightX = lead.Right + 28f;
+                var rightWidth = region.Right - rightX;
+                var rowHeight = lead.Height / (count - 1);
+                for (var index = 1; index < count; index++)
+                {
+                    var card = draft.Cards[index];
+                    var top = lead.Y + (index - 1) * rowHeight;
+                    if (index > 1)
+                        elements.Add(TextElement("", new RectangleF(
+                            rightX, top, rightWidth, 1f),
+                            fill: "#D7DDE3"));
+                    elements.Add(TextElement(card.Heading.ToUpperInvariant(),
+                        new RectangleF(rightX, top + 5f, rightWidth,
+                            count == 3 ? 27f : 23f),
+                        count == 3 ? 16 : 14, 13, "Arial", true,
+                        null, "#596674"));
+                    elements.Add(TextElement(card.Points[0],
+                        new RectangleF(rightX, top + (count == 3 ? 38f : 27f),
+                            rightWidth, count == 3 ? 48f : 38f),
+                        count == 3 ? 35 : 30, 25,
+                        MetoTheme.TitleFont, true, null,
+                        SamsungSlideDesign.Blue));
+                    elements.Add(TextElement(card.Points[1],
+                        new RectangleF(rightX, top +
+                            (count == 3 ? 89f : 61f), rightWidth,
+                            count == 3 ? 25f : 19f),
+                        count == 3 ? 15 : 13, 12, "Arial", false,
+                        null, "#202A35"));
+                }
+                return;
+            }
             if (draft.Layout == "cards" && count == 2 &&
                 draft.Cards.All(card => card.Points.Count == 1 &&
                     Regex.IsMatch(card.Points[0],
