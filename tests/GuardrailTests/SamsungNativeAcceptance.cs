@@ -27,7 +27,8 @@ namespace GuardrailTests
         internal static int Run(string reportPath)
         {
             dynamic app = null; dynamic deck = null;
-            var temps = new List<object>(); var passed = false; var failure = "";
+            var temps = new List<object>(); var passed = false;
+            var powerpointExited = false; var failure = "";
             try
             {
                 app = Activator.CreateInstance(Type.GetTypeFromProgID("PowerPoint.Application", true));
@@ -152,23 +153,41 @@ namespace GuardrailTests
                 }
                 passed = true;
             }
-            catch (Exception ex) { failure = ex.ToString(); }
+            catch (Exception ex)
+            {
+                failure = ex.ToString();
+                powerpointExited = PowerPointExited(ex);
+            }
             finally
             {
                 foreach (dynamic temp in temps) try { temp.Close(); } catch { }
-                if (deck != null) try { deck.Close(); } catch { }
-                if (app != null) try
+                if ((object)deck != null) try { deck.Close(); }
+                    catch (Exception ex) { powerpointExited |= PowerPointExited(ex); }
+                if ((object)app != null) try
                 {
                     if ((int)app.Presentations.Count == 0) app.Quit();
                 }
-                catch { }
+                catch (Exception ex) { powerpointExited |= PowerPointExited(ex); }
             }
             var report = new { execution_kind = "native", policy = SamsungAuthoringPolicy.Version, assembly_sha256 = PresentationRevisionAcceptance.AssemblyHash(),
                 revision_passed = passed, preservation_passed = passed, rollback_passed = passed, all_operations_passed = passed, full_acceptance_passed = false,
+                powerpoint_exited = powerpointExited,
                 note = "Native operation, preservation, rollback and concurrency checks only. Model/UI workflows and real Samsung fidelity require additional acceptance.", failure };
             var json = new JavaScriptSerializer().Serialize(report);
             File.WriteAllText(reportPath, json); Console.WriteLine(json);
             return passed ? 0 : 1;
+        }
+
+        private static bool PowerPointExited(Exception error)
+        {
+            for (var current = error; current != null;
+                current = current.InnerException)
+            {
+                var code = unchecked((uint)current.HResult);
+                if (code == 0x800706BA || code == 0x800706BE ||
+                    code == 0x80010108) return true;
+            }
+            return false;
         }
     }
 }
