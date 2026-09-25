@@ -62,6 +62,7 @@
     <Compile Include="AnalysisDocumentCompilerTests.cs" />
     <Compile Include="AnalysisReviewContractTests.cs" />
     <Compile Include="AnalysisNativeAcceptance.cs" />
+    <Compile Include="SavedChartFingerprintNativeAcceptance.cs" />
     <Compile Include="TestBenchRegressionTests.cs" />
     <Compile Include="StressKitTests.cs" />
     <Compile Include="StressGradingTests.cs" />
