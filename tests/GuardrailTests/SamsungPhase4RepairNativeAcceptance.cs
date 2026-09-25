@@ -34,6 +34,8 @@ namespace GuardrailTests
             dynamic draft = null;
             object revision = null;
             var failure = string.Empty;
+            var stage = "open_source";
+            var powerpointExited = false;
             var passed = false;
             var chartRecreated = false;
             var draftConflictRejected = false;
@@ -68,6 +70,7 @@ namespace GuardrailTests
                         (float)commentary.Height + 1)
                     throw new InvalidOperationException(
                         "PP01_SOURCE_DEFECTS_NOT_PRESENT");
+                stage = "create_draft_copy";
                 var copy = InvokeStatic(CopyType, "Create",
                     (object)app, (object)source,
                     "phase4-pp01-native");
@@ -108,6 +111,7 @@ namespace GuardrailTests
                         "PP01_DRAFT_CONFLICT_NOT_REJECTED");
                 copy = InvokeStatic(CopyType, "Recover", (object)app,
                     beforeTamper);
+                stage = "recreate_chart";
                 var chartFacts = (WorkbookMonthlyChartFacts.Result)
                     Invoke(copy, CopyType,
                         "RecreateSalesChartFromWorkbook",
@@ -206,13 +210,16 @@ namespace GuardrailTests
                         .TextRange.Font.Size },
                     { "size", 27f }
                 });
+                stage = "bind_patch_operations";
                 var bound = (object[])Invoke(copy, CopyType,
                     "BindOperations", (object)operations.ToArray());
                 revision = Activator.CreateInstance(RevisionType,
                     BindingFlags.Instance | BindingFlags.NonPublic,
                     null, new[] { (object)draft }, null);
+                stage = "stage_patch";
                 Invoke(revision, RevisionType, "Stage", (object)app,
                     bound);
+                stage = "commit_patch";
                 Invoke(revision, RevisionType, "Commit",
                     (Action<string>)(status => { }));
                 Invoke(copy, CopyType, "AcceptRevision", revision);
@@ -220,6 +227,7 @@ namespace GuardrailTests
                     Convert.ToString(Invoke(copy, CopyType, "Snapshot")));
                 Invoke(copy, CopyType, "VerifySource");
                 Invoke(copy, CopyType, "VerifyDraft");
+                stage = "readback_patch";
                 for (var index = 1; index <= 6; index++)
                 {
                     if (index == 4) continue;
@@ -273,6 +281,7 @@ namespace GuardrailTests
                             (object)source.Slides[index])))
                         throw new InvalidOperationException(
                             "PP01_DRAFT_NOTES_CHANGED");
+                stage = "export_candidate";
                 draft.SaveCopyAs(candidate);
                 draft.SaveAs(pdf, 32);
                 draft.SaveCopyAs(afterExport);
@@ -291,7 +300,12 @@ namespace GuardrailTests
                 Invoke(copy, CopyType, "VerifySource");
                 passed = true;
             }
-            catch (Exception error) { failure = error.ToString(); }
+            catch (Exception error)
+            {
+                powerpointExited = PowerPointExited(error);
+                failure = (powerpointExited ? "POWERPOINT_EXITED at " + stage +
+                    ": " : stage + ": ") + error;
+            }
             finally
             {
                 if (revision != null) try
@@ -300,9 +314,9 @@ namespace GuardrailTests
                         false);
                 }
                 catch { }
-                if (draft != null) try { draft.Close(); } catch { }
-                if (source != null) try { source.Close(); } catch { }
-                if (app != null) try
+                if ((object)draft != null) try { draft.Close(); } catch { }
+                if ((object)source != null) try { source.Close(); } catch { }
+                if ((object)app != null) try
                 {
                     if ((int)app.Presentations.Count == 0) app.Quit();
                 }
@@ -324,6 +338,7 @@ namespace GuardrailTests
                 pdf_review_artifact = passed ? pdf : null,
                 chart_recreated_from_workbook = chartRecreated,
                 draft_conflict_rejected = draftConflictRejected,
+                powerpoint_exited = powerpointExited,
                 independent_grader_passed = false,
                 visual_approved = false,
                 full_acceptance_passed = false,
@@ -336,6 +351,18 @@ namespace GuardrailTests
                 .Serialize(report));
             return passed && sourceUnchanged &&
                 workbookUnchanged ? 0 : 1;
+        }
+
+        private static bool PowerPointExited(Exception error)
+        {
+            for (var current = error; current != null;
+                current = current.InnerException)
+            {
+                var code = unchecked((uint)current.HResult);
+                if (code == 0x800706BA || code == 0x800706BE ||
+                    code == 0x80010108) return true;
+            }
+            return false;
         }
 
         private static Dictionary<string, object> Geometry(object slide,
