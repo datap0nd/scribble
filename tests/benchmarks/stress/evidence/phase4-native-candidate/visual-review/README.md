@@ -1,5 +1,13 @@
 # Phase 4 visual review packet
 
+The delegated [agent review of 25 September](agent-review-2026-09-25.json)
+inspected all 18 full-size PNGs and verified their hashes: 16 pass the visual
+baseline and two need changes. D2P2 and D2P3 rely on undersized legends to
+distinguish their monthly series. Enlarge or directly label those series before
+using these pages as an approved baseline. This is an identified agent judgment;
+the historical owner-verdict file below remains unchanged. It does not certify
+source facts, native editability, or output from the current delivery candidate.
+
 The contact sheet shows all 18 reference pages. Inspect each linked full-size
 PNG in `../reference/` before assigning a verdict. `verdicts.json` records
 the SHA-256 of each exact PNG and leaves every verdict `pending` until the
