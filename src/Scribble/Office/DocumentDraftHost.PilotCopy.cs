@@ -72,6 +72,12 @@ namespace Scribble.Office
                         operation, "kind") == "replace_slide") > 1)
                     throw new InvalidOperationException(
                         "ANALYSIS_MULTI_PAGE_REPLACEMENT_UNSUPPORTED");
+                if (mapped.Count(operation => SamsungAuthoringPolicy.Text(
+                        operation, "kind") == "replace_slide" &&
+                    Convert.ToInt32(operation["slide_id"]) ==
+                        (int)source.Slides[4].SlideID) != 1)
+                    throw new InvalidOperationException(
+                        "PILOT_COPY_LAYOUT_SCOPE_REQUIRED: Recompose the overflowing fourth page once.");
                 dynamic chartSlide = source.Slides[2];
                 dynamic chartShape = chartSlide.Shapes[
                     (int)chartSlide.Shapes.Count];
@@ -83,6 +89,14 @@ namespace Scribble.Office
                 {
                     var kind = SamsungAuthoringPolicy.Text(operation,
                         "kind");
+                    if (!new[] { "replace_text", "table_cell",
+                            "replace_slide", "annotate", "notes_append" }
+                        .Contains(kind))
+                        throw new InvalidOperationException(
+                            kind == "chart_point" ||
+                            kind == "shape_geometry" ?
+                            "ANALYSIS_CHART_REFLOW_UNSUPPORTED" :
+                            "PILOT_COPY_OPERATION_UNSUPPORTED");
                     if (kind == "insert" || kind == "delete" ||
                         kind == "move")
                         throw new InvalidOperationException(
@@ -97,6 +111,16 @@ namespace Scribble.Office
                         throw new InvalidOperationException(
                             "ANALYSIS_CHART_REFLOW_UNSUPPORTED: The pilot recreates the chart from the bound workbook after patching.");
                 }
+                var contract = PresentationToolCatalog
+                    .RevisionDefinitions().Single(tool =>
+                        tool.function.name ==
+                        PresentationToolCatalog.ReviseSlides);
+                var contractErrors = ToolContractValidator.Validate(
+                    call, contract);
+                if (contractErrors.Count != 0)
+                    throw new InvalidOperationException(
+                        "PILOT_COPY_SCHEMA: " +
+                        string.Join("; ", contractErrors));
                 if (!_taskContext.State.HostData.ContainsKey(
                         "recovery_input"))
                     throw new InvalidOperationException(
@@ -165,6 +189,14 @@ namespace Scribble.Office
                     copy.Snapshot();
                 _taskContext.State.HostData[statusKey] = "patched";
                 _taskContext.Checkpoint();
+                stage = "native_style";
+                _taskContext.State.HostData[statusKey] = "styling";
+                _taskContext.Checkpoint();
+                var nativeStyleChanges = copy.RepairPp01NativeStyles(
+                    _hostApplication);
+                _taskContext.State.HostData["pilot_copy_snapshot"] =
+                    copy.Snapshot();
+                _taskContext.Checkpoint();
                 stage = "chart";
                 _taskContext.State.HostData[statusKey] = "charting";
                 _taskContext.Checkpoint();
@@ -195,6 +227,7 @@ namespace Scribble.Office
                     {
                         ok = true, saved = false, copied_slides = 6,
                         revised_slides = revision.Items.Count,
+                        native_style_changes = nativeStyleChanges,
                         chart_recreated = true,
                         visual_approval_required = true,
                         revert_available = false

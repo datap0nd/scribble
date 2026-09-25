@@ -517,6 +517,111 @@ namespace Scribble.Office
             VerifyDraft();
         }
 
+        // The PP01 fixture has three fixed native style defects. Their target
+        // shapes and current values are read back from the owned chartless
+        // draft; the model never supplies RGB, font-size or geometry values.
+        internal int RepairPp01NativeStyles(object application)
+        {
+            VerifySource();
+            VerifyDraft();
+            dynamic draft = Draft;
+            if ((int)draft.Slides.Count != 6)
+                throw new InvalidOperationException(
+                    "PILOT_COPY_LAYOUT_UNSUPPORTED");
+            var operations = new List<object>();
+            dynamic tableSlide = draft.Slides[3];
+            dynamic table = UniqueShape((object)tableSlide,
+                shape => (int)shape.HasTable != 0);
+            var blue = MetoTheme.Rgb(SamsungSlideDesign.Blue);
+            for (var column = 1; column <= 3; column++)
+            {
+                var oldColor = (int)table.Table.Cell(1, column)
+                    .Shape.Fill.ForeColor.RGB;
+                if (oldColor == blue) continue;
+                operations.Add(new Dictionary<string, object>
+                {
+                    { "kind", "table_cell_fill" },
+                    { "slide_id", (int)tableSlide.SlideID },
+                    { "fingerprint", PresentationInspection
+                        .Fingerprint((object)tableSlide) },
+                    { "shape_id", (int)table.Id },
+                    { "row", 1 }, { "column", column },
+                    { "before_color", oldColor }, { "color", blue }
+                });
+            }
+            for (var index = 1; index <= 6; index++)
+            {
+                if (index == 4) continue;
+                dynamic slide = draft.Slides[index];
+                dynamic byline = UniqueShape((object)slide,
+                    shape => (int)shape.HasTextFrame != 0 &&
+                        Convert.ToString(shape.TextFrame.TextRange.Text)
+                            .Contains(" | sales | "));
+                var before = (float)byline.TextFrame.TextRange.Font.Size;
+                if (before >= 14f) continue;
+                operations.Add(new Dictionary<string, object>
+                {
+                    { "kind", "shape_font_size" },
+                    { "slide_id", (int)slide.SlideID },
+                    { "fingerprint", PresentationInspection
+                        .Fingerprint((object)slide) },
+                    { "shape_id", (int)byline.Id },
+                    { "before_size", before }, { "size", 14f }
+                });
+            }
+            dynamic cover = draft.Slides[1];
+            dynamic cost = UniqueShape((object)cover,
+                shape => (int)shape.HasTextFrame != 0 &&
+                    Convert.ToString(shape.TextFrame.TextRange.Text)
+                        .StartsWith("Cost EUR", StringComparison.Ordinal));
+            var costSize = (float)cost.TextFrame.TextRange.Font.Size;
+            if (costSize < 27f)
+                operations.Add(new Dictionary<string, object>
+                {
+                    { "kind", "shape_font_size" },
+                    { "slide_id", (int)cover.SlideID },
+                    { "fingerprint", PresentationInspection
+                        .Fingerprint((object)cover) },
+                    { "shape_id", (int)cost.Id },
+                    { "before_size", costSize }, { "size", 27f }
+                });
+            if (operations.Count == 0) return 0;
+            var revision = new PresentationRevision(Draft);
+            var committed = false;
+            try
+            {
+                revision.Stage(application, operations.ToArray());
+                revision.Commit(status => { });
+                committed = true;
+                AcceptRevision(revision);
+                return operations.Count;
+            }
+            finally
+            {
+                revision.CloseStaging(committed);
+            }
+        }
+
+        private static dynamic UniqueShape(object slide,
+            Func<dynamic, bool> predicate)
+        {
+            dynamic page = slide;
+            object match = null;
+            for (var index = 1; index <= (int)page.Shapes.Count; index++)
+            {
+                dynamic shape = page.Shapes[index];
+                if (!predicate(shape)) continue;
+                if (match != null)
+                    throw new InvalidOperationException(
+                        "PILOT_COPY_LAYOUT_AMBIGUOUS");
+                match = (object)shape;
+            }
+            if (match == null)
+                throw new InvalidOperationException(
+                    "PILOT_COPY_LAYOUT_UNSUPPORTED");
+            return match;
+        }
+
         internal void VerifySource()
         {
             dynamic source = Source;

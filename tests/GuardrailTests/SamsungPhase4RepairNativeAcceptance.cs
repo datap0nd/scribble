@@ -115,20 +115,6 @@ namespace GuardrailTests
                 copy = InvokeStatic(CopyType, "Recover", (object)app,
                     beforeTamper);
                 var operations = new List<object>();
-                for (var column = 1; column <= 3; column++)
-                    operations.Add(new Dictionary<string, object>
-                    {
-                        { "kind", "table_cell_fill" },
-                        { "slide_id", (int)source.Slides[3].SlideID },
-                        { "fingerprint", PresentationInspection
-                            .Fingerprint((object)source.Slides[3]) },
-                        { "shape_id", (int)table.Id },
-                        { "row", 1 }, { "column", column },
-                        { "before_color", (int)table.Table.Cell(1,
-                            column).Shape.Fill.ForeColor.RGB },
-                        { "color", MetoTheme.Rgb(
-                            SamsungSlideDesign.Blue) }
-                    });
                 var paragraphs = Regex.Split((string)
                     commentary.TextFrame.TextRange.Text, @"(?:\r\n|\r|\n){2,}")
                     .Where(value => !string.IsNullOrWhiteSpace(value))
@@ -161,44 +147,6 @@ namespace GuardrailTests
                         (object)source.Slides[4]) },
                     { "slide", replacement }
                 });
-                // The seeded source has a compact byline on every page.
-                // PP01 explicitly requests repair of undersized text.
-                for (var index = 1; index <= 6; index++)
-                {
-                    if (index == 4) continue; // The approved renderer rebuilds this text page.
-                    dynamic page = source.Slides[index];
-                    dynamic byline = OnlyShape((object)page,
-                        shape => (int)shape.HasTextFrame != 0 &&
-                            Convert.ToString(shape.TextFrame.TextRange.Text)
-                                .Contains(" | sales | "));
-                    operations.Add(new Dictionary<string, object>
-                    {
-                        { "kind", "shape_font_size" },
-                        { "slide_id", (int)page.SlideID },
-                        { "fingerprint", PresentationInspection
-                            .Fingerprint((object)page) },
-                        { "shape_id", (int)byline.Id },
-                        { "before_size", (float)byline.TextFrame
-                            .TextRange.Font.Size },
-                        { "size", 14f }
-                    });
-                }
-                dynamic secondary = OnlyShape(
-                    (object)source.Slides[1],
-                    shape => (int)shape.HasTextFrame != 0 &&
-                        Convert.ToString(shape.TextFrame.TextRange.Text)
-                            .StartsWith("Cost EUR", StringComparison.Ordinal));
-                operations.Add(new Dictionary<string, object>
-                {
-                    { "kind", "shape_font_size" },
-                    { "slide_id", (int)source.Slides[1].SlideID },
-                    { "fingerprint", PresentationInspection.Fingerprint(
-                        (object)source.Slides[1]) },
-                    { "shape_id", (int)secondary.Id },
-                    { "before_size", (float)secondary.TextFrame
-                        .TextRange.Font.Size },
-                    { "size", 27f }
-                });
                 stage = "bind_patch_operations";
                 var bound = (object[])Invoke(copy, CopyType,
                     "BindOperations", (object)operations.ToArray());
@@ -212,6 +160,12 @@ namespace GuardrailTests
                 Invoke(revision, RevisionType, "Commit",
                     (Action<string>)(status => { }));
                 Invoke(copy, CopyType, "AcceptRevision", revision);
+                stage = "native_style_repair";
+                var styleChanges = (int)Invoke(copy, CopyType,
+                    "RepairPp01NativeStyles", (object)app);
+                if (styleChanges < 4)
+                    throw new InvalidOperationException(
+                        "PP01_NATIVE_STYLE_REPAIR_MISSING");
                 // Stage only chartless pages. PresentationRevision copies
                 // targets into two staging decks; on this Office build,
                 // copying a native chart can terminate chart.dll. Add the
