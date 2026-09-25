@@ -587,18 +587,16 @@ namespace Scribble.Office
                 });
             if (operations.Count == 0) return 0;
             var revision = new PresentationRevision(Draft);
-            var committed = false;
             try
             {
                 revision.Stage(application, operations.ToArray());
                 revision.Commit(status => { });
-                committed = true;
                 AcceptRevision(revision);
                 return operations.Count;
             }
             finally
             {
-                revision.CloseStaging(committed);
+                revision.CloseStaging(false);
             }
         }
 

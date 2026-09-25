@@ -39,6 +39,7 @@ namespace GuardrailTests
             var passed = false;
             var chartRecreated = false;
             var draftConflictRejected = false;
+            var preChartRecoveryPassed = false;
             var candidate = Path.Combine(output,
                 "phase4-pp01-copy.pptx");
             var pdf = Path.Combine(output,
@@ -160,12 +161,20 @@ namespace GuardrailTests
                 Invoke(revision, RevisionType, "Commit",
                     (Action<string>)(status => { }));
                 Invoke(copy, CopyType, "AcceptRevision", revision);
+                Invoke(revision, RevisionType, "CloseStaging", false);
                 stage = "native_style_repair";
                 var styleChanges = (int)Invoke(copy, CopyType,
                     "RepairPp01NativeStyles", (object)app);
                 if (styleChanges < 4)
                     throw new InvalidOperationException(
                         "PP01_NATIVE_STYLE_REPAIR_MISSING");
+                stage = "recover_before_chart";
+                copy = InvokeStatic(CopyType, "Recover", (object)app,
+                    Convert.ToString(Invoke(copy, CopyType,
+                        "Snapshot")));
+                Invoke(copy, CopyType, "VerifySource");
+                Invoke(copy, CopyType, "VerifyDraft");
+                preChartRecoveryPassed = true;
                 // Stage only chartless pages. PresentationRevision copies
                 // targets into two staging decks; on this Office build,
                 // copying a native chart can terminate chart.dll. Add the
@@ -297,6 +306,7 @@ namespace GuardrailTests
                 pdf_review_artifact = passed ? pdf : null,
                 chart_recreated_from_workbook = chartRecreated,
                 draft_conflict_rejected = draftConflictRejected,
+                pre_chart_recovery_passed = preChartRecoveryPassed,
                 powerpoint_exited = powerpointExited,
                 independent_grader_passed = false,
                 visual_approved = false,

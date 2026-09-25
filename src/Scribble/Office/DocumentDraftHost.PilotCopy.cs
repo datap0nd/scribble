@@ -173,8 +173,10 @@ namespace Scribble.Office
                 stage = "patch";
                 var internalAuthorization =
                     new OneShotDraftAuthorization(true, false);
+                var patchPrompt = prompt +
+                    "\nPilot patch stage: review content edits and the single fourth-page replacement. The host applies the bounded native font/table styling and recreates the workbook-backed chart after this stage. Do not require model-authored style or chart operations in this batch.";
                 var patch = await ExecuteRevisionAsync(draftCall,
-                    internalAuthorization, true, prompt, client, settings,
+                    internalAuthorization, true, patchPrompt, client, settings,
                     token, progress, true);
                 var patchResult = _serializer.Deserialize<
                     Dictionary<string, object>>(patch.Content);
@@ -189,6 +191,10 @@ namespace Scribble.Office
                     copy.Snapshot();
                 _taskContext.State.HostData[statusKey] = "patched";
                 _taskContext.Checkpoint();
+                // The copy snapshot is the durable recovery boundary now.
+                // Keeping extra staging decks open while chart.dll creates
+                // the native chart has crashed this Office build.
+                revision.CloseStaging(false);
                 stage = "native_style";
                 _taskContext.State.HostData[statusKey] = "styling";
                 _taskContext.Checkpoint();
@@ -220,7 +226,6 @@ namespace Scribble.Office
                 _taskContext.Checkpoint();
                 Scribble.Testing.TestLab.RegisterOutput(copy.Draft,
                     "pptx");
-                revision.CloseStaging(false);
                 authorization.MarkCreated();
                 return new MailboxToolResult(call.id,
                     _serializer.Serialize(new
