@@ -80,6 +80,7 @@ namespace Scribble.Office
                 dynamic tags = deck.Tags;
                 beforeNativeWrite?.Invoke();
                 tags.Add("ScribbleTask", _task.State.Id);
+                tags.Add("ScribbleJournalOwner", Data.Owner);
                 _task.State.HostData["samsung_destination"] = _task.State.Id;
                 _task.State.HostData["samsung_recovery_payload"] = _task.RegisterEvidence(Data.Arguments);
                 Persist(); // Before the first slide mutation.
@@ -87,6 +88,11 @@ namespace Scribble.Office
             else
             {
                 if (!SamsungSlideDesign.SameOwner(Convert.ToString(deck.Tags["ScribbleTask"]), _task.State.Id)) throw new InvalidOperationException("SLIDE_RECOVERY_WRONG_DECK");
+                var journalOwner = Convert.ToString(deck.Tags["ScribbleJournalOwner"]);
+                if (string.IsNullOrEmpty(journalOwner))
+                    deck.Tags.Add("ScribbleJournalOwner", Data.Owner);
+                else if (!SamsungSlideDesign.SameOwner(journalOwner, Data.Owner))
+                    throw new InvalidOperationException("SLIDE_RECOVERY_WRONG_JOURNAL");
                 ValidateReceipts(Data, pages, Ids(value), id => PresentationInspection.FingerprintForJournal(PresentationInspection.FindSlide(value, id)));
                 // These receipts prove that the original attempt already wrote.
                 // A subsequent review failure must retain its recovery boundary.

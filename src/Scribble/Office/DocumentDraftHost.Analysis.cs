@@ -239,8 +239,11 @@ namespace Scribble.Office
                     var matchingPages = review.Context.Pages.Where(page =>
                         page.LogicalSlideId == finding.LogicalSlideId)
                         .ToArray();
-                    if (matchingPages.Length != 1 ||
-                        matchingPages[0].PageOrdinal != 0)
+                    if (matchingPages.Length > 1 ||
+                        matchingPages.Any(page => page.PageOrdinal != 0))
+                        throw new InvalidOperationException(
+                            "REPAIR_MULTI_PAGE_REPLACEMENT_UNSUPPORTED");
+                    if (matchingPages.Length != 1)
                         throw new InvalidOperationException(
                             "REPAIR_NATIVE_PAGE_UNSUPPORTED");
                     var nativePage = matchingPages[0];
@@ -253,12 +256,14 @@ namespace Scribble.Office
                             finding.TargetId);
                     if (layoutPatch)
                     {
-                        if (finding.TargetId != "page" ||
-                            PresentationInspection.ContainsNativeChart(
+                        if (finding.TargetId != "page")
+                            throw new InvalidOperationException(
+                                "REPAIR_NATIVE_LAYOUT_UNSUPPORTED");
+                        if (PresentationInspection.ContainsNativeChart(
                                 (object)deck.Slides[
                                     nativePage.ExpectedPageNumber]))
                             throw new InvalidOperationException(
-                                "REPAIR_NATIVE_LAYOUT_UNSUPPORTED");
+                                "REPAIR_CHART_REFLOW_UNSUPPORTED");
                     }
                     else AnalysisDocumentPilot.ReadNativePatchText(
                         (object)deck, nativePage, nativeBefore);
@@ -375,6 +380,18 @@ namespace Scribble.Office
                         StringComparison.Ordinal))
                     return Error(call.id, authorization,
                         "ANALYSIS_DECK_GEOMETRY_UNSUPPORTED",
+                        exception.Message);
+                if (exception.Message.StartsWith(
+                        "REPAIR_CHART_REFLOW_UNSUPPORTED",
+                        StringComparison.Ordinal))
+                    return Error(call.id, authorization,
+                        "ANALYSIS_CHART_REFLOW_UNSUPPORTED",
+                        exception.Message);
+                if (exception.Message.StartsWith(
+                        "REPAIR_MULTI_PAGE_REPLACEMENT_UNSUPPORTED",
+                        StringComparison.Ordinal))
+                    return Error(call.id, authorization,
+                        "ANALYSIS_MULTI_PAGE_REPLACEMENT_UNSUPPORTED",
                         exception.Message);
                 if (exception.Message.StartsWith(
                         "REPAIR_NATIVE_PAGE_UNSUPPORTED",

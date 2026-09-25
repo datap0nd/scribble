@@ -330,15 +330,18 @@ namespace Scribble.Office
             return OwnedUnsavedDraft(path,
                 Convert.ToString(page.Tags["ScribbleTask"]),
                 Convert.ToString(deck.Tags["ScribbleTask"]),
+                Convert.ToString(deck.Tags["ScribbleJournalOwner"]),
                 Convert.ToString(deck.Tags["ScribbleRevisionDraft"]));
         }
 
         internal static bool OwnedUnsavedDraft(string path,
-            string slideOwner, string deckOwner, string revisionOwner)
+            string slideOwner, string deckOwner, string journalOwner,
+            string revisionOwner)
         {
             return string.IsNullOrEmpty(path) &&
-                ((!string.IsNullOrWhiteSpace(slideOwner) &&
-                  string.Equals(slideOwner, deckOwner,
+                ((!string.IsNullOrWhiteSpace(deckOwner) &&
+                  !string.IsNullOrWhiteSpace(slideOwner) &&
+                  string.Equals(slideOwner, journalOwner,
                       StringComparison.Ordinal)) ||
                  !string.IsNullOrWhiteSpace(revisionOwner));
         }
@@ -352,6 +355,7 @@ namespace Scribble.Office
                 !OwnedUnsavedDraft(path,
                     Convert.ToString(page.Tags["ScribbleTask"]),
                     Convert.ToString(deck.Tags["ScribbleTask"]),
+                    Convert.ToString(deck.Tags["ScribbleJournalOwner"]),
                     Convert.ToString(deck.Tags["ScribbleRevisionDraft"])))
                 throw new InvalidOperationException(
                     "CHART_PACKAGE_UNSAVED_DRAFT_REQUIRED");

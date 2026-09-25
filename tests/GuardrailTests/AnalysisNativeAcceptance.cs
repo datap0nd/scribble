@@ -47,6 +47,9 @@ namespace GuardrailTests
             var typedDeckHandoffPassed = false;
             var nativeDateColumnPassed = false;
             var savedChartFingerprintPassed = false;
+            var typedRouteReviewCalls = 0;
+            var typedRoutePromptCharacters = 0;
+            var typedRouteRequestCharacters = 0;
             var powerpointExited = false;
             string taskOwner = null;
             var images = new List<string>();
@@ -393,7 +396,16 @@ namespace GuardrailTests
                             typedDeck = candidate;
                     }
                     endpoint.Wait();
+                    typedRouteReviewCalls = endpoint.RequestCount;
+                    typedRoutePromptCharacters =
+                        endpoint.TextPromptCharacters;
+                    typedRouteRequestCharacters =
+                        endpoint.RequestCharacters;
                     Check(deckAuthorization.IsCreated &&
+                        typedRouteReviewCalls == 5 &&
+                        typedRoutePromptCharacters > 0 &&
+                        typedRouteRequestCharacters >=
+                            typedRoutePromptCharacters &&
                         endpoint.ImageCount == 4 &&
                         endpoint.AnalysisId == fixture.Item1.AnalysisId &&
                         routeResult.Content.Contains(
@@ -1451,6 +1463,11 @@ namespace GuardrailTests
                 native_date_column_passed = nativeDateColumnPassed,
                 saved_chart_fingerprint_passed =
                     savedChartFingerprintPassed,
+                typed_route_review_calls = typedRouteReviewCalls,
+                typed_route_prompt_characters =
+                    typedRoutePromptCharacters,
+                typed_route_request_characters =
+                    typedRouteRequestCharacters,
                 powerpoint_exited = powerpointExited,
                 visual_review_unavailable = failure.Contains(
                     "ANALYSIS_VISUAL_REVIEW_UNAVAILABLE"),
@@ -1547,6 +1564,9 @@ namespace GuardrailTests
             public string BaseUrl { get; }
             public string AnalysisId { get; private set; }
             public int ImageCount { get; private set; }
+            public int RequestCount { get; private set; }
+            public int RequestCharacters { get; private set; }
+            public int TextPromptCharacters { get; private set; }
 
             public void Wait()
             {
@@ -1607,6 +1627,21 @@ namespace GuardrailTests
                     var request = (IDictionary<string, object>)
                         json.DeserializeObject(new string(buffer));
                     var messages = (IList)request["messages"];
+                    RequestCount++;
+                    RequestCharacters += contentLength;
+                    foreach (IDictionary<string, object> message in messages)
+                    {
+                        var messageContent = message["content"];
+                        if (messageContent is string)
+                            TextPromptCharacters +=
+                                ((string)messageContent).Length;
+                        else if (messageContent is IList)
+                            foreach (IDictionary<string, object> part in
+                                (IList)messageContent)
+                                if (part.ContainsKey("text"))
+                                    TextPromptCharacters += Convert.ToString(
+                                        part["text"]).Length;
+                    }
                     var user = (IDictionary<string, object>)
                         messages[messages.Count - 1];
                     string decision;

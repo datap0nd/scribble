@@ -78,16 +78,19 @@ namespace GuardrailTests
                 BindingFlags.Static);
             Check(method != null,
                 "The chart package ownership boundary is missing.");
-            Func<string, string, string, string, bool> allowed =
-                (path, slideOwner, deckOwner, revisionOwner) =>
+            Func<string, string, string, string, string, bool> allowed =
+                (path, slideOwner, deckOwner, journalOwner,
+                    revisionOwner) =>
                     (bool)method.Invoke(null, new object[] {
-                        path, slideOwner, deckOwner, revisionOwner });
-            Check(!allowed(@"C:\\user\\saved.pptx", "task", "task", "revision") &&
-                !allowed("", "", "", "") &&
-                !allowed("", "task-a", "task-b", ""),
+                        path, slideOwner, deckOwner, journalOwner,
+                        revisionOwner });
+            Check(!allowed(@"C:\\user\\saved.pptx", "journal",
+                    "task", "journal", "revision") &&
+                !allowed("", "", "", "", "") &&
+                !allowed("", "journal-a", "task", "journal-b", ""),
                 "A saved or unowned deck can reach SaveCopyAs.");
-            Check(allowed("", "task", "task", "") &&
-                allowed("", "", "", "revision"),
+            Check(allowed("", "journal", "task", "journal", "") &&
+                allowed("", "", "", "", "revision"),
                 "An owned unsaved draft cannot reach the package fingerprint.");
         }
 

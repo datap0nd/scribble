@@ -44,6 +44,8 @@ namespace GuardrailTests
                 series.Name = "Boundary source";
                 stage = "save_owned_fixture";
                 deck.Tags.Add("ScribbleTask", "native-fingerprint-boundary");
+                deck.Tags.Add("ScribbleJournalOwner",
+                    "native-fingerprint-boundary");
                 slide.Tags.Add("ScribbleTask", "native-fingerprint-boundary");
                 deck.SaveAs(path, 24);
                 Check(!string.IsNullOrEmpty(Convert.ToString(deck.Path)),

@@ -488,7 +488,8 @@ foreach ($guardedFile in $officeGuardedFiles) {
                     $_.Line.Trim() -eq 'if (Convert.ToBoolean(sheet.ProtectContents))') -and
                 # PresentationInspection permits this copy only after
                 # OwnedUnsavedDraft has checked an unsaved presentation with
-                # matching task tags or the revision-draft ownership tag.
+                # a task tag and matching slide/journal owner tags, or the
+                # revision-draft ownership tag.
                 # Saved and unowned decks use in-memory chart readback.
                 # The bounded temporary PPTX is deleted after fingerprinting.
                 -not ($_.Path -like '*\Office\PresentationInspection.cs' -and

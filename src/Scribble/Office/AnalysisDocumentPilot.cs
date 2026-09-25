@@ -93,8 +93,29 @@ namespace Scribble.Office
             var compiled = AnalysisDocumentCompiler.Compile(artifact, plan);
             var slides = PresentationDraftWriter.ParseSlides(
                 compiled.Slides.Cast<object>().ToArray());
-            return PresentationDraftWriter.AddDraftSlides(powerPointApplication,
-                slides, null, true, null, null, null, null, true);
+            var status = PresentationDraftWriter.AddDraftSlides(
+                powerPointApplication, slides, null, true, null, null,
+                null, null, true);
+            // This hand-authored pilot helper has no task journal. Mark its
+            // newly created unsaved deck with the same ownership relation
+            // that the production journal records before fingerprinting.
+            dynamic app = powerPointApplication;
+            dynamic deck = app.ActivePresentation;
+            if (!string.IsNullOrEmpty(Convert.ToString(deck.Path)) ||
+                (int)deck.Slides.Count != slides.Count)
+                throw new InvalidOperationException(
+                    "ANALYSIS_PILOT_DRAFT_IDENTITY_INVALID");
+            var owner = Convert.ToString(deck.Slides[1].Tags[
+                "ScribbleTask"]);
+            if (string.IsNullOrEmpty(owner) ||
+                Enumerable.Range(1, slides.Count).Any(index =>
+                    Convert.ToString(deck.Slides[index].Tags[
+                        "ScribbleTask"]) != owner))
+                throw new InvalidOperationException(
+                    "ANALYSIS_PILOT_DRAFT_IDENTITY_INVALID");
+            deck.Tags.Add("ScribbleTask", Guid.NewGuid().ToString("N"));
+            deck.Tags.Add("ScribbleJournalOwner", owner);
+            return status;
         }
 
         // After native write, the caller supplies actual slide identities and
