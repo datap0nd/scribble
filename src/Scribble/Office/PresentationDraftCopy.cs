@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Web.Script.Serialization;
@@ -61,6 +62,7 @@ namespace Scribble.Office
             var order = Enumerable.Range(1, 6).Select(index =>
                 (int)source.Slides[index].SlideID).ToArray();
             dynamic draft = null;
+            var stage = "new_draft";
             try
             {
                 // PowerPoint's native chart engine requires a presentation
@@ -71,14 +73,31 @@ namespace Scribble.Office
                 draft.Tags.Add("ScribblePresentationId", draftId);
                 draft.PageSetup.SlideWidth = source.PageSetup.SlideWidth;
                 draft.PageSetup.SlideHeight = source.PageSetup.SlideHeight;
+                stage = "inspect_and_copy_source";
                 var result = new PresentationDraftCopy(sourcePresentation,
                     (object)draft, order);
                 result._owner = owner;
                 result._draftId = draftId;
                 result._sourceName = Convert.ToString(source.Name);
                 result._sourceFullName = Convert.ToString(source.FullName);
+                // PowerPoint's clipboard paste can terminate chart.dll when
+                // a native chart slide is copied. A saved source can be read
+                // into the new, unsaved draft without writing the source or
+                // exporting its charts. Verify each inserted page below.
+                var importSavedSource = (int)source.Saved != 0 &&
+                    File.Exists(result._sourceFullName);
+                if (importSavedSource)
+                {
+                    stage = "import_saved_source";
+                    var inserted = (int)draft.Slides.InsertFromFile(
+                        result._sourceFullName, 0, 1, 6);
+                    if (inserted != 6 || (int)draft.Slides.Count != 6)
+                        throw new InvalidOperationException(
+                            "REVISION_COPY_INCOMPLETE: File import changed the page count.");
+                }
                 for (var index = 1; index <= 6; index++)
                 {
+                    stage = "inspect_source_slide_" + index;
                     dynamic original = source.Slides[index];
                     var originalId = (int)original.SlideID;
                     var fingerprint = PresentationInspection
@@ -89,8 +108,11 @@ namespace Scribble.Office
                         result._sourceChartFingerprints[originalId] =
                             PresentationInspection.Fingerprint(
                                 (object)original);
-                    dynamic copy = PresentationInspection.CopySlideTo(
-                        (object)original, (object)draft);
+                    stage = "copy_source_slide_" + index;
+                    dynamic copy = importSavedSource
+                        ? draft.Slides[index]
+                        : PresentationInspection.CopySlideTo(
+                            (object)original, (object)draft);
                     if ((int)draft.Slides.Count != index)
                         throw new InvalidOperationException(
                             "REVISION_COPY_INCOMPLETE: Native paste changed the page count.");
@@ -106,18 +128,22 @@ namespace Scribble.Office
                 }
                 for (var index = 1; index <= 6; index++)
                 {
+                    stage = "fingerprint_draft_slide_" + index;
                     dynamic page = draft.Slides[index];
                     result._draftFingerprints[(int)page.SlideID] =
                         PresentationInspection.Fingerprint((object)page);
                 }
+                stage = "verify_copy";
                 result.VerifySource();
                 result.VerifyDraft();
                 return result;
             }
-            catch
+            catch (Exception error)
             {
-                if (draft != null) try { draft.Close(); } catch { }
-                throw;
+                if ((object)draft != null) try { draft.Close(); } catch { }
+                throw new InvalidOperationException(
+                    "REVISION_COPY_CREATE_FAILED at " + stage + ": " +
+                    error.Message, error);
             }
         }
 
