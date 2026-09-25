@@ -21,6 +21,30 @@ namespace GuardrailTests
     // all execution and checks are production code. No real model is contacted.
     internal static class PilotRouteNativeAcceptance
     {
+        internal static void FakeTransportSeparatesChatAndReview()
+        {
+            var repair = new ChatToolCall { id = "repair", type = "function", function = new ChatToolCallFunction {
+                name = PresentationToolCatalog.ReviseSlides, arguments = "{}" } };
+            using (var endpoint = new Endpoint(repair))
+            using (var client = new OpenAiCompatibleClient())
+            {
+                var settings = new AppSettings { BaseUrl = endpoint.BaseUrl, ApiKey = "offline-test", Model = "qwen/qwen3.8-27b" };
+                var request = new ChatCompletionRequest { model = settings.Model, max_tokens = 1024,
+                    tools = PresentationToolCatalog.CreateDefinitions().ToList(),
+                    messages = new List<object> { new ChatCompletionInputMessage { role = "user", content = "Offline transport test" } } };
+                var inspected = client.CompleteAsync(settings, request, CancellationToken.None).GetAwaiter().GetResult();
+                Check(inspected.tool_calls.Count == 6, "FAKE_INSPECTION_RESPONSE_INVALID");
+                var revised = client.CompleteAsync(settings, request, CancellationToken.None).GetAwaiter().GetResult();
+                Check(revised.tool_calls.Single().function.name == PresentationToolCatalog.ReviseSlides, "FAKE_REVISION_RESPONSE_INVALID");
+                request.tools = null;
+                var review = client.CompleteAsync(settings, request, CancellationToken.None).GetAwaiter().GetResult();
+                Check((review.RawContent ?? review.content).Contains("\"approved\":true"), "FAKE_REVIEW_RESPONSE_INVALID");
+                request.tools = PresentationToolCatalog.CreateDefinitions().ToList();
+                var final = client.CompleteAsync(settings, request, CancellationToken.None).GetAwaiter().GetResult();
+                Check(final.content.Contains("nothing was saved") && endpoint.Count == 4, "FAKE_TERMINAL_RESPONSE_INVALID");
+            }
+        }
+
         internal static int Run(string sourcePath, string workbookPath, string reportPath)
         {
             var output = Path.GetDirectoryName(Path.GetFullPath(reportPath));
