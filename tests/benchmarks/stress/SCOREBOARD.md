@@ -40,6 +40,7 @@ before the next paid batch.
 | Date | Version | Source | Installer SHA-256 | Installed Scribble.dll SHA-256 | Verification |
 | --- | --- | --- | --- | --- | --- |
 | 2026-09-26 | 2.0.694.0 | PR #44 head `99837ca`, CI merge `65ea83a`, run `36273774551` | `96bdc751a347d3d4bd1ac3c2d7b8ccb288351e9b29c7fe657fecdb7c33115811` | `2efd65023777c9c9abc9cf7395653ae0fce245cac59d299d94434583ecc33bc3` | Pilot installer completed; renderer payload present; version and hashes read back from installed files. |
+| 2026-09-26 | 2.0.695.0 | PR #44 head `dc98db9`, CI run `36276009192` | `f51c1c22d3b234c405d694fba510e2ddb3303a2bb2ed3b207e9919f10bfe243b` | `3173792c2b296b55be3c58650f91cc2d73a922be47ea87125df68be1beec3ead` | Pilot installer exited 0; installed version, DLL and browser host hashes verified; no Office processes existed before or after install. |
 
 ## Runs
 
@@ -56,3 +57,4 @@ predate this file. Their source commits weren't recorded there.
 | 2026-09-26 | local `603f43c4` (PR #43 native candidate) | PP01 | new | PASS: fake endpoint production route; terminal receipt, grader accepted, sources unchanged | — | 11 | $0.00 | — | `delivery-2026-09-26/production-route.json` |
 | 2026-09-26 | local `603f43c4` (PR #43 native candidate) | XA01 | new | PASS: fake endpoint production route; terminal receipt, sources unchanged | — | 4 model + 5 review | $0.00 | — | `delivery-2026-09-26/xa01-route.json` |
 | 2026-09-26 | 2.0.694.0 (`99837ca`, CI `65ea83a`) | XA01 | old | FAIL: typed route not entered despite persisted setting; native outputs passed oracle but no terminal task event; 34 requests exceeds cap | capture/binding | 34 | $0.33 | 7.3 | `suite-20260926-215717-2b996964` / `7c7a41f6720a4d589284c7a259f89a20` |
+| 2026-09-26 | 2.0.695.0 (`dc98db9`, CI `36276009192`) | XA01 | new | FAIL: typed grouped binding rejected formula-valued source metrics, so no deck or terminal event | capture/binding | 14 | $0.11 | 2.7 | `suite-20260926-223645-e2bf561f` / `ec57603e05c74e7bb46364bf735b5cd5` |

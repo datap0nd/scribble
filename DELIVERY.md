@@ -177,15 +177,14 @@ a ≤ 10-line owner note in §5.
 | S2 PP02–10 | — | — | not run (the pilot code rejects every one) |
 | New route, real model | — | — | **0 runs** |
 
-Current stage: **B2**. A1 and A4 are done. A2 enables chartless revision in
-code while rejecting chart operations; A3 uses a persisted setting enabled by
-the stress Test Lab. The Release build, static scan and 218 guardrails pass.
-OpenRouter reported $14.4736 remaining at 21:38 UTC on 26 Sep. A5 installed
-and hash-verified CI pilot build 2.0.694.0 (run 36273774551). B1's real XA01
-run reached native outputs but failed the capture/binding stage: the model used
-the legacy route despite the persisted setting. The suite had no terminal task
-event and used 34 requests. Next: make typed binding explicit in product code,
-add a regression, rebuild, install and rerun within the daily paid-run cap.
+Current stage: **B2**. A1–A4 are done. A5 installed and hash-verified CI pilot
+builds 2.0.694.0 and 2.0.695.0; the scoreboard records both. OpenRouter had
+$14.0268 remaining at 22:41 UTC on 26 Sep, after two paid XA01 runs costing
+about $0.44 total. The first run stayed on the old route. The second entered
+the new route but grouped binding rejected formula-valued ledger metrics, so
+no deck or terminal event was produced. A bounded formula recomputation and
+stale-cache regression are implemented. Next: build, install, recheck balance
+and rerun XA01 within the six-run and $4 daily limits.
 
 ## 6. Rules for autonomous sessions
 

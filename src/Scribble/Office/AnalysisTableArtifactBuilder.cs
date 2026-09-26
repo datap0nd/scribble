@@ -53,6 +53,8 @@ namespace Scribble.Office
                     "ANALYSIS_GROUP_BINDING_INVALID");
             var cells = table.Cells.ToDictionary(cell =>
                 cell.Row + ":" + cell.Column, StringComparer.Ordinal);
+            var cellsByReference = table.Cells.ToDictionary(cell =>
+                cell.Reference, StringComparer.OrdinalIgnoreCase);
             var headers = new Dictionary<string, int>(StringComparer.Ordinal);
             for (var column = 0; column < table.Columns; column++)
             {
@@ -111,18 +113,13 @@ namespace Scribble.Office
                 }
                 foreach (var metric in binding.Metrics)
                 {
-                    var cell = Required(cells, row,
-                        headers[metric.Header]);
-                    if ((cell.ValueType != AnalysisContract.DecimalValue &&
-                         cell.ValueType != AnalysisContract.IntegerValue) ||
-                        !string.IsNullOrEmpty(cell.Formula))
+                    DatasetCell cell;
+                    if (!cells.TryGetValue(row + ":" +
+                        headers[metric.Header], out cell))
                         throw new InvalidOperationException(
                             "ANALYSIS_TABLE_VALUE_UNVERIFIED");
-                    decimal value;
-                    if (!decimal.TryParse(cell.Value, NumberStyles.Float,
-                        CultureInfo.InvariantCulture, out value))
-                        throw new InvalidOperationException(
-                            "ANALYSIS_TABLE_VALUE_UNVERIFIED");
+                    var value = VerifiedMetricValue(cell, row,
+                        cellsByReference);
                     var key = metric.Header + "\0" + period.Value + "\0" +
                         string.Join("\0", binding.DimensionHeaders.Select(
                             name => dimensions[name]));
@@ -170,6 +167,82 @@ namespace Scribble.Office
             public Dictionary<string, string> Dimensions;
             public decimal Sum;
             public List<SourceLocator> Locators = new List<SourceLocator>();
+        }
+
+        // A formula cache is evidence only after the host reproduces the
+        // result from verified literal operands. This bounded evaluator
+        // supports same-row products, optionally guarded by IF(blank), and
+        // rejects every other formula rather than trusting its cached value.
+        private static decimal VerifiedMetricValue(DatasetCell cell, int row,
+            IDictionary<string, DatasetCell> cellsByReference)
+        {
+            if (cell == null || string.IsNullOrWhiteSpace(cell.Reference) ||
+                (cell.ValueType != AnalysisContract.DecimalValue &&
+                 cell.ValueType != AnalysisContract.IntegerValue))
+                throw new InvalidOperationException(
+                    "ANALYSIS_TABLE_VALUE_UNVERIFIED");
+            decimal cached;
+            if (!decimal.TryParse(cell.Value, NumberStyles.Float,
+                CultureInfo.InvariantCulture, out cached))
+                throw new InvalidOperationException(
+                    "ANALYSIS_TABLE_VALUE_UNVERIFIED");
+            if (string.IsNullOrEmpty(cell.Formula))
+            {
+                if (cell.Status != AnalysisContract.Verified)
+                    throw new InvalidOperationException(
+                        "ANALYSIS_TABLE_VALUE_UNVERIFIED");
+                return cached;
+            }
+            if (cell.Status != AnalysisContract.Unresolved)
+                throw new InvalidOperationException(
+                    "ANALYSIS_TABLE_VALUE_UNVERIFIED");
+            var expression = cell.Formula.Trim();
+            var guard = Regex.Match(expression,
+                @"^=IF\(([A-Z]{1,3}[1-9]\d*)="""","""",([A-Z]{1,3}[1-9]\d*)\*([A-Z]{1,3}[1-9]\d*)\)$",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            var product = guard.Success ? guard : Regex.Match(expression,
+                @"^=([A-Z]{1,3}[1-9]\d*)\*([A-Z]{1,3}[1-9]\d*)$",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (!product.Success)
+                throw new InvalidOperationException(
+                    "ANALYSIS_TABLE_VALUE_UNVERIFIED");
+            var first = guard.Success ? product.Groups[2].Value :
+                product.Groups[1].Value;
+            var second = guard.Success ? product.Groups[3].Value :
+                product.Groups[2].Value;
+            if (guard.Success &&
+                !string.Equals(guard.Groups[1].Value, first,
+                    StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(guard.Groups[1].Value, second,
+                    StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException(
+                    "ANALYSIS_TABLE_VALUE_UNVERIFIED");
+            var left = LiteralOperand(first, row, cellsByReference);
+            var right = LiteralOperand(second, row, cellsByReference);
+            if (checked(left * right) != cached)
+                throw new InvalidOperationException(
+                    "ANALYSIS_TABLE_VALUE_UNVERIFIED");
+            return cached;
+        }
+
+        private static decimal LiteralOperand(string reference, int row,
+            IDictionary<string, DatasetCell> cellsByReference)
+        {
+            DatasetCell operand;
+            if (!cellsByReference.TryGetValue(reference, out operand) ||
+                operand.Row != row ||
+                operand.Status != AnalysisContract.Verified ||
+                !string.IsNullOrEmpty(operand.Formula) ||
+                (operand.ValueType != AnalysisContract.DecimalValue &&
+                 operand.ValueType != AnalysisContract.IntegerValue))
+                throw new InvalidOperationException(
+                    "ANALYSIS_TABLE_VALUE_UNVERIFIED");
+            decimal value;
+            if (!decimal.TryParse(operand.Value, NumberStyles.Float,
+                CultureInfo.InvariantCulture, out value))
+                throw new InvalidOperationException(
+                    "ANALYSIS_TABLE_VALUE_UNVERIFIED");
+            return value;
         }
 
         public static AnalysisArtifact Build(SourceSnapshot snapshot,

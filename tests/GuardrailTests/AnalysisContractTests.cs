@@ -205,6 +205,46 @@ namespace GuardrailTests
             RejectTableBinding(() =>
                 AnalysisTableArtifactBuilder.BuildGrouped(missingSnapshot,
                     binding), "ANALYSIS_TABLE_VALUE_UNVERIFIED");
+
+            var formulaTable = new TableDataset { TableId = "formula-ledger",
+                Name = "Ledger", Rows = 2, Columns = 4,
+                Cells = new List<DatasetCell> {
+                    Cell(0, 0, "A1", AnalysisContract.TextValue, "Period"),
+                    Cell(0, 1, "B1", AnalysisContract.TextValue, "Units"),
+                    Cell(0, 2, "C1", AnalysisContract.TextValue, "Price"),
+                    Cell(0, 3, "D1", AnalysisContract.TextValue, "RevenueEUR"),
+                    Cell(1, 0, "A2", AnalysisContract.TextValue, "2026-06"),
+                    Cell(1, 1, "B2", AnalysisContract.DecimalValue, "3"),
+                    Cell(1, 2, "C2", AnalysisContract.DecimalValue, "4"),
+                    Cell(1, 3, "D2", AnalysisContract.DecimalValue, "12") } };
+            var formulaCell = formulaTable.Cells.Last();
+            formulaCell.Formula = "=IF(C2=\"\",\"\",B2*C2)";
+            formulaCell.Status = AnalysisContract.Unresolved;
+            var formulaBinding = new AnalysisTableBinding {
+                TableId = formulaTable.TableId, PeriodHeader = "Period",
+                Metrics = new List<AnalysisMetricColumnBinding> {
+                    new AnalysisMetricColumnBinding { Header = "RevenueEUR",
+                        Metric = "RevenueEUR", Currency = "EUR",
+                        Unit = "currency" } } };
+            Func<SourceSnapshot> captureFormula = () =>
+                AnalysisContract.CreateSnapshot("workbook-a",
+                    "excel_workbook", "formula-revision", "complete_range",
+                    "cached_formula_values_unverified", new[] {
+                        Locator("workbook-a", "Ledger", "A1:D2", "") },
+                    new[] { formulaTable });
+            var verifiedFormula = AnalysisTableArtifactBuilder.BuildGrouped(
+                captureFormula(), formulaBinding);
+            Check(verifiedFormula.Facts.Single().Value == "12",
+                "A recomputed source formula was not bound to a typed fact.");
+            formulaCell.Value = "13";
+            RejectTableBinding(() => AnalysisTableArtifactBuilder.BuildGrouped(
+                captureFormula(), formulaBinding),
+                "ANALYSIS_TABLE_VALUE_UNVERIFIED");
+            formulaCell.Value = "12";
+            formulaCell.Formula = "=SUM(B2:C2)";
+            RejectTableBinding(() => AnalysisTableArtifactBuilder.BuildGrouped(
+                captureFormula(), formulaBinding),
+                "ANALYSIS_TABLE_VALUE_UNVERIFIED");
         }
 
         private static TableDataset MappedTable()
