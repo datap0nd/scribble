@@ -1576,9 +1576,11 @@ namespace GuardrailTests
             private readonly TcpListener _listener = new TcpListener(
                 IPAddress.Loopback, 0);
             private readonly Task _worker;
+            private readonly bool _rejectWithoutRepair;
 
-            public AnalysisReviewEndpoint()
+            public AnalysisReviewEndpoint(bool rejectWithoutRepair = false)
             {
+                _rejectWithoutRepair = rejectWithoutRepair;
                 _listener.Start();
                 BaseUrl = "http://127.0.0.1:" +
                     ((IPEndPoint)_listener.LocalEndpoint).Port + "/v1";
@@ -1610,7 +1612,7 @@ namespace GuardrailTests
 
             private void Handle()
             {
-                for (var round = 0; round < 5; round++)
+                for (var round = 0; round < (_rejectWithoutRepair ? 1 : 5); round++)
                     HandleOne(round);
             }
 
@@ -1746,7 +1748,43 @@ namespace GuardrailTests
                                     "The reviewer image changed after capture.");
                         }
                         var firstPage = (IDictionary<string, object>)pages[0];
-                        if (round == 0)
+                        if (_rejectWithoutRepair)
+                            decision = json.Serialize(new
+                            {
+                                contract_version =
+                                    AnalysisReviewContract.Version,
+                                context_id = (string)content["context_id"],
+                                approved = false,
+                                findings = new[] {
+                                    new {
+                                        code = "UNSUPPORTED_CLAIM",
+                                        owner = "content",
+                                        logical_slide_id = (string)
+                                            firstPage["LogicalSlideId"],
+                                        native_slide_id = Convert.ToInt32(
+                                            firstPage["NativeSlideId"]),
+                                        target_id = "title", fact_id = "",
+                                        measurement_id = "",
+                                        severity = "blocker",
+                                        action = "revise_text",
+                                        evidence = "The title overstates ledger scope."
+                                    },
+                                    new {
+                                        code = "VISUAL_HIERARCHY",
+                                        owner = "content",
+                                        logical_slide_id = (string)
+                                            firstPage["LogicalSlideId"],
+                                        native_slide_id = Convert.ToInt32(
+                                            firstPage["NativeSlideId"]),
+                                        target_id = "page", fact_id = "",
+                                        measurement_id = "",
+                                        severity = "blocker",
+                                        action = "revise_layout",
+                                        evidence = "The page hierarchy obscures the KPIs."
+                                    }
+                                }
+                            });
+                        else if (round == 0)
                             decision = json.Serialize(new
                             {
                                 contract_version =

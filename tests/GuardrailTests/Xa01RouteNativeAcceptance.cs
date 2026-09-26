@@ -30,23 +30,26 @@ namespace GuardrailTests
         { if (!condition) throw new InvalidOperationException(message); }
 
         internal static int Run(string reportPath)
-        { return RunCore(reportPath, false, false, false, false); }
+        { return RunCore(reportPath, false, false, false, false, false); }
 
         internal static int RunFailedWorkbook(string reportPath)
-        { return RunCore(reportPath, true, false, false, false); }
+        { return RunCore(reportPath, true, false, false, false, false); }
 
         internal static int RunMalformedWorkbook(string reportPath)
-        { return RunCore(reportPath, false, true, false, false); }
+        { return RunCore(reportPath, false, true, false, false, false); }
 
         internal static int RunCancelled(string reportPath)
-        { return RunCore(reportPath, false, false, true, false); }
+        { return RunCore(reportPath, false, false, true, false, false); }
 
         internal static int RunTransientRetry(string reportPath)
-        { return RunCore(reportPath, false, false, false, true); }
+        { return RunCore(reportPath, false, false, false, true, false); }
+
+        internal static int RunRejectedReview(string reportPath)
+        { return RunCore(reportPath, false, false, false, false, true); }
 
         private static int RunCore(string reportPath, bool failWorkbook,
             bool malformedWorkbook, bool cancelAfterRead,
-            bool transientRetry)
+            bool transientRetry, bool rejectedReview)
         {
             var output = Path.GetDirectoryName(Path.GetFullPath(reportPath));
             Directory.CreateDirectory(output);
@@ -69,6 +72,8 @@ namespace GuardrailTests
             var malformedProposalObserved = false;
             var cancellationObserved = false;
             var transportRetriedIdentically = false;
+            var rejectedReviewBlocked = false;
+            var reviewRejectionObserved = false;
             var sourcePreserved = false;
             var workbookDraft = false;
             var deckDraft = false;
@@ -184,7 +189,7 @@ namespace GuardrailTests
                 };
                 using (endpoint = new Endpoint(proposal, transientRetry))
                 using (reviewer = new AnalysisNativeAcceptance
-                    .AnalysisReviewEndpoint())
+                    .AnalysisReviewEndpoint(rejectedReview))
                 using (var client = new OpenAiCompatibleClient())
                 using (var reviewClient = new OpenAiCompatibleClient())
                 using (var host = new DocumentDraftHost("excel", (object)excel))
@@ -223,12 +228,17 @@ namespace GuardrailTests
                             response.tool_calls.Count == 0)
                         {
                             task.State.EnumerationComplete = true;
-                            if (failWorkbook || malformedWorkbook)
+                            if (failWorkbook || malformedWorkbook ||
+                                rejectedReview)
                             {
                                 var blocked = !task.State.CanComplete(false) &&
-                                    string.IsNullOrEmpty(task.State.WorkbookDraftReceipt);
+                                    (rejectedReview ?
+                                        string.IsNullOrEmpty(task.State.PresentationReviewReceipt) :
+                                        string.IsNullOrEmpty(task.State.WorkbookDraftReceipt));
                                 if (failWorkbook) failedWorkbookBlocked = blocked;
-                                else malformedWorkbookBlocked = blocked;
+                                else if (malformedWorkbook)
+                                    malformedWorkbookBlocked = blocked;
+                                else rejectedReviewBlocked = blocked;
                                 Check(blocked,
                                     "MISSING_WORKBOOK_ALLOWED_TERMINAL_COMPLETION");
                                 break;
@@ -285,6 +295,16 @@ namespace GuardrailTests
                                     result.Outcome.PermissionConsumed == false;
                                 Check(workbookFailureObserved,
                                     "EXPECTED_WORKBOOK_PREFLIGHT_FAILURE_MISSING: " +
+                                    result.Content);
+                            }
+                            else if (rejectedReview && round == 2)
+                            {
+                                reviewRejectionObserved =
+                                    result.Outcome.Failed &&
+                                    result.Content.Contains(
+                                        "ANALYSIS_DECK_REVIEW_REJECTED");
+                                Check(reviewRejectionObserved,
+                                    "EXPECTED_DECK_REVIEW_REJECTION_MISSING: " +
                                     result.Content);
                             }
                             else Check(!result.Outcome.Failed,
@@ -379,6 +399,14 @@ namespace GuardrailTests
                             deckDraft && slideFacts && writesVerified &&
                             requests == 4 && reviewRequests == 5,
                             "XA01_FAILED_WORKBOOK_ROUTE_INCOMPLETE");
+                    else if (rejectedReview)
+                        Check(rejectedReviewBlocked &&
+                            reviewRejectionObserved && !terminal &&
+                            sourcePreserved && workbookDraft && workbookFacts &&
+                            !task.State.HostData.ContainsKey(
+                                "analysis_deck_complete") &&
+                            requests == 4 && reviewRequests == 1,
+                            "XA01_REJECTED_REVIEW_ROUTE_INCOMPLETE");
                     else
                     {
                         Check(terminal && sourcePreserved && workbookDraft &&
@@ -430,7 +458,9 @@ namespace GuardrailTests
                     AnalysisDocumentPilot.FeatureFlag, previousFlag);
             }
             var report = new {
-                execution_kind = transientRetry ?
+                execution_kind = rejectedReview ?
+                    "native_fake_endpoint_xa01_rejected_review" :
+                    transientRetry ?
                     "native_fake_endpoint_xa01_transport_retry" :
                     cancelAfterRead ?
                     "native_fake_endpoint_xa01_cancelled" :
@@ -446,6 +476,8 @@ namespace GuardrailTests
                 malformed_proposal_observed = malformedProposalObserved,
                 cancellation_observed = cancellationObserved,
                 transport_retried_identically = transportRetriedIdentically,
+                rejected_review_blocked = rejectedReviewBlocked,
+                review_rejection_observed = reviewRejectionObserved,
                 source_preserved = sourcePreserved,
                 workbook_draft_passed = workbookDraft,
                 workbook_facts_passed = workbookFacts,
