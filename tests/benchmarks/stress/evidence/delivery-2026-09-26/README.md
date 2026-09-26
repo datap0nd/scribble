@@ -1,8 +1,8 @@
 # Delivery checkpoint evidence
 
-The current local Scribble.dll SHA-256 is `ea845efeffa2e0e3d5ad0cf44818d9de2965be44dab8e2cde0b191a7aab6cd2c`.
+The current local Scribble.dll SHA-256 is `66ab464d8cc8c13624be148cf0dd18c5c4377a9665ef6c93aa9ab5d35adb9be0`.
 
-`offline-candidate.json`, `native-candidate.json`, `chartless-acceptance.json`, `production-route.json`, `excel-binding.json`, `analysis-component.json`, `xa01-route.json`, `pp01-grading.json`, and `visual-review.json` are the current checkpoint. The full local PP01 capture and XA01 test artifacts remain under the ignored `tests/benchmarks/generated/delivery-native/` directory; their exact paths and hashes are in `DELIVERY_STATUS.md`.
+`offline-candidate.json`, `native-candidate.json`, `chartless-acceptance.json`, `production-route.json`, `excel-binding.json`, `analysis-component.json`, `xa01-route.json`, `xa01-failed-workbook.json`, `pp01-grading.json`, and `visual-review.json` are the current checkpoint. The full local PP01 capture and XA01 test artifacts remain under the ignored `tests/benchmarks/generated/delivery-native/` directory; their exact paths and hashes are in `DELIVERY_STATUS.md`.
 
 `phase4-references.json` and `phase4-defects.json` are historical prior-binary reference-generator receipts. They are retained for traceability and are **not** part of the current-binary pass. The corrected D2P2/D2P3 references were reviewed previously; current-binary full reference review remains open.
 

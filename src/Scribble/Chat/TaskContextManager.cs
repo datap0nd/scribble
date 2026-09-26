@@ -79,6 +79,7 @@ namespace Scribble.Chat
                         objective ?? "",
                         @"\b(?:create|make|build|produce|generate|draft)\b.{0,48}\b(?:new|draft)\b.{0,16}\b(?:workbook|worksheet|sheet)\b",
                         System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                if (workbookAlsoRequested) _state.RequiredWorkbookDraft = true;
                 request.tools.RemoveAll(tool =>
                     Scribble.Office.DocumentDraftHost.IsDraftTool(host, tool.function.name) &&
                     !IsPresentationWriteTool(tool.function.name) &&
@@ -591,6 +592,10 @@ namespace Scribble.Chat
                 image_hashes = result.VisionImages.Select(i => TaskCheckpointStore.Fingerprint(i.DataUrl)) });
             _state.PendingResults.Add(new ChatCompletionToolResultMessage { role = "tool", tool_call_id = call.id, content = result.Content });
             var write = _state.Writes.FirstOrDefault(w => w.Id == "tool:" + call.id);
+            if (_state.RequiredWorkbookDraft &&
+                call.function.name == WorkbookToolCatalog.WriteDraftSheet &&
+                SuccessfulWorkbookDraftReceipt(result))
+                _state.WorkbookDraftReceipt = TaskCheckpointStore.Fingerprint(result.Content);
             if (write != null)
             {
                 // An error may have occurred after the side effect. Never presume that it did not execute.
@@ -618,6 +623,20 @@ namespace Scribble.Chat
                 }
             }
             Checkpoint();
+        }
+
+        private bool SuccessfulWorkbookDraftReceipt(MailboxToolResult result)
+        {
+            if (result == null || result.Outcome.Failed) return false;
+            try
+            {
+                var receipt = _json.Deserialize<Dictionary<string, object>>(result.Content);
+                object ok, saved;
+                return receipt != null && receipt.TryGetValue("ok", out ok) &&
+                    ok is bool && (bool)ok && receipt.TryGetValue("saved", out saved) &&
+                    saved is bool && !(bool)saved;
+            }
+            catch (ArgumentException) { return false; }
         }
 
         // Only the host may resolve an interrupted ordinary Excel grid edit,
