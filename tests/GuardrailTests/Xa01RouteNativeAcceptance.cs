@@ -30,6 +30,12 @@ namespace GuardrailTests
         { if (!condition) throw new InvalidOperationException(message); }
 
         internal static int Run(string reportPath)
+        { return RunCore(reportPath, false); }
+
+        internal static int RunFailedWorkbook(string reportPath)
+        { return RunCore(reportPath, true); }
+
+        private static int RunCore(string reportPath, bool failWorkbook)
         {
             var output = Path.GetDirectoryName(Path.GetFullPath(reportPath));
             Directory.CreateDirectory(output);
@@ -44,6 +50,8 @@ namespace GuardrailTests
             var stage = "setup";
             var failure = "";
             var terminal = false;
+            var failedWorkbookBlocked = false;
+            var workbookFailureObserved = false;
             var sourcePreserved = false;
             var workbookDraft = false;
             var deckDraft = false;
@@ -131,7 +139,8 @@ namespace GuardrailTests
                         function = new ChatToolCallFunction {
                             name = WorkbookToolCatalog.WriteDraftSheet,
                             arguments = json.Serialize(new {
-                                analysis_id = artifact.AnalysisId,
+                                analysis_id = failWorkbook ?
+                                    "stale-analysis-id" : artifact.AnalysisId,
                                 title = fixture.Item2.WorkbookTitle
                             })
                         }
@@ -175,6 +184,15 @@ namespace GuardrailTests
                             response.tool_calls.Count == 0)
                         {
                             task.State.EnumerationComplete = true;
+                            if (failWorkbook)
+                            {
+                                failedWorkbookBlocked =
+                                    !task.State.CanComplete(false) &&
+                                    string.IsNullOrEmpty(task.State.WorkbookDraftReceipt);
+                                Check(failedWorkbookBlocked,
+                                    "FAILED_WORKBOOK_ALLOWED_TERMINAL_COMPLETION");
+                                break;
+                            }
                             Check(task.State.CanComplete(false),
                                 "XA01_TERMINAL_RECEIPT_MISSING");
                             task.CompleteTask(request);
@@ -203,7 +221,18 @@ namespace GuardrailTests
                                 prompt, reviewClient, reviewSettings,
                                 CancellationToken.None, null).GetAwaiter()
                                 .GetResult() : reads.Execute(call);
-                            Check(!result.Outcome.Failed,
+                            if (failWorkbook && round == 1)
+                            {
+                                workbookFailureObserved =
+                                    result.Outcome.Failed &&
+                                    result.Outcome.ErrorCode ==
+                                        "ANALYSIS_DRAFT_PREFLIGHT_FAILED" &&
+                                    result.Outcome.PermissionConsumed == false;
+                                Check(workbookFailureObserved,
+                                    "EXPECTED_WORKBOOK_PREFLIGHT_FAILURE_MISSING: " +
+                                    result.Content);
+                            }
+                            else Check(!result.Outcome.Failed,
                                 "XA01_PUBLIC_TOOL_FAILED: " + result.Content);
                             task.AfterTool(call, result);
                             if (!write)
@@ -270,15 +299,25 @@ namespace GuardrailTests
                     }
                     writesVerified = task.State.Writes.Count == 2 &&
                         task.State.Writes.All(write => write.Status == "verified");
-                    Check(terminal && sourcePreserved && workbookDraft &&
-                        workbookFacts && deckDraft && slideFacts &&
-                        writesVerified && requests == 4 &&
-                        reviewRequests == 5,
-                        "XA01_ROUTE_INCOMPLETE");
-                    stage = "capture_native_output";
-                    draft.SaveCopyAs(Path.Combine(output, "xa01-candidate.pptx"));
-                    draft.SaveAs(Path.Combine(output, "xa01-candidate.pdf"),
-                        32);
+                    if (failWorkbook)
+                        Check(failedWorkbookBlocked &&
+                            workbookFailureObserved && !terminal &&
+                            sourcePreserved && !workbookDraft &&
+                            deckDraft && slideFacts && writesVerified &&
+                            requests == 4 && reviewRequests == 5,
+                            "XA01_FAILED_WORKBOOK_ROUTE_INCOMPLETE");
+                    else
+                    {
+                        Check(terminal && sourcePreserved && workbookDraft &&
+                            workbookFacts && deckDraft && slideFacts &&
+                            writesVerified && requests == 4 &&
+                            reviewRequests == 5,
+                            "XA01_ROUTE_INCOMPLETE");
+                        stage = "capture_native_output";
+                        draft.SaveCopyAs(Path.Combine(output, "xa01-candidate.pptx"));
+                        draft.SaveAs(Path.Combine(output, "xa01-candidate.pdf"),
+                            32);
+                    }
                 }
             }
             catch (Exception error) { failure = stage + ": " + error; }
@@ -304,9 +343,13 @@ namespace GuardrailTests
                     AnalysisDocumentPilot.FeatureFlag, previousFlag);
             }
             var report = new {
-                execution_kind = "native_fake_endpoint_xa01_route",
+                execution_kind = failWorkbook ?
+                    "native_fake_endpoint_xa01_failed_workbook" :
+                    "native_fake_endpoint_xa01_route",
                 assembly_sha256 = PresentationRevisionAcceptance.AssemblyHash(),
                 terminal_receipt_passed = terminal,
+                failed_workbook_blocked = failedWorkbookBlocked,
+                workbook_failure_observed = workbookFailureObserved,
                 source_preserved = sourcePreserved,
                 workbook_draft_passed = workbookDraft,
                 workbook_facts_passed = workbookFacts,
