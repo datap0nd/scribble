@@ -32,7 +32,7 @@ leave a blank.
 
 Remaining OpenRouter balance: $14.4736 at 21:38 UTC on 26 Sep 2026 (existing
 `TestLabStressBudget.CheckAsync` against `/api/v1/key`; $25.5264 used of the
-$40 no-reset key). After three real XA01 runs: $13.9678 at 23:00 UTC. Recheck
+$40 no-reset key). After four real XA01 runs: $13.5078 at 23:25 UTC. Recheck
 before the next paid batch.
 
 ## Installed builds
@@ -42,6 +42,7 @@ before the next paid batch.
 | 2026-09-26 | 2.0.694.0 | PR #44 head `99837ca`, CI merge `65ea83a`, run `36273774551` | `96bdc751a347d3d4bd1ac3c2d7b8ccb288351e9b29c7fe657fecdb7c33115811` | `2efd65023777c9c9abc9cf7395653ae0fce245cac59d299d94434583ecc33bc3` | Pilot installer completed; renderer payload present; version and hashes read back from installed files. |
 | 2026-09-26 | 2.0.695.0 | PR #44 head `dc98db9`, CI run `36276009192` | `f51c1c22d3b234c405d694fba510e2ddb3303a2bb2ed3b207e9919f10bfe243b` | `3173792c2b296b55be3c58650f91cc2d73a922be47ea87125df68be1beec3ead` | Pilot installer exited 0; installed version, DLL and browser host hashes verified; no Office processes existed before or after install. |
 | 2026-09-26 | 2.0.696.0 | PR #44 head `63ca17b`, CI run `36277334428` | `3cd4694c7f8f40957a869925bccda4201cbc3fda4c32c7d6f29058b3900c5a6d` | `8a1b82135ccdfbc73efef39f8c2a8adb8f0960b8846d64de7b887793d40d3a9b` | Pilot installer exited 0; installed version, DLL and renderer payload verified; no Office processes existed before or after install. |
+| 2026-09-26 | 2.0.697.0 | PR #44 head `b590816`, CI run `36278264802` | `65a6c650f9b0cc52e01a2a10b44e356c047b54993d9378c1b7d38d67954898e8` | `3c034227b7e4f5c7cf55274cbdad37d80a3c8c94307953ff22d5e210bcd993c3` | Pilot installer exited 0; installed version, DLL and renderer payload verified; no Office processes existed before or after install. |
 
 ## Runs
 
@@ -60,3 +61,4 @@ predate this file. Their source commits weren't recorded there.
 | 2026-09-26 | 2.0.694.0 (`99837ca`, CI `65ea83a`) | XA01 | old | FAIL: typed route not entered despite persisted setting; native outputs passed oracle but no terminal task event; 34 requests exceeds cap | capture/binding | 34 | $0.33 | 7.3 | `suite-20260926-215717-2b996964` / `7c7a41f6720a4d589284c7a259f89a20` |
 | 2026-09-26 | 2.0.695.0 (`dc98db9`, CI `36276009192`) | XA01 | new | FAIL: typed grouped binding rejected formula-valued source metrics, so no deck or terminal event | capture/binding | 14 | $0.11 | 2.7 | `suite-20260926-223645-e2bf561f` / `ec57603e05c74e7bb46364bf735b5cd5` |
 | 2026-09-26 | 2.0.696.0 (`63ca17b`, CI `36277334428`) | XA01 | new | FAIL: grouped source facts succeeded; draft supplied the first analysis ID after a second grouped read extended it, so no outputs or terminal event | plan/preflight | 9 | $0.06 | 1.5 | `suite-20260926-225713-99570bc1` / `2fc49c125fa54015b7b5cb21b8277ea0` |
+| 2026-09-26 | 2.0.697.0 (`b590816`, CI `36278264802`) | XA01 | new | FAIL: typed workbook draft succeeded; deck plan repeatedly failed numeric/text authority and expanded citations, with no deck or terminal event | planning/schema | 32 | $0.46 | 8.8 | `suite-20260926-231455-2049ec90` / `6b751d2c36ba4e02a7f3e6dc776c6ca6` |

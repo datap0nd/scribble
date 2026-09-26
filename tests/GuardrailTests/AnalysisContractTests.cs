@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -245,6 +246,61 @@ namespace GuardrailTests
             RejectTableBinding(() => AnalysisTableArtifactBuilder.BuildGrouped(
                 captureFormula(), formulaBinding),
                 "ANALYSIS_TABLE_VALUE_UNVERIFIED");
+
+            var many = new TableDataset { TableId = "many-rows",
+                Name = "Ledger", Rows = 49, Columns = 4,
+                Cells = new List<DatasetCell> {
+                    Cell(0, 0, "A1", AnalysisContract.TextValue, "Period"),
+                    Cell(0, 1, "B1", AnalysisContract.TextValue, "RevenueEUR"),
+                    Cell(0, 2, "C1", AnalysisContract.TextValue, "CostEUR"),
+                    Cell(0, 3, "D1", AnalysisContract.TextValue, "RowID") } };
+            for (var row = 1; row < many.Rows; row++)
+            {
+                var addressRow = (row + 1).ToString(
+                    CultureInfo.InvariantCulture);
+                many.Cells.Add(Cell(row, 0, "A" + addressRow,
+                    AnalysisContract.TextValue, row <= 24 ?
+                        "2026-05" : "2026-06"));
+                many.Cells.Add(Cell(row, 1, "B" + addressRow,
+                    AnalysisContract.DecimalValue, "100"));
+                many.Cells.Add(Cell(row, 2, "C" + addressRow,
+                    AnalysisContract.DecimalValue, "50"));
+                many.Cells.Add(Cell(row, 3, "D" + addressRow,
+                    AnalysisContract.TextValue, "WB01-" +
+                    row.ToString("D4", CultureInfo.InvariantCulture)));
+            }
+            var manySnapshot = AnalysisContract.CreateSnapshot("workbook-a",
+                "excel_workbook", "many-rows-revision", "complete_range",
+                "literal_values", new[] { Locator("workbook-a",
+                    "Ledger", "A1:D49", "") }, new[] { many });
+            var manyBinding = new AnalysisTableBinding {
+                TableId = many.TableId, PeriodHeader = "Period",
+                Metrics = new List<AnalysisMetricColumnBinding> {
+                    new AnalysisMetricColumnBinding { Header = "RevenueEUR",
+                        Metric = "RevenueEUR", Currency = "EUR",
+                        Unit = "currency" },
+                    new AnalysisMetricColumnBinding { Header = "CostEUR",
+                        Metric = "CostEUR", Currency = "EUR",
+                        Unit = "currency" } } };
+            var manyArtifact = AnalysisTableArtifactBuilder.BuildGrouped(
+                manySnapshot, manyBinding);
+            var manyPlan = AnalysisNativeAcceptance.Fixture(
+                manyArtifact).Item2;
+            manyPlan.Slides[0].Subtitle[0].Text =
+                "Source WB01, June 2026. ";
+            manyPlan.Slides[0].Cards[0].Points[0].Text =
+                "Verified revenue: ";
+            var manyCompiled = AnalysisDocumentCompiler.Compile(
+                manyArtifact, manyPlan);
+            var headline = manyCompiled.Slides[0];
+            Check(((string)headline["sources"]).Contains("B26:B49") &&
+                ((string)headline["sources"]).Length < 2000 &&
+                ((string)headline["subtitle"]).Contains("WB01") &&
+                ((string)headline["subtitle"]).Contains("2026") &&
+                ((object[])((Dictionary<string, object>)
+                    ((object[])headline["cards"])[0])["points"])[0]
+                    .ToString().Contains("Verified revenue"),
+                "Verified labels or exact grouped-cell citations did not survive deck compilation.");
         }
 
         private static TableDataset MappedTable()

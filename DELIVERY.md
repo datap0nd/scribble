@@ -178,14 +178,14 @@ a ≤ 10-line owner note in §5.
 | New route, real model | — | — | **0 runs** |
 
 Current stage: **B2**. A1–A4 are done. A5 installed and hash-verified CI pilot
-builds 2.0.694.0–2.0.696.0; the scoreboard records each. OpenRouter had
-$13.9678 remaining at 23:00 UTC on 26 Sep, after three paid XA01 runs costing
-about $0.50 total. The first stayed on the old route; the second rejected
-formula-valued source metrics; the third successfully bound grouped facts but
-failed plan preflight because it supplied the first analysis ID after a second
-read extended the same-source artifact. The current fix accepts only prior IDs
-from an additive, same-snapshot task revision chain and resolves them to the
-current artifact. Next: build, install, recheck balance and rerun XA01.
+builds 2.0.694.0–2.0.697.0; the scoreboard records each. OpenRouter had
+$13.5078 remaining at 23:25 UTC on 26 Sep, after four paid XA01 runs costing
+about $0.97 total. The fourth completed the typed workbook draft but failed
+deck planning/schema: repeated numeric/text authority errors followed by a
+source citation line over 2000 characters. The current fix compacts exact
+consecutive source-cell citations into ranges, accepts source-verified labels
+and a checked prose-plus-fact part, and tests a grouped multi-row deck.
+Next: build, install, recheck balance and rerun XA01.
 
 ## 6. Rules for autonomous sessions
 
