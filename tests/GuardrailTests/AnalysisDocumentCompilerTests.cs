@@ -52,15 +52,13 @@ namespace GuardrailTests
 
         public static void SharedAnalysisAllowsOneDraftPerDestination()
         {
-            var prior = Environment.GetEnvironmentVariable(
-                AnalysisDocumentPilot.FeatureFlag);
+            var prior = AnalysisDocumentPilot.Enabled;
             var root = Path.Combine(Path.GetTempPath(),
                 "scribble-analysis-write-scope-" +
                 Guid.NewGuid().ToString("N"));
             try
             {
-                Environment.SetEnvironmentVariable(
-                    AnalysisDocumentPilot.FeatureFlag, "1");
+                AnalysisDocumentPilot.SetEnabled(true);
                 var request = new ChatCompletionRequest
                 {
                     model = "offline-test",
@@ -103,20 +101,19 @@ namespace GuardrailTests
             }
             finally
             {
-                Environment.SetEnvironmentVariable(
-                    AnalysisDocumentPilot.FeatureFlag, prior);
+                AnalysisDocumentPilot.SetEnabled(prior);
                 if (Directory.Exists(root)) Directory.Delete(root, true);
             }
         }
 
-        public static void PilotRequiresExplicitFeatureFlag()
+        public static void PilotRequiresPersistedSetting()
         {
-            var prior = Environment.GetEnvironmentVariable(
-                AnalysisDocumentPilot.FeatureFlag);
+            var prior = AnalysisDocumentPilot.Enabled;
             try
             {
-                Environment.SetEnvironmentVariable(
-                    AnalysisDocumentPilot.FeatureFlag, null);
+                AnalysisDocumentPilot.SetEnabled(false);
+                Check(!AnalysisDocumentPilot.Enabled,
+                    "The persisted analysis setting did not disable the route.");
                 var blocked = false;
                 try { AnalysisDocumentPilot.WriteWorkbook(null, null, null); }
                 catch (InvalidOperationException error)
@@ -125,8 +122,7 @@ namespace GuardrailTests
             }
             finally
             {
-                Environment.SetEnvironmentVariable(
-                    AnalysisDocumentPilot.FeatureFlag, prior);
+                AnalysisDocumentPilot.SetEnabled(prior);
             }
         }
 

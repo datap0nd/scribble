@@ -24,7 +24,26 @@ namespace Scribble.Office
     // bridge until the native, review and recovery gates have passed.
     public static class AnalysisDocumentPilot
     {
-        public const string FeatureFlag = "SCRIBBLE_ANALYSIS_PILOT";
+        public static string SettingPath { get { return Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "Scribble", "AnalysisPilot.setting"); } }
+
+        public static bool Enabled
+        {
+            get
+            {
+                try { return File.ReadAllText(SettingPath).Trim() == "1"; }
+                catch (Exception error) when (error is IOException ||
+                    error is UnauthorizedAccessException) { return false; }
+            }
+        }
+
+        public static void SetEnabled(bool enabled)
+        {
+            var path = SettingPath;
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            File.WriteAllText(path, enabled ? "1" : "0");
+        }
 
         public static string WriteWorkbook(object excelApplication,
             AnalysisArtifact artifact, AnalysisDocumentPlan plan)
@@ -1235,8 +1254,7 @@ namespace Scribble.Office
 
         private static void RequireEnabled()
         {
-            if (!string.Equals(Environment.GetEnvironmentVariable(FeatureFlag),
-                "1", StringComparison.Ordinal))
+            if (!Enabled)
                 throw new InvalidOperationException(
                     "ANALYSIS_PILOT_DISABLED: The analysis writer is restricted to the development pilot.");
         }

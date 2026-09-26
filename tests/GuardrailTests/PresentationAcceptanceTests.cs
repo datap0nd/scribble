@@ -10,6 +10,8 @@ namespace GuardrailTests
     {
         internal static void ScopedReceiptCannotCertifyCharts()
         {
+            Check(PresentationRevisionAcceptance.Enabled);
+            Check(!PresentationRevisionAcceptance.SupportsCharts);
             var receipt = new Dictionary<string, object>
             {
                 { "assembly_sha256", "candidate" },

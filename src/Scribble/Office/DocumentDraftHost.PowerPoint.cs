@@ -47,9 +47,7 @@ namespace Scribble.Office
                 if (call.function.name == PresentationToolCatalog.AddDraftSlides &&
                     _taskContext != null &&
                     _taskContext.State.RequiredPresentationSlides == 6 &&
-                    string.Equals(Environment.GetEnvironmentVariable(
-                        AnalysisDocumentPilot.FeatureFlag), "1",
-                        StringComparison.Ordinal) &&
+                    AnalysisDocumentPilot.Enabled &&
                     ShouldDraftRepairedDeck(_hostKind,
                         string.Join("\n", _taskContext.State.OriginalDecisions), 6))
                     return Error(call.id, authorization,

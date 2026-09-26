@@ -65,8 +65,7 @@ namespace GuardrailTests
             var savedFingerprintPath = Path.Combine(output,
                 "saved-chart-fingerprint-boundary.pptx");
             Directory.CreateDirectory(output);
-            var priorFlag = Environment.GetEnvironmentVariable(
-                AnalysisDocumentPilot.FeatureFlag);
+            var priorFlag = AnalysisDocumentPilot.Enabled;
             const string pdfDiagnosticFlag =
                 "SCRIBBLE_ANALYSIS_PDF_DIAGNOSTIC_DIR";
             var priorPdfDiagnostic = Environment.GetEnvironmentVariable(
@@ -75,8 +74,7 @@ namespace GuardrailTests
                 "EXCEL").Select(process => process.Id));
             try
             {
-                Environment.SetEnvironmentVariable(
-                    AnalysisDocumentPilot.FeatureFlag, "1");
+                AnalysisDocumentPilot.SetEnabled(true);
                 Environment.SetEnvironmentVariable(pdfDiagnosticFlag, output);
                 stage = "excel_start";
                 excel = Activator.CreateInstance(Type.GetTypeFromProgID(
@@ -1434,8 +1432,7 @@ namespace GuardrailTests
             }
             finally
             {
-                Environment.SetEnvironmentVariable(
-                    AnalysisDocumentPilot.FeatureFlag, priorFlag);
+                AnalysisDocumentPilot.SetEnabled(priorFlag);
                 Environment.SetEnvironmentVariable(pdfDiagnosticFlag,
                     priorPdfDiagnostic);
                 if ((object)deck != null) try { deck.Close(); } catch { }

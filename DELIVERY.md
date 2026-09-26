@@ -177,8 +177,11 @@ a ≤ 10-line owner note in §5.
 | S2 PP02–10 | — | — | not run (the pilot code rejects every one) |
 | New route, real model | — | — | **0 runs** |
 
-Current stage: **A**. The §2 decisions were approved on 26 Sep and A1's merge
-is done. A4's native smoke test passed on the PR #43 candidate. Next: A2.
+Current stage: **A5**. A1 and A4 are done. A2 enables chartless revision in
+code while rejecting chart operations; A3 uses a persisted setting enabled by
+the stress Test Lab. The Release build, static scan and 218 guardrails pass.
+OpenRouter reported $14.4736 remaining at 21:38 UTC on 26 Sep. Next: install
+and hash-verify this candidate, then run XA01 with the real model.
 
 ## 6. Rules for autonomous sessions
 

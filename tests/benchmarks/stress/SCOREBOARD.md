@@ -30,8 +30,9 @@ leave a blank.
 | S2 PP01–PP10 batch | ≥ 8/10 | not run |
 | S2 PP01 consecutive | 3 | 0 |
 
-Remaining OpenRouter balance: $14.47 at 19:35 UTC on 22 Sep 2026, with no paid
-runs since. Re-verify in stage A5.
+Remaining OpenRouter balance: $14.4736 at 21:38 UTC on 26 Sep 2026 (existing
+`TestLabStressBudget.CheckAsync` against `/api/v1/key`; $25.5264 used of the
+$40 no-reset key). Recheck before the paid XA01 batch.
 
 ## Runs
 

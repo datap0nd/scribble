@@ -187,9 +187,7 @@ namespace Scribble.Office
                     _hostKind == "excel" && _taskContext != null &&
                     !string.IsNullOrWhiteSpace(
                         _taskContext.State.AnalysisArtifactEvidenceId) &&
-                    string.Equals(Environment.GetEnvironmentVariable(
-                        AnalysisDocumentPilot.FeatureFlag), "1",
-                        StringComparison.Ordinal))
+                    AnalysisDocumentPilot.Enabled)
                     return await ExecuteAnalysisDeckAsync(call, authorization,
                         exclusive, client, settings, token);
                 return await ExecuteSamsungAsync(call, authorization, exclusive, prompt, client, settings, token, progress);

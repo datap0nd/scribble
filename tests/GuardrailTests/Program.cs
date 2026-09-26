@@ -99,7 +99,7 @@ namespace GuardrailTests
                 Run("One verified analysis compiles workbook formulas and four slides", AnalysisDocumentCompilerTests.OneAnalysisSuppliesWorkbookAndFourSlides);
                 Run("Typed deck tool accepts only fact references", AnalysisDocumentCompilerTests.DeckToolAcceptsOnlyFactReferencedPlan);
                 Run("Shared analysis scopes each destination write", AnalysisDocumentCompilerTests.SharedAnalysisAllowsOneDraftPerDestination);
-                Run("Analysis native writer requires an explicit development flag", AnalysisDocumentCompilerTests.PilotRequiresExplicitFeatureFlag);
+                Run("Analysis native writer requires a persisted setting", AnalysisDocumentCompilerTests.PilotRequiresPersistedSetting);
                 Run("Typed review findings cannot override facts or pages", AnalysisReviewContractTests.FindingsCannotOverrideVerifiedFactsOrPages);
                 Run("One repair budget spans review and patch stages", AnalysisReviewContractTests.SharedBudgetSurvivesEveryStage);
                 Run("PDF export permits only metadata and two EMU table rounding", AnalysisReviewContractTests.PdfExportOnlyPermitsMetadataAndTableRoundoff);
@@ -7172,12 +7172,10 @@ namespace GuardrailTests
             var authorizedSystem = Convert.ToString(
                 ((ChatCompletionInputMessage)
                     authorized.messages[0]).content);
-            var previousPilotFlag = Environment.GetEnvironmentVariable(
-                AnalysisDocumentPilot.FeatureFlag);
+            var previousPilotFlag = AnalysisDocumentPilot.Enabled;
             try
             {
-                Environment.SetEnvironmentVariable(
-                    AnalysisDocumentPilot.FeatureFlag, "1");
+                AnalysisDocumentPilot.SetEnabled(true);
                 var repair = DocumentChatRequestFactory.Create(
                     "test-model", "powerpoint", "Presentation: Deck1",
                     new List<ChatTurn>(),
@@ -7235,9 +7233,7 @@ namespace GuardrailTests
             }
             finally
             {
-                Environment.SetEnvironmentVariable(
-                    AnalysisDocumentPilot.FeatureFlag,
-                    previousPilotFlag);
+                AnalysisDocumentPilot.SetEnabled(previousPilotFlag);
             }
             Assert(
                 authorizedSystem.Contains(

@@ -437,9 +437,7 @@ namespace Scribble.Office
             OneShotDraftAuthorization authorization)
         {
             if (_hostKind != "excel" ||
-                !string.Equals(Environment.GetEnvironmentVariable(
-                    AnalysisDocumentPilot.FeatureFlag), "1",
-                    StringComparison.Ordinal))
+                !AnalysisDocumentPilot.Enabled)
                 return Error(callId, authorization,
                     "ANALYSIS_PILOT_DISABLED",
                     "This typed report route is available only in the development pilot.");

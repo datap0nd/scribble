@@ -43,16 +43,14 @@ namespace Scribble.Chat
             _prefixCount = request.messages.Count;
             if (request.tools == null) request.tools = new List<ChatToolDefinition>();
             if (resume == null && host == "powerpoint" &&
-                string.Equals(Environment.GetEnvironmentVariable(AnalysisDocumentPilot.FeatureFlag), "1", StringComparison.Ordinal) &&
+                AnalysisDocumentPilot.Enabled &&
                 request.tools.Any(tool => tool.function.name == PresentationToolCatalog.ReviseSlides))
                 _state.HostData["delivery_request_limit"] = "18";
             if (Scribble.Security.DocumentDraftIntentPolicy.AllowsDraft(objective) &&
                 request.tools.Any(t => t.function.name == PresentationToolCatalog.AddDraftSlides ||
                     t.function.name == CrossAppToolCatalog.SendToPowerPoint ||
                     (t.function.name == PresentationToolCatalog.ReviseSlides &&
-                     string.Equals(Environment.GetEnvironmentVariable(
-                         Scribble.Office.AnalysisDocumentPilot.FeatureFlag),
-                         "1", StringComparison.Ordinal))))
+                     AnalysisDocumentPilot.Enabled)))
             {
                 var count = System.Text.RegularExpressions.Regex.Match(objective ?? "",
                     @"\b(?<count>\d+|one|two|three|four|five|six|seven|eight|nine|ten)\b(?:[\s-]+[A-Za-z][A-Za-z0-9-]*){0,8}[\s-]+slides?\b",
@@ -494,9 +492,7 @@ namespace Scribble.Chat
             return _state.Host == "excel" &&
                 _state.AnalysisContractVersion == AnalysisContract.Version &&
                 !string.IsNullOrWhiteSpace(_state.AnalysisArtifactEvidenceId) &&
-                string.Equals(Environment.GetEnvironmentVariable(
-                    AnalysisDocumentPilot.FeatureFlag), "1",
-                    StringComparison.Ordinal) &&
+                AnalysisDocumentPilot.Enabled &&
                 (name == WorkbookToolCatalog.WriteDraftSheet ||
                  name == CrossAppToolCatalog.SendToPowerPoint);
         }

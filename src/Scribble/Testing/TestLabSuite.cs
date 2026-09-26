@@ -508,6 +508,11 @@ namespace Scribble.Testing
                         catalog = await Task.Run(() => TestLabSuite.SnapshotExternalKit(options.KitPath, options.KitSha256, Path.Combine(State.folder, "catalog"), cancel));
                     }
                     State.catalogRoot = catalog; State.fixtureSuiteId = TestLabSuite.Read<KitManifest>(Path.Combine(catalog, "manifest.json")).suite_id;
+                    if (State.fixtureSuiteId == "scribble-stress-v1")
+                    {
+                        Scribble.Office.AnalysisDocumentPilot.SetEnabled(true);
+                        Log("Persisted typed analysis route enabled for the stress suite.");
+                    }
                     var catalogCases = TestLabSuite.Read<LabCase[]>(Path.Combine(catalog, "operator", "cases.json"));
                     var cases = options == null ? TestLabSuite.SelectCases(catalogCases, caseFilter) : TestLabSuite.SelectRequestedCases(catalogCases, options.RequestedCaseIds);
                     State.requestedCaseIds = cases.Select(c => c.id).ToArray(); TestLabSuite.Save(State);

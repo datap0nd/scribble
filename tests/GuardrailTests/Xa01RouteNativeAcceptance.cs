@@ -63,8 +63,7 @@ namespace GuardrailTests
             var output = Path.GetDirectoryName(Path.GetFullPath(reportPath));
             Directory.CreateDirectory(output);
             var json = new JavaScriptSerializer { MaxJsonLength = 16000000 };
-            var previousFlag = Environment.GetEnvironmentVariable(
-                AnalysisDocumentPilot.FeatureFlag);
+            var previousFlag = AnalysisDocumentPilot.Enabled;
             var existingExcel = new HashSet<int>(Process.GetProcessesByName(
                 "EXCEL").Select(process => process.Id));
             dynamic excel = null, source = null, ledger = null, powerpoint = null,
@@ -106,8 +105,7 @@ namespace GuardrailTests
             {
                 Check(Process.GetProcessesByName("POWERPNT").Length == 0,
                     "NATIVE_POWERPOINT_SESSION_ALREADY_OPEN");
-                Environment.SetEnvironmentVariable(
-                    AnalysisDocumentPilot.FeatureFlag, "1");
+                AnalysisDocumentPilot.SetEnabled(true);
                 excel = Activator.CreateInstance(Type.GetTypeFromProgID(
                     "Excel.Application", true));
                 uint excelProcessId;
@@ -608,8 +606,7 @@ namespace GuardrailTests
                 GC.WaitForPendingFinalizers();
                 forcedExcelCleanup = StopOwnedExcelIfStillRunning(
                     ownedExcelProcessId, existingExcel);
-                Environment.SetEnvironmentVariable(
-                    AnalysisDocumentPilot.FeatureFlag, previousFlag);
+                AnalysisDocumentPilot.SetEnabled(previousFlag);
             }
             var report = new {
                 execution_kind = restartReconcile ?

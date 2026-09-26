@@ -619,10 +619,7 @@ namespace Scribble.Office
             object rawAnalysisBinding;
             var bindAnalysis = arguments.TryGetValue("analysis_binding",
                 out rawAnalysisBinding);
-            if (bindAnalysis && !string.Equals(
-                    Environment.GetEnvironmentVariable(
-                        AnalysisDocumentPilot.FeatureFlag), "1",
-                    StringComparison.Ordinal))
+            if (bindAnalysis && !AnalysisDocumentPilot.Enabled)
                 return Error(callId, "ANALYSIS_PILOT_DISABLED",
                     "Typed analysis binding is only available in the development pilot.");
             dynamic application = _excelApplication;

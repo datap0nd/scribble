@@ -2,45 +2,19 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography;
-using System.Web.Script.Serialization;
 
 namespace Scribble.Office
 {
     public static class PresentationRevisionAcceptance
     {
         public const string ChartlessScope = "chartless-v1";
-        public static string ReceiptPath { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Scribble", "PowerPointAcceptance.json"); } }
         public static string AssemblyHash()
         {
             using (var stream = File.OpenRead(typeof(PresentationRevisionAcceptance).Assembly.Location))
             using (var hash = SHA256.Create()) return BitConverter.ToString(hash.ComputeHash(stream)).Replace("-", "").ToLowerInvariant();
         }
-        public static bool Enabled
-        {
-            get
-            {
-                try
-                {
-                    if (!File.Exists(ReceiptPath)) return false;
-                    var report = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(File.ReadAllText(ReceiptPath));
-                    return Supports(report, AssemblyHash(), false);
-                }
-                catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException || ex is ArgumentException) { return false; }
-            }
-        }
-        public static bool SupportsCharts
-        {
-            get
-            {
-                try
-                {
-                    if (!File.Exists(ReceiptPath)) return false;
-                    var report = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(File.ReadAllText(ReceiptPath));
-                    return Supports(report, AssemblyHash(), true);
-                }
-                catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException || ex is ArgumentException) { return false; }
-            }
-        }
+        public static bool Enabled { get { return true; } }
+        public static bool SupportsCharts { get { return false; } }
 
         // Acceptance certifies a capability set, not every operation merely
         // because one native route passed. Old full receipts remain valid.

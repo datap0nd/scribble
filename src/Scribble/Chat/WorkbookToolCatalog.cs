@@ -187,9 +187,7 @@ namespace Scribble.Chat
         private static Dictionary<string, object> ReadCellsParameters(
             Dictionary<string, object> properties)
         {
-            if (string.Equals(Environment.GetEnvironmentVariable(
-                    AnalysisDocumentPilot.FeatureFlag), "1",
-                    StringComparison.Ordinal))
+            if (AnalysisDocumentPilot.Enabled)
             {
                 properties.Add("analysis_binding", ToolSchema.Build(
                     new Dictionary<string, object>

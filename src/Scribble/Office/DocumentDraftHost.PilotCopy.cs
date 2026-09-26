@@ -17,9 +17,7 @@ namespace Scribble.Office
             return call?.function?.name ==
                     PresentationToolCatalog.ReviseSlides &&
                 _hostKind == "powerpoint" && _taskContext != null &&
-                string.Equals(Environment.GetEnvironmentVariable(
-                    AnalysisDocumentPilot.FeatureFlag), "1",
-                    StringComparison.Ordinal) &&
+                AnalysisDocumentPilot.Enabled &&
                 ShouldDraftRepairedDeck(_hostKind,
                     string.Join("\n", _taskContext.State.OriginalDecisions),
                     _taskContext.State.RequiredPresentationSlides) &&

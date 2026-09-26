@@ -24,9 +24,7 @@ namespace Scribble.Chat
         {
             if (request?.tools == null || artifact == null ||
                 hostKind != "excel" ||
-                !string.Equals(Environment.GetEnvironmentVariable(
-                    AnalysisDocumentPilot.FeatureFlag), "1",
-                    StringComparison.Ordinal)) return;
+                !AnalysisDocumentPilot.Enabled) return;
             AnalysisContract.Serialize(artifact);
             var index = request.tools.FindIndex(tool =>
                 tool.function.name == WorkbookToolCatalog.WriteDraftSheet);
@@ -93,9 +91,7 @@ namespace Scribble.Chat
         {
             var pilotRepair = hostKind == "powerpoint" &&
                 allowDraftCreate &&
-                string.Equals(Environment.GetEnvironmentVariable(
-                    AnalysisDocumentPilot.FeatureFlag), "1",
-                    StringComparison.Ordinal) &&
+                AnalysisDocumentPilot.Enabled &&
                 Regex.IsMatch(userPrompt ?? "",
                     @"\b(?:6|six)\b.{0,24}\bslides?\b", RegexOptions.IgnoreCase) &&
                 DocumentDraftHost.ShouldDraftRepairedDeck(hostKind,
