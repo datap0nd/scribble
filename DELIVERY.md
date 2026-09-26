@@ -526,15 +526,18 @@ uses `TargetFrameworkRootPath` set to the cached
 `Microsoft.NETFramework.ReferenceAssemblies.net48/1.0.3/build/` directory.
 This is a local convenience, not a portable path assumption or CI substitute.
 
-The downloaded candidate harness is under
-`tests/benchmarks/generated/delivery-ci-36157065102/harness/`. The current sealed
+The current downloaded candidate harness is under
+`tests/benchmarks/generated/delivery-ci-36218395090/harness/`. Its
+CI-stamped Scribble.dll was replaced locally with the exact candidate DLL
+recorded in `DELIVERY_STATUS.md` before the native run; verify both executable
+and DLL hashes before reusing it. The current sealed
 stress-corpus manifest is
 `64f73305c8cf0cc2efdc5b87c539b833fd442c82c67c0ba2f62f06e0ff689d2e`.
 Verify input hashes against that manifest before a native attempt.
 
 ```powershell
 & tests/NativeAcceptance/Test-DeliveryCandidate.ps1 `
-  -TestExecutable tests/benchmarks/generated/delivery-ci-36157065102/harness/GuardrailTests.exe `
+  -TestExecutable tests/benchmarks/generated/delivery-ci-36218395090/harness/GuardrailTests.exe `
   -OutputDirectory tests/benchmarks/generated/delivery-native `
   -SourcePresentation tests/benchmarks/generated/stress-corpus/inputs/powerpoint/PPT01.pptx `
   -SourceWorkbook tests/benchmarks/generated/stress-corpus/inputs/excel/WB01.xlsx `
@@ -549,6 +552,7 @@ attempts into the same pass.
 Additional existing harness modes are `--native-xa01-route`,
 `--native-xa01-failed-workbook`, `--native-xa01-malformed-workbook`,
 `--native-xa01-cancelled`, `--native-xa01-transport-retry`,
+`--native-xa01-rejected-review`,
 `--native-analysis-pilot`,
 `--native-phase5-excel-binding`, `--native-saved-chart-fingerprint`,
 `--native-phase4-reference` and `--native-phase4-defects`, each with a report path.
@@ -587,11 +591,11 @@ approval requirements unless the user introduces another explicit constraint.
 
 Work on the first unresolved dependency. The scoped D1 native receipts and the
 positive PP01 and XA01 D2 routes are recorded in [DELIVERY_STATUS.md](DELIVERY_STATUS.md).
-The failed-workbook and malformed-workbook routes are the first two D2 negative
-receipts. Pre-write cancellation and one recovered HTTP 503 inference retry
-are also checkpointed. Cancellation during a native write, rejected review,
-nonrecoverable transport, exhausted allowance and restart remain open. D3
-calibration and D4–D9 remain open.
+The failed-workbook, malformed-workbook and rejected-review routes have D2
+negative receipts. Pre-write cancellation and one recovered HTTP 503 inference
+retry are also checkpointed. The rejected-review deck remains uncertain.
+Cancellation during a native write, nonrecoverable transport, exhausted
+allowance and restart remain open. D3 calibration and D4–D9 remain open.
 
 Each change must name its defect, owning layer, intended behavior, relevant
 regression and acceptance evidence. After a failure, preserve the smallest
