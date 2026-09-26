@@ -217,6 +217,22 @@ namespace GuardrailTests
                 });
                 var parsedPlan = AnalysisSlidePlanContract.Parse(
                     fixture.Item1, planJson);
+                var priorId = "analysis_prior_same_source";
+                var priorPlanJson = planJson.Replace(
+                    fixture.Item1.AnalysisId, priorId);
+                var normalizedPlan = AnalysisSlidePlanContract.Parse(
+                    fixture.Item1, priorPlanJson,
+                    id => id == priorId);
+                Check(normalizedPlan.AnalysisId == fixture.Item1.AnalysisId,
+                    "An accepted same-source analysis ID did not resolve to the current artifact.");
+                var staleRejected = false;
+                try { AnalysisSlidePlanContract.Parse(fixture.Item1,
+                    priorPlanJson); }
+                catch (InvalidOperationException error)
+                { staleRejected = error.Message.Contains(
+                    "ANALYSIS_PLAN_BINDING_INVALID"); }
+                Check(staleRejected,
+                    "A prior analysis ID was accepted without a task-owned revision chain.");
                 var injectedFormula = planJson.Replace("\"Formula\":null",
                     "\"Formula\":\"=1\"");
                 Check(injectedFormula != planJson,

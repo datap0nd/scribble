@@ -178,13 +178,14 @@ a ≤ 10-line owner note in §5.
 | New route, real model | — | — | **0 runs** |
 
 Current stage: **B2**. A1–A4 are done. A5 installed and hash-verified CI pilot
-builds 2.0.694.0 and 2.0.695.0; the scoreboard records both. OpenRouter had
-$14.0268 remaining at 22:41 UTC on 26 Sep, after two paid XA01 runs costing
-about $0.44 total. The first run stayed on the old route. The second entered
-the new route but grouped binding rejected formula-valued ledger metrics, so
-no deck or terminal event was produced. A bounded formula recomputation and
-stale-cache regression are implemented. Next: build, install, recheck balance
-and rerun XA01 within the six-run and $4 daily limits.
+builds 2.0.694.0–2.0.696.0; the scoreboard records each. OpenRouter had
+$13.9678 remaining at 23:00 UTC on 26 Sep, after three paid XA01 runs costing
+about $0.50 total. The first stayed on the old route; the second rejected
+formula-valued source metrics; the third successfully bound grouped facts but
+failed plan preflight because it supplied the first analysis ID after a second
+read extended the same-source artifact. The current fix accepts only prior IDs
+from an additive, same-snapshot task revision chain and resolves them to the
+current artifact. Next: build, install, recheck balance and rerun XA01.
 
 ## 6. Rules for autonomous sessions
 

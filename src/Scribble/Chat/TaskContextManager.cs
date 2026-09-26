@@ -247,11 +247,51 @@ namespace Scribble.Chat
         public string PersistAnalysis(AnalysisArtifact artifact)
         {
             var serialized = AnalysisContract.Serialize(artifact);
+            var prior = LoadAnalysis();
+            var extending = prior != null &&
+                prior.Snapshots.Count == 1 &&
+                artifact.Snapshots.Count == 1 &&
+                prior.Snapshots[0].SnapshotId ==
+                    artifact.Snapshots[0].SnapshotId &&
+                prior.Facts.All(fact => artifact.Facts.Any(next =>
+                    next.FactId == fact.FactId)) &&
+                prior.Calculations.All(calculation =>
+                    artifact.Calculations.Any(next =>
+                        next.CalculationId == calculation.CalculationId)) &&
+                prior.Assumptions.All(artifact.Assumptions.Contains) &&
+                prior.UnresolvedConflicts.All(
+                    artifact.UnresolvedConflicts.Contains);
+            var ancestors = new List<string>();
+            string savedAncestors;
+            if (extending && _state.HostData.TryGetValue(
+                    "analysis_ancestor_ids", out savedAncestors))
+                ancestors.AddRange(_json.Deserialize<List<string>>(
+                    savedAncestors));
+            if (extending && prior.AnalysisId != artifact.AnalysisId)
+                ancestors.Add(prior.AnalysisId);
+            _state.HostData["analysis_ancestor_ids"] = _json.Serialize(
+                ancestors.Distinct(StringComparer.Ordinal).Take(16).ToList());
             var id = RegisterEvidence(serialized);
             _state.AnalysisContractVersion = AnalysisContract.Version;
             _state.AnalysisArtifactEvidenceId = id;
             Checkpoint();
             return id;
+        }
+
+        public bool AcceptsAnalysisId(string requested,
+            AnalysisArtifact current)
+        {
+            if (current == null || string.IsNullOrWhiteSpace(requested))
+                return false;
+            var persisted = LoadAnalysis();
+            if (persisted == null ||
+                persisted.AnalysisId != current.AnalysisId)
+                return false;
+            if (requested == current.AnalysisId) return true;
+            string saved;
+            return _state.HostData.TryGetValue("analysis_ancestor_ids",
+                out saved) && _json.Deserialize<List<string>>(saved)
+                    .Contains(requested, StringComparer.Ordinal);
         }
 
         public AnalysisArtifact LoadAnalysis()

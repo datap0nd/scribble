@@ -36,7 +36,8 @@ namespace Scribble.Office
                     throw new InvalidOperationException(
                         "ANALYSIS_DECK_ALREADY_COMPLETE");
                 plan = AnalysisSlidePlanContract.Parse(artifact,
-                    call.function.arguments);
+                    call.function.arguments, id =>
+                        _taskContext.AcceptsAnalysisId(id, artifact));
                 if (_taskContext.State.HostData.ContainsKey(
                     "analysis_pending_content_patch"))
                     throw new InvalidOperationException(
@@ -457,10 +458,9 @@ namespace Scribble.Office
             try
             {
                 artifact = _taskContext.LoadAnalysis();
-                if (artifact == null ||
-                    !string.Equals(ToolArguments.GetString(arguments,
-                            "analysis_id", string.Empty),
-                        artifact.AnalysisId, StringComparison.Ordinal))
+                if (!_taskContext.AcceptsAnalysisId(
+                        ToolArguments.GetString(arguments,
+                            "analysis_id", string.Empty), artifact))
                     throw new InvalidOperationException(
                         "ANALYSIS_PLAN_BINDING_INVALID");
                 var title = ToolArguments.GetString(arguments, "title",

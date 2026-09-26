@@ -370,6 +370,26 @@ namespace GuardrailTests
                     task.State.AnalysisArtifactEvidenceId == evidenceId &&
                     loaded != null && loaded.AnalysisId == artifact.AnalysisId,
                     "Task persistence did not bind the typed analysis version and protected evidence.");
+                var extendedFact = Fact(first, "OperatingEUR", "10", "EUR");
+                var extended = AnalysisContract.CreateArtifact(
+                    new[] { first },
+                    artifact.Facts.Concat(new[] { extendedFact }),
+                    artifact.Calculations, artifact.Assumptions,
+                    artifact.UnresolvedConflicts);
+                task.PersistAnalysis(extended);
+                Check(task.AcceptsAnalysisId(artifact.AnalysisId, extended) &&
+                    task.AcceptsAnalysisId(extended.AnalysisId, extended) &&
+                    !task.AcceptsAnalysisId("analysis_fabricated", extended),
+                    "A prior ID for the same source was not retained safely after an additive read.");
+                var changed = AnalysisContract.CreateArtifact(
+                    new[] { changedRevision }, new[] {
+                        Fact(changedRevision, "RevenueEUR", "82992", "EUR") },
+                    new AnalysisCalculation[0], new string[0],
+                    new string[0]);
+                task.PersistAnalysis(changed);
+                Check(!task.AcceptsAnalysisId(artifact.AnalysisId, changed) &&
+                    !task.AcceptsAnalysisId(extended.AnalysisId, changed),
+                    "A prior analysis ID survived a source revision change.");
 
                 var sources = new TaskSources(task);
                 var firstText = sources.Add("Attached document", "Same source text", "attachment:0");
