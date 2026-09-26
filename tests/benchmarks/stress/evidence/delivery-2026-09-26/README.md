@@ -14,6 +14,6 @@ The transport receipt covers one recovered HTTP 503 after the workbook draft, wi
 
 The exhausted-transport receipt covers two HTTP 503 responses after the workbook draft. The identical retry failed, the task paused, the workbook write remained verified, and no deck or review call followed. It does not qualify other transport failures, exhausted task allowance, or restart recovery.
 
-The rejected-review receipt covers two valid blocker findings after native draft creation. It confirms an uncertain deck write and no terminal completion, but does not qualify retry or recovery. Its first local attempt stopped earlier on a native chart out-of-memory error; only the clean-session retry reached review.
+The rejected-review receipt covers two valid blocker findings after native draft creation. It confirms an uncertain deck write and no terminal completion. After encrypted checkpoint reload and host rebind, a changed deck payload was refused before mutation while source values and slide IDs remained fixed. This does not qualify exact-payload reconciliation or recovery. Its first local attempt stopped earlier on a native chart out-of-memory error; only the clean-session retry reached review.
 
 The XA01 harness reports forced cleanup of its own captured Excel PID after the test. That cleanup protected the pre-existing user Excel session but is not a clean process-exit qualification.

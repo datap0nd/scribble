@@ -80,6 +80,7 @@ namespace GuardrailTests
             var reviewRejectionObserved = false;
             var deckWriteUncertain = false;
             var transportFailurePaused = false;
+            var restartUncertainDeckBlocked = false;
             var sourcePreserved = false;
             var workbookDraft = false;
             var deckDraft = false;
@@ -422,6 +423,7 @@ namespace GuardrailTests
                             requests == 4 && reviewRequests == 5,
                             "XA01_FAILED_WORKBOOK_ROUTE_INCOMPLETE");
                     else if (rejectedReview)
+                    {
                         Check(rejectedReviewBlocked &&
                             reviewRejectionObserved && !terminal &&
                             sourcePreserved && workbookDraft && workbookFacts &&
@@ -430,6 +432,48 @@ namespace GuardrailTests
                                 "analysis_deck_complete") &&
                             requests == 4 && reviewRequests == 1,
                             "XA01_REJECTED_REVIEW_ROUTE_INCOMPLETE");
+                        stage = "restart_uncertain_deck";
+                        var idsBefore = string.Join(",", Enumerable.Range(1,
+                            (int)draft.Slides.Count).Select(index =>
+                            Convert.ToInt32(draft.Slides[index].SlideID)));
+                        var restoredState = task.Store.Load(task.State.Id);
+                        Check(restoredState.Writes.Count == 2 &&
+                            restoredState.Writes[1].Status == "uncertain",
+                            "XA01_RESTART_LOST_UNCERTAIN_WRITE");
+                        var restoredRequest = DocumentChatRequestFactory.Create(
+                            request.model, "excel", "", new List<ChatTurn>(),
+                            prompt, true);
+                        var resumed = new TaskContextManager(restoredRequest,
+                            "excel", prompt, task.Store, restoredState);
+                        using (var resumedHost = new DocumentDraftHost("excel",
+                            (object)excel))
+                            resumedHost.BindTaskAsync(resumed,
+                                CancellationToken.None).GetAwaiter().GetResult();
+                        var changedCall = new ChatToolCall {
+                            id = "xa01-changed-deck-after-restart",
+                            type = "function",
+                            function = new ChatToolCallFunction {
+                                name = CrossAppToolCatalog.SendToPowerPoint,
+                                arguments = "{}"
+                            }
+                        };
+                        try { resumed.BeforeTool(changedCall, true); }
+                        catch (InvalidOperationException error)
+                        {
+                            restartUncertainDeckBlocked =
+                                error.Message.Contains(
+                                    "interrupted document write is uncertain");
+                        }
+                        var idsAfter = string.Join(",", Enumerable.Range(1,
+                            (int)draft.Slides.Count).Select(index =>
+                            Convert.ToInt32(draft.Slides[index].SlideID)));
+                        Check(restartUncertainDeckBlocked &&
+                            !resumed.State.CanComplete(false) &&
+                            idsAfter == idsBefore &&
+                            SourceValues(ledger) == sourceBefore,
+                            "XA01_RESTART_UNCERTAIN_DECK_REPLAYED");
+                        resumed.Pause("Uncertain deck requires native reconciliation.");
+                    }
                     else if (exhaustedTransport)
                         Check(transportFailurePaused &&
                             transportRetriedIdentically && !terminal &&
@@ -515,6 +559,8 @@ namespace GuardrailTests
                 review_rejection_observed = reviewRejectionObserved,
                 deck_write_uncertain = deckWriteUncertain,
                 transport_failure_paused = transportFailurePaused,
+                restart_uncertain_deck_blocked =
+                    restartUncertainDeckBlocked,
                 source_preserved = sourcePreserved,
                 workbook_draft_passed = workbookDraft,
                 workbook_facts_passed = workbookFacts,
