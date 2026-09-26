@@ -573,6 +573,16 @@ namespace GuardrailTests
                         tool.function.name == CrossAppToolCatalog.SendToWord ||
                         tool.function.name == CrossAppToolCatalog.CreateEmailDraft),
                     "An exact slide deliverable exposed an unrelated document write surface.");
+                var dualObjective = "Create a new draft worksheet and a verified four-slide PowerPoint deck from this ledger.";
+                var dualRequest = DocumentChatRequestFactory.Create("model", "excel", "Workbook", new ChatTurn[0],
+                    dualObjective, true);
+                new TaskContextManager(dualRequest, "excel", dualObjective,
+                    new TaskCheckpointStore(scopeRoot));
+                Check(dualRequest.tools.Any(tool => tool.function.name == WorkbookToolCatalog.WriteDraftSheet) &&
+                    dualRequest.tools.Any(tool => tool.function.name == CrossAppToolCatalog.SendToPowerPoint) &&
+                    !dualRequest.tools.Any(tool => tool.function.name == CrossAppToolCatalog.SendToWord ||
+                        tool.function.name == CrossAppToolCatalog.CreateEmailDraft),
+                    "An explicit workbook-and-deck request lost one output or exposed an unrelated write.");
             }
             finally { if (System.IO.Directory.Exists(scopeRoot)) System.IO.Directory.Delete(scopeRoot, true); }
         }

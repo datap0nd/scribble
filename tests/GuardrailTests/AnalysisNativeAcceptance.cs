@@ -1544,7 +1544,7 @@ namespace GuardrailTests
             return false;
         }
 
-        private static object ModelPlanValue(object value)
+        internal static object ModelPlanValue(object value)
         {
             var map = value as IDictionary<string, object>;
             if (map != null)
@@ -1571,7 +1571,7 @@ namespace GuardrailTests
         // The native route sends its rendered pages to a loopback endpoint.
         // It accepts only an exact image/hash pairing and replies with one
         // typed approval for the supplied context. No paid model is involved.
-        private sealed class AnalysisReviewEndpoint : IDisposable
+        internal sealed class AnalysisReviewEndpoint : IDisposable
         {
             private readonly TcpListener _listener = new TcpListener(
                 IPAddress.Loopback, 0);
@@ -1871,7 +1871,7 @@ namespace GuardrailTests
             }
         }
 
-        private static Tuple<AnalysisArtifact, AnalysisDocumentPlan> Fixture(
+        internal static Tuple<AnalysisArtifact, AnalysisDocumentPlan> Fixture(
             AnalysisArtifact artifact)
         {
             var mayRevenue = artifact.Facts.Single(fact =>
