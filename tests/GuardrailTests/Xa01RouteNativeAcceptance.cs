@@ -74,6 +74,7 @@ namespace GuardrailTests
             var transportRetriedIdentically = false;
             var rejectedReviewBlocked = false;
             var reviewRejectionObserved = false;
+            var deckWriteUncertain = false;
             var sourcePreserved = false;
             var workbookDraft = false;
             var deckDraft = false;
@@ -378,6 +379,9 @@ namespace GuardrailTests
                     writesVerified = task.State.Writes.Count ==
                         (cancelAfterRead ? 0 : malformedWorkbook ? 1 : 2) &&
                         task.State.Writes.All(write => write.Status == "verified");
+                    deckWriteUncertain = task.State.Writes.Count == 2 &&
+                        task.State.Writes[0].Status == "verified" &&
+                        task.State.Writes[1].Status == "uncertain";
                     if (cancelAfterRead)
                         Check(cancellationObserved && !terminal &&
                             sourcePreserved && !workbookDraft && !deckDraft &&
@@ -403,6 +407,7 @@ namespace GuardrailTests
                         Check(rejectedReviewBlocked &&
                             reviewRejectionObserved && !terminal &&
                             sourcePreserved && workbookDraft && workbookFacts &&
+                            deckWriteUncertain &&
                             !task.State.HostData.ContainsKey(
                                 "analysis_deck_complete") &&
                             requests == 4 && reviewRequests == 1,
@@ -478,6 +483,7 @@ namespace GuardrailTests
                 transport_retried_identically = transportRetriedIdentically,
                 rejected_review_blocked = rejectedReviewBlocked,
                 review_rejection_observed = reviewRejectionObserved,
+                deck_write_uncertain = deckWriteUncertain,
                 source_preserved = sourcePreserved,
                 workbook_draft_passed = workbookDraft,
                 workbook_facts_passed = workbookFacts,
