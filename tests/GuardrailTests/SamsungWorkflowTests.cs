@@ -573,6 +573,48 @@ namespace GuardrailTests
                         tool.function.name == CrossAppToolCatalog.SendToWord ||
                         tool.function.name == CrossAppToolCatalog.CreateEmailDraft),
                     "An exact slide deliverable exposed an unrelated document write surface.");
+                var dualObjective = "Create a new draft worksheet and a verified four-slide PowerPoint deck from this ledger.";
+                var dualRequest = DocumentChatRequestFactory.Create("model", "excel", "Workbook", new ChatTurn[0],
+                    dualObjective, true);
+                var dualTask = new TaskContextManager(dualRequest, "excel", dualObjective,
+                    new TaskCheckpointStore(scopeRoot));
+                Check(dualRequest.tools.Any(tool => tool.function.name == WorkbookToolCatalog.WriteDraftSheet) &&
+                    dualRequest.tools.Any(tool => tool.function.name == CrossAppToolCatalog.SendToPowerPoint) &&
+                    !dualRequest.tools.Any(tool => tool.function.name == CrossAppToolCatalog.SendToWord ||
+                        tool.function.name == CrossAppToolCatalog.CreateEmailDraft),
+                    "An explicit workbook-and-deck request lost one output or exposed an unrelated write.");
+                Check(dualTask.State.RequiredWorkbookDraft,
+                    "The requested workbook draft was not retained as a completion requirement.");
+                dualTask.State.EnumerationComplete = true;
+                for (var slide = 1; slide <= 4; slide++)
+                {
+                    var id = "ppt:" + slide;
+                    dualTask.State.ExpectedSourceIds.Add(id);
+                    dualTask.State.Batches.Add(new TaskBatchResult { Id = id,
+                        CoveredSourceIds = new List<string> { id } });
+                }
+                var failedWorkbook = new ChatToolCall { id = "failed-workbook", type = "function",
+                    function = new ChatToolCallFunction { name = WorkbookToolCatalog.WriteDraftSheet,
+                        arguments = "{}" } };
+                dualTask.BeforeTool(failedWorkbook, true);
+                dualTask.AfterTool(failedWorkbook, new MailboxToolResult(failedWorkbook.id,
+                    "{\"error_code\":\"ANALYSIS_DRAFT_PREFLIGHT_FAILED\",\"permission_consumed\":false}",
+                    "Workbook draft failed"));
+                Check(dualTask.State.Writes.All(write => write.Status == "verified") &&
+                    !dualTask.State.CanComplete(false),
+                    "A failed workbook draft allowed the deck to complete the dual-output task.");
+                Reject(() => dualTask.CompleteTask(dualRequest));
+                var successfulWorkbook = new ChatToolCall { id = "successful-workbook", type = "function",
+                    function = new ChatToolCallFunction { name = WorkbookToolCatalog.WriteDraftSheet,
+                        arguments = "{}" } };
+                dualTask.BeforeTool(successfulWorkbook, true);
+                dualTask.AfterTool(successfulWorkbook, new MailboxToolResult(successfulWorkbook.id,
+                    "{\"ok\":true,\"saved\":false,\"analysis_id\":\"fixture\"}",
+                    "Unsaved workbook draft verified"));
+                Check(!string.IsNullOrEmpty(dualTask.State.WorkbookDraftReceipt) &&
+                    dualTask.State.CanComplete(false),
+                    "A successful unsaved workbook draft did not satisfy the dual-output receipt.");
+                dualTask.CompleteTask(dualRequest);
             }
             finally { if (System.IO.Directory.Exists(scopeRoot)) System.IO.Directory.Delete(scopeRoot, true); }
         }

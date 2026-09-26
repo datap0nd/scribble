@@ -30,6 +30,7 @@ namespace GuardrailTests
             dynamic app = null; dynamic deck = null;
             var temps = new List<object>(); var passed = false;
             var powerpointExited = false; var failure = "";
+            var stage = "setup";
             try
             {
                 app = Activator.CreateInstance(Type.GetTypeFromProgID("PowerPoint.Application", true));
@@ -43,6 +44,7 @@ namespace GuardrailTests
                 slide.NotesPage.Shapes.Placeholders[2].TextFrame.TextRange.Text = "User-authored notes must remain.";
                 dynamic untouched = deck.Slides.Add(2, 12);
                 untouched.Shapes.AddTextbox(1, 60, 60, 700, 80).TextFrame.TextRange.Text = "Untouched source slide";
+                untouched.NotesPage.Shapes.Placeholders[2].TextFrame.TextRange.Text = "Independent authored note";
                 var before = PresentationInspection.Fingerprint((object)slide);
                 var unchanged = PresentationInspection.Fingerprint((object)untouched);
                 var operation = new Dictionary<string, object> { { "kind", "replace_text" }, { "slide_id", (int)slide.SlideID }, { "shape_id", (int)title.Id },
@@ -122,13 +124,19 @@ namespace GuardrailTests
                     new Dictionary<string, object> { { "kind", "insert" }, { "slide", new Dictionary<string, object> { { "id", "inserted" }, { "layout", "cover" }, { "title", "New analysis" } } } },
                     new Dictionary<string, object> { { "kind", "replace_slide" }, { "slide", new Dictionary<string, object> {
                         { "id", "recomposed" }, { "layout", "dual_visual" }, { "title", "Sales" }, { "subtitle", "Sales increased" },
-                        { "table", new { headers = new[] { "Period", "Units" }, rows = new[] { new[] { "Q1", "100" }, new[] { "Q2", "120" } } } },
-                        { "chart", new { type = "column", categories = new[] { "Q1", "Q2" }, series = new[] { new { name = "Sales", values = new[] { 100, 120 } } } } }
+                        { "table", new Dictionary<string, object> {
+                            { "headers", new[] { "Period", "Units" } },
+                            { "rows", new[] { new[] { "Q1", "100" }, new[] { "Q2", "120" } } } } },
+                        { "chart", new Dictionary<string, object> {
+                            { "type", "column" }, { "categories", new[] { "Q1", "Q2" } },
+                            { "series", new[] { new Dictionary<string, object> {
+                                { "name", "Sales" }, { "values", new[] { 100, 120 } } } } } } }
                     } } },
                     new Dictionary<string, object> { { "kind", "delete" } }
                 };
                 foreach (var scenario in scenarios)
                 {
+                    stage = "scenario:" + Convert.ToString(scenario["kind"]);
                     if (chartless && Convert.ToString(scenario["kind"]) == "chart_point") continue;
                     if (chartless && Convert.ToString(scenario["kind"]) == "replace_slide")
                     {
@@ -168,7 +176,7 @@ namespace GuardrailTests
             }
             catch (Exception ex)
             {
-                failure = ex.ToString();
+                failure = stage + ": " + ex;
                 powerpointExited = PowerPointExited(ex);
             }
             finally

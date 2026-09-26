@@ -178,7 +178,7 @@ a ≤ 10-line owner note in §5.
 | New route, real model | — | — | **0 runs** |
 
 Current stage: **A**. The §2 decisions were approved on 26 Sep and A1's merge
-is done. Next: A2.
+is done. A4's native smoke test passed on the PR #43 candidate. Next: A2.
 
 ## 6. Rules for autonomous sessions
 

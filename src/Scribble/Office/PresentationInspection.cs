@@ -168,7 +168,15 @@ namespace Scribble.Office
             dynamic page = slide;
             var result = new List<string>();
             for (var i = 1; i <= (int)page.NotesPage.Shapes.Count; i++)
-            { dynamic shape = page.NotesPage.Shapes[i]; if ((int)shape.HasTextFrame != 0) result.Add(Convert.ToString(shape.TextFrame.TextRange.Text)); }
+            {
+                dynamic shape = page.NotesPage.Shapes[i];
+                // PowerPoint regenerates this placeholder when slides move.
+                // It is a displayed ordinal, not authored note content.
+                if ((int)shape.Type == 14 &&
+                    (int)shape.PlaceholderFormat.Type == 13) continue;
+                if ((int)shape.HasTextFrame != 0)
+                    result.Add(Convert.ToString(shape.TextFrame.TextRange.Text));
+            }
             return string.Join("\n", result);
         }
         private static List<object> Shapes(object value,
@@ -738,10 +746,13 @@ namespace Scribble.Office
         public static object ReadPage(object presentation, object slide, int offset, bool preview)
         {
             var json = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
-            var content = json.Serialize(Capture(slide));
+            // Reading an existing chart's COM data can terminate PowerPoint.
+            // The inspection still describes its shape and flags its data as
+            // unavailable; a bound workbook can provide source facts.
+            var previewSuppressed = ContainsNativeChart(slide);
+            var content = json.Serialize(Capture(slide, !previewSuppressed));
             if (offset < 0 || offset > content.Length) throw new InvalidOperationException("Invalid inspection page offset.");
             var count = Math.Min(12000, content.Length - offset);
-            var previewSuppressed = ContainsNativeChart(slide);
             var render = previewSuppressed ? string.Empty : Preview(slide);
             // The structured capture is JSON, so quoted shape text contains
             // escaped line breaks. Source citations must instead be copied
@@ -757,7 +768,7 @@ namespace Scribble.Office
                 fingerprint = TaskCheckpointStore.Fingerprint(content + render), content = content.Substring(offset, count), offset, total_characters = content.Length,
                 next_offset = offset + count < content.Length ? (int?)(offset + count) : null,
                 image = preview && !string.IsNullOrEmpty(render) ? render : null,
-                preview_unavailable = preview && previewSuppressed ? "Native-chart preview omitted because this Office build may terminate while exporting it; structured chart data is included." : null,
+                preview_unavailable = preview && previewSuppressed ? "Native-chart preview omitted because this Office build may terminate while exporting it; chart data requires an independent source." : null,
                 untrusted_document_data = true };
         }
         public static string CitationTextFromCaptured(IDictionary<string, object> capture)
