@@ -30,16 +30,19 @@ namespace GuardrailTests
         { if (!condition) throw new InvalidOperationException(message); }
 
         internal static int Run(string reportPath)
-        { return RunCore(reportPath, false, false); }
+        { return RunCore(reportPath, false, false, false); }
 
         internal static int RunFailedWorkbook(string reportPath)
-        { return RunCore(reportPath, true, false); }
+        { return RunCore(reportPath, true, false, false); }
 
         internal static int RunMalformedWorkbook(string reportPath)
-        { return RunCore(reportPath, false, true); }
+        { return RunCore(reportPath, false, true, false); }
+
+        internal static int RunCancelled(string reportPath)
+        { return RunCore(reportPath, false, false, true); }
 
         private static int RunCore(string reportPath, bool failWorkbook,
-            bool malformedWorkbook)
+            bool malformedWorkbook, bool cancelAfterRead)
         {
             var output = Path.GetDirectoryName(Path.GetFullPath(reportPath));
             Directory.CreateDirectory(output);
@@ -60,6 +63,7 @@ namespace GuardrailTests
             var workbookFailureObserved = false;
             var malformedWorkbookBlocked = false;
             var malformedProposalObserved = false;
+            var cancellationObserved = false;
             var sourcePreserved = false;
             var workbookDraft = false;
             var deckDraft = false;
@@ -179,6 +183,7 @@ namespace GuardrailTests
                 using (var client = new OpenAiCompatibleClient())
                 using (var reviewClient = new OpenAiCompatibleClient())
                 using (var host = new DocumentDraftHost("excel", (object)excel))
+                using (var cancellation = new CancellationTokenSource())
                 {
                     var settings = new AppSettings { BaseUrl = endpoint.BaseUrl,
                         ApiKey = "offline-test", Model = request.model };
@@ -191,9 +196,24 @@ namespace GuardrailTests
                     for (var round = 0; round < 4; round++)
                     {
                         stage = "chat_round_" + round;
-                        var response = task.CompleteAsync(client, settings,
-                            request, null, CancellationToken.None)
-                            .GetAwaiter().GetResult();
+                        ChatCompletionResponseMessage response;
+                        try
+                        {
+                            response = task.CompleteAsync(client, settings,
+                                request, null, cancelAfterRead ?
+                                    cancellation.Token : CancellationToken.None)
+                                .GetAwaiter().GetResult();
+                        }
+                        catch (OperationCanceledException) when (cancelAfterRead)
+                        {
+                            cancellationObserved = task.State.Lifecycle ==
+                                TaskLifecycle.Paused &&
+                                task.State.UserPaused == false &&
+                                !string.IsNullOrEmpty(task.State.Blocker);
+                            Check(cancellationObserved,
+                                "XA01_CANCELLATION_NOT_CHECKPOINTED");
+                            break;
+                        }
                         if (response.tool_calls == null ||
                             response.tool_calls.Count == 0)
                         {
@@ -278,6 +298,8 @@ namespace GuardrailTests
                                     tool_call_id = result.ToolCallId,
                                     content = result.Content });
                         task.RecordExchange(request, response, results);
+                        if (cancelAfterRead && round == 0)
+                            cancellation.Cancel();
                     }
                     requests = endpoint.Count;
                     reviewRequests = reviewer.RequestCount;
@@ -328,9 +350,16 @@ namespace GuardrailTests
                             pages[3].Contains("Verified workbook range");
                     }
                     writesVerified = task.State.Writes.Count ==
-                        (malformedWorkbook ? 1 : 2) &&
+                        (cancelAfterRead ? 0 : malformedWorkbook ? 1 : 2) &&
                         task.State.Writes.All(write => write.Status == "verified");
-                    if (malformedWorkbook)
+                    if (cancelAfterRead)
+                        Check(cancellationObserved && !terminal &&
+                            sourcePreserved && !workbookDraft && !deckDraft &&
+                            writesVerified && requests == 1 &&
+                            reviewRequests == 0 &&
+                            string.IsNullOrEmpty(task.State.WorkbookDraftReceipt),
+                            "XA01_CANCELLED_ROUTE_INCOMPLETE");
+                    else if (malformedWorkbook)
                         Check(malformedWorkbookBlocked &&
                             malformedProposalObserved && !terminal &&
                             sourcePreserved && !workbookDraft &&
@@ -390,7 +419,9 @@ namespace GuardrailTests
                     AnalysisDocumentPilot.FeatureFlag, previousFlag);
             }
             var report = new {
-                execution_kind = malformedWorkbook ?
+                execution_kind = cancelAfterRead ?
+                    "native_fake_endpoint_xa01_cancelled" :
+                    malformedWorkbook ?
                     "native_fake_endpoint_xa01_malformed_workbook" :
                     failWorkbook ? "native_fake_endpoint_xa01_failed_workbook" :
                     "native_fake_endpoint_xa01_route",
@@ -400,6 +431,7 @@ namespace GuardrailTests
                 workbook_failure_observed = workbookFailureObserved,
                 malformed_workbook_blocked = malformedWorkbookBlocked,
                 malformed_proposal_observed = malformedProposalObserved,
+                cancellation_observed = cancellationObserved,
                 source_preserved = sourcePreserved,
                 workbook_draft_passed = workbookDraft,
                 workbook_facts_passed = workbookFacts,
