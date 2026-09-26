@@ -529,8 +529,7 @@ This is a local convenience, not a portable path assumption or CI substitute.
 The current local candidate harness is
 `tests/GuardrailTests/bin/Release/GuardrailTests.exe`; verify its hash and the
 accompanying Scribble.dll against `DELIVERY_STATUS.md` before reusing it. The
-earlier downloaded CI harness used for the rejected-review run is recorded
-there separately. The current sealed
+current sealed
 stress-corpus manifest is
 `64f73305c8cf0cc2efdc5b87c539b833fd442c82c67c0ba2f62f06e0ff689d2e`.
 Verify input hashes against that manifest before a native attempt.
@@ -553,6 +552,7 @@ Additional existing harness modes are `--native-xa01-route`,
 `--native-xa01-failed-workbook`, `--native-xa01-malformed-workbook`,
 `--native-xa01-cancelled`, `--native-xa01-transport-retry`,
 `--native-xa01-transport-exhausted`, `--native-xa01-rejected-review`,
+`--native-xa01-restart-reconcile`,
 `--native-analysis-pilot`,
 `--native-phase5-excel-binding`, `--native-saved-chart-fingerprint`,
 `--native-phase4-reference` and `--native-phase4-defects`, each with a report path.
@@ -594,10 +594,13 @@ positive PP01 and XA01 D2 routes are recorded in [DELIVERY_STATUS.md](DELIVERY_S
 The failed-workbook, malformed-workbook and rejected-review routes have D2
 negative receipts. Pre-write cancellation, a recovered HTTP 503 inference
 retry, and a paused route after two failed 503 attempts are also checkpointed.
-The rejected-review deck remains uncertain; checkpoint reload blocks a changed
-deck payload before native mutation. Cancellation during a native write,
-exact-payload restart reconciliation, other nonrecoverable transport classes
-and exhausted task allowance remain open. D3 calibration and D4–D9 remain open.
+The rejected-review deck remains uncertain until the original payload is
+reconciled. Checkpoint reload blocks a changed deck payload before native
+mutation; exact-payload replay on the same disposable Office session verifies
+the existing four slides, obtains a fresh review and completes without adding
+slides. Cancellation during a native write, cold Office restart, user-edited
+destination recovery, other nonrecoverable transport classes and exhausted
+task allowance remain open. D3 calibration and D4–D9 remain open.
 
 Each change must name its defect, owning layer, intended behavior, relevant
 regression and acceptance evidence. After a failure, preserve the smallest

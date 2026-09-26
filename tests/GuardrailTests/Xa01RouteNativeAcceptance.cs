@@ -1,10 +1,12 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -30,30 +32,33 @@ namespace GuardrailTests
         { if (!condition) throw new InvalidOperationException(message); }
 
         internal static int Run(string reportPath)
-        { return RunCore(reportPath, false, false, false, false, false, false); }
+        { return RunCore(reportPath, false, false, false, false, false, false, false); }
 
         internal static int RunFailedWorkbook(string reportPath)
-        { return RunCore(reportPath, true, false, false, false, false, false); }
+        { return RunCore(reportPath, true, false, false, false, false, false, false); }
 
         internal static int RunMalformedWorkbook(string reportPath)
-        { return RunCore(reportPath, false, true, false, false, false, false); }
+        { return RunCore(reportPath, false, true, false, false, false, false, false); }
 
         internal static int RunCancelled(string reportPath)
-        { return RunCore(reportPath, false, false, true, false, false, false); }
+        { return RunCore(reportPath, false, false, true, false, false, false, false); }
 
         internal static int RunTransientRetry(string reportPath)
-        { return RunCore(reportPath, false, false, false, true, false, false); }
+        { return RunCore(reportPath, false, false, false, true, false, false, false); }
 
         internal static int RunTransportExhausted(string reportPath)
-        { return RunCore(reportPath, false, false, false, false, false, true); }
+        { return RunCore(reportPath, false, false, false, false, false, true, false); }
 
         internal static int RunRejectedReview(string reportPath)
-        { return RunCore(reportPath, false, false, false, false, true, false); }
+        { return RunCore(reportPath, false, false, false, false, true, false, false); }
+
+        internal static int RunRestartReconcile(string reportPath)
+        { return RunCore(reportPath, false, false, false, false, true, false, true); }
 
         private static int RunCore(string reportPath, bool failWorkbook,
             bool malformedWorkbook, bool cancelAfterRead,
             bool transientRetry, bool rejectedReview,
-            bool exhaustedTransport)
+            bool exhaustedTransport, bool restartReconcile)
         {
             var output = Path.GetDirectoryName(Path.GetFullPath(reportPath));
             Directory.CreateDirectory(output);
@@ -81,6 +86,10 @@ namespace GuardrailTests
             var deckWriteUncertain = false;
             var transportFailurePaused = false;
             var restartUncertainDeckBlocked = false;
+            var restartExactReconciled = false;
+            var recoveryReviewRequests = 0;
+            var journalMismatchedSlides = "";
+            var journalVolatileSlides = "";
             var sourcePreserved = false;
             var workbookDraft = false;
             var deckDraft = false;
@@ -92,6 +101,7 @@ namespace GuardrailTests
             string sourceBefore = null;
             Endpoint endpoint = null;
             AnalysisNativeAcceptance.AnalysisReviewEndpoint reviewer = null;
+            ChatToolCall originalDeckCall = null;
             try
             {
                 Check(Process.GetProcessesByName("POWERPNT").Length == 0,
@@ -247,6 +257,7 @@ namespace GuardrailTests
                             response.tool_calls.Count == 0)
                         {
                             task.State.EnumerationComplete = true;
+                            task.Checkpoint();
                             if (failWorkbook || malformedWorkbook ||
                                 rejectedReview)
                             {
@@ -272,6 +283,8 @@ namespace GuardrailTests
                         var results = new List<MailboxToolResult>();
                         foreach (var call in response.tool_calls)
                         {
+                            if (round == 2 && rejectedReview)
+                                originalDeckCall = call;
                             var definition = request.tools.FirstOrDefault(tool =>
                                 tool.function.name == call.function.name);
                             Check(definition != null,
@@ -440,6 +453,8 @@ namespace GuardrailTests
                         Check(restoredState.Writes.Count == 2 &&
                             restoredState.Writes[1].Status == "uncertain",
                             "XA01_RESTART_LOST_UNCERTAIN_WRITE");
+                        journalMismatchedSlides = JournalDrift(
+                            restoredState, draft, out journalVolatileSlides);
                         var restoredRequest = DocumentChatRequestFactory.Create(
                             request.model, "excel", "", new List<ChatTurn>(),
                             prompt, true);
@@ -447,32 +462,94 @@ namespace GuardrailTests
                             "excel", prompt, task.Store, restoredState);
                         using (var resumedHost = new DocumentDraftHost("excel",
                             (object)excel))
+                        {
                             resumedHost.BindTaskAsync(resumed,
                                 CancellationToken.None).GetAwaiter().GetResult();
-                        var changedCall = new ChatToolCall {
-                            id = "xa01-changed-deck-after-restart",
-                            type = "function",
-                            function = new ChatToolCallFunction {
-                                name = CrossAppToolCatalog.SendToPowerPoint,
-                                arguments = "{}"
+                            var changedCall = new ChatToolCall {
+                                id = "xa01-changed-deck-after-restart",
+                                type = "function",
+                                function = new ChatToolCallFunction {
+                                    name = CrossAppToolCatalog.SendToPowerPoint,
+                                    arguments = "{}"
+                                }
+                            };
+                            try { resumed.BeforeTool(changedCall, true); }
+                            catch (InvalidOperationException error)
+                            {
+                                restartUncertainDeckBlocked =
+                                    error.Message.Contains(
+                                        "interrupted document write is uncertain");
                             }
-                        };
-                        try { resumed.BeforeTool(changedCall, true); }
-                        catch (InvalidOperationException error)
-                        {
-                            restartUncertainDeckBlocked =
-                                error.Message.Contains(
-                                    "interrupted document write is uncertain");
+                            var idsAfter = string.Join(",", Enumerable.Range(1,
+                                (int)draft.Slides.Count).Select(index =>
+                                Convert.ToInt32(draft.Slides[index].SlideID)));
+                            Check(restartUncertainDeckBlocked &&
+                                !resumed.State.CanComplete(false) &&
+                                idsAfter == idsBefore &&
+                                SourceValues(ledger) == sourceBefore,
+                                "XA01_RESTART_UNCERTAIN_DECK_REPLAYED");
+                            if (restartReconcile)
+                            {
+                                stage = "reconcile_original_deck";
+                                Check(originalDeckCall != null,
+                                    "XA01_RESTART_ORIGINAL_CALL_MISSING");
+                                var exactCall = new ChatToolCall {
+                                    id = "xa01-deck-exact-restart",
+                                    type = "function",
+                                    function = originalDeckCall.function
+                                };
+                                using (var approval = new
+                                    AnalysisNativeAcceptance
+                                        .AnalysisReviewEndpoint(
+                                            approveImmediately: true))
+                                {
+                                    var approvalSettings = new AppSettings {
+                                        BaseUrl = approval.BaseUrl,
+                                        ApiKey = "offline-test",
+                                        Model = request.model
+                                    };
+                                    resumed.BeforeTool(exactCall, true);
+                                    var recovered = resumedHost.ExecuteAsync(
+                                        exactCall,
+                                        new OneShotDraftAuthorization(true),
+                                        true, prompt, reviewClient,
+                                        approvalSettings,
+                                        CancellationToken.None, null)
+                                        .GetAwaiter().GetResult();
+                                    Check(!recovered.Outcome.Failed,
+                                        "XA01_EXACT_RESTART_FAILED: " +
+                                        recovered.Content);
+                                    resumed.AfterTool(exactCall, recovered);
+                                    recoveryReviewRequests =
+                                        approval.RequestCount;
+                                }
+                                var reconciledIds = string.Join(",",
+                                    Enumerable.Range(1,
+                                        (int)draft.Slides.Count).Select(index =>
+                                        Convert.ToInt32(
+                                            draft.Slides[index].SlideID)));
+                                Check(reconciledIds == idsBefore &&
+                                    (int)powerpoint.Presentations.Count == 1 &&
+                                    (int)draft.Slides.Count == 4 &&
+                                    SourceValues(ledger) == sourceBefore &&
+                                    resumed.State.Writes.Count == 3 &&
+                                    resumed.State.Writes.All(write =>
+                                        write.Status == "verified") &&
+                                    !string.IsNullOrEmpty(resumed.State
+                                        .PresentationReviewReceipt) &&
+                                    recoveryReviewRequests == 1 &&
+                                    resumed.State.CanComplete(false),
+                                    "XA01_EXACT_RESTART_DID_NOT_RECONCILE");
+                                resumed.CompleteTask(restoredRequest);
+                                restartExactReconciled =
+                                    resumed.State.Lifecycle ==
+                                        TaskLifecycle.Completed;
+                                terminal = restartExactReconciled;
+                                writesVerified = restartExactReconciled;
+                            }
+                            else resumed.Pause(
+                                "Uncertain deck requires native reconciliation.");
                         }
-                        var idsAfter = string.Join(",", Enumerable.Range(1,
-                            (int)draft.Slides.Count).Select(index =>
-                            Convert.ToInt32(draft.Slides[index].SlideID)));
-                        Check(restartUncertainDeckBlocked &&
-                            !resumed.State.CanComplete(false) &&
-                            idsAfter == idsBefore &&
-                            SourceValues(ledger) == sourceBefore,
-                            "XA01_RESTART_UNCERTAIN_DECK_REPLAYED");
-                        resumed.Pause("Uncertain deck requires native reconciliation.");
                     }
                     else if (exhaustedTransport)
                         Check(transportFailurePaused &&
@@ -535,7 +612,9 @@ namespace GuardrailTests
                     AnalysisDocumentPilot.FeatureFlag, previousFlag);
             }
             var report = new {
-                execution_kind = exhaustedTransport ?
+                execution_kind = restartReconcile ?
+                    "native_fake_endpoint_xa01_restart_reconcile" :
+                    exhaustedTransport ?
                     "native_fake_endpoint_xa01_transport_exhausted" :
                     rejectedReview ?
                     "native_fake_endpoint_xa01_rejected_review" :
@@ -561,6 +640,10 @@ namespace GuardrailTests
                 transport_failure_paused = transportFailurePaused,
                 restart_uncertain_deck_blocked =
                     restartUncertainDeckBlocked,
+                restart_exact_reconciled = restartExactReconciled,
+                recovery_review_requests = recoveryReviewRequests,
+                journal_mismatched_slides = journalMismatchedSlides,
+                journal_volatile_slides = journalVolatileSlides,
                 source_preserved = sourcePreserved,
                 workbook_draft_passed = workbookDraft,
                 workbook_facts_passed = workbookFacts,
@@ -585,6 +668,39 @@ namespace GuardrailTests
                 "I2", "J2", "B3", "I3", "J3" }.Select(address =>
                 Convert.ToString(sheet.Range(address).Value2,
                     System.Globalization.CultureInfo.InvariantCulture)));
+        }
+
+        private static string JournalDrift(DurableTaskState state,
+            dynamic draft, out string volatileSlides)
+        {
+            string saved;
+            Check(state.HostData.TryGetValue("samsung_pending", out saved),
+                "XA01_RESTART_JOURNAL_MISSING");
+            var json = new JavaScriptSerializer { MaxJsonLength = 16000000 };
+            var journal = json.Deserialize<Dictionary<string, object>>(saved);
+            var receipts = (IList)journal["Receipts"];
+            var method = typeof(PresentationInspection).GetMethod(
+                "FingerprintForJournal", BindingFlags.Static |
+                    BindingFlags.NonPublic);
+            Check(method != null, "XA01_RESTART_FINGERPRINT_UNAVAILABLE");
+            var mismatch = new List<string>();
+            var unstable = new List<string>();
+            foreach (Dictionary<string, object> receipt in receipts)
+            {
+                var slideId = Convert.ToInt32(receipt["SlideId"]);
+                object slide = null;
+                for (var index = 1; index <= (int)draft.Slides.Count; index++)
+                    if ((int)draft.Slides[index].SlideID == slideId)
+                        slide = (object)draft.Slides[index];
+                Check(slide != null, "XA01_RESTART_SLIDE_MISSING");
+                var first = (string)method.Invoke(null, new[] { slide });
+                var second = (string)method.Invoke(null, new[] { slide });
+                if (first != (string)receipt["Fingerprint"])
+                    mismatch.Add(slideId.ToString());
+                if (first != second) unstable.Add(slideId.ToString());
+            }
+            volatileSlides = string.Join(",", unstable);
+            return string.Join(",", mismatch);
         }
 
         private static void ReleaseCom(object value)

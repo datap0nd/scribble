@@ -1,16 +1,47 @@
 {
   "schema": 1,
   "reviewer_kind": "agent",
-  "assembly_sha256": "66ab464d8cc8c13624be148cf0dd18c5c4377a9665ef6c93aa9ab5d35adb9be0",
-  "source_pdf_sha256": "4996f2b54647e9c607bbc41dcb476ed491109c00bf84ac369556b0483aa3d1c3",
+  "assembly_sha256": "603f43c4d042d6a6d725bfc5e190d69cf6d41cb6f0c5dd9c29971e968e57a537",
+  "source_pdf_sha256": "bcade6fd75424bff6a9dca343b6a49ed37f6c7b896ae0f1881756b2f251bfdd7",
   "render_command": "pdftoppm -f 1 -l 6 -png -r 110 candidate.pdf pp01-page",
   "checks": [
-    { "page": "PP01 slide 1", "render_sha256": "8562504e2f1e8e47cfc3f804eb374035519afd72138259e509d75a60fa000f42", "verdict": "approve", "reason": "Title, headline revenue and cost, margin, and footer are readable." },
-    { "page": "PP01 slide 2", "render_sha256": "bc45895155a91854c9cbf0206c683ba4fedc7f6e5f725838bc12eb5ca58391aa", "verdict": "approve", "reason": "Both chart series names are readable below the six-month plot; axes and categories do not collide." },
-    { "page": "PP01 slide 3", "render_sha256": "233547a34609504bcdff4f2849fab629039254787ed11b43b662cd2b1e6f550a2", "verdict": "approve", "reason": "Four group rows and both numeric columns are legible." },
-    { "page": "PP01 slide 4", "render_sha256": "fdb7eab2f0e286874aa31582ae3a7f14f789102786da106f39caca8c1ad497bf", "verdict": "approve", "reason": "Four evidence cards fit without truncation or overlap." },
-    { "page": "PP01 slide 5", "render_sha256": "1b27a6c9f80b1d3d2c6d2b26e7f387c8cba9ebfb0644951e1706171a0151145", "verdict": "approve", "reason": "Owner, proposed action, and due date columns are legible for every row." },
-    { "page": "PP01 slide 6", "render_sha256": "b71c24395b8b89a3ae4aa9ab49cfbeb46c83ae4f4a13180b3137b183ab555c6", "verdict": "approve", "reason": "Source scope and rate-definition lines are legible and within the slide." }
+    {
+      "page": "PP01 slide 1",
+      "render_sha256": "8562504e2f1e8e47cfc3f804eb374035519afd72138259e509d75a60fa000f42",
+      "verdict": "approve",
+      "reason": "Title, headline revenue and cost, margin, and footer are readable."
+    },
+    {
+      "page": "PP01 slide 2",
+      "render_sha256": "bc45895155a91854c9cbf0206c683ba4fedc7f6e5f725838bc12eb5ca58391aa",
+      "verdict": "approve",
+      "reason": "Both chart series names are readable below the six-month plot; axes and categories do not collide."
+    },
+    {
+      "page": "PP01 slide 3",
+      "render_sha256": "233547a34609504bcdf4f2849fab629039254787ed11b43b662cd2b1e6f550a2",
+      "verdict": "approve",
+      "reason": "Four group rows and both numeric columns are legible."
+    },
+    {
+      "page": "PP01 slide 4",
+      "render_sha256": "fdb7eab2f0e286874aa31582ae3a7f14f789102786da106f39caca8c1ad497bf",
+      "verdict": "approve",
+      "reason": "Four evidence cards fit without truncation or overlap."
+    },
+    {
+      "page": "PP01 slide 5",
+      "render_sha256": "1b27a6c9f80b1d3d2c6d2b26e7f387c8c8ba9ebfb0644951e1706171a0151145",
+      "verdict": "approve",
+      "reason": "Owner, proposed action, and due date columns are legible for every row."
+    },
+    {
+      "page": "PP01 slide 6",
+      "render_sha256": "b71c24395b8b89a3ae4aa9ab49cfbeb46c83aefee4a13180b3137b183ab555c6",
+      "verdict": "approve",
+      "reason": "Source scope and rate-definition lines are legible and within the slide."
+    }
   ],
-  "scope": "Current PP01 agent visual preflight only. The D2P2/D2P3 reference approvals were on the prior binary. No human approval, model-review calibration, or broad visual acceptance is claimed."
+  "scope": "Current PP01 agent visual preflight carried by byte-identical rendered pages. The D2P2/D2P3 reference approvals were on a prior binary. No human approval, model-review calibration, or broad visual acceptance is claimed.",
+  "comparison_to_prior_review": "All six new PDF pages render byte-identically to the previously agent-reviewed PDF at 110 and 120 dpi."
 }
