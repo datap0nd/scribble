@@ -30,12 +30,16 @@ namespace GuardrailTests
         { if (!condition) throw new InvalidOperationException(message); }
 
         internal static int Run(string reportPath)
-        { return RunCore(reportPath, false); }
+        { return RunCore(reportPath, false, false); }
 
         internal static int RunFailedWorkbook(string reportPath)
-        { return RunCore(reportPath, true); }
+        { return RunCore(reportPath, true, false); }
 
-        private static int RunCore(string reportPath, bool failWorkbook)
+        internal static int RunMalformedWorkbook(string reportPath)
+        { return RunCore(reportPath, false, true); }
+
+        private static int RunCore(string reportPath, bool failWorkbook,
+            bool malformedWorkbook)
         {
             var output = Path.GetDirectoryName(Path.GetFullPath(reportPath));
             Directory.CreateDirectory(output);
@@ -44,14 +48,18 @@ namespace GuardrailTests
                 AnalysisDocumentPilot.FeatureFlag);
             var existingExcel = new HashSet<int>(Process.GetProcessesByName(
                 "EXCEL").Select(process => process.Id));
-            dynamic excel = null, source = null, powerpoint = null,
+            dynamic excel = null, source = null, ledger = null, powerpoint = null,
                 draft = null;
+            var ownedExcelProcessId = 0;
+            var forcedExcelCleanup = false;
             TaskContextManager task = null;
             var stage = "setup";
             var failure = "";
             var terminal = false;
             var failedWorkbookBlocked = false;
             var workbookFailureObserved = false;
+            var malformedWorkbookBlocked = false;
+            var malformedProposalObserved = false;
             var sourcePreserved = false;
             var workbookDraft = false;
             var deckDraft = false;
@@ -80,9 +88,10 @@ namespace GuardrailTests
                     throw new InvalidOperationException(
                         "NATIVE_EXCEL_SESSION_NOT_OWNED");
                 }
+                ownedExcelProcessId = (int)excelProcessId;
                 excel.Visible = true;
                 source = excel.Workbooks.Add();
-                dynamic ledger = source.Worksheets[1];
+                ledger = source.Worksheets[1];
                 ledger.Name = "Ledger";
                 ledger.Cells[1, 2].Value2 = "Period";
                 ledger.Cells[1, 9].Value2 = "RevenueEUR";
@@ -138,11 +147,16 @@ namespace GuardrailTests
                         id = "xa01-workbook", type = "function",
                         function = new ChatToolCallFunction {
                             name = WorkbookToolCatalog.WriteDraftSheet,
-                            arguments = json.Serialize(new {
-                                analysis_id = failWorkbook ?
-                                    "stale-analysis-id" : artifact.AnalysisId,
-                                title = fixture.Item2.WorkbookTitle
-                            })
+                            arguments = malformedWorkbook ?
+                                json.Serialize(new {
+                                    analysis_id = artifact.AnalysisId,
+                                    title = fixture.Item2.WorkbookTitle,
+                                    unexpected = "not in exposed schema"
+                                }) : json.Serialize(new {
+                                    analysis_id = failWorkbook ?
+                                        "stale-analysis-id" : artifact.AnalysisId,
+                                    title = fixture.Item2.WorkbookTitle
+                                })
                         }
                     };
                     return new ChatToolCall {
@@ -184,13 +198,14 @@ namespace GuardrailTests
                             response.tool_calls.Count == 0)
                         {
                             task.State.EnumerationComplete = true;
-                            if (failWorkbook)
+                            if (failWorkbook || malformedWorkbook)
                             {
-                                failedWorkbookBlocked =
-                                    !task.State.CanComplete(false) &&
+                                var blocked = !task.State.CanComplete(false) &&
                                     string.IsNullOrEmpty(task.State.WorkbookDraftReceipt);
-                                Check(failedWorkbookBlocked,
-                                    "FAILED_WORKBOOK_ALLOWED_TERMINAL_COMPLETION");
+                                if (failWorkbook) failedWorkbookBlocked = blocked;
+                                else malformedWorkbookBlocked = blocked;
+                                Check(blocked,
+                                    "MISSING_WORKBOOK_ALLOWED_TERMINAL_COMPLETION");
                                 break;
                             }
                             Check(task.State.CanComplete(false),
@@ -210,6 +225,21 @@ namespace GuardrailTests
                                 "; available=" + string.Join(",",
                                     request.tools.Select(tool =>
                                         tool.function.name)));
+                            var invalid = task.ValidateArguments(call);
+                            if (malformedWorkbook && round == 1)
+                            {
+                                malformedProposalObserved = invalid != null &&
+                                    invalid.Outcome.ErrorCode ==
+                                        "TOOL_ARGUMENTS_INVALID" &&
+                                    invalid.Outcome.PermissionConsumed == false;
+                                Check(malformedProposalObserved,
+                                    "MALFORMED_WORKBOOK_PROPOSAL_NOT_REJECTED");
+                                results.Add(invalid);
+                                continue;
+                            }
+                            Check(invalid == null,
+                                "XA01_UNEXPECTED_ARGUMENT_REJECTION: " +
+                                (invalid == null ? "" : invalid.Content));
                             Check(ToolContractValidator.Validate(call,
                                 definition).Count == 0,
                                 "XA01_TOOL_SCHEMA_INVALID");
@@ -297,9 +327,17 @@ namespace GuardrailTests
                             pages[2].Contains("36,714") &&
                             pages[3].Contains("Verified workbook range");
                     }
-                    writesVerified = task.State.Writes.Count == 2 &&
+                    writesVerified = task.State.Writes.Count ==
+                        (malformedWorkbook ? 1 : 2) &&
                         task.State.Writes.All(write => write.Status == "verified");
-                    if (failWorkbook)
+                    if (malformedWorkbook)
+                        Check(malformedWorkbookBlocked &&
+                            malformedProposalObserved && !terminal &&
+                            sourcePreserved && !workbookDraft &&
+                            deckDraft && slideFacts && writesVerified &&
+                            requests == 4 && reviewRequests == 5,
+                            "XA01_MALFORMED_WORKBOOK_ROUTE_INCOMPLETE");
+                    else if (failWorkbook)
                         Check(failedWorkbookBlocked &&
                             workbookFailureObserved && !terminal &&
                             sourcePreserved && !workbookDraft &&
@@ -333,23 +371,35 @@ namespace GuardrailTests
                 if ((object)source != null) try { source.Close(false); }
                     catch { }
                 if ((object)excel != null) try {
-                    if ((int)excel.Workbooks.Count == 0) excel.Quit(); }
+                    excel.Quit(); }
                     catch { }
                 if ((object)powerpoint != null) try {
                     if ((int)powerpoint.Presentations.Count == 0)
                         powerpoint.Quit(); }
                     catch { }
+                ReleaseCom((object)ledger);
+                ReleaseCom((object)source);
+                ReleaseCom((object)excel);
+                ReleaseCom((object)draft);
+                ReleaseCom((object)powerpoint);
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                forcedExcelCleanup = StopOwnedExcelIfStillRunning(
+                    ownedExcelProcessId, existingExcel);
                 Environment.SetEnvironmentVariable(
                     AnalysisDocumentPilot.FeatureFlag, previousFlag);
             }
             var report = new {
-                execution_kind = failWorkbook ?
-                    "native_fake_endpoint_xa01_failed_workbook" :
+                execution_kind = malformedWorkbook ?
+                    "native_fake_endpoint_xa01_malformed_workbook" :
+                    failWorkbook ? "native_fake_endpoint_xa01_failed_workbook" :
                     "native_fake_endpoint_xa01_route",
                 assembly_sha256 = PresentationRevisionAcceptance.AssemblyHash(),
                 terminal_receipt_passed = terminal,
                 failed_workbook_blocked = failedWorkbookBlocked,
                 workbook_failure_observed = workbookFailureObserved,
+                malformed_workbook_blocked = malformedWorkbookBlocked,
+                malformed_proposal_observed = malformedProposalObserved,
                 source_preserved = sourcePreserved,
                 workbook_draft_passed = workbookDraft,
                 workbook_facts_passed = workbookFacts,
@@ -359,6 +409,7 @@ namespace GuardrailTests
                 model_requests = requests,
                 review_requests = reviewRequests,
                 paid_model_calls = 0,
+                test_owned_excel_forced_cleanup = forcedExcelCleanup,
                 full_acceptance_passed = false,
                 failure
             };
@@ -373,6 +424,34 @@ namespace GuardrailTests
                 "I2", "J2", "B3", "I3", "J3" }.Select(address =>
                 Convert.ToString(sheet.Range(address).Value2,
                     System.Globalization.CultureInfo.InvariantCulture)));
+        }
+
+        private static void ReleaseCom(object value)
+        {
+            try { if (value != null && Marshal.IsComObject(value))
+                Marshal.FinalReleaseComObject(value); }
+            catch (InvalidComObjectException) { }
+            catch (COMException) { }
+        }
+
+        private static bool StopOwnedExcelIfStillRunning(int processId,
+            ISet<int> preexisting)
+        {
+            if (processId <= 0 || preexisting.Contains(processId)) return false;
+            try
+            {
+                using (var process = Process.GetProcessById(processId))
+                {
+                    if (!string.Equals(process.ProcessName, "EXCEL",
+                        StringComparison.OrdinalIgnoreCase)) return false;
+                    if (process.WaitForExit(2500)) return false;
+                    process.Kill();
+                    Check(process.WaitForExit(5000),
+                        "TEST_OWNED_EXCEL_CLEANUP_FAILED");
+                    return true;
+                }
+            }
+            catch (ArgumentException) { return false; }
         }
 
         private sealed class Endpoint : IDisposable
