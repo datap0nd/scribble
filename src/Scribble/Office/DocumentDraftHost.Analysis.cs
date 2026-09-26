@@ -35,9 +35,22 @@ namespace Scribble.Office
                         "samsung_pending"))
                     throw new InvalidOperationException(
                         "ANALYSIS_DECK_ALREADY_COMPLETE");
-                plan = AnalysisSlidePlanContract.Parse(artifact,
-                    call.function.arguments, id =>
-                        _taskContext.AcceptsAnalysisId(id, artifact));
+                var choices = _serializer.DeserializeObject(
+                    call.function.arguments) as IDictionary<string, object>;
+                if (choices != null && !choices.ContainsKey("Slides"))
+                {
+                    if (!_taskContext.AcceptsAnalysisId(
+                            ToolArguments.GetString(choices,
+                                "AnalysisId", string.Empty), artifact))
+                        throw new InvalidOperationException(
+                            "ANALYSIS_PLAN_BINDING_INVALID");
+                    plan = AnalysisDeckPlanBuilder.Build(artifact, choices,
+                        _taskContext.State.RequiredPresentationSlides);
+                }
+                else
+                    plan = AnalysisSlidePlanContract.Parse(artifact,
+                        call.function.arguments, id =>
+                            _taskContext.AcceptsAnalysisId(id, artifact));
                 if (_taskContext.State.HostData.ContainsKey(
                     "analysis_pending_content_patch"))
                     throw new InvalidOperationException(

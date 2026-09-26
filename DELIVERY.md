@@ -178,14 +178,15 @@ a ≤ 10-line owner note in §5.
 | New route, real model | — | — | **0 runs** |
 
 Current stage: **B2**. A1–A4 are done. A5 installed and hash-verified CI pilot
-builds 2.0.694.0–2.0.697.0; the scoreboard records each. OpenRouter had
-$13.5078 remaining at 23:25 UTC on 26 Sep, after four paid XA01 runs costing
-about $0.97 total. The fourth completed the typed workbook draft but failed
-deck planning/schema: repeated numeric/text authority errors followed by a
-source citation line over 2000 characters. The current fix compacts exact
-consecutive source-cell citations into ranges, accepts source-verified labels
-and a checked prose-plus-fact part, and tests a grouped multi-row deck.
-Next: build, install, recheck balance and rerun XA01.
+builds 2.0.694.0–2.0.698.0; the scoreboard records each. OpenRouter had
+$13.0693 remaining at 23:53 UTC on 26 Sep after five paid XA01 runs costing
+about $1.40 total. The typed workbook now succeeds. The fourth and fifth runs
+both failed planning/schema despite two fixes. Mechanism hypothesis: asking
+the model to author a complete nested slide plan exposes too many layout,
+length, source and fact constraints; local parser changes only move the first
+rejection. Stop patching that parser. Next approach: host-build the verified
+deck structure from facts, with the model choosing a small set of narrative
+labels. Build, install, recheck balance and use at most one more paid run today.
 
 ## 6. Rules for autonomous sessions
 

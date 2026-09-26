@@ -23,17 +23,13 @@ namespace GuardrailTests
                     arguments = json.Serialize(new
                     {
                         AnalysisId = "host-issued-id",
-                        Slides = new[] { new
-                        {
-                            Id = "headline", Layout = "scorecard",
-                            Title = "Verified trend",
-                            Subtitle = new[] { new { FactId = "fact-id" } }
-                        } }
+                        Title = "Verified trend",
+                        Lead = "Source-backed comparison"
                     })
                 }
             };
             Check(ToolContractValidator.Validate(valid, definition).Count == 0,
-                "The fact-referenced deck schema rejected its minimal plan.");
+                "The host-built deck schema rejected concise narrative choices.");
             var injected = new ChatToolCall
             {
                 id = "typed-deck-injection", type = "function",
@@ -41,13 +37,13 @@ namespace GuardrailTests
                 {
                     name = CrossAppToolCatalog.SendToPowerPoint,
                     arguments = valid.function.arguments.Replace(
-                        "\"FactId\":\"fact-id\"",
-                        "\"FactId\":\"fact-id\",\"Formula\":\"=1\"")
+                        "\"Title\":\"Verified trend\"",
+                        "\"Title\":\"Verified trend\",\"Slides\":[]")
                 }
             };
             Check(ToolContractValidator.Validate(injected, definition)
-                    .Any(error => error.Contains("Formula")),
-                "The model-facing deck schema accepted an authored formula.");
+                    .Any(error => error.Contains("Slides")),
+                "The model-facing deck schema accepted authored slides.");
         }
 
         public static void SharedAnalysisAllowsOneDraftPerDestination()

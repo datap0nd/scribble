@@ -195,6 +195,26 @@ namespace GuardrailTests
                     fact.Dimensions["Group"] == "South" &&
                     fact.Value == "2"),
                 "Filtered group facts lost their dimension or value.");
+            var latestGroups = AnalysisTableArtifactBuilder.BuildGrouped(
+                snapshot, binding, "Period", "2026-06");
+            var combined = AnalysisContract.CreateArtifact(
+                new[] { snapshot }, artifact.Facts.Concat(
+                    latestGroups.Facts), new AnalysisCalculation[0],
+                new string[0], new string[0]);
+            var deck = AnalysisDeckPlanBuilder.Build(combined,
+                new Dictionary<string, object> {
+                    { "AnalysisId", combined.AnalysisId },
+                    { "Title", "Verified sales review" },
+                    { "Lead", "Period results from source rows" } }, 4);
+            Check(deck.Slides.Count == 4 &&
+                deck.Slides.Any(slide => slide.Chart != null &&
+                    slide.Chart.Series.Count > 0) &&
+                deck.Slides.Any(slide => slide.TableRows.Count > 0 &&
+                    slide.TableRows.Any(item => item.Cells.Any(cell =>
+                        cell.FactId != null))) &&
+                AnalysisDocumentCompiler.Compile(combined, deck).Slides.Count
+                    == deck.Slides.Count,
+                "Host deck planning lost native chart, group evidence or source-bound facts.");
             var missing = MappedTable();
             missing.Cells.Single(cell => cell.Reference == "C3")
                 .Status = AnalysisContract.Unresolved;
