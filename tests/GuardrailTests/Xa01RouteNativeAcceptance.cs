@@ -30,26 +30,30 @@ namespace GuardrailTests
         { if (!condition) throw new InvalidOperationException(message); }
 
         internal static int Run(string reportPath)
-        { return RunCore(reportPath, false, false, false, false, false); }
+        { return RunCore(reportPath, false, false, false, false, false, false); }
 
         internal static int RunFailedWorkbook(string reportPath)
-        { return RunCore(reportPath, true, false, false, false, false); }
+        { return RunCore(reportPath, true, false, false, false, false, false); }
 
         internal static int RunMalformedWorkbook(string reportPath)
-        { return RunCore(reportPath, false, true, false, false, false); }
+        { return RunCore(reportPath, false, true, false, false, false, false); }
 
         internal static int RunCancelled(string reportPath)
-        { return RunCore(reportPath, false, false, true, false, false); }
+        { return RunCore(reportPath, false, false, true, false, false, false); }
 
         internal static int RunTransientRetry(string reportPath)
-        { return RunCore(reportPath, false, false, false, true, false); }
+        { return RunCore(reportPath, false, false, false, true, false, false); }
+
+        internal static int RunTransportExhausted(string reportPath)
+        { return RunCore(reportPath, false, false, false, false, false, true); }
 
         internal static int RunRejectedReview(string reportPath)
-        { return RunCore(reportPath, false, false, false, false, true); }
+        { return RunCore(reportPath, false, false, false, false, true, false); }
 
         private static int RunCore(string reportPath, bool failWorkbook,
             bool malformedWorkbook, bool cancelAfterRead,
-            bool transientRetry, bool rejectedReview)
+            bool transientRetry, bool rejectedReview,
+            bool exhaustedTransport)
         {
             var output = Path.GetDirectoryName(Path.GetFullPath(reportPath));
             Directory.CreateDirectory(output);
@@ -75,6 +79,7 @@ namespace GuardrailTests
             var rejectedReviewBlocked = false;
             var reviewRejectionObserved = false;
             var deckWriteUncertain = false;
+            var transportFailurePaused = false;
             var sourcePreserved = false;
             var workbookDraft = false;
             var deckDraft = false;
@@ -188,7 +193,8 @@ namespace GuardrailTests
                         }
                     };
                 };
-                using (endpoint = new Endpoint(proposal, transientRetry))
+                using (endpoint = new Endpoint(proposal, transientRetry,
+                    exhaustedTransport))
                 using (reviewer = new AnalysisNativeAcceptance
                     .AnalysisReviewEndpoint(rejectedReview))
                 using (var client = new OpenAiCompatibleClient())
@@ -223,6 +229,17 @@ namespace GuardrailTests
                                 !string.IsNullOrEmpty(task.State.Blocker);
                             Check(cancellationObserved,
                                 "XA01_CANCELLATION_NOT_CHECKPOINTED");
+                            break;
+                        }
+                        catch (AiEndpointException error) when (
+                            exhaustedTransport && round == 2)
+                        {
+                            transportFailurePaused = error.HttpStatus == 503 &&
+                                task.State.Lifecycle == TaskLifecycle.Paused &&
+                                !task.State.UserPaused &&
+                                !string.IsNullOrEmpty(task.State.Blocker);
+                            Check(transportFailurePaused,
+                                "XA01_TRANSPORT_FAILURE_NOT_CHECKPOINTED");
                             break;
                         }
                         if (response.tool_calls == null ||
@@ -377,7 +394,8 @@ namespace GuardrailTests
                             pages[3].Contains("Verified workbook range");
                     }
                     writesVerified = task.State.Writes.Count ==
-                        (cancelAfterRead ? 0 : malformedWorkbook ? 1 : 2) &&
+                        (cancelAfterRead ? 0 :
+                            (malformedWorkbook || exhaustedTransport) ? 1 : 2) &&
                         task.State.Writes.All(write => write.Status == "verified");
                     deckWriteUncertain = task.State.Writes.Count == 2 &&
                         task.State.Writes[0].Status == "verified" &&
@@ -412,6 +430,16 @@ namespace GuardrailTests
                                 "analysis_deck_complete") &&
                             requests == 4 && reviewRequests == 1,
                             "XA01_REJECTED_REVIEW_ROUTE_INCOMPLETE");
+                    else if (exhaustedTransport)
+                        Check(transportFailurePaused &&
+                            transportRetriedIdentically && !terminal &&
+                            sourcePreserved && workbookDraft && workbookFacts &&
+                            !deckDraft && writesVerified &&
+                            task.State.Writes.Count == 1 &&
+                            string.IsNullOrEmpty(
+                                task.State.PresentationReviewReceipt) &&
+                            requests == 4 && reviewRequests == 0,
+                            "XA01_TRANSPORT_EXHAUSTED_ROUTE_INCOMPLETE");
                     else
                     {
                         Check(terminal && sourcePreserved && workbookDraft &&
@@ -463,7 +491,9 @@ namespace GuardrailTests
                     AnalysisDocumentPilot.FeatureFlag, previousFlag);
             }
             var report = new {
-                execution_kind = rejectedReview ?
+                execution_kind = exhaustedTransport ?
+                    "native_fake_endpoint_xa01_transport_exhausted" :
+                    rejectedReview ?
                     "native_fake_endpoint_xa01_rejected_review" :
                     transientRetry ?
                     "native_fake_endpoint_xa01_transport_retry" :
@@ -484,6 +514,7 @@ namespace GuardrailTests
                 rejected_review_blocked = rejectedReviewBlocked,
                 review_rejection_observed = reviewRejectionObserved,
                 deck_write_uncertain = deckWriteUncertain,
+                transport_failure_paused = transportFailurePaused,
                 source_preserved = sourcePreserved,
                 workbook_draft_passed = workbookDraft,
                 workbook_facts_passed = workbookFacts,
@@ -545,16 +576,18 @@ namespace GuardrailTests
             private readonly Task _worker;
             private readonly Func<int, ChatToolCall> _proposal;
             private readonly bool _transientRetry;
+            private readonly bool _exhaustedTransport;
             private int _round;
             private string _retryBody;
             internal int Count;
             internal bool RetryIdentical;
             internal string BaseUrl { get; }
             internal Endpoint(Func<int, ChatToolCall> proposal,
-                bool transientRetry)
+                bool transientRetry, bool exhaustedTransport)
             {
                 _proposal = proposal;
                 _transientRetry = transientRetry;
+                _exhaustedTransport = exhaustedTransport;
                 _listener.Start();
                 BaseUrl = "http://127.0.0.1:" +
                     ((IPEndPoint)_listener.LocalEndpoint).Port + "/v1";
@@ -601,19 +634,12 @@ namespace GuardrailTests
                     var attempt = Count++;
                     Check(attempt < (_transientRetry ? 5 : 4),
                         "XA01_MODEL_CALL_LIMIT");
-                    if (_transientRetry && _round == 2 &&
-                        _retryBody == null)
+                    if ((_transientRetry || _exhaustedTransport) &&
+                        _round == 2 && _retryBody == null &&
+                        !RetryIdentical)
                     {
                         _retryBody = requestBody;
-                        var failure = Encoding.UTF8.GetBytes(
-                            "{\"error\":{\"message\":\"synthetic transient\"}}");
-                        var failureHeader = Encoding.ASCII.GetBytes(
-                            "HTTP/1.1 503 Service Unavailable\r\n" +
-                            "Content-Type: application/json\r\n" +
-                            "Retry-After: 0\r\nContent-Length: " +
-                            failure.Length + "\r\nConnection: close\r\n\r\n");
-                        stream.Write(failureHeader, 0, failureHeader.Length);
-                        stream.Write(failure, 0, failure.Length);
+                        WriteTransientFailure(stream);
                         return;
                     }
                     if (_retryBody != null)
@@ -622,6 +648,11 @@ namespace GuardrailTests
                         Check(RetryIdentical,
                             "XA01_TRANSIENT_RETRY_BODY_CHANGED");
                         _retryBody = null;
+                        if (_exhaustedTransport)
+                        {
+                            WriteTransientFailure(stream);
+                            return;
+                        }
                     }
                     var round = _round++;
                     Check(round < 4, "XA01_MODEL_RESPONSE_LIMIT");
@@ -640,6 +671,18 @@ namespace GuardrailTests
                         responseHeader.Length);
                     stream.Write(response, 0, response.Length);
                 }
+            }
+            private static void WriteTransientFailure(NetworkStream stream)
+            {
+                var failure = Encoding.UTF8.GetBytes(
+                    "{\"error\":{\"message\":\"synthetic transient\"}}");
+                var header = Encoding.ASCII.GetBytes(
+                    "HTTP/1.1 503 Service Unavailable\r\n" +
+                    "Content-Type: application/json\r\n" +
+                    "Retry-After: 0\r\nContent-Length: " +
+                    failure.Length + "\r\nConnection: close\r\n\r\n");
+                stream.Write(header, 0, header.Length);
+                stream.Write(failure, 0, failure.Length);
             }
             public void Dispose()
             { _listener.Stop(); try { _worker.Wait(1000); } catch { } }
