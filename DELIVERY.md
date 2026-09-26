@@ -1,9 +1,10 @@
 # Scribble 2.0 — master delivery plan
 
-Updated 25 September 2026. Owner: the implementation task responsible for
-[PR #41](https://github.com/datap0nd/scribble/pull/41). This is the current,
-authoritative implementation and acceptance plan for the owner's instruction
-to redirect Scribble and finish delivery.
+Updated 26 September 2026. [PR #41](https://github.com/datap0nd/scribble/pull/41)
+merged this plan into `codex/development` on 25 September 2026. This remains
+the authoritative implementation and acceptance plan for the owner's
+instruction to redirect Scribble and finish delivery. Execution progress is
+tracked in [DELIVERY_STATUS.md](DELIVERY_STATUS.md).
 
 Navigation: [authority and completion](#1-authority-integration-and-definition-of-completion)
 · [current evidence](#3-verified-starting-position)
@@ -18,12 +19,12 @@ Navigation: [authority and completion](#1-authority-integration-and-definition-o
 
 ## 1. Authority, integration, and definition of completion
 
-Work on `codex/scribble-2-delivery`; PR #41 targets `codex/development`. PRs
-#20–#40 have been consolidated and closed, with every previous head retained
-in the candidate's ancestry and their source branches preserved. Do not wait
-for PR #20, reopen the phase stack, or create another competing integration
-line. Preserve unrelated local changes. One implementation owner coordinates
-changes and one test runner owns disposable Office sessions at a time.
+Continue from `codex/development` through reviewable follow-up changes. PR #41
+merged the integration plan, and PRs #20–#40 were consolidated and closed with
+their source branches preserved. Do not reopen the phase stack or create a
+competing integration line. Preserve unrelated local changes. One
+implementation owner coordinates changes and one test runner owns disposable
+Office sessions at a time.
 
 This document supersedes the execution order, branch prerequisites, dated
 budget figures, ownership instructions, and acceptance-policy conflicts in
@@ -71,11 +72,16 @@ prompt exceptions to compensate for a broken source or execution contract.
 
 ## 3. Verified starting position
 
+This section records the position before native execution. The current
+candidate's measured progress and remaining gates are in
+[DELIVERY_STATUS.md](DELIVERY_STATUS.md); do not treat the historical pending
+rows below as the latest status.
+
 Status at implementation commit `05c02212a89b2798a185e6412679869aad6949ea`:
 
 | Item | Evidence and current status |
 | --- | --- |
-| Integration | PR #41 is the single delivery PR; inherited implementation and evidence are preserved |
+| Integration | PR #41 was the single integration PR; inherited implementation and evidence are preserved in `codex/development` |
 | Build and offline checks | Local Release build, all 218 guardrails, static capability scan and delivery-script parsing passed |
 | Windows CI | [Run 36157065102](https://github.com/datap0nd/scribble/actions/runs/36157065102) passed on `05c0221`, including browser fixtures, build, guardrails, native-harness upload, ordinary/pilot installer checks and release protection |
 | Typed analysis and output compilers | Implemented with offline coverage; earlier native component evidence exists, but acceptance is not transferable to a new binary |
@@ -199,11 +205,10 @@ pending, but later acceptance cannot skip an unresolved prerequisite.
 CI and a truthful ledger. The code baseline above meets the offline/CI part;
 subsequent code changes require the affected gates again.
 
-### D1 — qualify bounded native execution (next gate; not run on this binary)
+### D1 — qualify bounded native execution
 
-- Obtain the pending current-task permission required by the supplied AGENTS.md
-  before desktop/Office automation. A broad coding mandate does not replace
-  that explicit permission. Prepare commands and disposable inputs beforehand.
+- The owner granted current-task computer-use permission on 26 September 2026.
+  Keep Office runs on disposable inputs and preserve existing sessions.
 - Run chartless revision acceptance on the exact candidate: text and font edits,
   table edits, annotation/notes, move/insert/replace/delete within authorization,
   preservation, revert, injected failure and concurrent-edit behavior.
@@ -521,15 +526,17 @@ uses `TargetFrameworkRootPath` set to the cached
 `Microsoft.NETFramework.ReferenceAssemblies.net48/1.0.3/build/` directory.
 This is a local convenience, not a portable path assumption or CI substitute.
 
-The downloaded candidate harness is under
-`tests/benchmarks/generated/delivery-ci-36157065102/harness/`. The current sealed
+The current local candidate harness is
+`tests/GuardrailTests/bin/Release/GuardrailTests.exe`; verify its hash and the
+accompanying Scribble.dll against `DELIVERY_STATUS.md` before reusing it. The
+current sealed
 stress-corpus manifest is
 `64f73305c8cf0cc2efdc5b87c539b833fd442c82c67c0ba2f62f06e0ff689d2e`.
 Verify input hashes against that manifest before a native attempt.
 
 ```powershell
 & tests/NativeAcceptance/Test-DeliveryCandidate.ps1 `
-  -TestExecutable tests/benchmarks/generated/delivery-ci-36157065102/harness/GuardrailTests.exe `
+  -TestExecutable tests/GuardrailTests/bin/Release/GuardrailTests.exe `
   -OutputDirectory tests/benchmarks/generated/delivery-native `
   -SourcePresentation tests/benchmarks/generated/stress-corpus/inputs/powerpoint/PPT01.pptx `
   -SourceWorkbook tests/benchmarks/generated/stress-corpus/inputs/excel/WB01.xlsx `
@@ -541,7 +548,12 @@ checks for that candidate. The script prints the fresh attempt directory; use
 its exact candidate path for grading and review. Never mix reports from earlier
 attempts into the same pass.
 
-Additional existing harness modes are `--native-analysis-pilot`,
+Additional existing harness modes are `--native-xa01-route`,
+`--native-xa01-failed-workbook`, `--native-xa01-malformed-workbook`,
+`--native-xa01-cancelled`, `--native-xa01-transport-retry`,
+`--native-xa01-transport-exhausted`, `--native-xa01-rejected-review`,
+`--native-xa01-restart-reconcile`,
+`--native-analysis-pilot`,
 `--native-phase5-excel-binding`, `--native-saved-chart-fingerprint`,
 `--native-phase4-reference` and `--native-phase4-defects`, each with a report path.
 The independent PP01 grader is
@@ -577,10 +589,18 @@ approval requirements unless the user introduces another explicit constraint.
 
 ## 11. Operating rules and immediate handoff
 
-Work on the first unresolved dependency. D1 native permission/execution is the
-next gate; planning, offline verification and evidence preparation can continue
-without it. D2 is prepared, but has no native pass. D3 has two known reference
-rejections and still requires review of current output. D4–D9 remain open.
+Work on the first unresolved dependency. The scoped D1 native receipts and the
+positive PP01 and XA01 D2 routes are recorded in [DELIVERY_STATUS.md](DELIVERY_STATUS.md).
+The failed-workbook, malformed-workbook and rejected-review routes have D2
+negative receipts. Pre-write cancellation, a recovered HTTP 503 inference
+retry, and a paused route after two failed 503 attempts are also checkpointed.
+The rejected-review deck remains uncertain until the original payload is
+reconciled. Checkpoint reload blocks a changed deck payload before native
+mutation; exact-payload replay on the same disposable Office session verifies
+the existing four slides, obtains a fresh review and completes without adding
+slides. Cancellation during a native write, cold Office restart, user-edited
+destination recovery, other nonrecoverable transport classes and exhausted
+task allowance remain open. D3 calibration and D4–D9 remain open.
 
 Each change must name its defect, owning layer, intended behavior, relevant
 regression and acceptance evidence. After a failure, preserve the smallest

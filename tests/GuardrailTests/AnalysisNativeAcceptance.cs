@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.IO.Compression;
@@ -24,6 +25,10 @@ namespace GuardrailTests
     // remain unsaved, and are closed without touching an existing document.
     internal static class AnalysisNativeAcceptance
     {
+        [DllImport("user32.dll")]
+        private static extern uint GetWindowThreadProcessId(IntPtr window,
+            out uint processId);
+
         private static void Check(bool condition, string message)
         { if (!condition) throw new InvalidOperationException(message); }
 
@@ -55,6 +60,8 @@ namespace GuardrailTests
             var images = new List<string>();
             var stage = "setup";
             var output = Path.GetDirectoryName(Path.GetFullPath(reportPath));
+            var checkpointRoot = Path.Combine(Path.GetTempPath(),
+                "scribble-analysis-" + Guid.NewGuid().ToString("N"));
             var savedFingerprintPath = Path.Combine(output,
                 "saved-chart-fingerprint-boundary.pptx");
             Directory.CreateDirectory(output);
@@ -64,6 +71,8 @@ namespace GuardrailTests
                 "SCRIBBLE_ANALYSIS_PDF_DIAGNOSTIC_DIR";
             var priorPdfDiagnostic = Environment.GetEnvironmentVariable(
                 pdfDiagnosticFlag);
+            var existingExcel = new HashSet<int>(Process.GetProcessesByName(
+                "EXCEL").Select(process => process.Id));
             try
             {
                 Environment.SetEnvironmentVariable(
@@ -72,6 +81,15 @@ namespace GuardrailTests
                 stage = "excel_start";
                 excel = Activator.CreateInstance(Type.GetTypeFromProgID(
                     "Excel.Application", true));
+                uint excelProcessId;
+                GetWindowThreadProcessId(new IntPtr((int)excel.Hwnd),
+                    out excelProcessId);
+                if (existingExcel.Contains((int)excelProcessId))
+                {
+                    excel = null;
+                    throw new InvalidOperationException(
+                        "NATIVE_EXCEL_SESSION_NOT_OWNED");
+                }
                 stage = "excel_real_date_column";
                 dynamic dateWorkbook = excel.Workbooks.Add();
                 try
@@ -165,7 +183,7 @@ namespace GuardrailTests
                         }
                     }
                 };
-                var readStore = new TaskCheckpointStore(Path.Combine(output,
+                var readStore = new TaskCheckpointStore(Path.Combine(checkpointRoot,
                     "read-checkpoint"));
                 var readTask = new TaskContextManager(readInput, "excel",
                     "Analyze the disposable ledger", readStore);
@@ -483,7 +501,7 @@ namespace GuardrailTests
                         }
                     }
                 };
-                var taskStore = new TaskCheckpointStore(Path.Combine(output,
+                var taskStore = new TaskCheckpointStore(Path.Combine(checkpointRoot,
                     "review-checkpoint"));
                 var reviewTask = new TaskContextManager(taskInput,
                     "excel", "Review the disposable analysis deck",
@@ -932,7 +950,7 @@ namespace GuardrailTests
                 }
                 stage = "powerpoint_content_recovery_injection";
                 var recoveryStore = new TaskCheckpointStore(Path.Combine(
-                    output, "content-recovery-checkpoint"));
+                    checkpointRoot, "content-recovery-checkpoint"));
                 var recoveryInput = new ChatCompletionRequest
                 {
                     model = "offline-test",
@@ -1138,7 +1156,7 @@ namespace GuardrailTests
                     messages = new List<object> { new ChatCompletionInputMessage
                         { role = "user", content = "Correct the card text" } }
                 }, "excel", "Correct the card text",
-                    new TaskCheckpointStore(Path.Combine(output,
+                    new TaskCheckpointStore(Path.Combine(checkpointRoot,
                         "card-recovery-checkpoint")));
                 cardTask.PersistAnalysis(fixture.Item1);
                 var cardPatch = new AnalysisDocumentPatch
@@ -1190,7 +1208,7 @@ namespace GuardrailTests
                         }
                     };
                 var layoutStore = new TaskCheckpointStore(Path.Combine(
-                    output, "layout-recovery-checkpoint"));
+                    checkpointRoot, "layout-recovery-checkpoint"));
                 var layoutTask = new TaskContextManager(layoutInput,
                     "excel", "Reflow the KPI slide", layoutStore);
                 layoutTask.PersistAnalysis(fixture.Item1);
@@ -1320,7 +1338,7 @@ namespace GuardrailTests
                         fixture.Item1, layoutPlan)
                     .Single(page => page.LogicalSlideId == "headline");
                 var faultStore = new TaskCheckpointStore(Path.Combine(
-                    output, "partial-layout-checkpoint"));
+                    checkpointRoot, "partial-layout-checkpoint"));
                 var faultTask = new TaskContextManager(layoutInput,
                     "excel", "Inject a partial layout write", faultStore);
                 faultTask.PersistAnalysis(fixture.Item1);
@@ -1526,7 +1544,7 @@ namespace GuardrailTests
             return false;
         }
 
-        private static object ModelPlanValue(object value)
+        internal static object ModelPlanValue(object value)
         {
             var map = value as IDictionary<string, object>;
             if (map != null)
@@ -1553,14 +1571,19 @@ namespace GuardrailTests
         // The native route sends its rendered pages to a loopback endpoint.
         // It accepts only an exact image/hash pairing and replies with one
         // typed approval for the supplied context. No paid model is involved.
-        private sealed class AnalysisReviewEndpoint : IDisposable
+        internal sealed class AnalysisReviewEndpoint : IDisposable
         {
             private readonly TcpListener _listener = new TcpListener(
                 IPAddress.Loopback, 0);
             private readonly Task _worker;
+            private readonly bool _rejectWithoutRepair;
+            private readonly bool _approveImmediately;
 
-            public AnalysisReviewEndpoint()
+            public AnalysisReviewEndpoint(bool rejectWithoutRepair = false,
+                bool approveImmediately = false)
             {
+                _rejectWithoutRepair = rejectWithoutRepair;
+                _approveImmediately = approveImmediately;
                 _listener.Start();
                 BaseUrl = "http://127.0.0.1:" +
                     ((IPEndPoint)_listener.LocalEndpoint).Port + "/v1";
@@ -1592,7 +1615,9 @@ namespace GuardrailTests
 
             private void Handle()
             {
-                for (var round = 0; round < 5; round++)
+                for (var round = 0; round <
+                    (_rejectWithoutRepair || _approveImmediately ? 1 : 5);
+                    round++)
                     HandleOne(round);
             }
 
@@ -1728,7 +1753,52 @@ namespace GuardrailTests
                                     "The reviewer image changed after capture.");
                         }
                         var firstPage = (IDictionary<string, object>)pages[0];
-                        if (round == 0)
+                        if (_approveImmediately)
+                            decision = json.Serialize(new
+                            {
+                                contract_version =
+                                    AnalysisReviewContract.Version,
+                                context_id = (string)content["context_id"],
+                                approved = true,
+                                findings = new object[0]
+                            });
+                        else if (_rejectWithoutRepair)
+                            decision = json.Serialize(new
+                            {
+                                contract_version =
+                                    AnalysisReviewContract.Version,
+                                context_id = (string)content["context_id"],
+                                approved = false,
+                                findings = new[] {
+                                    new {
+                                        code = "UNSUPPORTED_CLAIM",
+                                        owner = "content",
+                                        logical_slide_id = (string)
+                                            firstPage["LogicalSlideId"],
+                                        native_slide_id = Convert.ToInt32(
+                                            firstPage["NativeSlideId"]),
+                                        target_id = "title", fact_id = "",
+                                        measurement_id = "",
+                                        severity = "blocker",
+                                        action = "revise_text",
+                                        evidence = "The title overstates ledger scope."
+                                    },
+                                    new {
+                                        code = "VISUAL_HIERARCHY",
+                                        owner = "content",
+                                        logical_slide_id = (string)
+                                            firstPage["LogicalSlideId"],
+                                        native_slide_id = Convert.ToInt32(
+                                            firstPage["NativeSlideId"]),
+                                        target_id = "page", fact_id = "",
+                                        measurement_id = "",
+                                        severity = "blocker",
+                                        action = "revise_layout",
+                                        evidence = "The page hierarchy obscures the KPIs."
+                                    }
+                                }
+                            });
+                        else if (round == 0)
                             decision = json.Serialize(new
                             {
                                 contract_version =
@@ -1853,7 +1923,7 @@ namespace GuardrailTests
             }
         }
 
-        private static Tuple<AnalysisArtifact, AnalysisDocumentPlan> Fixture(
+        internal static Tuple<AnalysisArtifact, AnalysisDocumentPlan> Fixture(
             AnalysisArtifact artifact)
         {
             var mayRevenue = artifact.Facts.Single(fact =>

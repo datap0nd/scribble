@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "attempt_id": "20260926T074050528Z-2c7f909b26e54b21a08325de2cb6a50c",
+  "assembly_sha256": "603f43c4d042d6a6d725bfc5e190d69cf6d41cb6f0c5dd9c29971e968e57a537",
+  "guardrail_executable_sha256": "ee32d49352326372a2f7f7a7013496a2e0c5e0747f390a5778b9b0cd72c11db1",
+  "offline": "passed",
+  "native_scope": "pending",
+  "production_route": "pending",
+  "paid_model": "not_run",
+  "visual": "pending",
+  "generalization": "pending",
+  "full_acceptance_passed": false,
+  "failure": null
+}

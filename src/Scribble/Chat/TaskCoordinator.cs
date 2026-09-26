@@ -86,6 +86,8 @@ namespace Scribble.Chat
         public int PrefixCount { get; set; }
         public int ContextBudget { get; set; } = 96000;
         public int RequiredPresentationSlides { get; set; }
+        public bool RequiredWorkbookDraft { get; set; }
+        public string WorkbookDraftReceipt { get; set; }
         public int SamsungWorkflowVersion { get; set; }
         // Zero means the task predates the typed reliability path. New-path
         // tasks set this explicitly and never reinterpret a legacy journal.
@@ -113,6 +115,7 @@ namespace Scribble.Chat
             var covered = Batches.SelectMany(b => b.CoveredSourceIds).ToArray();
             string pilotCopyStatus;
             return (!PresentationReviewRequired || !string.IsNullOrEmpty(PresentationReviewReceipt)) &&
+                (!RequiredWorkbookDraft || !string.IsNullOrEmpty(WorkbookDraftReceipt)) &&
                 (!HostData.TryGetValue("pilot_copy_status", out pilotCopyStatus) ||
                  pilotCopyStatus == "complete") &&
                 EnumerationComplete && Outstanding().Length == 0 &&

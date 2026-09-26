@@ -69,15 +69,20 @@ namespace GuardrailTests
                 app = Activator.CreateInstance(Type.GetTypeFromProgID("PowerPoint.Application", true));
                 app.Visible = -1;
                 source = app.Presentations.Open(sourcePath, -1, 0, -1);
-                source.Activate();
+                source.Windows.Item(1).Activate();
                 var prompt = "Repair and improve the layout of all six slides as a new editable draft using the attached workbook; preserve the original slides and keep the source deck unchanged. Retain the source content, notes and owner/due-date pairs.";
                 var documents = new[] { new ExternalContextDocument("WB01.xlsx",
                     json.Serialize(WorkbookMonthlyChartFacts.ReadSalesLedger(workbookPath, CancellationToken.None)), workbookPath) };
                 var request = DocumentChatRequestFactory.Create("qwen/qwen3.8-27b", "powerpoint", "", new List<ChatTurn>(), prompt, true, documents);
                 Check(request.tools.Any(tool => tool.function.name == PresentationToolCatalog.ReviseSlides) &&
                     !request.tools.Any(tool => tool.function.name == PresentationToolCatalog.AddDraftSlides), "PILOT_TOOL_ROUTE_INCORRECT");
+                // Evidence IDs and atomic write suffixes make checkpoint file
+                // names long. Keep this disposable native test's store under a
+                // short path so .NET Framework can open it on Windows.
+                var checkpointRoot = Path.Combine(Path.GetTempPath(),
+                    "scribble-pilot-" + Guid.NewGuid().ToString("N"));
                 var task = new TaskContextManager(request, "powerpoint", prompt,
-                    new TaskCheckpointStore(Path.Combine(output, "checkpoint")));
+                    new TaskCheckpointStore(checkpointRoot));
                 new TaskRecoveryInput { Prompt = prompt, Documents = documents.Select(document => new SavedReference {
                     Name = document.Name, Content = document.Content, SourcePath = document.SourcePath,
                     SourceFingerprint = document.SourceFingerprint }).ToList() }.PersistTo(task.State);

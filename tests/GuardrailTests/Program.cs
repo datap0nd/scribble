@@ -35,6 +35,14 @@ namespace GuardrailTests
             if (args.Length == 2 && args[0] == "--native-powerpoint") return SamsungNativeAcceptance.Run(args[1]);
             if (args.Length == 2 && args[0] == "--native-powerpoint-chartless") return SamsungNativeAcceptance.Run(args[1], true);
             if (args.Length == 2 && args[0] == "--native-analysis-pilot") return AnalysisNativeAcceptance.Run(args[1]);
+            if (args.Length == 2 && args[0] == "--native-xa01-route") return Xa01RouteNativeAcceptance.Run(args[1]);
+            if (args.Length == 2 && args[0] == "--native-xa01-failed-workbook") return Xa01RouteNativeAcceptance.RunFailedWorkbook(args[1]);
+            if (args.Length == 2 && args[0] == "--native-xa01-malformed-workbook") return Xa01RouteNativeAcceptance.RunMalformedWorkbook(args[1]);
+            if (args.Length == 2 && args[0] == "--native-xa01-cancelled") return Xa01RouteNativeAcceptance.RunCancelled(args[1]);
+            if (args.Length == 2 && args[0] == "--native-xa01-transport-retry") return Xa01RouteNativeAcceptance.RunTransientRetry(args[1]);
+            if (args.Length == 2 && args[0] == "--native-xa01-transport-exhausted") return Xa01RouteNativeAcceptance.RunTransportExhausted(args[1]);
+            if (args.Length == 2 && args[0] == "--native-xa01-rejected-review") return Xa01RouteNativeAcceptance.RunRejectedReview(args[1]);
+            if (args.Length == 2 && args[0] == "--native-xa01-restart-reconcile") return Xa01RouteNativeAcceptance.RunRestartReconcile(args[1]);
             if (args.Length == 2 && args[0] == "--native-saved-chart-fingerprint") return SavedChartFingerprintNativeAcceptance.Run(args[1]);
             if (args.Length == 2 && args[0] == "--native-phase4-reference") return SamsungPhase4NativeAcceptance.Run(args[1]);
             if (args.Length == 2 && args[0] == "--native-phase4-defects") return SamsungPhase4NativeAcceptance.RunDefects(args[1]);
