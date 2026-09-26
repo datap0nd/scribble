@@ -548,7 +548,8 @@ attempts into the same pass.
 
 Additional existing harness modes are `--native-xa01-route`,
 `--native-xa01-failed-workbook`, `--native-xa01-malformed-workbook`,
-`--native-xa01-cancelled`, `--native-analysis-pilot`,
+`--native-xa01-cancelled`, `--native-xa01-transport-retry`,
+`--native-analysis-pilot`,
 `--native-phase5-excel-binding`, `--native-saved-chart-fingerprint`,
 `--native-phase4-reference` and `--native-phase4-defects`, each with a report path.
 The independent PP01 grader is
@@ -587,9 +588,10 @@ approval requirements unless the user introduces another explicit constraint.
 Work on the first unresolved dependency. The scoped D1 native receipts and the
 positive PP01 and XA01 D2 routes are recorded in [DELIVERY_STATUS.md](DELIVERY_STATUS.md).
 The failed-workbook and malformed-workbook routes are the first two D2 negative
-receipts. Pre-write cancellation is also checkpointed, while cancellation
-during a native write, rejected review, transport retry, exhausted allowance
-and restart remain open. D3 calibration and D4–D9 remain open.
+receipts. Pre-write cancellation and one recovered HTTP 503 inference retry
+are also checkpointed. Cancellation during a native write, rejected review,
+nonrecoverable transport, exhausted allowance and restart remain open. D3
+calibration and D4–D9 remain open.
 
 Each change must name its defect, owning layer, intended behavior, relevant
 regression and acceptance evidence. After a failure, preserve the smallest
