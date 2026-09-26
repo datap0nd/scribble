@@ -115,14 +115,12 @@ namespace Scribble.Office
                             "ANALYSIS_DECK_DESTINATION_MISSING");
                     _samsungPresentation = matches[0];
                 }
-                var resuming = _taskContext.State.HostData.ContainsKey(
-                    "samsung_pending");
                 journal = new SamsungGenerationJournal(_taskContext, call);
                 Action beforeNativeWrite = () =>
                 {
                     if (written) return;
                     token.ThrowIfCancellationRequested();
-                    if (!resuming && !authorization.TryConsume())
+                    if (!authorization.TryConsume())
                         throw new InvalidOperationException(
                             "DRAFT_PERMISSION_NOT_AVAILABLE");
                     _taskContext.State.PresentationReviewRequired = true;
@@ -223,6 +221,12 @@ namespace Scribble.Office
                         response.content ?? "").Trim();
                     var verdict = AnalysisDocumentPilot.CompleteNativeReview(
                         (object)deck, review, reviewerJson);
+                    // PDF review may normalize native table frames or change
+                    // render bytes without changing the verified editable
+                    // state. Anchor recovery to the state checked above, so
+                    // a rejected review can resume from its own draft.
+                    for (var index = 0; index < outputs.Count; index++)
+                        journal.Record(outputs[index], index);
                     if (verdict.Approved) break;
                     var blockers = verdict.Findings.Where(item =>
                         item.Severity == "blocker").ToArray();

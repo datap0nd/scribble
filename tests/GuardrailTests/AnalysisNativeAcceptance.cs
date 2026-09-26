@@ -1577,10 +1577,13 @@ namespace GuardrailTests
                 IPAddress.Loopback, 0);
             private readonly Task _worker;
             private readonly bool _rejectWithoutRepair;
+            private readonly bool _approveImmediately;
 
-            public AnalysisReviewEndpoint(bool rejectWithoutRepair = false)
+            public AnalysisReviewEndpoint(bool rejectWithoutRepair = false,
+                bool approveImmediately = false)
             {
                 _rejectWithoutRepair = rejectWithoutRepair;
+                _approveImmediately = approveImmediately;
                 _listener.Start();
                 BaseUrl = "http://127.0.0.1:" +
                     ((IPEndPoint)_listener.LocalEndpoint).Port + "/v1";
@@ -1612,7 +1615,9 @@ namespace GuardrailTests
 
             private void Handle()
             {
-                for (var round = 0; round < (_rejectWithoutRepair ? 1 : 5); round++)
+                for (var round = 0; round <
+                    (_rejectWithoutRepair || _approveImmediately ? 1 : 5);
+                    round++)
                     HandleOne(round);
             }
 
@@ -1748,7 +1753,16 @@ namespace GuardrailTests
                                     "The reviewer image changed after capture.");
                         }
                         var firstPage = (IDictionary<string, object>)pages[0];
-                        if (_rejectWithoutRepair)
+                        if (_approveImmediately)
+                            decision = json.Serialize(new
+                            {
+                                contract_version =
+                                    AnalysisReviewContract.Version,
+                                context_id = (string)content["context_id"],
+                                approved = true,
+                                findings = new object[0]
+                            });
+                        else if (_rejectWithoutRepair)
                             decision = json.Serialize(new
                             {
                                 contract_version =
