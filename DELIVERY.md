@@ -594,9 +594,10 @@ positive PP01 and XA01 D2 routes are recorded in [DELIVERY_STATUS.md](DELIVERY_S
 The failed-workbook, malformed-workbook and rejected-review routes have D2
 negative receipts. Pre-write cancellation, a recovered HTTP 503 inference
 retry, and a paused route after two failed 503 attempts are also checkpointed.
-The rejected-review deck remains uncertain. Cancellation during a native
-write, other nonrecoverable transport classes, exhausted task allowance and
-restart remain open. D3 calibration and D4–D9 remain open.
+The rejected-review deck remains uncertain; checkpoint reload blocks a changed
+deck payload before native mutation. Cancellation during a native write,
+exact-payload restart reconciliation, other nonrecoverable transport classes
+and exhausted task allowance remain open. D3 calibration and D4–D9 remain open.
 
 Each change must name its defect, owning layer, intended behavior, relevant
 regression and acceptance evidence. After a failure, preserve the smallest
