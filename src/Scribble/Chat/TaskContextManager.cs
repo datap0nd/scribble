@@ -69,14 +69,22 @@ namespace Scribble.Chat
                     _state.RequiredPresentationSlides = Math.Max(_state.RequiredPresentationSlides, Math.Max(1, number));
                 }
             }
-            // One request authorizes one deliverable. Once the user's own
-            // objective establishes an exact slide deliverable, unrelated
-            // workbook, Word, browser, or email writes must not be available as
-            // an attempted evidence-repair path. Read-only source tools remain.
+            // An exact slide deliverable excludes unrelated writes. A second
+            // workbook draft is available only when the user's own objective
+            // explicitly asks for that output as well as the deck.
             if (_state.RequiredPresentationSlides > 0)
+            {
+                var workbookAlsoRequested = host == "excel" &&
+                    System.Text.RegularExpressions.Regex.IsMatch(
+                        objective ?? "",
+                        @"\b(?:create|make|build|produce|generate|draft)\b.{0,48}\b(?:new|draft)\b.{0,16}\b(?:workbook|worksheet|sheet)\b",
+                        System.Text.RegularExpressions.RegexOptions.IgnoreCase);
                 request.tools.RemoveAll(tool =>
                     Scribble.Office.DocumentDraftHost.IsDraftTool(host, tool.function.name) &&
-                    !IsPresentationWriteTool(tool.function.name));
+                    !IsPresentationWriteTool(tool.function.name) &&
+                    !(workbookAlsoRequested && tool.function.name ==
+                        WorkbookToolCatalog.WriteDraftSheet));
+            }
             request.tools.Add(TaskSources.Definition());
             request.tools.Add(TaskSources.DocumentDefinition());
             request.tools.Add(new ChatToolDefinition

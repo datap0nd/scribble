@@ -546,7 +546,7 @@ checks for that candidate. The script prints the fresh attempt directory; use
 its exact candidate path for grading and review. Never mix reports from earlier
 attempts into the same pass.
 
-Additional existing harness modes are `--native-analysis-pilot`,
+Additional existing harness modes are `--native-xa01-route`, `--native-analysis-pilot`,
 `--native-phase5-excel-binding`, `--native-saved-chart-fingerprint`,
 `--native-phase4-reference` and `--native-phase4-defects`, each with a report path.
 The independent PP01 grader is
@@ -583,9 +583,8 @@ approval requirements unless the user introduces another explicit constraint.
 ## 11. Operating rules and immediate handoff
 
 Work on the first unresolved dependency. The scoped D1 native receipts and the
-positive PP01 D2 route are recorded in [DELIVERY_STATUS.md](DELIVERY_STATUS.md).
-The complete XA01 route and D2 negative paths are next. D3 calibration and
-D4–D9 remain open.
+positive PP01 and XA01 D2 routes are recorded in [DELIVERY_STATUS.md](DELIVERY_STATUS.md).
+D2 negative paths are next. D3 calibration and D4–D9 remain open.
 
 Each change must name its defect, owning layer, intended behavior, relevant
 regression and acceptance evidence. After a failure, preserve the smallest
