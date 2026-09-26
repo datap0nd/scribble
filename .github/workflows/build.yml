@@ -360,7 +360,7 @@ jobs:
             "installer\Scribble.iss"
 
       - name: Build opt-in analysis pilot installer
-        if: startsWith(github.head_ref, 'codex/reliability-') || startsWith(github.ref_name, 'codex/reliability-') || github.head_ref == 'codex/scribble-2-delivery' || github.ref_name == 'codex/scribble-2-delivery'
+        if: startsWith(github.head_ref, 'codex/reliability-') || startsWith(github.ref_name, 'codex/reliability-') || startsWith(github.head_ref, 'codex/scribble-2-') || startsWith(github.ref_name, 'codex/scribble-2-')
         shell: pwsh
         run: |
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" `
@@ -909,7 +909,7 @@ jobs:
           }
 
       - name: Smoke-test opt-in pilot renderer payload
-        if: startsWith(github.head_ref, 'codex/reliability-') || startsWith(github.ref_name, 'codex/reliability-') || github.head_ref == 'codex/scribble-2-delivery' || github.ref_name == 'codex/scribble-2-delivery'
+        if: startsWith(github.head_ref, 'codex/reliability-') || startsWith(github.ref_name, 'codex/reliability-') || startsWith(github.head_ref, 'codex/scribble-2-') || startsWith(github.ref_name, 'codex/scribble-2-')
         shell: pwsh
         run: |
           $installer = Resolve-Path "artifacts\ScribblePilotSetup.exe"
@@ -959,6 +959,14 @@ jobs:
           path: |
             artifacts/ScribbleSetup.exe
             artifacts/candidate.json
+          if-no-files-found: error
+
+      - name: Upload analysis pilot installer artifact
+        if: startsWith(github.head_ref, 'codex/reliability-') || startsWith(github.ref_name, 'codex/reliability-') || startsWith(github.head_ref, 'codex/scribble-2-') || startsWith(github.ref_name, 'codex/scribble-2-')
+        uses: actions/upload-artifact@v4
+        with:
+          name: ScribblePilotSetup
+          path: artifacts/ScribblePilotSetup.exe
           if-no-files-found: error
 
   browser-extension-e2e:
