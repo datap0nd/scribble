@@ -30,19 +30,23 @@ namespace GuardrailTests
         { if (!condition) throw new InvalidOperationException(message); }
 
         internal static int Run(string reportPath)
-        { return RunCore(reportPath, false, false, false); }
+        { return RunCore(reportPath, false, false, false, false); }
 
         internal static int RunFailedWorkbook(string reportPath)
-        { return RunCore(reportPath, true, false, false); }
+        { return RunCore(reportPath, true, false, false, false); }
 
         internal static int RunMalformedWorkbook(string reportPath)
-        { return RunCore(reportPath, false, true, false); }
+        { return RunCore(reportPath, false, true, false, false); }
 
         internal static int RunCancelled(string reportPath)
-        { return RunCore(reportPath, false, false, true); }
+        { return RunCore(reportPath, false, false, true, false); }
+
+        internal static int RunTransientRetry(string reportPath)
+        { return RunCore(reportPath, false, false, false, true); }
 
         private static int RunCore(string reportPath, bool failWorkbook,
-            bool malformedWorkbook, bool cancelAfterRead)
+            bool malformedWorkbook, bool cancelAfterRead,
+            bool transientRetry)
         {
             var output = Path.GetDirectoryName(Path.GetFullPath(reportPath));
             Directory.CreateDirectory(output);
@@ -64,6 +68,7 @@ namespace GuardrailTests
             var malformedWorkbookBlocked = false;
             var malformedProposalObserved = false;
             var cancellationObserved = false;
+            var transportRetriedIdentically = false;
             var sourcePreserved = false;
             var workbookDraft = false;
             var deckDraft = false;
@@ -177,7 +182,7 @@ namespace GuardrailTests
                         }
                     };
                 };
-                using (endpoint = new Endpoint(proposal))
+                using (endpoint = new Endpoint(proposal, transientRetry))
                 using (reviewer = new AnalysisNativeAcceptance
                     .AnalysisReviewEndpoint())
                 using (var client = new OpenAiCompatibleClient())
@@ -302,6 +307,7 @@ namespace GuardrailTests
                             cancellation.Cancel();
                     }
                     requests = endpoint.Count;
+                    transportRetriedIdentically = endpoint.RetryIdentical;
                     reviewRequests = reviewer.RequestCount;
                     sourcePreserved = SourceValues(ledger) == sourceBefore;
                     workbookDraft = (int)source.Worksheets.Count == 2 &&
@@ -377,8 +383,10 @@ namespace GuardrailTests
                     {
                         Check(terminal && sourcePreserved && workbookDraft &&
                             workbookFacts && deckDraft && slideFacts &&
-                            writesVerified && requests == 4 &&
-                            reviewRequests == 5,
+                            writesVerified &&
+                            requests == (transientRetry ? 5 : 4) &&
+                            reviewRequests == 5 &&
+                            (!transientRetry || transportRetriedIdentically),
                             "XA01_ROUTE_INCOMPLETE");
                         stage = "capture_native_output";
                         draft.SaveCopyAs(Path.Combine(output, "xa01-candidate.pptx"));
@@ -390,7 +398,10 @@ namespace GuardrailTests
             catch (Exception error) { failure = stage + ": " + error; }
             finally
             {
-                if (endpoint != null) requests = endpoint.Count;
+                if (endpoint != null) {
+                    requests = endpoint.Count;
+                    transportRetriedIdentically = endpoint.RetryIdentical;
+                }
                 if (reviewer != null)
                     reviewRequests = reviewer.RequestCount;
                 if ((object)source != null && sourceBefore != null)
@@ -419,7 +430,9 @@ namespace GuardrailTests
                     AnalysisDocumentPilot.FeatureFlag, previousFlag);
             }
             var report = new {
-                execution_kind = cancelAfterRead ?
+                execution_kind = transientRetry ?
+                    "native_fake_endpoint_xa01_transport_retry" :
+                    cancelAfterRead ?
                     "native_fake_endpoint_xa01_cancelled" :
                     malformedWorkbook ?
                     "native_fake_endpoint_xa01_malformed_workbook" :
@@ -432,6 +445,7 @@ namespace GuardrailTests
                 malformed_workbook_blocked = malformedWorkbookBlocked,
                 malformed_proposal_observed = malformedProposalObserved,
                 cancellation_observed = cancellationObserved,
+                transport_retried_identically = transportRetriedIdentically,
                 source_preserved = sourcePreserved,
                 workbook_draft_passed = workbookDraft,
                 workbook_facts_passed = workbookFacts,
@@ -492,11 +506,17 @@ namespace GuardrailTests
                 IPAddress.Loopback, 0);
             private readonly Task _worker;
             private readonly Func<int, ChatToolCall> _proposal;
+            private readonly bool _transientRetry;
+            private int _round;
+            private string _retryBody;
             internal int Count;
+            internal bool RetryIdentical;
             internal string BaseUrl { get; }
-            internal Endpoint(Func<int, ChatToolCall> proposal)
+            internal Endpoint(Func<int, ChatToolCall> proposal,
+                bool transientRetry)
             {
                 _proposal = proposal;
+                _transientRetry = transientRetry;
                 _listener.Start();
                 BaseUrl = "http://127.0.0.1:" +
                     ((IPEndPoint)_listener.LocalEndpoint).Port + "/v1";
@@ -538,10 +558,35 @@ namespace GuardrailTests
                     }
                     var json = new JavaScriptSerializer {
                         MaxJsonLength = 16000000 };
-                    json.Deserialize<Dictionary<string, object>>(
-                        Encoding.UTF8.GetString(bytes));
-                    var round = Count++;
-                    Check(round < 4, "XA01_MODEL_CALL_LIMIT");
+                    var requestBody = Encoding.UTF8.GetString(bytes);
+                    json.Deserialize<Dictionary<string, object>>(requestBody);
+                    var attempt = Count++;
+                    Check(attempt < (_transientRetry ? 5 : 4),
+                        "XA01_MODEL_CALL_LIMIT");
+                    if (_transientRetry && _round == 2 &&
+                        _retryBody == null)
+                    {
+                        _retryBody = requestBody;
+                        var failure = Encoding.UTF8.GetBytes(
+                            "{\"error\":{\"message\":\"synthetic transient\"}}");
+                        var failureHeader = Encoding.ASCII.GetBytes(
+                            "HTTP/1.1 503 Service Unavailable\r\n" +
+                            "Content-Type: application/json\r\n" +
+                            "Retry-After: 0\r\nContent-Length: " +
+                            failure.Length + "\r\nConnection: close\r\n\r\n");
+                        stream.Write(failureHeader, 0, failureHeader.Length);
+                        stream.Write(failure, 0, failure.Length);
+                        return;
+                    }
+                    if (_retryBody != null)
+                    {
+                        RetryIdentical = requestBody == _retryBody;
+                        Check(RetryIdentical,
+                            "XA01_TRANSIENT_RETRY_BODY_CHANGED");
+                        _retryBody = null;
+                    }
+                    var round = _round++;
+                    Check(round < 4, "XA01_MODEL_RESPONSE_LIMIT");
                     object message = round < 3
                         ? (object)new { role = "assistant",
                             tool_calls = new[] { _proposal(round) } }
