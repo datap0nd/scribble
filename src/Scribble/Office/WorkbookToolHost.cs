@@ -860,7 +860,7 @@ namespace Scribble.Office
         }
 
         public const int MaxGroupedTotalRows = 20000;
-        public const int MaxTypedMetadataCells = 24;
+        public const int MaxTypedMetadataCells = 5000;
 
         private static AnalysisTableBinding ParseAnalysisBinding(
             object raw, string tableId)
@@ -945,7 +945,8 @@ namespace Scribble.Office
                         numberFormats, rows, columns,
                         column => (object)range.Columns[column + 1].NumberFormat,
                         (row, column) => (object)range.Cells[row + 1,
-                            column + 1].NumberFormat);
+                            column + 1].NumberFormat,
+                        MaxTypedMetadataCells);
                 if (numberFormats == null) formatsComplete = false;
             }
             catch
@@ -1191,9 +1192,72 @@ namespace Scribble.Office
             string resolvedRange = TextBoundary.SingleLine(
                 Convert.ToString(range.Address(false, false)),
                 60);
-            return Success(
-                callId,
-                new Dictionary<string, object>
+            AnalysisArtifact analysis = null;
+            var groupBy = StringList(arguments, "group_by");
+            var sumColumns = StringList(arguments, "sum_columns");
+            if (AnalysisDocumentPilot.Enabled &&
+                (groupBy.Contains("Period") ||
+                 ToolArguments.GetString(arguments, "filter_column",
+                     string.Empty) == "Period"))
+            {
+                if ((long)totalRows * totalColumns > 5000 ||
+                    result.SkippedCells != 0)
+                    return Error(callId, "ANALYSIS_GROUP_SOURCE_INCOMPLETE",
+                        "The complete grouped source must fit the typed capture and have no missing metric values.");
+                try
+                {
+                    var typed = CaptureTypedPage((object)range,
+                        totalRows, totalColumns);
+                    if (!typed.Complete || !typed.NumberFormatsComplete)
+                        throw new InvalidOperationException(
+                            "ANALYSIS_GROUP_SOURCE_INCOMPLETE");
+                    var source = OfficeTaskBinding.Capture("excel",
+                        _excelApplication);
+                    if (source == null)
+                        throw new InvalidOperationException(
+                            "ANALYSIS_SOURCE_MISSING");
+                    typed.Table.TableId = AnalysisContract.HostId("table",
+                        source.Id + "|" + resolvedSheet + "|" + resolvedRange);
+                    var locator = new SourceLocator {
+                        Kind = "excel_range", SourceInstanceId = source.Id,
+                        WorksheetIdentity = resolvedSheet,
+                        Range = resolvedRange };
+                    var snapshot = AnalysisContract.CreateSnapshot(source.Id,
+                        "excel_workbook", source.Fingerprint + "|" +
+                        resolvedSheet + "|" + resolvedRange,
+                        "complete_range", typed.CalculationState,
+                        new[] { locator }, new[] { typed.Table });
+                    var binding = new AnalysisTableBinding {
+                        TableId = typed.Table.TableId,
+                        PeriodHeader = "Period",
+                        DimensionHeaders = groupBy.Where(name =>
+                            name != "Period").ToList(),
+                        Metrics = sumColumns.Select(header => {
+                            var match = System.Text.RegularExpressions.Regex.Match(
+                                header, @"[A-Z]{3}$");
+                            var currency = match.Success ? match.Value : "";
+                            return new AnalysisMetricColumnBinding {
+                                Header = header, Metric = header,
+                                Currency = currency,
+                                Unit = currency.Length == 0 ? "" :
+                                    "currency" };
+                        }).ToList()
+                    };
+                    analysis = AnalysisTableArtifactBuilder.BuildGrouped(
+                        snapshot, binding,
+                        ToolArguments.GetString(arguments,
+                            "filter_column", string.Empty),
+                        ToolArguments.GetString(arguments,
+                            "filter_equals", string.Empty));
+                }
+                catch (Exception error) when (error is
+                    InvalidOperationException || error is OverflowException)
+                {
+                    return Error(callId, "ANALYSIS_GROUP_BINDING_INVALID",
+                        error.Message);
+                }
+            }
+            var payload = new Dictionary<string, object>
                 {
                     { "untrusted_document_data", true },
                     { "host_computed", true },
@@ -1210,8 +1274,23 @@ namespace Scribble.Office
                         "; blank or non-numeric cells are counted and excluded, never treated as zero."
                     },
                     { "totals_tsv", result.Table }
-                },
+                };
+            if (analysis != null)
+            {
+                payload["analysis_id"] = analysis.AnalysisId;
+                payload["facts"] = analysis.Facts.Select(fact => new {
+                    fact_id = fact.FactId, metric = fact.Metric,
+                    period = fact.Period, value = fact.Value,
+                    currency = fact.Currency,
+                    dimensions = fact.Dimensions }).ToArray();
+            }
+            var response = Success(
+                callId,
+                payload,
                 "Computed grouped totals from " + resolvedSheet + ".");
+            if (analysis != null && !response.Outcome.Failed)
+                response.AttachAnalysisArtifact(analysis);
+            return response;
         }
 
         private static IReadOnlyList<string> StringList(

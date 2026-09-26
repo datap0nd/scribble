@@ -91,6 +91,7 @@ namespace GuardrailTests
                 Run("Native report readback retains scalar cell formulas", HardeningTests.NativeReportReadback);
                 Run("Typed analysis snapshots preserve identity and serialization", AnalysisContractTests.SnapshotIdentityInvalidationAndSerialization);
                 Run("Explicit typed table bindings issue only verified facts", AnalysisContractTests.ExplicitTableBindingsIssueOnlyVerifiedFacts);
+                Run("Grouped typed facts retain source-bound formulas", AnalysisContractTests.GroupedTypedFactsKeepSourceAndFormulaBinding);
                 Run("Typed analysis calculations preserve source authority", AnalysisContractTests.DeterministicCalculationsPreserveAuthority);
                 Run("Native revision acceptance cannot expand its certified scope", PresentationAcceptanceTests.ScopedReceiptCannotCertifyCharts);
                 Run("Delivery transport budget persists across restart", PresentationAcceptanceTests.TransportBudgetSurvivesRestart);
@@ -100,6 +101,7 @@ namespace GuardrailTests
                 Run("Typed deck tool accepts only fact references", AnalysisDocumentCompilerTests.DeckToolAcceptsOnlyFactReferencedPlan);
                 Run("Shared analysis scopes each destination write", AnalysisDocumentCompilerTests.SharedAnalysisAllowsOneDraftPerDestination);
                 Run("Analysis native writer requires a persisted setting", AnalysisDocumentCompilerTests.PilotRequiresPersistedSetting);
+                Run("Deck intent starts on the typed analysis route", AnalysisDocumentCompilerTests.DeckIntentStartsOnTypedRoute);
                 Run("Typed review findings cannot override facts or pages", AnalysisReviewContractTests.FindingsCannotOverrideVerifiedFactsOrPages);
                 Run("One repair budget spans review and patch stages", AnalysisReviewContractTests.SharedBudgetSurvivesEveryStage);
                 Run("PDF export permits only metadata and two EMU table rounding", AnalysisReviewContractTests.PdfExportOnlyPermitsMetadataAndTableRoundoff);

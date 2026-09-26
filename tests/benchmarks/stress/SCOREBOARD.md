@@ -32,7 +32,14 @@ leave a blank.
 
 Remaining OpenRouter balance: $14.4736 at 21:38 UTC on 26 Sep 2026 (existing
 `TestLabStressBudget.CheckAsync` against `/api/v1/key`; $25.5264 used of the
-$40 no-reset key). Recheck before the paid XA01 batch.
+$40 no-reset key). After the real XA01 run: $14.1401 at 22:06 UTC. Recheck
+before the next paid batch.
+
+## Installed builds
+
+| Date | Version | Source | Installer SHA-256 | Installed Scribble.dll SHA-256 | Verification |
+| --- | --- | --- | --- | --- | --- |
+| 2026-09-26 | 2.0.694.0 | PR #44 head `99837ca`, CI merge `65ea83a`, run `36273774551` | `96bdc751a347d3d4bd1ac3c2d7b8ccb288351e9b29c7fe657fecdb7c33115811` | `2efd65023777c9c9abc9cf7395653ae0fce245cac59d299d94434583ecc33bc3` | Pilot installer completed; renderer payload present; version and hashes read back from installed files. |
 
 ## Runs
 
@@ -48,3 +55,4 @@ predate this file. Their source commits weren't recorded there.
 | 2026-09-22 | 2.0.398 | PP01 | old | NOT RUN: stopped in `SnapshotExternalKit` before any request | harness | 0 | $0.00 | — | `suite-20260922-194429-80f7e1bb` |
 | 2026-09-26 | local `603f43c4` (PR #43 native candidate) | PP01 | new | PASS: fake endpoint production route; terminal receipt, grader accepted, sources unchanged | — | 11 | $0.00 | — | `delivery-2026-09-26/production-route.json` |
 | 2026-09-26 | local `603f43c4` (PR #43 native candidate) | XA01 | new | PASS: fake endpoint production route; terminal receipt, sources unchanged | — | 4 model + 5 review | $0.00 | — | `delivery-2026-09-26/xa01-route.json` |
+| 2026-09-26 | 2.0.694.0 (`99837ca`, CI `65ea83a`) | XA01 | old | FAIL: typed route not entered despite persisted setting; native outputs passed oracle but no terminal task event; 34 requests exceeds cap | capture/binding | 34 | $0.33 | 7.3 | `suite-20260926-215717-2b996964` / `7c7a41f6720a4d589284c7a259f89a20` |

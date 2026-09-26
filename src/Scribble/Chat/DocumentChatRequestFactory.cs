@@ -100,6 +100,11 @@ namespace Scribble.Chat
                     new[] { ".xlsx", ".xlsm" }.Contains(
                         Path.GetExtension(document.SourcePath ?? ""),
                         StringComparer.OrdinalIgnoreCase));
+            var typedDeck = hostKind == "excel" && allowDraftCreate &&
+                AnalysisDocumentPilot.Enabled && Regex.IsMatch(
+                    userPrompt ?? string.Empty,
+                    @"\b(powerpoint|presentation|deck|slides?)\b",
+                    RegexOptions.IgnoreCase);
             var translateToKorean = hasKoreanWorkbook && string.Equals(
                 workbookTranslationTarget,
                 Scribble.Office.ExcelSelectionOutputPolicy.TargetKorean,
@@ -126,7 +131,9 @@ namespace Scribble.Chat
                 if (hostKind == "excel")
                 {
                     tools.Add(
-                        WorkbookToolCatalog.DraftDefinition());
+                        typedDeck
+                            ? WorkbookToolCatalog.AnalysisDraftDefinition()
+                            : WorkbookToolCatalog.DraftDefinition());
                     tools.Add(
                         WorkbookToolCatalog.CellsDefinition());
                     if (hasExcelSelection)
@@ -160,6 +167,15 @@ namespace Scribble.Chat
                     tools.AddRange(
                         CrossAppToolCatalog.CreateDefinitions(
                             hostKind));
+                if (typedDeck)
+                {
+                    var deckIndex = tools.FindIndex(tool =>
+                        tool.function.name ==
+                        CrossAppToolCatalog.SendToPowerPoint);
+                    if (deckIndex >= 0)
+                        tools[deckIndex] =
+                            CrossAppToolCatalog.AnalysisDeckDefinition();
+                }
             }
 
             if (extraTools != null)

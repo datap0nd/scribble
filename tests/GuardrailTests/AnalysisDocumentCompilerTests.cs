@@ -126,6 +126,39 @@ namespace GuardrailTests
             }
         }
 
+        public static void DeckIntentStartsOnTypedRoute()
+        {
+            var prior = AnalysisDocumentPilot.Enabled;
+            try
+            {
+                AnalysisDocumentPilot.SetEnabled(true);
+                var request = DocumentChatRequestFactory.Create(
+                    "qwen/qwen3.8-27b", "excel", string.Empty,
+                    new List<ChatTurn>(),
+                    "Analyze the workbook and create a PowerPoint deck",
+                    true);
+                var workbook = request.tools.Single(tool =>
+                    tool.function.name ==
+                    WorkbookToolCatalog.WriteDraftSheet);
+                var deck = request.tools.Single(tool =>
+                    tool.function.name ==
+                    CrossAppToolCatalog.SendToPowerPoint);
+                var legacyWorkbook = new ChatToolCall { id = "old-workbook",
+                    type = "function", function = new ChatToolCallFunction {
+                        name = WorkbookToolCatalog.WriteDraftSheet,
+                        arguments = "{\"title\":\"Old\",\"rows\":[[\"Period\"]]}" } };
+                var legacyDeck = new ChatToolCall { id = "old-deck",
+                    type = "function", function = new ChatToolCallFunction {
+                        name = CrossAppToolCatalog.SendToPowerPoint,
+                        arguments = "{\"plan\":[\"headline\"],\"slides\":[{}]}" } };
+                Check(ToolContractValidator.Validate(legacyWorkbook,
+                    workbook).Count > 0 && ToolContractValidator.Validate(
+                    legacyDeck, deck).Count > 0,
+                    "A deck request exposed legacy model-authored writes.");
+            }
+            finally { AnalysisDocumentPilot.SetEnabled(prior); }
+        }
+
         public static void OneAnalysisSuppliesWorkbookAndFourSlides()
         {
             var locator = new SourceLocator

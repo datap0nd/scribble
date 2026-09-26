@@ -27,8 +27,7 @@ namespace Scribble.Office
             var snapshot = artifact.Snapshots[0];
             var table = snapshot.Tables[0];
             if (snapshot.Coverage != "complete_range" ||
-                table.Rows < 2 || table.Columns < 2 ||
-                table.Rows > WorkbookDraftWriter.MaxDraftColumns)
+                table.Rows < 2 || table.Columns < 2)
                 throw new InvalidOperationException(
                     "ANALYSIS_WORKBOOK_SOURCE_UNSUPPORTED");
             var headerCells = table.Cells.Where(cell => cell.Row == 0 &&
@@ -46,24 +45,31 @@ namespace Scribble.Office
                 table.Name.IndexOfAny(new[] { '[', ']', '\\' }) >= 0)
                 throw new InvalidOperationException(
                     "ANALYSIS_WORKBOOK_PERIOD_UNSUPPORTED");
-            var periods = table.Cells.Where(cell =>
+            var sourcePeriods = table.Cells.Where(cell =>
                     cell.Row > 0 && cell.Column == periodColumn)
                 .OrderBy(cell => cell.Row).ToArray();
-            if (periods.Length != table.Rows - 1 ||
-                periods.Select(cell => cell.Value)
-                    .Distinct(StringComparer.Ordinal).Count() != periods.Length)
+            if (sourcePeriods.Length != table.Rows - 1)
                 throw new InvalidOperationException(
                     "ANALYSIS_WORKBOOK_PERIOD_UNSUPPORTED");
-            var metrics = artifact.Facts.Select(fact => fact.Metric)
+            var periods = sourcePeriods.GroupBy(cell => cell.Value,
+                    StringComparer.Ordinal).Select(group => group.First())
+                .ToArray();
+            if (periods.Length + 1 > WorkbookDraftWriter.MaxDraftColumns)
+                throw new InvalidOperationException(
+                    "ANALYSIS_WORKBOOK_PERIOD_UNSUPPORTED");
+            var reportFacts = artifact.Facts.Where(fact =>
+                fact.Dimensions.Count == 0).ToArray();
+            var metrics = reportFacts.Select(fact => fact.Metric)
                 .Distinct(StringComparer.Ordinal)
                 .OrderBy(metric => headers.ContainsKey(metric)
                     ? headers[metric] : int.MaxValue).ToArray();
-            if (metrics.Length + 1 > WorkbookDraftWriter.MaxDraftRows ||
+            if (metrics.Length == 0 ||
+                metrics.Length + 1 > WorkbookDraftWriter.MaxDraftRows ||
                 metrics.Any(metric => !headers.ContainsKey(metric)) ||
-                artifact.Facts.Any(fact => fact.Kind !=
-                    AnalysisContract.SourceObserved ||
-                    fact.Status != AnalysisContract.Verified ||
-                    fact.Dimensions.Count != 0))
+                reportFacts.Length != metrics.Length * periods.Length ||
+                reportFacts.Any(fact => fact.Status !=
+                    AnalysisContract.Verified ||
+                    fact.SnapshotId != snapshot.SnapshotId))
                 throw new InvalidOperationException(
                     "ANALYSIS_WORKBOOK_FACTS_UNSUPPORTED");
             var binding = new AnalysisTableBinding
@@ -72,7 +78,7 @@ namespace Scribble.Office
                 PeriodHeader = "Period",
                 Metrics = metrics.Select(metric =>
                 {
-                    var fact = artifact.Facts.First(item =>
+                    var fact = reportFacts.First(item =>
                         item.Metric == metric);
                     return new AnalysisMetricColumnBinding
                     {
@@ -81,9 +87,10 @@ namespace Scribble.Office
                     };
                 }).ToList()
             };
-            var rebound = AnalysisTableArtifactBuilder.Build(snapshot,
-                binding);
-            if (rebound.AnalysisId != artifact.AnalysisId)
+            if (reportFacts.All(fact => fact.Kind ==
+                    AnalysisContract.SourceObserved) &&
+                AnalysisTableArtifactBuilder.Build(snapshot,
+                    binding).AnalysisId != artifact.AnalysisId)
                 throw new InvalidOperationException(
                     "ANALYSIS_WORKBOOK_FACTS_UNSUPPORTED");
             var sourcePeriod = SourceColumnRange(table, periodColumn);
@@ -99,7 +106,7 @@ namespace Scribble.Office
                 for (var index = 0; index < periods.Length; index++)
                 {
                     var period = periods[index].Value;
-                    var fact = artifact.Facts.Single(item =>
+                    var fact = reportFacts.Single(item =>
                         item.Metric == metric && item.Period == period);
                     var reportColumn = ColumnName(index + 2);
                     cells.Add(new AnalysisPlanCell

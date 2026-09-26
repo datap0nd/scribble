@@ -147,6 +147,66 @@ namespace GuardrailTests
             throw new Exception("Expected table binding failure " + code);
         }
 
+        public static void GroupedTypedFactsKeepSourceAndFormulaBinding()
+        {
+            var table = MappedTable();
+            table.Rows = 4;
+            table.Cells.Add(Cell(3, 0, "A4",
+                AnalysisContract.TextValue, "2026-05"));
+            table.Cells.Add(Cell(3, 1, "B4",
+                AnalysisContract.TextValue, "South"));
+            table.Cells.Add(Cell(3, 2, "C4",
+                AnalysisContract.DecimalValue, "1"));
+            table.Cells.Add(Cell(3, 3, "D4",
+                AnalysisContract.DecimalValue, "2"));
+            var snapshot = AnalysisContract.CreateSnapshot("workbook-a",
+                "excel_workbook", "revision-1", "complete_range",
+                "literal_values", new[] { Locator("workbook-a",
+                    "Ledger", "A1:D4", "") }, new[] { table });
+            var binding = new AnalysisTableBinding {
+                TableId = "ledger", PeriodHeader = "Period",
+                Metrics = new List<AnalysisMetricColumnBinding> {
+                    new AnalysisMetricColumnBinding { Header = "RevenueEUR",
+                        Metric = "RevenueEUR", Unit = "currency",
+                        Currency = "EUR" },
+                    new AnalysisMetricColumnBinding { Header = "CostEUR",
+                        Metric = "CostEUR", Unit = "currency",
+                        Currency = "EUR" } } };
+            var artifact = AnalysisTableArtifactBuilder.BuildGrouped(
+                snapshot, binding);
+            var may = artifact.Facts.Single(fact =>
+                fact.Metric == "RevenueEUR" &&
+                fact.Period == "2026-05");
+            Check(artifact.Facts.Count == 4 && may.Value == "85520" &&
+                may.Locators.Count == 2 && may.Locators.Any(locator =>
+                    locator.Cell == "C4"),
+                "Grouped facts lost an additive row or native locator.");
+            var rows = AnalysisWorkbookPlanBuilder.Build(artifact);
+            Check(rows[1].Cells[1].Formula ==
+                "=SUMIF('Ledger'!$A$2:$A$4,B$3,'Ledger'!$C$2:$C$4)" &&
+                rows[1].Cells[1].ExpectedFactId == may.FactId,
+                "The grouped report lost its source-bound formula.");
+            binding.DimensionHeaders.Add("Group");
+            var dimensioned = AnalysisTableArtifactBuilder.BuildGrouped(
+                snapshot, binding, "Period", "2026-05");
+            Check(dimensioned.Facts.Count == 4 &&
+                dimensioned.Facts.Any(fact => fact.Metric == "CostEUR" &&
+                    fact.Dimensions["Group"] == "South" &&
+                    fact.Value == "2"),
+                "Filtered group facts lost their dimension or value.");
+            var missing = MappedTable();
+            missing.Cells.Single(cell => cell.Reference == "C3")
+                .Status = AnalysisContract.Unresolved;
+            var missingSnapshot = AnalysisContract.CreateSnapshot(
+                "workbook-a", "excel_workbook", "revision-1",
+                "complete_range", "literal_values", new[] {
+                    Locator("workbook-a", "Ledger", "A1:D3", "") },
+                new[] { missing });
+            RejectTableBinding(() =>
+                AnalysisTableArtifactBuilder.BuildGrouped(missingSnapshot,
+                    binding), "ANALYSIS_TABLE_VALUE_UNVERIFIED");
+        }
+
         private static TableDataset MappedTable()
         {
             return new TableDataset
