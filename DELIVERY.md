@@ -108,7 +108,7 @@ a ≤ 10-line owner note in §5.
      completion.
   2. Reproduce it offline where possible, as a regression test.
   3. Fix it, rebuild, install and rerun.
-  - At most 6 paid runs per day.
+  - Stay within the $4/day spend cap; no run-count limit.
 - **B3** Review rules for this route:
   - one review/repair round at most;
   - a model finding can block completion only when a deterministic
@@ -185,9 +185,9 @@ host emitted all six periods, and the chart included Cost as a second series.
 The source inputs were unchanged and presentation checks passed. A regression
 fix now selects the latest comparison periods for the workbook and the primary
 metric for the chart. CI passed and pilot 2.0.701.0 is installed and verified;
-it needs a real rerun. Six paid runs
-have been used on Dubai-local 27 Sep, the daily maximum. OpenRouter balance
-was $12.9812 at 00:17 UTC on 27 Sep; recheck before the next batch on 28 Sep.
+  it needs a real rerun. The owner removed the run-count limit on 27 Sep;
+  the $4/day spend cap remains. Six paid runs cost about $1.49 that Dubai-local
+  day. OpenRouter had $12.9812 remaining at 06:19 UTC on 27 Sep.
 
 ## 6. Rules for autonomous sessions
 
