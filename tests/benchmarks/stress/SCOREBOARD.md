@@ -45,6 +45,7 @@ before the next paid batch.
 | 2026-09-26 | 2.0.697.0 | PR #44 head `b590816`, CI run `36278264802` | `65a6c650f9b0cc52e01a2a10b44e356c047b54993d9378c1b7d38d67954898e8` | `3c034227b7e4f5c7cf55274cbdad37d80a3c8c94307953ff22d5e210bcd993c3` | Pilot installer exited 0; installed version, DLL and renderer payload verified; no Office processes existed before or after install. |
 | 2026-09-26 | 2.0.698.0 | PR #44 head `1ce0670`, CI run `36279656273` | `8474259bbb164f0ba52c5441ac13f82b316e3c762ec058834888e934141e64fe` | `1c2508e172b0a5cac3debc375ad74d0437fbe5426a51a8ce2932280fba4ea960` | Pilot installer exited 0; installed version, DLL and renderer payload verified; no Office processes existed before or after install. |
 | 2026-09-27 | 2.0.699.0 | PR #44 head `c632ec9`, CI run `36281114429` | `4243c202bc6fbeb08b08f0bf7caa5c0ca8c9065695645881b18caddf9af7ecf4` | `f6eb63e8075595a402ade24674fbee9dc3e0150d9edadadb19aa175b998d5684` | Pilot installer exited 0; installed version, DLL and renderer payload verified; no Office processes existed before or after install. |
+| 2026-09-27 | 2.0.701.0 | PR #44 head `e1e1bb5`, CI run `36282424477` | `66ce36603a0b081e71534c9f11dbc7d21de34a2c64815056b2d533729fa59850` | `6ea8f9abfd1247c1cbb38813839c9a3729d55737fed7a2762809f1eaa30b1459` | Pilot installer exited 0; installed version, DLL, browser host and renderer payload verified; no Office processes existed before or after install. |
 
 ## Runs
 

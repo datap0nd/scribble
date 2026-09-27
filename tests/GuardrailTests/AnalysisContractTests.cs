@@ -242,9 +242,11 @@ namespace GuardrailTests
                     slide.Chart.Series.Count == 1 &&
                     slide.Chart.Series[0].FactIds.SequenceEqual(new[] {
                         combined.Facts.Single(fact =>
+                            fact.Dimensions.Count == 0 &&
                             fact.Metric == "RevenueEUR" &&
                             fact.Period == "2026-05").FactId,
                         combined.Facts.Single(fact =>
+                            fact.Dimensions.Count == 0 &&
                             fact.Metric == "RevenueEUR" &&
                             fact.Period == "2026-06").FactId })) &&
                 deck.Slides.Any(slide => slide.TableRows.Count > 0 &&

@@ -184,7 +184,8 @@ planning/schema: correct May/June live formulas landed in F/G because the
 host emitted all six periods, and the chart included Cost as a second series.
 The source inputs were unchanged and presentation checks passed. A regression
 fix now selects the latest comparison periods for the workbook and the primary
-metric for the chart; it needs CI/build/install and a real rerun. Six paid runs
+metric for the chart. CI passed and pilot 2.0.701.0 is installed and verified;
+it needs a real rerun. Six paid runs
 have been used on Dubai-local 27 Sep, the daily maximum. OpenRouter balance
 was $12.9812 at 00:17 UTC on 27 Sep; recheck before the next batch on 28 Sep.
 
