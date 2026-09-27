@@ -32,7 +32,7 @@ leave a blank.
 
 Remaining OpenRouter balance: $14.4736 at 21:38 UTC on 26 Sep 2026 (existing
 `TestLabStressBudget.CheckAsync` against `/api/v1/key`; $25.5264 used of the
-$40 no-reset key). After five real XA01 runs: $13.0693 at 23:53 UTC. Recheck
+$40 no-reset key). After six real XA01 runs: $12.9812 at 00:17 UTC on 27 Sep. Recheck
 before the next paid batch.
 
 ## Installed builds
@@ -44,6 +44,7 @@ before the next paid batch.
 | 2026-09-26 | 2.0.696.0 | PR #44 head `63ca17b`, CI run `36277334428` | `3cd4694c7f8f40957a869925bccda4201cbc3fda4c32c7d6f29058b3900c5a6d` | `8a1b82135ccdfbc73efef39f8c2a8adb8f0960b8846d64de7b887793d40d3a9b` | Pilot installer exited 0; installed version, DLL and renderer payload verified; no Office processes existed before or after install. |
 | 2026-09-26 | 2.0.697.0 | PR #44 head `b590816`, CI run `36278264802` | `65a6c650f9b0cc52e01a2a10b44e356c047b54993d9378c1b7d38d67954898e8` | `3c034227b7e4f5c7cf55274cbdad37d80a3c8c94307953ff22d5e210bcd993c3` | Pilot installer exited 0; installed version, DLL and renderer payload verified; no Office processes existed before or after install. |
 | 2026-09-26 | 2.0.698.0 | PR #44 head `1ce0670`, CI run `36279656273` | `8474259bbb164f0ba52c5441ac13f82b316e3c762ec058834888e934141e64fe` | `1c2508e172b0a5cac3debc375ad74d0437fbe5426a51a8ce2932280fba4ea960` | Pilot installer exited 0; installed version, DLL and renderer payload verified; no Office processes existed before or after install. |
+| 2026-09-27 | 2.0.699.0 | PR #44 head `c632ec9`, CI run `36281114429` | `4243c202bc6fbeb08b08f0bf7caa5c0ca8c9065695645881b18caddf9af7ecf4` | `f6eb63e8075595a402ade24674fbee9dc3e0150d9edadadb19aa175b998d5684` | Pilot installer exited 0; installed version, DLL and renderer payload verified; no Office processes existed before or after install. |
 
 ## Runs
 
@@ -64,3 +65,4 @@ predate this file. Their source commits weren't recorded there.
 | 2026-09-26 | 2.0.696.0 (`63ca17b`, CI `36277334428`) | XA01 | new | FAIL: grouped source facts succeeded; draft supplied the first analysis ID after a second grouped read extended it, so no outputs or terminal event | plan/preflight | 9 | $0.06 | 1.5 | `suite-20260926-225713-99570bc1` / `2fc49c125fa54015b7b5cb21b8277ea0` |
 | 2026-09-26 | 2.0.697.0 (`b590816`, CI `36278264802`) | XA01 | new | FAIL: typed workbook draft succeeded; deck plan repeatedly failed numeric/text authority and expanded citations, with no deck or terminal event | planning/schema | 32 | $0.46 | 8.8 | `suite-20260926-231455-2049ec90` / `6b751d2c36ba4e02a7f3e6dc776c6ca6` |
 | 2026-09-26 | 2.0.698.0 (`1ce0670`, CI `36279656273`) | XA01 | new | FAIL: typed workbook draft succeeded; model could not produce a valid full deck plan within repeated schema attempts, no deck or terminal event | planning/schema | 33 | $0.44 | 8.8 | `suite-20260926-234245-02f61298` / `41012b165afd41f085c364abb3a08974` |
+| 2026-09-27 | 2.0.699.0 (`c632ec9`, CI `36281114429`) | XA01 | new | FAIL: terminal event and native xlsx/pptx; verified May/June formulas landed in F/G rather than B/C, and chart included a secondary series | planning/schema | 10 | $0.09 | 2.7 | `suite-20260927-001224-0954e081` / `04178e05b5114c618e3affbc34bea4d8` |

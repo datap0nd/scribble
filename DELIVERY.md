@@ -175,18 +175,18 @@ a ≤ 10-line owner note in §5.
 | S1 XA02–10 | — | — | not run |
 | S2 PP01 | old | 2.0.395 | 0/3 (no terminal event after 23 min) |
 | S2 PP02–10 | — | — | not run (the pilot code rejects every one) |
-| New route, real model | — | — | **0 runs** |
+| New route, real model | new | 2.0.699.0 | 6 runs, 0 passes; latest produced both native outputs and a terminal event |
 
-Current stage: **B2**. A1–A4 are done. A5 installed and hash-verified CI pilot
-builds 2.0.694.0–2.0.698.0; the scoreboard records each. OpenRouter had
-$13.0693 remaining at 23:53 UTC on 26 Sep after five paid XA01 runs costing
-about $1.40 total. The typed workbook now succeeds. The fourth and fifth runs
-both failed planning/schema despite two fixes. Mechanism hypothesis: asking
-the model to author a complete nested slide plan exposes too many layout,
-length, source and fact constraints; local parser changes only move the first
-rejection. Stop patching that parser. Next approach: host-build the verified
-deck structure from facts, with the model choosing a small set of narrative
-labels. Build, install, recheck balance and use at most one more paid run today.
+Current stage: **B2**. A1–A5 are done. The sixth paid XA01 run on installed
+2.0.699.0 reached a terminal event and created native Excel and PowerPoint
+outputs on the new route in 10 requests. The first failing stage was
+planning/schema: correct May/June live formulas landed in F/G because the
+host emitted all six periods, and the chart included Cost as a second series.
+The source inputs were unchanged and presentation checks passed. A regression
+fix now selects the latest comparison periods for the workbook and the primary
+metric for the chart; it needs CI/build/install and a real rerun. Six paid runs
+have been used on Dubai-local 27 Sep, the daily maximum. OpenRouter balance
+was $12.9812 at 00:17 UTC on 27 Sep; recheck before the next batch on 28 Sep.
 
 ## 6. Rules for autonomous sessions
 

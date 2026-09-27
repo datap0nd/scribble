@@ -95,7 +95,7 @@ namespace Scribble.Office
                     Title = "Verified values (" +
                         headlineFacts[0].Currency + ")",
                     Categories = new List<string> { compare, focus },
-                    Series = metrics.Select(metric =>
+                    Series = metrics.Take(1).Select(metric =>
                         new AnalysisPlanSeries { Name = Label(metric),
                             FactIds = new List<string> {
                                 total(metric, compare).FactId,

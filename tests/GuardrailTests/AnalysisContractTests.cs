@@ -187,6 +187,37 @@ namespace GuardrailTests
                 "=SUMIF('Ledger'!$A$2:$A$4,B$3,'Ledger'!$C$2:$C$4)" &&
                 rows[1].Cells[1].ExpectedFactId == may.FactId,
                 "The grouped report lost its source-bound formula.");
+            var historicalTable = MappedTable();
+            historicalTable.Rows = 4;
+            historicalTable.Cells.Add(Cell(3, 0, "A4",
+                AnalysisContract.TextValue, "2026-04"));
+            historicalTable.Cells.Add(Cell(3, 1, "B4",
+                AnalysisContract.TextValue, "North"));
+            historicalTable.Cells.Add(Cell(3, 2, "C4",
+                AnalysisContract.DecimalValue, "80000"));
+            historicalTable.Cells.Add(Cell(3, 3, "D4",
+                AnalysisContract.DecimalValue, "30000"));
+            var historicalSnapshot = AnalysisContract.CreateSnapshot(
+                "workbook-b", "excel_workbook", "revision-1",
+                "complete_range", "literal_values", new[] {
+                    Locator("workbook-b", "Ledger", "A1:D4", "") },
+                new[] { historicalTable });
+            var historicalArtifact = AnalysisTableArtifactBuilder.BuildGrouped(
+                historicalSnapshot, binding);
+            var comparisonRows = AnalysisWorkbookPlanBuilder.Build(
+                historicalArtifact);
+            Check(comparisonRows[0].Cells.Count == 3 &&
+                comparisonRows[0].Cells[1].Text == "2026-05" &&
+                comparisonRows[0].Cells[2].Text == "2026-06" &&
+                comparisonRows[1].Cells[1].ExpectedFactId ==
+                    historicalArtifact.Facts.Single(fact =>
+                        fact.Metric == "RevenueEUR" &&
+                        fact.Period == "2026-05").FactId &&
+                comparisonRows[1].Cells[2].ExpectedFactId ==
+                    historicalArtifact.Facts.Single(fact =>
+                        fact.Metric == "RevenueEUR" &&
+                        fact.Period == "2026-06").FactId,
+                "The comparison did not put the latest verified periods in B and C.");
             binding.DimensionHeaders.Add("Group");
             var dimensioned = AnalysisTableArtifactBuilder.BuildGrouped(
                 snapshot, binding, "Period", "2026-05");
@@ -208,7 +239,14 @@ namespace GuardrailTests
                     { "Lead", "Period results from source rows" } }, 4);
             Check(deck.Slides.Count == 4 &&
                 deck.Slides.Any(slide => slide.Chart != null &&
-                    slide.Chart.Series.Count > 0) &&
+                    slide.Chart.Series.Count == 1 &&
+                    slide.Chart.Series[0].FactIds.SequenceEqual(new[] {
+                        combined.Facts.Single(fact =>
+                            fact.Metric == "RevenueEUR" &&
+                            fact.Period == "2026-05").FactId,
+                        combined.Facts.Single(fact =>
+                            fact.Metric == "RevenueEUR" &&
+                            fact.Period == "2026-06").FactId })) &&
                 deck.Slides.Any(slide => slide.TableRows.Count > 0 &&
                     slide.TableRows.Any(item => item.Cells.Any(cell =>
                         cell.FactId != null))) &&

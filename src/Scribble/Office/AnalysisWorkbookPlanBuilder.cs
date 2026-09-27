@@ -51,9 +51,11 @@ namespace Scribble.Office
             if (sourcePeriods.Length != table.Rows - 1)
                 throw new InvalidOperationException(
                     "ANALYSIS_WORKBOOK_PERIOD_UNSUPPORTED");
-            var periods = sourcePeriods.GroupBy(cell => cell.Value,
+            var allPeriods = sourcePeriods.GroupBy(cell => cell.Value,
                     StringComparer.Ordinal).Select(group => group.First())
-                .ToArray();
+                .OrderBy(cell => cell.Value, StringComparer.Ordinal).ToArray();
+            var periods = allPeriods.Skip(Math.Max(0,
+                allPeriods.Length - 2)).ToArray();
             if (periods.Length + 1 > WorkbookDraftWriter.MaxDraftColumns)
                 throw new InvalidOperationException(
                     "ANALYSIS_WORKBOOK_PERIOD_UNSUPPORTED");
@@ -66,7 +68,7 @@ namespace Scribble.Office
             if (metrics.Length == 0 ||
                 metrics.Length + 1 > WorkbookDraftWriter.MaxDraftRows ||
                 metrics.Any(metric => !headers.ContainsKey(metric)) ||
-                reportFacts.Length != metrics.Length * periods.Length ||
+                reportFacts.Length != metrics.Length * allPeriods.Length ||
                 reportFacts.Any(fact => fact.Status !=
                     AnalysisContract.Verified ||
                     fact.SnapshotId != snapshot.SnapshotId))
