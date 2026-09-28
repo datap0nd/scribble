@@ -161,6 +161,36 @@ namespace Scribble.Office
         private static string Format(decimal value) { return value.ToString("0.############", CultureInfo.InvariantCulture); }
         private static string Cell(IReadOnlyList<string> cells, int index) { return index < cells.Count ? (cells[index] ?? "").Trim() : ""; }
 
+        // An unsaved draft often becomes the active worksheet after a write.
+        // Bind an omitted sheet only when the requested headers identify one
+        // source table unambiguously; never silently pick a different table.
+        public static string ResolveSheet(
+            IReadOnlyDictionary<string, IReadOnlyList<string>> sheetHeaders,
+            string activeSheet, IReadOnlyList<string> groupBy,
+            IReadOnlyList<string> sumColumns, string filterColumn)
+        {
+            if (sheetHeaders == null || groupBy == null || sumColumns == null ||
+                groupBy.Count == 0 || sumColumns.Count == 0)
+                throw new InvalidOperationException("Grouped source headers are required.");
+            var required = groupBy.Concat(sumColumns)
+                .Concat(string.IsNullOrWhiteSpace(filterColumn)
+                    ? new string[0] : new[] { filterColumn }).ToArray();
+            var matches = sheetHeaders.Where(sheet => {
+                var headers = (sheet.Value ?? new string[0])
+                    .Select(value => (value ?? "").Trim()).ToArray();
+                return required.All(name => {
+                    try { HeaderIndex(headers, name); return true; }
+                    catch (InvalidOperationException) { return false; }
+                });
+            }).Select(sheet => sheet.Key).ToArray();
+            if (matches.Contains(activeSheet, StringComparer.OrdinalIgnoreCase))
+                return activeSheet;
+            if (matches.Length == 1) return matches[0];
+            throw new InvalidOperationException(matches.Length == 0
+                ? "No worksheet has every requested grouped-total header. Name a source worksheet explicitly."
+                : "Several worksheets have every requested grouped-total header. Name a source worksheet explicitly.");
+        }
+
         private static int HeaderIndex(string[] headers, string name)
         {
             var wanted = (name ?? "").Trim();

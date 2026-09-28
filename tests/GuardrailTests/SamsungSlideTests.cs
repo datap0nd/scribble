@@ -255,13 +255,16 @@ namespace GuardrailTests
                         SamsungSlideDesign.Gray &&
                     Convert.ToDouble(element["height"]) > 100))
                 throw new Exception("A two-metric evidence pair lost its native focal hierarchy.");
-            var palette = new HashSet<string>(new[] { "#4F81BD", "#5B9BD5", "#41719C", "#17365D", "#B8D8FF", "#F2F2F2", "#C00000", "#00B050",
+            var palette = new HashSet<string>(new[] { "#4F81BD", "#5B9BD5", "#41719C", "#F2F2F2", "#C00000", "#00B050",
                 "#FFFFFF", "#000000", "#7F7F7F", "#A6A6A6", "#202A35", "#596674", "#D7DDE3", "#D4D4D4" }, StringComparer.OrdinalIgnoreCase);
             if (MetoTheme.ChartSeriesColors()[2] != MetoTheme.Rgb("#596674"))
                 throw new Exception("The third chart series needs contrast against the white plot area.");
-            if (scorecardElements.Any(e => new[] { Convert.ToString(e["fill"]), Convert.ToString(e["color"]) }
+            if (new[] { scorecardElements, pairedElements, fourElements,
+                    statementElements, numericPairElements }
+                .SelectMany(elements => elements)
+                .Any(e => new[] { Convert.ToString(e["fill"]), Convert.ToString(e["color"]) }
                     .Any(color => !string.IsNullOrEmpty(color) && !palette.Contains(color))))
-                throw new Exception("Scorecard colors must stay inside the supplied Samsung palette.");
+                throw new Exception("Structured card colors must stay inside the supplied Samsung palette.");
             var executiveTable = SamsungPresentationReview.InspectPlan(json.Serialize(new[] { new {
                 title = "June results", layout = "table", subtitle = "West leads on margin",
                 table = new { headers = new[] { "Group", "Revenue", "Margin" }, rows = new[] {

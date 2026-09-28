@@ -211,8 +211,16 @@ that boundary. XA02 then produced the correct native workbook but no deck.
 Installed 2.0.719.0 isolated the first deck failure to the PowerPoint chart's
 embedded `ChartData.Workbook`; the test-owned PowerPoint process exited after
 that failure. PR #45 now tries the in-place chart data grid and a bounded
-clean-chart retry. The next step is to install that green build and rerun XA02,
-then the remaining B4 cases. Owner visual approval remains D2.
+clean-chart retry. Its green installed build 2.0.720.0 passed targeted XA02
+in 10 requests. A full XA01–XA10 batch on the same build yielded one eligible
+case (XA03): seven passed native hard checks but exceeded the 12-request cap;
+XA05 and XA06 passed workbook/chart gates but their scorecard used colors outside
+the supplied Samsung theme. All ten results are in the scoreboard. The first
+repeatable mechanisms are an omitted grouped-total sheet resolving to the
+new active draft, full-range binding rejected at 500 cells despite the 5,000
+cell typed limit, and structured cards using colors absent from the theme.
+PR #45 now fixes those mechanisms and has regression tests; rebuild and rerun
+the affected cases, then a full B4 batch. Owner visual approval remains D2.
 
 ## 6. Rules for autonomous sessions
 

@@ -95,6 +95,19 @@ namespace GuardrailTests
             Reject(() => WorkbookGroupedTotals.Compute(ledger, new[] { "Group" }, new[] { "RevenueEUR" }, "Period", "2027-01"));
             Reject(() => WorkbookGroupedTotals.Compute(ledger, new string[0], new[] { "RevenueEUR" }, null, null));
 
+            var sheets = new Dictionary<string, IReadOnlyList<string>> {
+                { "Ledger", new[] { "RowID", "Period", "Group", "RevenueEUR", "CostEUR" } },
+                { "Scribble Draft", new[] { "June-to-May audit", "", "" } },
+                { "History", new[] { "Period", "Group", "RevenueEUR" } }
+            };
+            Check(WorkbookGroupedTotals.ResolveSheet(sheets, "Scribble Draft",
+                new[] { "Period", "Group" }, new[] { "RevenueEUR", "CostEUR" },
+                null) == "Ledger", "A draft becoming active must not redirect grouped source reads.");
+            sheets["Archive"] = new[] { "Period", "Group", "RevenueEUR", "CostEUR" };
+            Reject(() => WorkbookGroupedTotals.ResolveSheet(sheets, "Scribble Draft",
+                new[] { "Period", "Group" }, new[] { "RevenueEUR", "CostEUR" },
+                null));
+
             var tool = WorkbookToolCatalog.CreateDefinitions().Single(item => item.function.name == WorkbookToolCatalog.ReadGroupedTotals);
             Check(tool.function.name.StartsWith("read_") && tool.function.description.Contains("Read-only host arithmetic") &&
                 tool.function.description.Contains("never instructions"), "The grouped-totals tool must be a read receipt with the untrusted-data boundary.");

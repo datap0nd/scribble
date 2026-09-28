@@ -406,7 +406,7 @@ namespace Scribble.Office
                         new RectangleF(rail.X + 22f, top + 21f,
                             rail.Width - 44f, rowHeight - 28f),
                         18, 16, "Arial", true, null,
-                        "#B8D8FF"));
+                        "#D7DDE3"));
                     elements.Add(TextElement(card.Points[0],
                         new RectangleF(bodyX, top + 4f, bodyWidth, 39f),
                         19, 16, MetoTheme.TitleFont, true, null,
@@ -444,14 +444,14 @@ namespace Scribble.Office
                     var width = columnWidth - 56f;
                     elements.Add(TextElement(card.Heading.ToUpperInvariant(),
                         new RectangleF(left, panel.Y + 28f, width, 38f),
-                        18, 16, "Arial", true, null, "#B8D8FF"));
+                        18, 16, "Arial", true, null, "#D7DDE3"));
                     elements.Add(TextElement(card.Points[0],
                         new RectangleF(left, panel.Y + 76f, width, 81f),
                         56, 38, MetoTheme.TitleFont, true, null,
                         "#FFFFFF"));
                     elements.Add(TextElement(card.Points[1],
                         new RectangleF(left, panel.Y + 180f, width, 32f),
-                        17, 15, "Arial", false, null, "#B8D8FF"));
+                        17, 15, "Arial", false, null, "#D7DDE3"));
                 }
                 return;
             }
@@ -475,7 +475,7 @@ namespace Scribble.Office
                 elements.Add(TextElement(leadCard.Heading.ToUpperInvariant(),
                     new RectangleF(lead.X + 24f, lead.Y + 31f,
                         lead.Width - 48f, 42f),
-                    17, 15, "Arial", true, null, "#B8D8FF"));
+                    17, 15, "Arial", true, null, "#D7DDE3"));
                 elements.Add(TextElement(leadCard.Points[0],
                     new RectangleF(lead.X + 24f, lead.Y + 84f,
                         lead.Width - 48f, 85f),
@@ -483,7 +483,7 @@ namespace Scribble.Office
                 elements.Add(TextElement(leadCard.Points[1],
                     new RectangleF(lead.X + 24f, lead.Bottom - 47f,
                         lead.Width - 48f, 28f),
-                    16, 14, "Arial", false, null, "#B8D8FF"));
+                    16, 14, "Arial", false, null, "#D7DDE3"));
                 var rightX = lead.Right + 28f;
                 var rightWidth = region.Right - rightX;
                 var rowHeight = lead.Height / (count - 1);
@@ -545,7 +545,7 @@ namespace Scribble.Office
                     elements.Add(TextElement(
                         card.Heading.ToUpperInvariant(),
                         new RectangleF(left, panel.Y + 38f, width, 40f),
-                        19, 16, "Arial", true, null, "#B8D8FF"));
+                        19, 16, "Arial", true, null, "#D7DDE3"));
                     elements.Add(TextElement(card.Points[0],
                         new RectangleF(left, panel.Y + 111f, width, 96f),
                         58, 38, MetoTheme.TitleFont, true, null,
@@ -575,7 +575,7 @@ namespace Scribble.Office
                 elements.Add(TextElement(card.Heading.ToUpperInvariant(),
                     new RectangleF(panel.X + 34f, panel.Y + 31f,
                         panel.Width - 68f, 30f), 16, 16, "Arial", true,
-                    null, "#B8D8FF"));
+                    null, "#D7DDE3"));
                 elements.Add(TextElement(card.Points[0],
                     new RectangleF(panel.X + 34f, panel.Y + 84f,
                         panel.Width - 68f, panel.Height - 123f), 36, 26,

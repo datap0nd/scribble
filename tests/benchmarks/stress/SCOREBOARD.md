@@ -25,7 +25,7 @@ leave a blank.
 
 | Scenario | Bar (DELIVERY.md §1) | Current build |
 | --- | --- | --- |
-| S1 XA01–XA10 batch | ≥ 9/10 | 2/9 eligible on 2.0.715.0; XA02–XA10 ran as one batch |
+| S1 XA01–XA10 batch | ≥ 9/10 | 1/10 eligible on 2.0.720.0; all ten ran as one batch, with seven request-cap failures and two theme failures |
 | S1 XA01 consecutive | 3 | 3 eligible deterministic/agent visual passes on 2.0.715.0; owner D2 pending |
 | S2 PP01–PP10 batch | ≥ 8/10 | not run |
 | S2 PP01 consecutive | 3 | 0 |
@@ -44,6 +44,8 @@ After the 2.0.718.0 XA02 retry: $10.1438 remaining at 16:54 UTC on 28 Sep
 ($29.8562 used); recheck before another paid batch.
 After the 2.0.719.0 XA02 retry: $10.0889 remaining on 29 Sep Dubai time
 ($29.9111 used); the owner authorized using this remaining balance.
+Before the 2.0.720.0 XA01–XA10 batch: $10.0638 remaining at 21:55 UTC on
+28 Sep ($29.9362 used); the owner authorized using this remaining balance.
 
 ## Installed builds
 
@@ -61,6 +63,7 @@ After the 2.0.719.0 XA02 retry: $10.0889 remaining on 29 Sep Dubai time
 | 2026-09-28 | 2.0.717.0 | PR #45 head `700374d`, CI run `36447686017` | `1ce662955ab7768f7f0bb91da15c05200a89ab949bc82e3169e2d151ad0e0f65` | `987dfc578641ac0cd7c8efb22e373ec14762541ed43b1a03307f02e8be6b9ef0` | Green CI; pilot installer exited 0; installed DLL and browser host hashes verified. Preexisting owner Excel PID 33464 and start time unchanged; no other Office process remained after install. |
 | 2026-09-28 | 2.0.718.0 | PR #45 head `60c9be8`, CI run `36451867499` | `a9cbe855b0ed869a4a70fcc6da9c077c88356ef620c4ac1abf4724e15960174d` | `5863778d90eea0482181ae26b43a5420f796a151dbd02185eea9f3419b399fed` | Green CI; pilot installer exited 0; installed DLL and browser host hashes verified. Preexisting owner Excel PID 33464 and start time unchanged. |
 | 2026-09-28 | 2.0.719.0 | PR #45 head `814bdc2`, CI run `36454794749` | `0c14c2152ac4c5714a6c2a5a2b6fb2651c12ac7fe4230a925067d17a9087ddd9` | `3b777be0349b87779d671cea18b0623144c18bd865cda02b805709c381b5b7ae` | Green CI; pilot installer exited 0; installed DLL and browser host hashes verified. Preexisting owner Excel PID 33464 and start time unchanged. |
+| 2026-09-29 | 2.0.720.0 | PR #45 head `109ca65`, CI run `36487692509` | `3d36e6c981c8c562a5255bd342dfe225cbfb1471dcb28fac2e04e0413108eda9` | `27d1f977a68e97461eb1b561206c95e4af552deb05a31a74f56abfbe6a4ad39c` | Green CI; pilot installer exited 0; installed DLL and browser host hashes verified. Preexisting owner Excel PID 33464 and start time unchanged. |
 
 ## Runs
 
@@ -117,3 +120,15 @@ predate this file. Their source commits weren't recorded there.
 | 2026-09-28 | 2.0.717.0 (`700374d`, CI `36447686017`) | XA02 | — | NOT RUN: diagnostic retry confirmed RPC_E_CALL_REJECTED in `ApplicationPid` for the global Excel ROT entry, before the native private window was probed | environment/Office attachment | 0 | $0.00 | — | `suite-20260928-162629-40bd18d7` / `beba30d7917547309cbbb1644562c3d8` |
 | 2026-09-28 | 2.0.718.0 (`60c9be8`, CI `36451867499`) | XA02 | new | FAIL: typed workbook formulas and source preservation passed; six `send_to_powerpoint` calls failed with RPC_E_CALL_REJECTED before native deck output; recovery stopped after repeated actions, 19 requests exceeds cap | native deck execution | 19 | $0.050 | 8.6 | `suite-20260928-164433-a2c31fd2` / `93fad6e5a0454de7b7263b8bb3ece5c7` |
 | 2026-09-28 | 2.0.719.0 (`814bdc2`, CI `36454794749`) | XA02 | new | FAIL: typed workbook formulas and source preservation passed; native chart could not open its embedded `ChartData.Workbook`, then the test-owned PowerPoint process exited. No deck or terminal event; 26 requests exceeds cap | native execution | 26 | $0.055 | 8.7 | `suite-20260928-172010-187fe2e8` / `39fdb3a1818745ebb14c88ff0ca53968` |
+| 2026-09-29 | 2.0.720.0 (`109ca65`, CI `36487692509`) | XA02 | new | PASS: terminal native workbook and four-slide deck; all hard checks and source preservation passed in 10 requests; rendered slides passed agent visual review (owner D2 pending) | — | 10 | $0.025 | 1.8 | `suite-20260928-215211-1684e103` / `6e1181b9ab554c5eb1333ced6ed13ad7` |
+
+| 2026-09-29 | 2.0.720.0 (`109ca65`, CI `36487692509`) | XA01 | new | FAIL: All native hard checks passed and sources unchanged; 13 requests exceed S1 cap | completion | 13 | ≈$0.024 | 2.5 | `suite-20260928-215552-e935a589` / `e3d6b05f5caa4912a3ebbf5116351ab1` |
+| 2026-09-29 | 2.0.720.0 (`109ca65`, CI `36487692509`) | XA02 | new | FAIL: All native hard checks passed and sources unchanged; 15 requests exceed S1 cap | completion | 15 | ≈$0.038 | 1.9 | `suite-20260928-215552-e935a589` / `256c82ece14c4f769ee495ceca25048d` |
+| 2026-09-29 | 2.0.720.0 (`109ca65`, CI `36487692509`) | XA03 | new | PASS: PASS: all native hard checks, source preservation and four-slide agent visual review passed in 12 requests; owner D2 pending | — | 12 | ≈$0.025 | 2.1 | `suite-20260928-215552-e935a589` / `b484cf76df444f1391a82ad0d7514300` |
+| 2026-09-29 | 2.0.720.0 (`109ca65`, CI `36487692509`) | XA04 | new | FAIL: All native hard checks passed and sources unchanged; 14 requests exceed S1 cap | completion | 14 | ≈$0.047 | 2.6 | `suite-20260928-215552-e935a589` / `a972c004d8014fbfab2c726a95aa3236` |
+| 2026-09-29 | 2.0.720.0 (`109ca65`, CI `36487692509`) | XA05 | new | FAIL: Native deck used two scorecard colors outside the supplied Samsung theme; presentation oracle failed; terminal outputs and source preservation passed | render | 10 | ≈$0.035 | 1.8 | `suite-20260928-215552-e935a589` / `38f78afaddc3435786739e95c7779eed` |
+| 2026-09-29 | 2.0.720.0 (`109ca65`, CI `36487692509`) | XA06 | new | FAIL: Native deck used two scorecard colors outside the supplied Samsung theme; presentation oracle failed; terminal outputs and source preservation passed | render | 12 | ≈$0.035 | 2.2 | `suite-20260928-215552-e935a589` / `04e9b052823d401aa7a5faef4f810964` |
+| 2026-09-29 | 2.0.720.0 (`109ca65`, CI `36487692509`) | XA07 | new | FAIL: All native hard checks passed and sources unchanged; 13 requests exceed S1 cap | completion | 13 | ≈$0.022 | 1.6 | `suite-20260928-215552-e935a589` / `bf45f4f6bc4c438ab5551e57e7fe7d45` |
+| 2026-09-29 | 2.0.720.0 (`109ca65`, CI `36487692509`) | XA08 | new | FAIL: All native hard checks passed and sources unchanged; 14 requests exceed S1 cap | completion | 14 | ≈$0.020 | 1.8 | `suite-20260928-215552-e935a589` / `e3a52136ddac49cf8fbc81744d3f62b2` |
+| 2026-09-29 | 2.0.720.0 (`109ca65`, CI `36487692509`) | XA09 | new | FAIL: All native hard checks passed and sources unchanged; 13 requests exceed S1 cap | completion | 13 | ≈$0.019 | 2.3 | `suite-20260928-215552-e935a589` / `f326422ff96548c39960b44a38354767` |
+| 2026-09-29 | 2.0.720.0 (`109ca65`, CI `36487692509`) | XA10 | new | FAIL: All native hard checks passed and sources unchanged; 15 requests exceed S1 cap | completion | 15 | ≈$0.022 | 1.9 | `suite-20260928-215552-e935a589` / `1c30b450a7d6483eba6467a7fc2ac8e6` |
