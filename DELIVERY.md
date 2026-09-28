@@ -172,21 +172,22 @@ a ≤ 10-line owner note in §5.
 | Scenario | Route | Build | Result |
 | --- | --- | --- | --- |
 | S1 XA01 | old | 2.0.385 | 1/3 (22 Sep) |
-| S1 XA02–10 | — | — | not run |
+| S1 XA02–10 | new | 2.0.706.0 | 0/9 eligible in one real batch; source binding, review parsing, metric selection and request count failures |
 | S2 PP01 | old | 2.0.395 | 0/3 (no terminal event after 23 min) |
 | S2 PP02–10 | — | — | not run (the pilot code rejects every one) |
-| New route, real model | new | 2.0.706.0 | 10 runs, 1 eligible XA01 pass after native gates and agent visual review; owner review remains for D2 |
+| New route, real model | new | 2.0.706.0 | XA01 produced terminal native outputs, but 19 requests exceeds the S1 cap of 12; 0 eligible S1 passes; owner visual review remains for D2 |
 
-Current stage: **B4** after PR #44 merge. A1–A5 and B1–B2 are done. Installed
-2.0.706.0 came from green CI `36421402714` and hashes to `e079743a` (DLL
-SHA256 prefix). The tenth real XA01 run used the new route and completed
-unassisted with native XLSX/PPTX, terminal events, source preservation and all
-deterministic hard gates passing. Its B4:C5 formulas and single Revenue chart
-match the request. All four rendered slides passed agent visual inspection for
-legibility and overlap; owner visual approval remains Stage D2. The run cost
-$0.038, leaving $12.6231 at 12:39 UTC on 28 Sep; total paid spend today is
-about $0.301. Next: merge #44 after green CI, then run XA02–XA10 as one batch
-on this installed build, within the $4/day cap.
+Current stage: **B4**, mechanism fixes on PR #45. PR #44 merged into
+`codex/development`. The required single XA02–XA10 batch ran on installed
+2.0.706.0 (`e079743a` DLL SHA256 prefix), with the new route confirmed and all
+nine results recorded in the scoreboard. None is eligible for S1: six blocked
+before terminal output, XA06 selected the wrong chart metric, and XA07/XA09
+passed native checks and agent visual review but exceeded the 12-request cap.
+XA01 on this build also exceeded that cap despite correct native outputs. The
+batch cost $1.343. PR #45 fixes the generalized binding, review JSON and draft
+metric-order mechanisms with regression tests. Next: green CI, install that
+build, check budget, and rerun the failed cases. Owner visual approval remains
+Stage D2.
 
 ## 6. Rules for autonomous sessions
 

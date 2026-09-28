@@ -377,7 +377,6 @@ namespace Scribble.Office
                         ok = true, saved = false,
                         analysis_id = artifact.AnalysisId,
                         native_pages = review.Context.Pages.Count,
-                        review_context_id = review.Context.ContextId,
                         status
                     }), status);
             }

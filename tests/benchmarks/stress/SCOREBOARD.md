@@ -25,8 +25,8 @@ leave a blank.
 
 | Scenario | Bar (DELIVERY.md §1) | Current build |
 | --- | --- | --- |
-| S1 XA01–XA10 batch | ≥ 9/10 | not run |
-| S1 XA01 consecutive | 3 | 0 on the new route |
+| S1 XA01–XA10 batch | ≥ 9/10 | 0/9 eligible on 2.0.706.0; XA02–XA10 ran as one batch |
+| S1 XA01 consecutive | 3 | 0 eligible on the new route; the 2.0.706.0 run used 19 requests (cap 12) |
 | S2 PP01–PP10 batch | ≥ 8/10 | not run |
 | S2 PP01 consecutive | 3 | 0 |
 
@@ -71,3 +71,12 @@ predate this file. Their source commits weren't recorded there.
 | 2026-09-28 | 2.0.704.0 (`62f43d4`, CI `36416255638`) | XA01 | new | FAIL: typed draft formulas verified, but generic `write_cells` changed bound Ledger B3:C3; later deck attempts lacked the original full-period source and no pptx or terminal event resulted | planning/schema (new draft period arguments rejected before the source edit) | 29 | $0.22 | 11.2 | `suite-20260928-114350-030bd01a` / `efa979e2855442ababfc2ce8733ffdee` |
 | 2026-09-28 | 2.0.705.0 (`d235ec4`, CI `36419124623`) | XA01 | new | FAIL: terminal native XLSX/PPTX and sources unchanged; extra verified metrics displaced requested Revenue/Cost from B4:C5 and made Units the chart series | planning/schema | 12 | $0.04 | 2.8 | `suite-20260928-121309-ac70a964` / `267247bf77f740e685a39c174f9d1bc8` |
 | 2026-09-28 | 2.0.706.0 (`ede1b26`, CI `36421402714`) | XA01 | new | PASS: terminal and unassisted; all native hard checks passed, sources unchanged, B4:C5 and single Revenue chart correct; four full-size slides passed agent visual review (owner review remains for D2) | — | 19 | $0.04 | 6.0 | `suite-20260928-123347-9aa2eec7` / `effa79f13ae447d4b0fc680c46e8a2b9` |
+| 2026-09-28 | 2.0.706.0 (`ede1b26`, CI `36421402714`) | XA02 | new | FAIL: formula-valued source metrics did not bind; no terminal deck; exceeds 12-request cap | capture/binding | 42 | $0.300 | 10.8 | `suite-20260928-125813-5ab7f507` / `304158199abd4d768f12ec699a9e500e` |
+| 2026-09-28 | 2.0.706.0 (`ede1b26`, CI `36421402714`) | XA03 | new | FAIL: period and dimensional reads did not retain one complete source view; later review/recovery failed; exceeds cap | planning/schema | 28 | $0.103 | 5.0 | `suite-20260928-125813-5ab7f507` / `75d6beee42a0401a96b665d9158d937f` |
+| 2026-09-28 | 2.0.706.0 (`ede1b26`, CI `36421402714`) | XA04 | new | FAIL: blank source value rejected grouped binding; no terminal deck; exceeds cap | capture/binding | 53 | $0.306 | 12.7 | `suite-20260928-125813-5ab7f507` / `9e9d1eb6a797453aa1731a774925b3d4` |
+| 2026-09-28 | 2.0.706.0 (`ede1b26`, CI `36421402714`) | XA05 | new | FAIL: period and dimensional reads did not retain one complete source view; later review/recovery failed; exceeds cap | planning/schema | 31 | $0.173 | 7.0 | `suite-20260928-125813-5ab7f507` / `df883ef56a524e1d934fab81c99cca19` |
+| 2026-09-28 | 2.0.706.0 (`ede1b26`, CI `36421402714`) | XA06 | new | FAIL: chart used Planned Hours instead of requested Actual Hours; also exceeded cap | planning/schema | 13 | $0.036 | 2.2 | `suite-20260928-125813-5ab7f507` / `f18298fce0f647c399198b5a11f83b26` |
+| 2026-09-28 | 2.0.706.0 (`ede1b26`, CI `36421402714`) | XA07 | new | FAIL: native checks and agent visual review passed, but 16 requests exceed cap; owner visual review remains D2 | completion | 16 | $0.038 | 2.7 | `suite-20260928-125813-5ab7f507` / `9c33b8374c584c819384204df5250b92` |
+| 2026-09-28 | 2.0.706.0 (`ede1b26`, CI `36421402714`) | XA08 | new | FAIL: blank and guarded formula source values did not bind; no terminal deck; exceeds cap | capture/binding | 26 | $0.194 | 6.9 | `suite-20260928-125813-5ab7f507` / `61dca74daf224a8783a935da0ee65c9d` |
+| 2026-09-28 | 2.0.706.0 (`ede1b26`, CI `36421402714`) | XA09 | new | FAIL: native checks and agent visual review passed, but 15 requests exceed cap; owner visual review remains D2 | completion | 15 | $0.040 | 2.5 | `suite-20260928-125813-5ab7f507` / `159c3d6de32f408d80d2aed26dfe4e36` |
+| 2026-09-28 | 2.0.706.0 (`ede1b26`, CI `36421402714`) | XA10 | new | FAIL: reviewer returned fenced JSON; review parsing and later slide recovery blocked terminal handoff; exceeds cap | review | 23 | $0.152 | 7.3 | `suite-20260928-125813-5ab7f507` / `9be5dd57426f4e1b8c2551ae7df76a00` |
