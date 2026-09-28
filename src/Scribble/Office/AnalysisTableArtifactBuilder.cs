@@ -136,9 +136,9 @@ namespace Scribble.Office
                         headers[metric.Header], out cell))
                         throw new InvalidOperationException(
                             "ANALYSIS_TABLE_VALUE_UNVERIFIED");
-                    if (cell.ValueType == AnalysisContract.MissingValue &&
-                        cell.Status == AnalysisContract.Unresolved &&
-                        string.IsNullOrEmpty(cell.Formula))
+                    if (VerifiedMissing(cell, row, cellsByReference,
+                        new HashSet<string>(
+                            StringComparer.OrdinalIgnoreCase)))
                     {
                         var missingKey = metric.Header + "\0" +
                             period.Value;
@@ -354,6 +354,51 @@ namespace Scribble.Office
                     "ANALYSIS_TABLE_VALUE_UNVERIFIED");
             return VerifiedMetricValue(operand, row, cellsByReference,
                 evaluating);
+        }
+
+        // Empty formula caches are excluded only when a bounded IF guard is
+        // proven true from the same row. This also covers a short chain where
+        // a missing input makes a derived value and its product both blank.
+        private static bool VerifiedMissing(DatasetCell cell, int row,
+            IDictionary<string, DatasetCell> cellsByReference,
+            ISet<string> evaluating)
+        {
+            if (cell == null || cell.Row != row ||
+                cell.Status != AnalysisContract.Unresolved ||
+                !string.IsNullOrEmpty(cell.Value)) return false;
+            if (cell.ValueType == AnalysisContract.MissingValue &&
+                string.IsNullOrEmpty(cell.Formula)) return true;
+            if (string.IsNullOrEmpty(cell.Formula) ||
+                cell.Formula.Length > 120 || evaluating.Count >= 4 ||
+                !evaluating.Add(cell.Reference)) return false;
+            try
+            {
+                var blank = Regex.Match(cell.Formula,
+                    @"^=IF\(([A-Z]{1,3}[1-9]\d*)="""","""",(.+)\)$",
+                    RegexOptions.IgnoreCase |
+                    RegexOptions.CultureInvariant);
+                var zero = blank.Success ? blank : Regex.Match(cell.Formula,
+                    @"^=IF\(([A-Z]{1,3}[1-9]\d*)=0,"""",(.+)\)$",
+                    RegexOptions.IgnoreCase |
+                    RegexOptions.CultureInvariant);
+                if (!zero.Success || !Regex.IsMatch(zero.Groups[2].Value,
+                    @"^([A-Z]{1,3}[1-9]\d*)([+\-*/])([A-Z]{1,3}[1-9]\d*)(?:([+\-*/])([A-Z]{1,3}[1-9]\d*))?$",
+                    RegexOptions.IgnoreCase |
+                    RegexOptions.CultureInvariant)) return false;
+                DatasetCell guarded;
+                if (!cellsByReference.TryGetValue(
+                    zero.Groups[1].Value, out guarded) ||
+                    guarded.Row != row) return false;
+                return blank.Success
+                    ? VerifiedMissing(guarded, row, cellsByReference,
+                        evaluating)
+                    : VerifiedMetricValue(guarded, row,
+                        cellsByReference, evaluating) == 0m;
+            }
+            finally
+            {
+                evaluating.Remove(cell.Reference);
+            }
         }
 
         public static AnalysisArtifact Build(SourceSnapshot snapshot,

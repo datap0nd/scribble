@@ -564,7 +564,9 @@ namespace GuardrailTests
                 AnalysisContract.CreateSnapshot("workbook-a",
                     "excel_workbook", "balance-revision", "complete_range",
                     "cached_formula_values_unverified", new[] {
-                        Locator("workbook-a", "Ledger", "A1:G2", "") },
+                        Locator("workbook-a", "Ledger", "A1:G" +
+                            balanceTable.Rows.ToString(
+                                CultureInfo.InvariantCulture), "") },
                     new[] { balanceTable });
             var balanced = AnalysisTableArtifactBuilder.BuildGrouped(
                 captureBalance(), balanceBinding);
@@ -600,6 +602,39 @@ namespace GuardrailTests
             RejectTableBinding(() => AnalysisTableArtifactBuilder.BuildGrouped(
                 captureBalance(), balanceBinding),
                 "ANALYSIS_TABLE_VALUE_UNVERIFIED");
+            closingCell.Formula = "=IF(C2=\"\",\"\",B2+C2-D2)";
+            closingCell.Value = "12";
+            valueCell.Value = "48";
+            balanceTable.Rows = 3;
+            balanceTable.Cells.Add(Cell(2, 0, "A3",
+                AnalysisContract.TextValue, "2026-06"));
+            balanceTable.Cells.Add(Cell(2, 1, "B3",
+                AnalysisContract.DecimalValue, "10"));
+            balanceTable.Cells.Add(Cell(2, 2, "C3",
+                AnalysisContract.MissingValue, string.Empty));
+            balanceTable.Cells.Add(Cell(2, 3, "D3",
+                AnalysisContract.DecimalValue, "2"));
+            var missingClosing = Cell(2, 4, "E3",
+                AnalysisContract.TextValue, string.Empty);
+            missingClosing.Formula =
+                "=IF(C3=\"\",\"\",B3+C3-D3)";
+            missingClosing.Status = AnalysisContract.Unresolved;
+            balanceTable.Cells.Add(missingClosing);
+            balanceTable.Cells.Add(Cell(2, 5, "F3",
+                AnalysisContract.DecimalValue, "4"));
+            var missingValue = Cell(2, 6, "G3",
+                AnalysisContract.TextValue, string.Empty);
+            missingValue.Formula = "=IF(E3=\"\",\"\",E3*F3)";
+            missingValue.Status = AnalysisContract.Unresolved;
+            balanceTable.Cells.Add(missingValue);
+            var knownBalance = AnalysisTableArtifactBuilder.BuildGrouped(
+                captureBalance(), balanceBinding);
+            Check(knownBalance.Facts.Single(fact => fact.Metric ==
+                    "Closing").Value == "12" &&
+                knownBalance.Facts.Single(fact => fact.Metric ==
+                    "ValueEUR").Value == "48" &&
+                knownBalance.UnresolvedConflicts.Count == 2,
+                "A guarded blank formula was imputed or its known subtotal was not disclosed.");
 
             var many = new TableDataset { TableId = "many-rows",
                 Name = "Ledger", Rows = 49, Columns = 4,
