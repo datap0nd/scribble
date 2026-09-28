@@ -116,8 +116,7 @@ namespace Scribble.Office
             if (plan == null || plan.AnalysisId != artifact.AnalysisId)
                 throw new InvalidOperationException(
                     "ANALYSIS_PLAN_BINDING_INVALID: The document plan must name the current analysis revision.");
-            if (artifact.UnresolvedConflicts != null &&
-                artifact.UnresolvedConflicts.Count > 0)
+            if (AnalysisContract.HasBlockingConflicts(artifact))
                 throw new InvalidOperationException(
                     "ANALYSIS_CONFLICT_UNRESOLVED: Resolve source conflicts before producing verified outputs.");
             var facts = artifact.Facts.ToDictionary(fact => fact.FactId,

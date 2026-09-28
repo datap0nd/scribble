@@ -211,7 +211,7 @@ namespace Scribble.Office
             }).ToArray();
             var unresolved = missingCounts.Select(item => {
                 var parts = item.Key.Split('\0');
-                return "Known subtotal for " + parts[0] + " " + parts[1] +
+                return AnalysisContract.KnownSubtotalPrefix + parts[0] + " " + parts[1] +
                     " excludes " + item.Value.ToString(
                         CultureInfo.InvariantCulture) +
                     " blank source value(s), including " +

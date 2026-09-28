@@ -102,8 +102,10 @@ namespace Scribble.Chat
                     new[] { ".xlsx", ".xlsm" }.Contains(
                         Path.GetExtension(document.SourcePath ?? ""),
                         StringComparer.OrdinalIgnoreCase));
-            var typedDeck = hostKind == "excel" && allowDraftCreate &&
-                AnalysisDocumentPilot.Enabled && Regex.IsMatch(
+            var typedWorkbook = hostKind == "excel" && allowDraftCreate &&
+                AnalysisDocumentPilot.Enabled && !hasExcelSelection &&
+                !hasKoreanWorkbook;
+            var typedDeck = typedWorkbook && Regex.IsMatch(
                     userPrompt ?? string.Empty,
                     @"\b(powerpoint|presentation|deck|slides?)\b",
                     RegexOptions.IgnoreCase);
@@ -133,11 +135,11 @@ namespace Scribble.Chat
                 if (hostKind == "excel")
                 {
                     tools.Add(
-                        typedDeck
+                        typedWorkbook
                             ? WorkbookToolCatalog.AnalysisDraftDefinition()
                             : WorkbookToolCatalog.DraftDefinition());
-                    tools.Add(
-                        WorkbookToolCatalog.CellsDefinition());
+                    if (!typedWorkbook)
+                        tools.Add(WorkbookToolCatalog.CellsDefinition());
                     if (hasExcelSelection)
                     {
                         tools.Add(
@@ -424,7 +426,8 @@ namespace Scribble.Chat
                       "from the active workbook; read the sheet and continue the requested deck."
                     : string.Empty;
                 var sourceReadInstruction = hostKind == "excel" &&
-                    AnalysisDocumentPilot.Enabled
+                    AnalysisDocumentPilot.Enabled && !hasExcelSelection &&
+                    !hasKoreanWorkbook
                     ? "FIRST identify the source sheets, headers and requested scope. " +
                       "For aggregate workbook facts, use read_grouped_totals to " +
                       "calculate over the complete bound source; inspect source " +

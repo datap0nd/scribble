@@ -27,7 +27,7 @@ namespace Scribble.Office
                 artifact.Facts.Count == 0 ||
                 artifact.Calculations.Count != 0 ||
                 artifact.Assumptions.Count != 0 ||
-                artifact.UnresolvedConflicts.Count != 0)
+                AnalysisContract.HasBlockingConflicts(artifact))
                 throw new InvalidOperationException(
                     "ANALYSIS_WORKBOOK_SOURCE_UNSUPPORTED");
             var snapshot = artifact.Snapshots[0];
@@ -128,6 +128,21 @@ namespace Scribble.Office
                     });
                 }
                 rows.Add(Row(cells));
+            }
+            var knownSubtotalNotes = periods.Select(period =>
+                string.Join("; ", selection.ReportMetrics.Where(metric =>
+                    AnalysisContract.IsKnownSubtotal(artifact, metric,
+                        period.Value)).Select(metric =>
+                    metric + ": known subtotal; blank source values excluded")))
+                .ToArray();
+            if (knownSubtotalNotes.Any(note => note.Length != 0))
+            {
+                if (rows.Count + 1 > WorkbookDraftWriter.MaxDraftRows)
+                    throw new InvalidOperationException(
+                        "ANALYSIS_WORKBOOK_ROWS_UNSUPPORTED");
+                rows.Add(Row(new[] { Label("Data quality") }.Concat(
+                    knownSubtotalNotes.Select(note => Label(note.Length == 0 ?
+                        "No blank inputs in selected metrics" : note)))));
             }
             return rows;
         }

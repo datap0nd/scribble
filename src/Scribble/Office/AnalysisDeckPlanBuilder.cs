@@ -195,7 +195,7 @@ namespace Scribble.Office
         private static string SourceLimitation(AnalysisArtifact artifact)
         {
             if (artifact.UnresolvedConflicts.Any(item =>
-                item.StartsWith("Known subtotal for ",
+                item.StartsWith(AnalysisContract.KnownSubtotalPrefix,
                     StringComparison.Ordinal)))
                 return "Blank source values were excluded, never set to zero; affected figures are known subtotals.";
             var table = artifact.Snapshots[0].Tables[0];
@@ -222,9 +222,8 @@ namespace Scribble.Office
         private static bool IsKnownSubtotal(AnalysisArtifact artifact,
             VerifiedFact fact)
         {
-            return artifact.UnresolvedConflicts.Any(item =>
-                item.StartsWith("Known subtotal for " + fact.Metric + " " +
-                    fact.Period + " ", StringComparison.Ordinal));
+            return AnalysisContract.IsKnownSubtotal(artifact, fact.Metric,
+                fact.Period);
         }
     }
 }

@@ -189,10 +189,15 @@ metric-order mechanisms with regression tests. Its green CI build 2.0.713.0
 was installed, and a real XA01 rerun passed every deterministic and agent
 visual check in 3.1 minutes, but used 13 requests (cap 12). The first failing
 stage is completion. The trace shows three sequential Ledger reads before the
-host aggregation; the generic prompt still requires row-by-row reading to the
-end. PR #45 now lets the typed route use complete host aggregates, with source
-cell inspection as needed. Next: green CI, install, check balance, and rerun.
-Owner visual approval remains Stage D2.
+host aggregation; PR #45 now uses complete typed aggregates with source-cell
+inspection as needed. A targeted 2.0.713.0 XA02/XA04/XA08 batch cost $0.455:
+XA02 reached a typed draft but an unmeasured model finding blocked review;
+XA04 took the generic draft route before binding; XA08 computed correct known
+subtotals but preflight rejected their disclosure. PR #45 now limits production
+review blockers to host measurements, exposes the typed writer from the first
+pilot turn, and allows disclosed known subtotals in workbook plans. Next:
+green CI, install, check balance and rerun XA01 plus targeted B4 cases. Owner
+visual approval remains Stage D2.
 
 ## 6. Rules for autonomous sessions
 

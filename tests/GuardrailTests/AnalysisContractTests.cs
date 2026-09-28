@@ -244,9 +244,15 @@ namespace GuardrailTests
                     draftBoundary.Contains("complete bound source") &&
                     !draftBoundary.Contains("read it to the END"),
                     "Typed aggregate reads should cover the bound source without requiring row-by-row enumeration.");
-                Check(draftRequest.tools.Any(tool => tool.function.name ==
-                    WorkbookToolCatalog.WriteCells),
-                    "The generic request fixture did not expose guarded cell edits.");
+                Check(!draftRequest.tools.Any(tool => tool.function.name ==
+                    WorkbookToolCatalog.WriteCells) &&
+                    draftRequest.tools.Any(tool =>
+                        tool.function.name == WorkbookToolCatalog.WriteDraftSheet &&
+                        ((Dictionary<string, object>)tool.function.parameters)[
+                            "required"] is string[] &&
+                        ((string[])((Dictionary<string, object>)tool.function.parameters)[
+                            "required"]).Contains("analysis_id")),
+                    "The pilot exposed a generic writer before source binding.");
                 DocumentChatRequestFactory.ApplyAnalysisPilot(draftRequest,
                     historicalArtifact, "excel");
                 Check(!draftRequest.tools.Any(tool => tool.function.name ==
@@ -493,6 +499,21 @@ namespace GuardrailTests
                 known.UnresolvedConflicts.Any(item => item.Contains(
                     "Ledger!D4")),
                 "A blank source value was imputed or the known subtotal was not disclosed.");
+            var knownRows = AnalysisWorkbookPlanBuilder.Build(known);
+            var knownPlan = new AnalysisDocumentPlan {
+                AnalysisId = known.AnalysisId, WorkbookTitle = "Known subtotals",
+                WorkbookRows = knownRows };
+            Check(knownRows.Last().Cells[0].Text == "Data quality" &&
+                knownRows.Last().Cells[1].Text.Contains("CostEUR: known subtotal") &&
+                AnalysisDocumentCompiler.Compile(known, knownPlan, false)
+                    .ExpectedFormulaFacts.Count == 4,
+                "A verified known subtotal could not produce a disclosed live-formula draft.");
+            var blocking = AnalysisContract.CreateArtifact(
+                known.Snapshots, known.Facts,
+                new AnalysisCalculation[0], new string[0],
+                new[] { "Unverified source value remains." });
+            RejectTableBinding(() => AnalysisWorkbookPlanBuilder.Build(blocking),
+                "ANALYSIS_WORKBOOK_SOURCE_UNSUPPORTED");
 
             var formulaTable = new TableDataset { TableId = "formula-ledger",
                 Name = "Ledger", Rows = 2, Columns = 4,

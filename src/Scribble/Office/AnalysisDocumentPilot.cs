@@ -149,7 +149,8 @@ namespace Scribble.Office
             RequireEnabled();
             var context = AnalysisReviewContract.Context(artifact, plan,
                 pages, measurements);
-            return AnalysisReviewContract.Parse(reviewerJson, context);
+            return AnalysisReviewContract.ParseMeasuredCompletion(reviewerJson,
+                context);
         }
 
         // Capture once: the exact rendered/native page state in the request is
@@ -209,7 +210,7 @@ namespace Scribble.Office
                     throw new InvalidOperationException(
                         "REVIEW_NATIVE_STATE_CHANGED");
             }
-            return AnalysisReviewContract.Parse(reviewerJson,
+            return AnalysisReviewContract.ParseMeasuredCompletion(reviewerJson,
                 session.Context);
         }
 

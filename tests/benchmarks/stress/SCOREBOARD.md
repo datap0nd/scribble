@@ -36,6 +36,8 @@ $40 no-reset key). After seven real XA01 runs: $12.9402 at 06:22 UTC on 27 Sep. 
 before the next paid batch.
 After the 28 Sep B4 batch: $11.2796 remaining at 14:01 UTC ($28.7204 used);
 recheck before another paid batch.
+After the 2.0.713.0 XA02/XA04/XA08 targeted batch: $10.8176 remaining at
+14:40 UTC ($29.1824 used); recheck before another paid batch.
 
 ## Installed builds
 
@@ -84,3 +86,6 @@ predate this file. Their source commits weren't recorded there.
 | 2026-09-28 | 2.0.706.0 (`ede1b26`, CI `36421402714`) | XA09 | new | FAIL: native checks and agent visual review passed, but 15 requests exceed cap; owner visual review remains D2 | completion | 15 | $0.040 | 2.5 | `suite-20260928-125813-5ab7f507` / `159c3d6de32f408d80d2aed26dfe4e36` |
 | 2026-09-28 | 2.0.706.0 (`ede1b26`, CI `36421402714`) | XA10 | new | FAIL: reviewer returned fenced JSON; review parsing and later slide recovery blocked terminal handoff; exceeds cap | review | 23 | $0.152 | 7.3 | `suite-20260928-125813-5ab7f507` / `9be5dd57426f4e1b8c2551ae7df76a00` |
 | 2026-09-28 | 2.0.713.0 (`c97a175`, CI `36432733798`) | XA01 | new | FAIL: terminal typed workbook and four native slides; all deterministic hard checks, source preservation and agent visual review passed, but 13 requests exceed the S1 cap of 12; owner visual review remains D2 | completion | 13 | $0.033 | 3.1 | `suite-20260928-141119-ee36d02c` / `d4716076d15e4c81bc7381107379be71` |
+| 2026-09-28 | 2.0.713.0 (`c97a175`, CI `36432733798`) | XA02 | new | FAIL: filtered dimension facts lacked full-period workbook facts until reread; typed draft then succeeded, but an unmeasured reviewer binding claim blocked the deck | planning/schema | 29 | $0.148 | 7.4 | `suite-20260928-141923-eba87cd2` / `42654cfa9b104aa5a288b2925f6f8a83` |
+| 2026-09-28 | 2.0.713.0 (`c97a175`, CI `36432733798`) | XA04 | new | FAIL: generic draft wrote before typed source binding; repeated deck preflight rejected the unsupported workbook source | capture/binding | 44 | $0.242 | 10.7 | `suite-20260928-141923-eba87cd2` / `771289b521f24d5686dd54fcf469de2d` |
+| 2026-09-28 | 2.0.713.0 (`c97a175`, CI `36432733798`) | XA08 | new | FAIL: host computed correct known subtotals, but workbook plan preflight rejected their disclosure notes before any native write | planning/schema | 7 | $0.065 | 2.5 | `suite-20260928-141923-eba87cd2` / `f44187a5a85548c29076b4618aa971b1` |

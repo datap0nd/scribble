@@ -329,6 +329,15 @@ namespace GuardrailTests
                 new object[0]) + "\n```";
             Check(AnalysisReviewContract.Parse(fenced, context).Approved,
                 "An exact JSON code fence blocked an otherwise valid review.");
+            var unmeasuredClaim = Finding("BINDING_CHALLENGE", "content",
+                "june", 412, "table.row.0.value.1", fact.FactId, "",
+                "blocker", "inspect_binding",
+                "A source row appears to have a different label.");
+            var measuredCompletion = AnalysisReviewContract.ParseMeasuredCompletion(
+                verdict(false, new object[] { unmeasuredClaim }), context);
+            Check(measuredCompletion.Approved &&
+                measuredCompletion.Findings.Count == 0,
+                "An unmeasured model binding claim blocked native completion.");
             Reject(() => AnalysisReviewContract.Parse(
                 "Extra commentary\n" + fenced, context),
                 "REVIEW_JSON_INVALID");
@@ -338,6 +347,8 @@ namespace GuardrailTests
                 new[] { page });
             Reject(() => AnalysisReviewContract.Parse(oldApproval, changedNative),
                 "REVIEW_CONTEXT_CHANGED");
+            Reject(() => AnalysisReviewContract.ParseMeasuredCompletion(
+                oldApproval, changedNative), "REVIEW_CONTEXT_CHANGED");
             page.NativeStateFingerprint = "sha256:native";
             page.ExpectedPageNumber = 2;
             Reject(() => AnalysisReviewContract.Context(artifact, plan,
@@ -624,6 +635,13 @@ namespace GuardrailTests
                 hostOwned.Findings[0].Owner == "renderer" &&
                 hostOwned.Findings[0].MeasurementId == "geometry-1",
                 "The host geometry measurement was lost when the model omitted it.");
+            var measuredHostCompletion =
+                AnalysisReviewContract.ParseMeasuredCompletion(
+                    verdict(true, new object[] { unmeasuredClaim }), context);
+            Check(!measuredHostCompletion.Approved &&
+                measuredHostCompletion.Findings.Count == 1 &&
+                measuredHostCompletion.Findings[0].MeasurementId == "geometry-1",
+                "A model approval or unrelated claim overrode a native measurement.");
             var geometry = Finding("COLLISION", "renderer", "june", 412,
                 "shape:10", "", "geometry-1", "blocker", "adjust_layout",
                 "Chart overlaps the callout.");
