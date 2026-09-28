@@ -221,8 +221,23 @@ scoreboard summary. The first
 repeatable mechanisms are an omitted grouped-total sheet resolving to the
 new active draft, full-range binding rejected at 500 cells despite the 5,000
 cell typed limit, and structured cards using colors absent from the theme.
-PR #45 now fixes those mechanisms and has regression tests; rebuild and rerun
-the affected cases, then a full B4 batch. Owner visual approval remains D2.
+PR #45 fixed those mechanisms with regression tests. Installed 2.0.724.0
+then produced 9/10 deterministically eligible XA01–XA10 cases in one batch:
+all nine reached terminal events within 20 minutes, used at most 12 actual
+`inference_request` calls, passed native oracles, preserved sources and passed
+agent visual review. XA05 first failed at review because fenced JSON with
+surrounding prose was rejected; retries hit slide recovery and exceeded the
+request cap. A strict single-fence parser fix has green CI and awaits install.
+XA01 passed three consecutive runs on 2.0.724.0 (10, 10, 9 requests), each
+with terminal native outputs, all hard checks, source preservation and agent
+visual review. S1 deterministic and repeatability bars are met on this build;
+owner D2 visual acceptance is pending. Stage C1's native experiment passed on
+PPT01–PPT06: opening a separate disposable byte copy as read-only and untitled
+preserved 6–11 slides, notes, shapes and 1–3 charts without changing source
+bytes or terminating PowerPoint. Opening the already-open source path returned
+the saved source instead, so the production path uses a distinct temporary
+copy and deletes it after the untitled deck opens. Stage C2 generalization is
+next.
 
 ## 6. Rules for autonomous sessions
 

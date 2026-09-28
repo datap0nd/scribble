@@ -1,13 +1,15 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Web.Script.Serialization;
+using Scribble.Chat;
 
 namespace Scribble.Office
 {
-    // Bounded six-page working copy for the development repair pilot. A source
-    // slide is never used as a PresentationRevision target.
+    // An untitled native copy is the working deck for the repair pilot. A
+    // source slide is never used as a PresentationRevision target.
     internal sealed class PresentationDraftCopy
     {
         internal readonly object Source;
@@ -54,48 +56,50 @@ namespace Scribble.Office
         {
             dynamic source = sourcePresentation;
             dynamic app = application;
-            if ((int)source.Slides.Count != 6 ||
-                string.IsNullOrWhiteSpace(owner))
+            var count = (int)source.Slides.Count;
+            var sourcePath = Convert.ToString(source.FullName);
+            if (count < 1 || string.IsNullOrWhiteSpace(owner) ||
+                string.IsNullOrWhiteSpace(Convert.ToString(source.Path)) ||
+                string.IsNullOrWhiteSpace(sourcePath) ||
+                !File.Exists(sourcePath))
                 throw new InvalidOperationException(
-                    "REVISION_COPY_SCOPE: The pilot requires six source slides and a task owner.");
-            // Whole-slide clipboard paste and InsertFromFile both terminated
-            // this Office build in chart.dll for a saved PP01 deck. The pilot
-            // may copy its one chart page only as ordinary shapes, then
-            // reconstruct the chart from the bound workbook. All other
-            // saved-chart geometry fails closed before a draft is opened.
-            var fileBacked = !string.IsNullOrEmpty(
-                Convert.ToString(source.Path));
-            var chartPages = Enumerable.Range(1, 6).Where(index =>
-                PresentationInspection.ContainsNativeChart(
-                    (object)source.Slides[index])).ToArray();
-            var chartlessPage = fileBacked && chartPages.Length == 1 &&
-                chartPages[0] == 2 &&
-                LastShapeIsOnlyChart((object)source.Slides[2]);
-            if (fileBacked && chartPages.Length > 0 && !chartlessPage)
-                throw new InvalidOperationException(
-                    "REVISION_COPY_NATIVE_CHART_UNSUPPORTED: The pilot supports one last-position chart on slide 2.");
-            var order = Enumerable.Range(1, 6).Select(index =>
+                    "REVISION_COPY_SCOPE: A saved source deck and task owner are required.");
+            var order = Enumerable.Range(1, count).Select(index =>
                 (int)source.Slides[index].SlideID).ToArray();
             dynamic draft = null;
-            var stage = "new_draft";
+            var stage = "copy_source_file";
+            var temporary = Path.Combine(Path.GetTempPath(),
+                "scribble-revision-copy-" + Guid.NewGuid().ToString("N") +
+                ".pptx");
             try
             {
-                // PowerPoint's native chart engine requires a presentation
-                // window, even when the application is driven through COM.
-                draft = app.Presentations.Add(-1);
+                var sourceHash = ExternalContextDocument.FingerprintFile(
+                    sourcePath);
+                File.Copy(sourcePath, temporary);
+                if (!string.Equals(sourceHash,
+                        ExternalContextDocument.FingerprintFile(temporary),
+                        StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException(
+                        "REVISION_COPY_SOURCE_CHANGED");
+                stage = "open_untitled_copy";
+                // Reopening sourcePath itself returns the existing saved
+                // presentation. A separate disposable byte copy is required.
+                draft = app.Presentations.Open(temporary, -1, -1, -1);
+                if (!string.IsNullOrEmpty(Convert.ToString(draft.Path)) ||
+                    (int)draft.Slides.Count != count)
+                    throw new InvalidOperationException(
+                        "REVISION_COPY_NOT_UNTITLED");
                 draft.Tags.Add("ScribbleRevisionDraft", owner);
                 var draftId = Guid.NewGuid().ToString("N");
                 draft.Tags.Add("ScribblePresentationId", draftId);
-                draft.PageSetup.SlideWidth = source.PageSetup.SlideWidth;
-                draft.PageSetup.SlideHeight = source.PageSetup.SlideHeight;
-                stage = "inspect_and_copy_source";
+                stage = "inspect_native_copy";
                 var result = new PresentationDraftCopy(sourcePresentation,
                     (object)draft, order);
                 result._owner = owner;
                 result._draftId = draftId;
                 result._sourceName = Convert.ToString(source.Name);
                 result._sourceFullName = Convert.ToString(source.FullName);
-                for (var index = 1; index <= 6; index++)
+                for (var index = 1; index <= count; index++)
                 {
                     stage = "inspect_source_slide_" + index;
                     dynamic original = source.Slides[index];
@@ -108,35 +112,19 @@ namespace Scribble.Office
                         result._sourceChartFingerprints[originalId] =
                             PresentationInspection.Fingerprint(
                                 (object)original);
-                    stage = "copy_source_slide_" + index;
+                    stage = "map_copy_slide_" + index;
                     var shapes = new Dictionary<int, int>();
-                    dynamic copy = chartlessPage && index == 2
-                        ? CopyWithoutNativeChart((object)original,
-                            (object)draft, shapes)
-                        : PresentationInspection.CopySlideTo(
-                            (object)original, (object)draft);
-                    if ((int)draft.Slides.Count != index)
+                    dynamic copy = draft.Slides[index];
+                    if (PresentationInspection.CopyContentFingerprint(
+                            (object)copy) != fingerprint)
                         throw new InvalidOperationException(
-                            "REVISION_COPY_INCOMPLETE: Native paste changed the page count.");
-                    var preserved = chartlessPage && index == 2
-                        ? PresentationInspection
-                            .CopyContentWithoutChartFingerprint(
-                                (object)original) ==
-                          PresentationInspection
-                            .CopyContentWithoutChartFingerprint(
-                                (object)copy)
-                        : PresentationInspection.CopyContentFingerprint(
-                            (object)copy) == fingerprint;
-                    if (!preserved)
-                        throw new InvalidOperationException(
-                            "REVISION_COPY_PRESERVATION: The copied page differs from the source.");
+                            "REVISION_COPY_PRESERVATION: The native copy differs from the source.");
                     result._slideIds[originalId] = (int)copy.SlideID;
-                    if (!(chartlessPage && index == 2))
-                        MapShapes((object)original.Shapes,
-                            (object)copy.Shapes, shapes);
+                    MapShapes((object)original.Shapes,
+                        (object)copy.Shapes, shapes);
                     result._shapeIds[originalId] = shapes;
                 }
-                for (var index = 1; index <= 6; index++)
+                for (var index = 1; index <= count; index++)
                 {
                     stage = "fingerprint_draft_slide_" + index;
                     dynamic page = draft.Slides[index];
@@ -144,6 +132,11 @@ namespace Scribble.Office
                         PresentationInspection.Fingerprint((object)page);
                 }
                 stage = "verify_copy";
+                if (!string.Equals(sourceHash,
+                        ExternalContextDocument.FingerprintFile(sourcePath),
+                        StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException(
+                        "REVISION_COPY_SOURCE_CHANGED");
                 result.VerifySource();
                 result.VerifyDraft();
                 return result;
@@ -154,6 +147,11 @@ namespace Scribble.Office
                 throw new InvalidOperationException(
                     "REVISION_COPY_CREATE_FAILED at " + stage + ": " +
                     error.Message, error);
+            }
+            finally
+            {
+                try { if (File.Exists(temporary)) File.Delete(temporary); }
+                catch { }
             }
         }
 
@@ -202,18 +200,22 @@ namespace Scribble.Office
                 string.IsNullOrWhiteSpace(state.Owner) ||
                 string.IsNullOrWhiteSpace(state.DraftId) ||
                 string.IsNullOrWhiteSpace(state.SourceFullName) ||
-                state.SourceOrder == null || state.SourceOrder.Length != 6 ||
+                state.SourceOrder == null || state.SourceOrder.Length < 1 ||
                 state.SourceContent == null ||
-                state.SourceContent.Count != 6 ||
+                state.SourceContent.Count != state.SourceOrder.Length ||
                 state.SourceChartFingerprints == null ||
                 state.SourceChartFingerprints.Any(pair =>
                     !state.SourceContent.ContainsKey(pair.Key) ||
                     string.IsNullOrWhiteSpace(pair.Value)) ||
-                state.SlideIds == null || state.SlideIds.Count != 6 ||
-                state.ShapeIds == null || state.ShapeIds.Count != 6 ||
+                state.SlideIds == null ||
+                state.SlideIds.Count != state.SourceOrder.Length ||
+                state.ShapeIds == null ||
+                state.ShapeIds.Count != state.SourceOrder.Length ||
                 state.DraftFingerprints == null ||
-                state.DraftFingerprints.Count != 6 ||
-                state.SourceOrder.Distinct().Count() != 6 ||
+                state.DraftFingerprints.Count !=
+                    state.SourceOrder.Length ||
+                state.SourceOrder.Distinct().Count() !=
+                    state.SourceOrder.Length ||
                 state.SourceOrder.Any(id =>
                     !state.SourceContent.ContainsKey(id.ToString()) ||
                     !state.SlideIds.ContainsKey(id.ToString()) ||
@@ -238,8 +240,9 @@ namespace Scribble.Office
                 if (Convert.ToString(candidate.Name) == state.SourceName &&
                     Convert.ToString(candidate.FullName) ==
                         state.SourceFullName &&
-                    (int)candidate.Slides.Count == 6 &&
-                    Enumerable.Range(1, 6).All(index =>
+                    (int)candidate.Slides.Count ==
+                        state.SourceOrder.Length &&
+                    Enumerable.Range(1, state.SourceOrder.Length).All(index =>
                         (int)candidate.Slides[index].SlideID ==
                             state.SourceOrder[index - 1] &&
                         PresentationInspection.CopyContentFingerprint(
@@ -254,9 +257,11 @@ namespace Scribble.Office
                 throw new InvalidOperationException(
                     "REVISION_COPY_SESSION_UNAVAILABLE");
             dynamic draft = drafts[0];
-            if ((int)draft.Slides.Count != 6 ||
-                state.SlideIds.Values.Distinct().Count() != 6 ||
-                state.SlideIds.Values.Any(id => !Enumerable.Range(1, 6)
+            if ((int)draft.Slides.Count != state.SourceOrder.Length ||
+                state.SlideIds.Values.Distinct().Count() !=
+                    state.SourceOrder.Length ||
+                state.SlideIds.Values.Any(id => !Enumerable.Range(1,
+                    state.SourceOrder.Length)
                     .Any(index => (int)draft.Slides[index].SlideID == id)))
                 throw new InvalidOperationException(
                     "REVISION_COPY_DRAFT_CHANGED");
@@ -646,74 +651,6 @@ namespace Scribble.Office
                     throw new InvalidOperationException(
                         "REVISION_COPY_SOURCE_CHANGED: chart " + id);
             }
-        }
-
-        private static bool LastShapeIsOnlyChart(object slide)
-        {
-            dynamic page = slide;
-            var count = (int)page.Shapes.Count;
-            var charts = 0;
-            for (var index = 1; index <= count; index++)
-            {
-                dynamic shape = page.Shapes[index];
-                if ((int)shape.HasChart == 0) continue;
-                charts++;
-                if (index != count) return false;
-            }
-            return charts == 1;
-        }
-
-        private static object CopyWithoutNativeChart(object sourceSlide,
-            object destinationPresentation, Dictionary<int, int> map)
-        {
-            dynamic original = sourceSlide;
-            dynamic destination = destinationPresentation;
-            var before = (int)destination.Slides.Count;
-            dynamic copy = destination.Slides.Add(before + 1, 12);
-            PresentationInspection.RestoreCopiedBackground(sourceSlide,
-                (object)copy);
-            copy.SlideShowTransition.Hidden =
-                original.SlideShowTransition.Hidden;
-            if ((int)copy.NotesPage.Shapes.Count !=
-                (int)original.NotesPage.Shapes.Count)
-                throw new InvalidOperationException(
-                    "REVISION_COPY_NOTES_UNSUPPORTED");
-            for (var index = 1; index <=
-                (int)original.NotesPage.Shapes.Count; index++)
-            {
-                dynamic from = original.NotesPage.Shapes[index];
-                dynamic to = copy.NotesPage.Shapes[index];
-                if ((int)from.HasTextFrame != (int)to.HasTextFrame)
-                    throw new InvalidOperationException(
-                        "REVISION_COPY_NOTES_UNSUPPORTED");
-                if ((int)from.HasTextFrame != 0)
-                    to.TextFrame.TextRange.Text =
-                        from.TextFrame.TextRange.Text;
-            }
-            for (var index = 1; index <= (int)original.Shapes.Count;
-                index++)
-            {
-                dynamic shape = original.Shapes[index];
-                var sourceId = (int)shape.Id;
-                if ((int)shape.HasChart != 0)
-                {
-                    map.Add(sourceId, -1);
-                    continue;
-                }
-                shape.Copy();
-                dynamic pasted = copy.Shapes.Paste();
-                if ((int)pasted.Count != 1)
-                    throw new InvalidOperationException(
-                        "REVISION_COPY_SHAPE_MAPPING_FAILED");
-                dynamic clone = pasted[1];
-                clone.Name = shape.Name;
-                if ((int)clone.Type != (int)shape.Type ||
-                    (int)clone.ZOrderPosition != index)
-                    throw new InvalidOperationException(
-                        "REVISION_COPY_SHAPE_MAPPING_FAILED");
-                map.Add(sourceId, (int)clone.Id);
-            }
-            return (object)copy;
         }
 
         private static void MapShapes(object sourceShapes,
