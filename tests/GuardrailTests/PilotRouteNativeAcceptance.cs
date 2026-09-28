@@ -52,7 +52,7 @@ namespace GuardrailTests
             var json = new JavaScriptSerializer { MaxJsonLength = 16000000 };
             var sourceHash = ExternalContextDocument.FingerprintFile(sourcePath);
             var workbookHash = ExternalContextDocument.FingerprintFile(workbookPath);
-            var priorFlag = Environment.GetEnvironmentVariable(AnalysisDocumentPilot.FeatureFlag);
+            var priorFlag = AnalysisDocumentPilot.Enabled;
             dynamic app = null, source = null, draft = null;
             var passed = false;
             var failure = "";
@@ -64,7 +64,7 @@ namespace GuardrailTests
             var inspected = 0;
             try
             {
-                Environment.SetEnvironmentVariable(AnalysisDocumentPilot.FeatureFlag, "1");
+                AnalysisDocumentPilot.SetEnabled(true);
                 Check(PresentationRevisionAcceptance.Enabled, "NATIVE_RECEIPT_REQUIRED");
                 app = Activator.CreateInstance(Type.GetTypeFromProgID("PowerPoint.Application", true));
                 app.Visible = -1;
@@ -164,7 +164,7 @@ namespace GuardrailTests
                 if ((object)draft != null) try { draft.Close(); } catch { }
                 if ((object)source != null) try { source.Close(); } catch { }
                 if ((object)app != null) try { if ((int)app.Presentations.Count == 0) app.Quit(); } catch { }
-                Environment.SetEnvironmentVariable(AnalysisDocumentPilot.FeatureFlag, priorFlag);
+                AnalysisDocumentPilot.SetEnabled(priorFlag);
             }
             var sourcePreserved = ExternalContextDocument.FingerprintFile(sourcePath) == sourceHash;
             var workbookPreserved = ExternalContextDocument.FingerprintFile(workbookPath) == workbookHash;

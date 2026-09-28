@@ -43,16 +43,14 @@ namespace Scribble.Chat
             _prefixCount = request.messages.Count;
             if (request.tools == null) request.tools = new List<ChatToolDefinition>();
             if (resume == null && host == "powerpoint" &&
-                string.Equals(Environment.GetEnvironmentVariable(AnalysisDocumentPilot.FeatureFlag), "1", StringComparison.Ordinal) &&
+                AnalysisDocumentPilot.Enabled &&
                 request.tools.Any(tool => tool.function.name == PresentationToolCatalog.ReviseSlides))
                 _state.HostData["delivery_request_limit"] = "18";
             if (Scribble.Security.DocumentDraftIntentPolicy.AllowsDraft(objective) &&
                 request.tools.Any(t => t.function.name == PresentationToolCatalog.AddDraftSlides ||
                     t.function.name == CrossAppToolCatalog.SendToPowerPoint ||
                     (t.function.name == PresentationToolCatalog.ReviseSlides &&
-                     string.Equals(Environment.GetEnvironmentVariable(
-                         Scribble.Office.AnalysisDocumentPilot.FeatureFlag),
-                         "1", StringComparison.Ordinal))))
+                     AnalysisDocumentPilot.Enabled)))
             {
                 var count = System.Text.RegularExpressions.Regex.Match(objective ?? "",
                     @"\b(?<count>\d+|one|two|three|four|five|six|seven|eight|nine|ten)\b(?:[\s-]+[A-Za-z][A-Za-z0-9-]*){0,8}[\s-]+slides?\b",
@@ -175,7 +173,7 @@ namespace Scribble.Chat
             }
             var repair = IsAnalysisOutput(call.function.name) &&
                     call.function.name == CrossAppToolCatalog.SendToPowerPoint
-                ? "No slides were written by this call. Correct the listed fields using the exposed AnalysisId and Slides schema. Reference host-issued FactIds; do not supply numeric values, citations or formulas. Keep the full requested slide count and retry as one exclusive call."
+                ? "No slides were written by this call. Correct the listed fields using the current analysis ID and the compact narrative choices exposed by this tool, then retry as one exclusive call."
                 : call.function.name == PresentationToolCatalog.AddDraftSlides || call.function.name == CrossAppToolCatalog.SendToPowerPoint
                 ? "No slides were written by this call. Retry this tool as the only tool call, with no assistant prose and never {}. Supply plan and concise briefs for the full requested deck on the first batch, plus exactly one complete content object in the nonempty slides array; later batches may add the next slides. Each slide needs its planned id, title, layout and source-backed content using the exposed schema. Do not repeat a plan-only or briefs-only payload. Keep the original requested slide count and do not invent content."
                 : "Correct the listed fields using this tool's exposed parameter schema, then retry. No write permission was consumed.";
@@ -249,11 +247,51 @@ namespace Scribble.Chat
         public string PersistAnalysis(AnalysisArtifact artifact)
         {
             var serialized = AnalysisContract.Serialize(artifact);
+            var prior = LoadAnalysis();
+            var extending = prior != null &&
+                prior.Snapshots.Count == 1 &&
+                artifact.Snapshots.Count == 1 &&
+                prior.Snapshots[0].SnapshotId ==
+                    artifact.Snapshots[0].SnapshotId &&
+                prior.Facts.All(fact => artifact.Facts.Any(next =>
+                    next.FactId == fact.FactId)) &&
+                prior.Calculations.All(calculation =>
+                    artifact.Calculations.Any(next =>
+                        next.CalculationId == calculation.CalculationId)) &&
+                prior.Assumptions.All(artifact.Assumptions.Contains) &&
+                prior.UnresolvedConflicts.All(
+                    artifact.UnresolvedConflicts.Contains);
+            var ancestors = new List<string>();
+            string savedAncestors;
+            if (extending && _state.HostData.TryGetValue(
+                    "analysis_ancestor_ids", out savedAncestors))
+                ancestors.AddRange(_json.Deserialize<List<string>>(
+                    savedAncestors));
+            if (extending && prior.AnalysisId != artifact.AnalysisId)
+                ancestors.Add(prior.AnalysisId);
+            _state.HostData["analysis_ancestor_ids"] = _json.Serialize(
+                ancestors.Distinct(StringComparer.Ordinal).Take(16).ToList());
             var id = RegisterEvidence(serialized);
             _state.AnalysisContractVersion = AnalysisContract.Version;
             _state.AnalysisArtifactEvidenceId = id;
             Checkpoint();
             return id;
+        }
+
+        public bool AcceptsAnalysisId(string requested,
+            AnalysisArtifact current)
+        {
+            if (current == null || string.IsNullOrWhiteSpace(requested))
+                return false;
+            var persisted = LoadAnalysis();
+            if (persisted == null ||
+                persisted.AnalysisId != current.AnalysisId)
+                return false;
+            if (requested == current.AnalysisId) return true;
+            string saved;
+            return _state.HostData.TryGetValue("analysis_ancestor_ids",
+                out saved) && _json.Deserialize<List<string>>(saved)
+                    .Contains(requested, StringComparer.Ordinal);
         }
 
         public AnalysisArtifact LoadAnalysis()
@@ -494,9 +532,7 @@ namespace Scribble.Chat
             return _state.Host == "excel" &&
                 _state.AnalysisContractVersion == AnalysisContract.Version &&
                 !string.IsNullOrWhiteSpace(_state.AnalysisArtifactEvidenceId) &&
-                string.Equals(Environment.GetEnvironmentVariable(
-                    AnalysisDocumentPilot.FeatureFlag), "1",
-                    StringComparison.Ordinal) &&
+                AnalysisDocumentPilot.Enabled &&
                 (name == WorkbookToolCatalog.WriteDraftSheet ||
                  name == CrossAppToolCatalog.SendToPowerPoint);
         }

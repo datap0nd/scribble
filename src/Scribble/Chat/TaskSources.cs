@@ -143,10 +143,38 @@ namespace Scribble.Chat
             var analysis = result.TakeAnalysisArtifact();
             if (analysis != null)
             {
-                if (call.function.name != WorkbookToolCatalog.ReadCells ||
+                if ((call.function.name != WorkbookToolCatalog.ReadCells &&
+                     call.function.name != WorkbookToolCatalog.ReadGroupedTotals) ||
                     result.Outcome.Failed)
                     throw new InvalidOperationException(
                         "ANALYSIS_READ_RESULT_INVALID");
+                var previous = _task.LoadAnalysis();
+                if (previous != null && previous.Snapshots.Count == 1 &&
+                    analysis.Snapshots.Count == 1 &&
+                    previous.Snapshots[0].SnapshotId ==
+                        analysis.Snapshots[0].SnapshotId)
+                {
+                    analysis = AnalysisContract.CreateArtifact(
+                        previous.Snapshots,
+                        previous.Facts.Concat(analysis.Facts)
+                            .GroupBy(fact => fact.FactId,
+                                StringComparer.Ordinal)
+                            .Select(group => group.First()),
+                        previous.Calculations.Concat(
+                            analysis.Calculations),
+                        previous.Assumptions.Concat(
+                            analysis.Assumptions),
+                        previous.UnresolvedConflicts.Concat(
+                            analysis.UnresolvedConflicts));
+                    var identityMap = _json.DeserializeObject(result.Content) as
+                        IDictionary<string, object>;
+                    if (identityMap != null &&
+                        identityMap.ContainsKey("analysis_id"))
+                    {
+                        identityMap["analysis_id"] = analysis.AnalysisId;
+                        result.ReplaceContent(_json.Serialize(identityMap));
+                    }
+                }
                 _task.PersistAnalysis(analysis);
             }
             var name = call.function.name;

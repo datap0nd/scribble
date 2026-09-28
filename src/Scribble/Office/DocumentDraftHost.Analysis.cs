@@ -35,8 +35,23 @@ namespace Scribble.Office
                         "samsung_pending"))
                     throw new InvalidOperationException(
                         "ANALYSIS_DECK_ALREADY_COMPLETE");
-                plan = AnalysisSlidePlanContract.Parse(artifact,
-                    call.function.arguments);
+                var choices = _serializer.DeserializeObject(
+                    call.function.arguments) as IDictionary<string, object>;
+                if (choices != null && !choices.ContainsKey("Slides"))
+                {
+                    if (!_taskContext.AcceptsAnalysisId(
+                            ToolArguments.GetString(choices,
+                                "AnalysisId", string.Empty), artifact))
+                        throw new InvalidOperationException(
+                            "ANALYSIS_PLAN_BINDING_INVALID");
+                    plan = AnalysisDeckPlanBuilder.Build(artifact, choices,
+                        _taskContext.State.RequiredPresentationSlides,
+                        _taskContext.State.Objective);
+                }
+                else
+                    plan = AnalysisSlidePlanContract.Parse(artifact,
+                        call.function.arguments, id =>
+                            _taskContext.AcceptsAnalysisId(id, artifact));
                 if (_taskContext.State.HostData.ContainsKey(
                     "analysis_pending_content_patch"))
                     throw new InvalidOperationException(
@@ -437,9 +452,7 @@ namespace Scribble.Office
             OneShotDraftAuthorization authorization)
         {
             if (_hostKind != "excel" ||
-                !string.Equals(Environment.GetEnvironmentVariable(
-                    AnalysisDocumentPilot.FeatureFlag), "1",
-                    StringComparison.Ordinal))
+                !AnalysisDocumentPilot.Enabled)
                 return Error(callId, authorization,
                     "ANALYSIS_PILOT_DISABLED",
                     "This typed report route is available only in the development pilot.");
@@ -448,21 +461,21 @@ namespace Scribble.Office
                 return Error(callId, authorization,
                     "DRAFT_PERMISSION_NOT_AVAILABLE",
                     "The task needs the user's explicit draft instruction.");
-            if (arguments.Keys.Except(new[] { "analysis_id", "title" },
+            if (arguments.Keys.Except(new[] { "analysis_id", "title",
+                    "compare_period", "focus_period" },
                     StringComparer.Ordinal).Any())
                 return Error(callId, authorization,
                     "ANALYSIS_DRAFT_ARGUMENTS_INVALID",
-                    "Supply only analysis_id and an optional title; the host builds rows and formulas.");
+                    "Supply analysis_id, an optional title, and optional request-bound comparison periods; the host builds rows and formulas.");
             AnalysisArtifact artifact;
             AnalysisDocumentPlan plan;
             int formulaCount;
             try
             {
                 artifact = _taskContext.LoadAnalysis();
-                if (artifact == null ||
-                    !string.Equals(ToolArguments.GetString(arguments,
-                            "analysis_id", string.Empty),
-                        artifact.AnalysisId, StringComparison.Ordinal))
+                if (!_taskContext.AcceptsAnalysisId(
+                        ToolArguments.GetString(arguments,
+                            "analysis_id", string.Empty), artifact))
                     throw new InvalidOperationException(
                         "ANALYSIS_PLAN_BINDING_INVALID");
                 var title = ToolArguments.GetString(arguments, "title",
@@ -471,12 +484,18 @@ namespace Scribble.Office
                     title.StartsWith("=", StringComparison.Ordinal))
                     throw new InvalidOperationException(
                         "ANALYSIS_WORKBOOK_TITLE_INVALID");
+                var selection = AnalysisRequestPlan.Resolve(artifact,
+                    _taskContext.State.Objective, arguments);
                 plan = new AnalysisDocumentPlan
                 {
                     AnalysisId = artifact.AnalysisId,
                     WorkbookTitle = title,
+                    ComparePeriod = selection.ComparePeriod,
+                    FocusPeriod = selection.FocusPeriod,
+                    ReportMetrics = selection.ReportMetrics.ToList(),
+                    ChartSeries = selection.ChartSeries.ToList(),
                     WorkbookRows = AnalysisWorkbookPlanBuilder.Build(
-                        artifact)
+                        artifact, selection)
                 };
                 formulaCount = AnalysisDocumentCompiler.Compile(artifact,
                     plan, false).ExpectedFormulaFacts.Count;

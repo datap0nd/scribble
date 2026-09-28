@@ -225,6 +225,11 @@ namespace Scribble.Chat
             return artifact;
         }
 
+        internal void ReplaceContent(string content)
+        {
+            Content = content ?? string.Empty;
+        }
+
         [System.Web.Script.Serialization.ScriptIgnore]
         public ToolOutcome Outcome { get { return ToolOutcome.Parse(Content); } }
 

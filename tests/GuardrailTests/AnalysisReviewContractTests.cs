@@ -464,12 +464,10 @@ namespace GuardrailTests
                 cardPlan.Slides[0].Cards[0].Points[1].Text ==
                     "The regional mix is complete",
                 "A card-body repair changed a verified fact or its source plan.");
-            var priorPilot = Environment.GetEnvironmentVariable(
-                AnalysisDocumentPilot.FeatureFlag);
+            var priorPilot = AnalysisDocumentPilot.Enabled;
             try
             {
-                Environment.SetEnvironmentVariable(
-                    AnalysisDocumentPilot.FeatureFlag, "1");
+                AnalysisDocumentPilot.SetEnabled(true);
                 Check(AnalysisDocumentPilot.CompiledNativeText(artifact,
                         cardPlan, "june", "cards[0]") ==
                         "The regional mix is complete" &&
@@ -485,8 +483,7 @@ namespace GuardrailTests
             }
             finally
             {
-                Environment.SetEnvironmentVariable(
-                    AnalysisDocumentPilot.FeatureFlag, priorPilot);
+                AnalysisDocumentPilot.SetEnabled(priorPilot);
             }
             var contentCheckpoint = Path.Combine(Path.GetTempPath(),
                 "scribble-analysis-content-" + Guid.NewGuid().ToString("N"));

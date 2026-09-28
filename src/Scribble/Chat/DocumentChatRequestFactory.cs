@@ -24,15 +24,15 @@ namespace Scribble.Chat
         {
             if (request?.tools == null || artifact == null ||
                 hostKind != "excel" ||
-                !string.Equals(Environment.GetEnvironmentVariable(
-                    AnalysisDocumentPilot.FeatureFlag), "1",
-                    StringComparison.Ordinal)) return;
+                !AnalysisDocumentPilot.Enabled) return;
             AnalysisContract.Serialize(artifact);
             var index = request.tools.FindIndex(tool =>
                 tool.function.name == WorkbookToolCatalog.WriteDraftSheet);
             if (index < 0) return;
             request.tools[index] =
                 WorkbookToolCatalog.AnalysisDraftDefinition();
+            request.tools.RemoveAll(tool => tool.function.name ==
+                WorkbookToolCatalog.WriteCells);
             var deckIndex = request.tools.FindIndex(tool =>
                 tool.function.name ==
                 CrossAppToolCatalog.SendToPowerPoint);
@@ -93,9 +93,7 @@ namespace Scribble.Chat
         {
             var pilotRepair = hostKind == "powerpoint" &&
                 allowDraftCreate &&
-                string.Equals(Environment.GetEnvironmentVariable(
-                    AnalysisDocumentPilot.FeatureFlag), "1",
-                    StringComparison.Ordinal) &&
+                AnalysisDocumentPilot.Enabled &&
                 Regex.IsMatch(userPrompt ?? "",
                     @"\b(?:6|six)\b.{0,24}\bslides?\b", RegexOptions.IgnoreCase) &&
                 DocumentDraftHost.ShouldDraftRepairedDeck(hostKind,
@@ -104,6 +102,11 @@ namespace Scribble.Chat
                     new[] { ".xlsx", ".xlsm" }.Contains(
                         Path.GetExtension(document.SourcePath ?? ""),
                         StringComparer.OrdinalIgnoreCase));
+            var typedDeck = hostKind == "excel" && allowDraftCreate &&
+                AnalysisDocumentPilot.Enabled && Regex.IsMatch(
+                    userPrompt ?? string.Empty,
+                    @"\b(powerpoint|presentation|deck|slides?)\b",
+                    RegexOptions.IgnoreCase);
             var translateToKorean = hasKoreanWorkbook && string.Equals(
                 workbookTranslationTarget,
                 Scribble.Office.ExcelSelectionOutputPolicy.TargetKorean,
@@ -130,7 +133,9 @@ namespace Scribble.Chat
                 if (hostKind == "excel")
                 {
                     tools.Add(
-                        WorkbookToolCatalog.DraftDefinition());
+                        typedDeck
+                            ? WorkbookToolCatalog.AnalysisDraftDefinition()
+                            : WorkbookToolCatalog.DraftDefinition());
                     tools.Add(
                         WorkbookToolCatalog.CellsDefinition());
                     if (hasExcelSelection)
@@ -164,6 +169,15 @@ namespace Scribble.Chat
                     tools.AddRange(
                         CrossAppToolCatalog.CreateDefinitions(
                             hostKind));
+                if (typedDeck)
+                {
+                    var deckIndex = tools.FindIndex(tool =>
+                        tool.function.name ==
+                        CrossAppToolCatalog.SendToPowerPoint);
+                    if (deckIndex >= 0)
+                        tools[deckIndex] =
+                            CrossAppToolCatalog.AnalysisDeckDefinition();
+                }
             }
 
             if (extraTools != null)

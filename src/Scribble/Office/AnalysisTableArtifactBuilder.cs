@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text.RegularExpressions;
 
@@ -29,6 +30,220 @@ namespace Scribble.Office
     public static class AnalysisTableArtifactBuilder
     {
         public const int MaxMappedFacts = 20000;
+
+        // A grouped read names the grouping columns and additive metrics.
+        // Recompute every aggregate from the typed source cells, retaining
+        // the exact contributing cell locators in each host-issued fact.
+        public static AnalysisArtifact BuildGrouped(SourceSnapshot snapshot,
+            AnalysisTableBinding binding, string filterColumn = null,
+            string filterEquals = null)
+        {
+            if (snapshot == null || snapshot.Coverage != "complete_range" ||
+                snapshot.Tables == null || snapshot.Tables.Count != 1 ||
+                binding == null || binding.PeriodHeader != "Period" ||
+                binding.Metrics == null || binding.Metrics.Count == 0 ||
+                binding.DimensionHeaders == null)
+                throw new InvalidOperationException(
+                    "ANALYSIS_GROUP_BINDING_INVALID");
+            var table = snapshot.Tables[0];
+            if (table.TableId != binding.TableId || table.Rows < 2 ||
+                (long)table.Rows * binding.Metrics.Count > MaxMappedFacts ||
+                binding.Metrics.Any(metric => metric == null))
+                throw new InvalidOperationException(
+                    "ANALYSIS_GROUP_BINDING_INVALID");
+            var cells = table.Cells.ToDictionary(cell =>
+                cell.Row + ":" + cell.Column, StringComparer.Ordinal);
+            var cellsByReference = table.Cells.ToDictionary(cell =>
+                cell.Reference, StringComparer.OrdinalIgnoreCase);
+            var headers = new Dictionary<string, int>(StringComparer.Ordinal);
+            for (var column = 0; column < table.Columns; column++)
+            {
+                DatasetCell header;
+                if (!cells.TryGetValue("0:" + column, out header) ||
+                    string.IsNullOrWhiteSpace(header.Value)) continue;
+                if (header.Status != AnalysisContract.Verified ||
+                    header.ValueType != AnalysisContract.TextValue ||
+                    headers.ContainsKey(header.Value.Trim()))
+                    throw new InvalidOperationException(
+                        "ANALYSIS_TABLE_HEADER_AMBIGUOUS");
+                headers.Add(header.Value.Trim(), column);
+            }
+            var names = new[] { binding.PeriodHeader }
+                .Concat(binding.DimensionHeaders)
+                .Concat(binding.Metrics.Select(metric => metric.Header))
+                .Concat(string.IsNullOrEmpty(filterColumn)
+                    ? new string[0] : new[] { filterColumn }).ToArray();
+            if (names.Any(string.IsNullOrWhiteSpace) ||
+                names.Take(names.Length - (string.IsNullOrEmpty(filterColumn)
+                    ? 0 : 1)).Distinct(StringComparer.Ordinal).Count() !=
+                    names.Length - (string.IsNullOrEmpty(filterColumn)
+                        ? 0 : 1) || names.Any(name => !headers.ContainsKey(name)) ||
+                binding.Metrics.Any(metric => metric == null ||
+                    metric.Metric != metric.Header ||
+                    (!string.IsNullOrEmpty(metric.Currency) &&
+                     (metric.Unit != "currency" ||
+                      !metric.Header.EndsWith(metric.Currency,
+                          StringComparison.Ordinal)))))
+                throw new InvalidOperationException(
+                    "ANALYSIS_GROUP_BINDING_INVALID");
+            var groups = new Dictionary<string, GroupedValue>(
+                StringComparer.Ordinal);
+            for (var row = 1; row < table.Rows; row++)
+            {
+                if (!string.IsNullOrEmpty(filterColumn) &&
+                    Required(cells, row, headers[filterColumn]).Value !=
+                    filterEquals) continue;
+                var period = Required(cells, row,
+                    headers[binding.PeriodHeader]);
+                if (period.ValueType != AnalysisContract.TextValue ||
+                    !Regex.IsMatch(period.Value,
+                        @"^\d{4}-(?:0[1-9]|1[0-2])$"))
+                    throw new InvalidOperationException(
+                        "ANALYSIS_TABLE_PERIOD_UNVERIFIED");
+                var dimensions = new Dictionary<string, string>(
+                    StringComparer.Ordinal);
+                foreach (var name in binding.DimensionHeaders)
+                {
+                    var dimension = Required(cells, row, headers[name]);
+                    if (dimension.ValueType != AnalysisContract.TextValue &&
+                        dimension.ValueType != AnalysisContract.DateValue)
+                        throw new InvalidOperationException(
+                            "ANALYSIS_TABLE_DIMENSION_UNVERIFIED");
+                    dimensions.Add(name, dimension.Value);
+                }
+                foreach (var metric in binding.Metrics)
+                {
+                    DatasetCell cell;
+                    if (!cells.TryGetValue(row + ":" +
+                        headers[metric.Header], out cell))
+                        throw new InvalidOperationException(
+                            "ANALYSIS_TABLE_VALUE_UNVERIFIED");
+                    var value = VerifiedMetricValue(cell, row,
+                        cellsByReference);
+                    var key = metric.Header + "\0" + period.Value + "\0" +
+                        string.Join("\0", binding.DimensionHeaders.Select(
+                            name => dimensions[name]));
+                    GroupedValue group;
+                    if (!groups.TryGetValue(key, out group))
+                    {
+                        group = new GroupedValue { Metric = metric,
+                            Period = period.Value,
+                            Dimensions = dimensions };
+                        groups.Add(key, group);
+                    }
+                    group.Sum = checked(group.Sum + value);
+                    group.Locators.Add(new SourceLocator {
+                        Kind = "excel_cell",
+                        SourceInstanceId = snapshot.SourceInstanceId,
+                        WorksheetIdentity = table.Name,
+                        Cell = cell.Reference });
+                }
+            }
+            if (groups.Count == 0)
+                throw new InvalidOperationException(
+                    "ANALYSIS_GROUP_EMPTY");
+            var facts = groups.Values.Select(group =>
+            {
+                var fact = AnalysisContract.CreateObservedFact(
+                    snapshot.SnapshotId, group.Metric.Header,
+                    AnalysisContract.DecimalValue,
+                    AnalysisContract.Format(group.Sum),
+                    AnalysisContract.Format(group.Sum),
+                    group.Metric.Unit, group.Metric.Currency,
+                    group.Period, group.Dimensions, group.Locators,
+                    AnalysisContract.Verified);
+                fact.Kind = AnalysisContract.DerivedCalculation;
+                fact.FactId = AnalysisContract.ExpectedFactId(fact);
+                return fact;
+            }).ToArray();
+            return AnalysisContract.CreateArtifact(new[] { snapshot }, facts,
+                new AnalysisCalculation[0], new string[0], new string[0]);
+        }
+
+        private sealed class GroupedValue
+        {
+            public AnalysisMetricColumnBinding Metric;
+            public string Period;
+            public Dictionary<string, string> Dimensions;
+            public decimal Sum;
+            public List<SourceLocator> Locators = new List<SourceLocator>();
+        }
+
+        // A formula cache is evidence only after the host reproduces the
+        // result from verified literal operands. This bounded evaluator
+        // supports same-row products, optionally guarded by IF(blank), and
+        // rejects every other formula rather than trusting its cached value.
+        private static decimal VerifiedMetricValue(DatasetCell cell, int row,
+            IDictionary<string, DatasetCell> cellsByReference)
+        {
+            if (cell == null || string.IsNullOrWhiteSpace(cell.Reference) ||
+                (cell.ValueType != AnalysisContract.DecimalValue &&
+                 cell.ValueType != AnalysisContract.IntegerValue))
+                throw new InvalidOperationException(
+                    "ANALYSIS_TABLE_VALUE_UNVERIFIED");
+            decimal cached;
+            if (!decimal.TryParse(cell.Value, NumberStyles.Float,
+                CultureInfo.InvariantCulture, out cached))
+                throw new InvalidOperationException(
+                    "ANALYSIS_TABLE_VALUE_UNVERIFIED");
+            if (string.IsNullOrEmpty(cell.Formula))
+            {
+                if (cell.Status != AnalysisContract.Verified)
+                    throw new InvalidOperationException(
+                        "ANALYSIS_TABLE_VALUE_UNVERIFIED");
+                return cached;
+            }
+            if (cell.Status != AnalysisContract.Unresolved)
+                throw new InvalidOperationException(
+                    "ANALYSIS_TABLE_VALUE_UNVERIFIED");
+            var expression = cell.Formula.Trim();
+            var guard = Regex.Match(expression,
+                @"^=IF\(([A-Z]{1,3}[1-9]\d*)="""","""",([A-Z]{1,3}[1-9]\d*)\*([A-Z]{1,3}[1-9]\d*)\)$",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            var product = guard.Success ? guard : Regex.Match(expression,
+                @"^=([A-Z]{1,3}[1-9]\d*)\*([A-Z]{1,3}[1-9]\d*)$",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (!product.Success)
+                throw new InvalidOperationException(
+                    "ANALYSIS_TABLE_VALUE_UNVERIFIED");
+            var first = guard.Success ? product.Groups[2].Value :
+                product.Groups[1].Value;
+            var second = guard.Success ? product.Groups[3].Value :
+                product.Groups[2].Value;
+            if (guard.Success &&
+                !string.Equals(guard.Groups[1].Value, first,
+                    StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(guard.Groups[1].Value, second,
+                    StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException(
+                    "ANALYSIS_TABLE_VALUE_UNVERIFIED");
+            var left = LiteralOperand(first, row, cellsByReference);
+            var right = LiteralOperand(second, row, cellsByReference);
+            if (checked(left * right) != cached)
+                throw new InvalidOperationException(
+                    "ANALYSIS_TABLE_VALUE_UNVERIFIED");
+            return cached;
+        }
+
+        private static decimal LiteralOperand(string reference, int row,
+            IDictionary<string, DatasetCell> cellsByReference)
+        {
+            DatasetCell operand;
+            if (!cellsByReference.TryGetValue(reference, out operand) ||
+                operand.Row != row ||
+                operand.Status != AnalysisContract.Verified ||
+                !string.IsNullOrEmpty(operand.Formula) ||
+                (operand.ValueType != AnalysisContract.DecimalValue &&
+                 operand.ValueType != AnalysisContract.IntegerValue))
+                throw new InvalidOperationException(
+                    "ANALYSIS_TABLE_VALUE_UNVERIFIED");
+            decimal value;
+            if (!decimal.TryParse(operand.Value, NumberStyles.Float,
+                CultureInfo.InvariantCulture, out value))
+                throw new InvalidOperationException(
+                    "ANALYSIS_TABLE_VALUE_UNVERIFIED");
+            return value;
+        }
 
         public static AnalysisArtifact Build(SourceSnapshot snapshot,
             AnalysisTableBinding binding)

@@ -19,80 +19,27 @@ namespace Scribble.Chat
         public const string SendToWord = "send_to_word";
         public const string OpenInChrome = "open_in_chrome";
 
-        // The pilot keeps the existing handoff name. The model supplies
-        // presentation wording and fact IDs; the host compiles all numeric
-        // values, citations and workbook formulas from retained evidence.
+        // The pilot keeps the existing handoff name. The host assembles the
+        // fact-bound slides; the model only chooses concise narrative.
         public static ChatToolDefinition AnalysisDeckDefinition()
         {
-            var textPart = ToolSchema.Build(new Dictionary<string, object>
-            {
-                { "Text", ToolSchema.String("Prose only; no numeric claim.") },
-                { "FactId", ToolSchema.String("Exact host-issued fact ID when showing a value.") },
-                { "IncludeUnit", new Dictionary<string, object> { { "type", "boolean" } } }
-            });
-            var textParts = Array(textPart, 24);
-            var cell = ToolSchema.Build(new Dictionary<string, object>
-            {
-                { "Text", ToolSchema.String("Label or prose without numeric claims.") },
-                { "FactId", ToolSchema.String("Exact host-issued fact ID for this value.") }
-            });
-            var row = ToolSchema.Build(new Dictionary<string, object>
-            {
-                { "Cells", Array(cell, 30) }
-            }, "Cells");
-            var series = ToolSchema.Build(new Dictionary<string, object>
-            {
-                { "Name", ToolSchema.String("Metric label.") },
-                { "FactIds", Array(ToolSchema.String("Exact fact ID in category order."), 30) }
-            }, "Name", "FactIds");
-            var chart = ToolSchema.Build(new Dictionary<string, object>
-            {
-                { "Type", ToolSchema.String("Native chart type supported by the draft writer.") },
-                { "Title", ToolSchema.String("Concise chart title including units where requested.") },
-                { "Categories", Array(ToolSchema.String("Category label."), 30) },
-                { "Series", Array(series, 8) }
-            }, "Type", "Title", "Categories", "Series");
-            var card = ToolSchema.Build(new Dictionary<string, object>
-            {
-                { "Heading", ToolSchema.String("Card heading.") },
-                { "Points", textParts }
-            }, "Heading", "Points");
-            var slide = ToolSchema.Build(new Dictionary<string, object>
-            {
-                { "Id", ToolSchema.String("Stable logical slide ID.") },
-                { "Layout", ToolSchema.String("Supported Scribble native layout.") },
-                { "Title", ToolSchema.String("Decision-oriented title without numeric literals.") },
-                { "Subtitle", textParts },
-                { "Takeaway", textParts },
-                { "TableHeaders", Array(ToolSchema.String("Column heading."), 30) },
-                { "TableRows", Array(row, 40) },
-                { "Chart", chart },
-                { "Cards", Array(card, 8) }
-            }, "Id", "Layout", "Title");
             return new ChatToolDefinition
             {
                 type = "function",
                 function = new ChatToolFunctionDefinition
                 {
                     name = SendToPowerPoint,
-                    description = "Create a new unsaved, marked PowerPoint deck from the retained verified analysis. Supply only narrative/layout choices and host-issued fact IDs. Never retype numeric values, citations, formulas or source data. Use one call for the complete deck; native review may require a targeted correction.",
+                    description = "Create a new unsaved, marked PowerPoint deck from the retained verified analysis. The host builds the supported layouts, native chart, group table, fact references and citations. Read complete period and group totals first, then provide an analysis ID, optional concise narrative choices, and optional comparison periods from the user's request. The host selects chart metrics from the request and validates them against the bound source.",
                     parameters = ToolSchema.Build(new Dictionary<string, object>
                     {
-                        { "AnalysisId", ToolSchema.String("Exact analysis_id from the typed read_cells result.") },
-                        { "WorkbookTitle", ToolSchema.String("Concise report title.") },
-                        { "Slides", Array(slide, PresentationDraftWriter.MaxDraftSlides) }
-                    }, "AnalysisId", "Slides")
+                        { "AnalysisId", ToolSchema.String("Host-issued analysis_id from a grouped source read.") },
+                        { "Title", ToolSchema.String("Short qualitative deck headline.") },
+                        { "Lead", ToolSchema.String("Short qualitative lead sentence.") },
+                        { "Caveat", ToolSchema.String("Short qualitative interpretation limit.") },
+                        { "FocusPeriod", ToolSchema.String("Optional YYYY-MM period present in verified facts.") },
+                        { "ComparePeriod", ToolSchema.String("Optional earlier YYYY-MM period requested by the user.") }
+                    }, "AnalysisId")
                 }
-            };
-        }
-
-        private static Dictionary<string, object> Array(Dictionary<string, object> item,
-            int maximum)
-        {
-            return new Dictionary<string, object>
-            {
-                { "type", "array" }, { "minItems", 1 },
-                { "maxItems", maximum }, { "items", item }
             };
         }
 

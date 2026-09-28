@@ -41,7 +41,9 @@ namespace Scribble.Office
                 "title",
                 "rows",
                 "chart",
-                "analysis_id"
+                "analysis_id",
+                "compare_period",
+                "focus_period"
             };
 
         private static readonly HashSet<string> CellsArguments =
@@ -235,6 +237,13 @@ namespace Scribble.Office
                         exception,
                         "DRAFT_ARGUMENTS_INVALID"));
             }
+
+            if (name == WorkbookToolCatalog.WriteCells &&
+                _taskContext != null && AnalysisDocumentPilot.Enabled &&
+                _taskContext.LoadAnalysis() != null)
+                return Error(call.id, authorization,
+                    "ANALYSIS_SOURCE_EDIT_FORBIDDEN",
+                    "The verified analysis route writes the new marked draft sheet through write_draft_sheet. The bound source sheet cannot be edited by write_cells.");
 
             if (name == WorkbookToolCatalog.WriteDraftSheet &&
                 arguments.ContainsKey("analysis_id"))

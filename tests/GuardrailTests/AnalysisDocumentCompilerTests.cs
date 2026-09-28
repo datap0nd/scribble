@@ -23,17 +23,13 @@ namespace GuardrailTests
                     arguments = json.Serialize(new
                     {
                         AnalysisId = "host-issued-id",
-                        Slides = new[] { new
-                        {
-                            Id = "headline", Layout = "scorecard",
-                            Title = "Verified trend",
-                            Subtitle = new[] { new { FactId = "fact-id" } }
-                        } }
+                        Title = "Verified trend",
+                        Lead = "Source-backed comparison"
                     })
                 }
             };
             Check(ToolContractValidator.Validate(valid, definition).Count == 0,
-                "The fact-referenced deck schema rejected its minimal plan.");
+                "The host-built deck schema rejected concise narrative choices.");
             var injected = new ChatToolCall
             {
                 id = "typed-deck-injection", type = "function",
@@ -41,26 +37,24 @@ namespace GuardrailTests
                 {
                     name = CrossAppToolCatalog.SendToPowerPoint,
                     arguments = valid.function.arguments.Replace(
-                        "\"FactId\":\"fact-id\"",
-                        "\"FactId\":\"fact-id\",\"Formula\":\"=1\"")
+                        "\"Title\":\"Verified trend\"",
+                        "\"Title\":\"Verified trend\",\"Slides\":[]")
                 }
             };
             Check(ToolContractValidator.Validate(injected, definition)
-                    .Any(error => error.Contains("Formula")),
-                "The model-facing deck schema accepted an authored formula.");
+                    .Any(error => error.Contains("Slides")),
+                "The model-facing deck schema accepted authored slides.");
         }
 
         public static void SharedAnalysisAllowsOneDraftPerDestination()
         {
-            var prior = Environment.GetEnvironmentVariable(
-                AnalysisDocumentPilot.FeatureFlag);
+            var prior = AnalysisDocumentPilot.Enabled;
             var root = Path.Combine(Path.GetTempPath(),
                 "scribble-analysis-write-scope-" +
                 Guid.NewGuid().ToString("N"));
             try
             {
-                Environment.SetEnvironmentVariable(
-                    AnalysisDocumentPilot.FeatureFlag, "1");
+                AnalysisDocumentPilot.SetEnabled(true);
                 var request = new ChatCompletionRequest
                 {
                     model = "offline-test",
@@ -103,20 +97,19 @@ namespace GuardrailTests
             }
             finally
             {
-                Environment.SetEnvironmentVariable(
-                    AnalysisDocumentPilot.FeatureFlag, prior);
+                AnalysisDocumentPilot.SetEnabled(prior);
                 if (Directory.Exists(root)) Directory.Delete(root, true);
             }
         }
 
-        public static void PilotRequiresExplicitFeatureFlag()
+        public static void PilotRequiresPersistedSetting()
         {
-            var prior = Environment.GetEnvironmentVariable(
-                AnalysisDocumentPilot.FeatureFlag);
+            var prior = AnalysisDocumentPilot.Enabled;
             try
             {
-                Environment.SetEnvironmentVariable(
-                    AnalysisDocumentPilot.FeatureFlag, null);
+                AnalysisDocumentPilot.SetEnabled(false);
+                Check(!AnalysisDocumentPilot.Enabled,
+                    "The persisted analysis setting did not disable the route.");
                 var blocked = false;
                 try { AnalysisDocumentPilot.WriteWorkbook(null, null, null); }
                 catch (InvalidOperationException error)
@@ -125,9 +118,41 @@ namespace GuardrailTests
             }
             finally
             {
-                Environment.SetEnvironmentVariable(
-                    AnalysisDocumentPilot.FeatureFlag, prior);
+                AnalysisDocumentPilot.SetEnabled(prior);
             }
+        }
+
+        public static void DeckIntentStartsOnTypedRoute()
+        {
+            var prior = AnalysisDocumentPilot.Enabled;
+            try
+            {
+                AnalysisDocumentPilot.SetEnabled(true);
+                var request = DocumentChatRequestFactory.Create(
+                    "qwen/qwen3.8-27b", "excel", string.Empty,
+                    new List<ChatTurn>(),
+                    "Analyze the workbook and create a PowerPoint deck",
+                    true);
+                var workbook = request.tools.Single(tool =>
+                    tool.function.name ==
+                    WorkbookToolCatalog.WriteDraftSheet);
+                var deck = request.tools.Single(tool =>
+                    tool.function.name ==
+                    CrossAppToolCatalog.SendToPowerPoint);
+                var legacyWorkbook = new ChatToolCall { id = "old-workbook",
+                    type = "function", function = new ChatToolCallFunction {
+                        name = WorkbookToolCatalog.WriteDraftSheet,
+                        arguments = "{\"title\":\"Old\",\"rows\":[[\"Period\"]]}" } };
+                var legacyDeck = new ChatToolCall { id = "old-deck",
+                    type = "function", function = new ChatToolCallFunction {
+                        name = CrossAppToolCatalog.SendToPowerPoint,
+                        arguments = "{\"plan\":[\"headline\"],\"slides\":[{}]}" } };
+                Check(ToolContractValidator.Validate(legacyWorkbook,
+                    workbook).Count > 0 && ToolContractValidator.Validate(
+                    legacyDeck, deck).Count > 0,
+                    "A deck request exposed legacy model-authored writes.");
+            }
+            finally { AnalysisDocumentPilot.SetEnabled(prior); }
         }
 
         public static void OneAnalysisSuppliesWorkbookAndFourSlides()

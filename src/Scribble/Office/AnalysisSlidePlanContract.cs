@@ -13,7 +13,7 @@ namespace Scribble.Office
         public const int MaxArgumentCharacters = 60000;
 
         public static AnalysisDocumentPlan Parse(AnalysisArtifact artifact,
-            string json)
+            string json, Func<string, bool> acceptsRevision = null)
         {
             AnalysisContract.Serialize(artifact);
             if (string.IsNullOrWhiteSpace(json) ||
@@ -31,8 +31,11 @@ namespace Scribble.Office
                     "ANALYSIS_PLAN_PAYLOAD_INVALID");
             }
             CheckKeys(raw, "plan", "AnalysisId", "WorkbookTitle", "Slides");
-            if (!string.Equals(Value(raw, "AnalysisId"),
-                    artifact.AnalysisId, StringComparison.Ordinal))
+            var requestedId = Value(raw, "AnalysisId");
+            if (!string.Equals(requestedId, artifact.AnalysisId,
+                    StringComparison.Ordinal) &&
+                (acceptsRevision == null ||
+                 !acceptsRevision(requestedId)))
                 throw new InvalidOperationException(
                     "ANALYSIS_PLAN_BINDING_INVALID");
             var slides = Items(raw, "Slides", 1,
@@ -92,6 +95,7 @@ namespace Scribble.Office
                 throw new InvalidOperationException(
                     "ANALYSIS_PLAN_PAYLOAD_INVALID");
             }
+            plan.AnalysisId = artifact.AnalysisId;
             plan.WorkbookRows = AnalysisWorkbookPlanBuilder.Build(artifact);
             AnalysisDocumentCompiler.Compile(artifact, plan);
             return plan;

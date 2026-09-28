@@ -63,8 +63,7 @@ namespace GuardrailTests
             var output = Path.GetDirectoryName(Path.GetFullPath(reportPath));
             Directory.CreateDirectory(output);
             var json = new JavaScriptSerializer { MaxJsonLength = 16000000 };
-            var previousFlag = Environment.GetEnvironmentVariable(
-                AnalysisDocumentPilot.FeatureFlag);
+            var previousFlag = AnalysisDocumentPilot.Enabled;
             var existingExcel = new HashSet<int>(Process.GetProcessesByName(
                 "EXCEL").Select(process => process.Id));
             dynamic excel = null, source = null, ledger = null, powerpoint = null,
@@ -106,8 +105,7 @@ namespace GuardrailTests
             {
                 Check(Process.GetProcessesByName("POWERPNT").Length == 0,
                     "NATIVE_POWERPOINT_SESSION_ALREADY_OPEN");
-                Environment.SetEnvironmentVariable(
-                    AnalysisDocumentPilot.FeatureFlag, "1");
+                AnalysisDocumentPilot.SetEnabled(true);
                 excel = Activator.CreateInstance(Type.GetTypeFromProgID(
                     "Excel.Application", true));
                 uint excelProcessId;
@@ -355,6 +353,27 @@ namespace GuardrailTests
                                     tool_call_id = result.ToolCallId,
                                     content = result.Content });
                         task.RecordExchange(request, response, results);
+                        if (round == 0)
+                        {
+                            var sourceEdit = new ChatToolCall {
+                                id = "typed-source-edit", type = "function",
+                                function = new ChatToolCallFunction {
+                                    name = WorkbookToolCatalog.WriteCells,
+                                    arguments = "{\"start_cell\":\"B3\",\"rows\":[[\"May\",\"June\"]]}",
+                                }
+                            };
+                            var editPermission =
+                                new OneShotDraftAuthorization(true);
+                            var rejectedEdit = host.ExecuteAsync(sourceEdit,
+                                editPermission, true, prompt, reviewClient,
+                                reviewSettings, CancellationToken.None, null)
+                                .GetAwaiter().GetResult();
+                            Check(rejectedEdit.Outcome.ErrorCode ==
+                                "ANALYSIS_SOURCE_EDIT_FORBIDDEN" &&
+                                !editPermission.IsConsumed &&
+                                SourceValues(ledger) == sourceBefore,
+                                "XA01_TYPED_SOURCE_EDIT_WAS_NOT_REJECTED");
+                        }
                         if (cancelAfterRead && round == 0)
                             cancellation.Cancel();
                     }
@@ -608,8 +627,7 @@ namespace GuardrailTests
                 GC.WaitForPendingFinalizers();
                 forcedExcelCleanup = StopOwnedExcelIfStillRunning(
                     ownedExcelProcessId, existingExcel);
-                Environment.SetEnvironmentVariable(
-                    AnalysisDocumentPilot.FeatureFlag, previousFlag);
+                AnalysisDocumentPilot.SetEnabled(previousFlag);
             }
             var report = new {
                 execution_kind = restartReconcile ?

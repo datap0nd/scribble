@@ -15,6 +15,12 @@ namespace Scribble.Office
 
         public static List<AnalysisPlanRow> Build(AnalysisArtifact artifact)
         {
+            return Build(artifact, null);
+        }
+
+        public static List<AnalysisPlanRow> Build(AnalysisArtifact artifact,
+            AnalysisRequestPlan selection)
+        {
             AnalysisContract.Serialize(artifact);
             if (artifact.Snapshots.Count != 1 ||
                 artifact.Snapshots[0].Tables.Count != 1 ||
@@ -27,8 +33,7 @@ namespace Scribble.Office
             var snapshot = artifact.Snapshots[0];
             var table = snapshot.Tables[0];
             if (snapshot.Coverage != "complete_range" ||
-                table.Rows < 2 || table.Columns < 2 ||
-                table.Rows > WorkbookDraftWriter.MaxDraftColumns)
+                table.Rows < 2 || table.Columns < 2)
                 throw new InvalidOperationException(
                     "ANALYSIS_WORKBOOK_SOURCE_UNSUPPORTED");
             var headerCells = table.Cells.Where(cell => cell.Row == 0 &&
@@ -46,24 +51,26 @@ namespace Scribble.Office
                 table.Name.IndexOfAny(new[] { '[', ']', '\\' }) >= 0)
                 throw new InvalidOperationException(
                     "ANALYSIS_WORKBOOK_PERIOD_UNSUPPORTED");
-            var periods = table.Cells.Where(cell =>
+            var sourcePeriods = table.Cells.Where(cell =>
                     cell.Row > 0 && cell.Column == periodColumn)
                 .OrderBy(cell => cell.Row).ToArray();
-            if (periods.Length != table.Rows - 1 ||
-                periods.Select(cell => cell.Value)
-                    .Distinct(StringComparer.Ordinal).Count() != periods.Length)
+            if (sourcePeriods.Length != table.Rows - 1)
                 throw new InvalidOperationException(
                     "ANALYSIS_WORKBOOK_PERIOD_UNSUPPORTED");
-            var metrics = artifact.Facts.Select(fact => fact.Metric)
-                .Distinct(StringComparer.Ordinal)
-                .OrderBy(metric => headers.ContainsKey(metric)
-                    ? headers[metric] : int.MaxValue).ToArray();
-            if (metrics.Length + 1 > WorkbookDraftWriter.MaxDraftRows ||
+            var allPeriods = sourcePeriods.GroupBy(cell => cell.Value,
+                    StringComparer.Ordinal).Select(group => group.First())
+                .OrderBy(cell => cell.Value, StringComparer.Ordinal).ToArray();
+            var reportFacts = artifact.Facts.Where(fact =>
+                fact.Dimensions.Count == 0).ToArray();
+            var metrics = reportFacts.Select(fact => fact.Metric)
+                .Distinct(StringComparer.Ordinal).ToArray();
+            if (metrics.Length == 0 ||
+                metrics.Length + 1 > WorkbookDraftWriter.MaxDraftRows ||
                 metrics.Any(metric => !headers.ContainsKey(metric)) ||
-                artifact.Facts.Any(fact => fact.Kind !=
-                    AnalysisContract.SourceObserved ||
-                    fact.Status != AnalysisContract.Verified ||
-                    fact.Dimensions.Count != 0))
+                reportFacts.Length != metrics.Length * allPeriods.Length ||
+                reportFacts.Any(fact => fact.Status !=
+                    AnalysisContract.Verified ||
+                    fact.SnapshotId != snapshot.SnapshotId))
                 throw new InvalidOperationException(
                     "ANALYSIS_WORKBOOK_FACTS_UNSUPPORTED");
             var binding = new AnalysisTableBinding
@@ -72,7 +79,7 @@ namespace Scribble.Office
                 PeriodHeader = "Period",
                 Metrics = metrics.Select(metric =>
                 {
-                    var fact = artifact.Facts.First(item =>
+                    var fact = reportFacts.First(item =>
                         item.Metric == metric);
                     return new AnalysisMetricColumnBinding
                     {
@@ -81,17 +88,28 @@ namespace Scribble.Office
                     };
                 }).ToList()
             };
-            var rebound = AnalysisTableArtifactBuilder.Build(snapshot,
-                binding);
-            if (rebound.AnalysisId != artifact.AnalysisId)
+            if (reportFacts.All(fact => fact.Kind ==
+                    AnalysisContract.SourceObserved) &&
+                AnalysisTableArtifactBuilder.Build(snapshot,
+                    binding).AnalysisId != artifact.AnalysisId)
                 throw new InvalidOperationException(
                     "ANALYSIS_WORKBOOK_FACTS_UNSUPPORTED");
+            selection = selection ?? AnalysisRequestPlan.Resolve(artifact,
+                null);
+            selection.Validate(artifact);
+            var periods = new[] { selection.ComparePeriod,
+                selection.FocusPeriod }.Select(period => allPeriods.SingleOrDefault(
+                    cell => cell.Value == period)).ToArray();
+            if (periods.Any(cell => cell == null) ||
+                periods.Length + 1 > WorkbookDraftWriter.MaxDraftColumns)
+                throw new InvalidOperationException(
+                    "ANALYSIS_WORKBOOK_PERIOD_UNSUPPORTED");
             var sourcePeriod = SourceColumnRange(table, periodColumn);
             var sheet = "'" + table.Name.Replace("'", "''") + "'!";
             var rows = new List<AnalysisPlanRow>();
             rows.Add(Row(new[] { Label("Metric") }.Concat(
                 periods.Select(cell => Label(cell.Value)))));
-            foreach (var metric in metrics)
+            foreach (var metric in selection.ReportMetrics)
             {
                 var metricColumn = SourceColumnRange(table,
                     headers[metric]);
@@ -99,7 +117,7 @@ namespace Scribble.Office
                 for (var index = 0; index < periods.Length; index++)
                 {
                     var period = periods[index].Value;
-                    var fact = artifact.Facts.Single(item =>
+                    var fact = reportFacts.Single(item =>
                         item.Metric == metric && item.Period == period);
                     var reportColumn = ColumnName(index + 2);
                     cells.Add(new AnalysisPlanCell

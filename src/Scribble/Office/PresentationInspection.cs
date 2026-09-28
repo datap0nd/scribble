@@ -344,9 +344,7 @@ namespace Scribble.Office
 
         private static bool PilotCanPackageChart(object slide)
         {
-            if (!string.Equals(Environment.GetEnvironmentVariable(
-                    AnalysisDocumentPilot.FeatureFlag), "1",
-                    StringComparison.Ordinal)) return false;
+            if (!AnalysisDocumentPilot.Enabled) return false;
             dynamic page = slide;
             dynamic deck = page.Parent;
             var path = Convert.ToString(deck.Path);

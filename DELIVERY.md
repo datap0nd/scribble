@@ -108,7 +108,7 @@ a ≤ 10-line owner note in §5.
      completion.
   2. Reproduce it offline where possible, as a regression test.
   3. Fix it, rebuild, install and rerun.
-  - At most 6 paid runs per day.
+  - Stay within the $4/day spend cap; no run-count limit.
 - **B3** Review rules for this route:
   - one review/repair round at most;
   - a model finding can block completion only when a deterministic
@@ -175,10 +175,18 @@ a ≤ 10-line owner note in §5.
 | S1 XA02–10 | — | — | not run |
 | S2 PP01 | old | 2.0.395 | 0/3 (no terminal event after 23 min) |
 | S2 PP02–10 | — | — | not run (the pilot code rejects every one) |
-| New route, real model | — | — | **0 runs** |
+| New route, real model | new | 2.0.706.0 | 10 runs, 1 eligible XA01 pass after native gates and agent visual review; owner review remains for D2 |
 
-Current stage: **A**. The §2 decisions were approved on 26 Sep and A1's merge
-is done. A4's native smoke test passed on the PR #43 candidate. Next: A2.
+Current stage: **B4** after PR #44 merge. A1–A5 and B1–B2 are done. Installed
+2.0.706.0 came from green CI `36421402714` and hashes to `e079743a` (DLL
+SHA256 prefix). The tenth real XA01 run used the new route and completed
+unassisted with native XLSX/PPTX, terminal events, source preservation and all
+deterministic hard gates passing. Its B4:C5 formulas and single Revenue chart
+match the request. All four rendered slides passed agent visual inspection for
+legibility and overlap; owner visual approval remains Stage D2. The run cost
+$0.038, leaving $12.6231 at 12:39 UTC on 28 Sep; total paid spend today is
+about $0.301. Next: merge #44 after green CI, then run XA02–XA10 as one batch
+on this installed build, within the $4/day cap.
 
 ## 6. Rules for autonomous sessions
 
