@@ -1153,7 +1153,6 @@ namespace Scribble.Office
                 try
                 {
                     resolved = WorkbookGroupedTotals.ResolveSheet(headers,
-                        Convert.ToString(workbook.ActiveSheet.Name),
                         StringList(arguments, "group_by"),
                         StringList(arguments, "sum_columns"),
                         ToolArguments.GetString(arguments,

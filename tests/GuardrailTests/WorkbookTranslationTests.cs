@@ -100,11 +100,11 @@ namespace GuardrailTests
                 { "Scribble Draft", new[] { "June-to-May audit", "", "" } },
                 { "History", new[] { "Period", "Group", "RevenueEUR" } }
             };
-            Check(WorkbookGroupedTotals.ResolveSheet(sheets, "Scribble Draft",
+            Check(WorkbookGroupedTotals.ResolveSheet(sheets,
                 new[] { "Period", "Group" }, new[] { "RevenueEUR", "CostEUR" },
                 null) == "Ledger", "A draft becoming active must not redirect grouped source reads.");
             sheets["Archive"] = new[] { "Period", "Group", "RevenueEUR", "CostEUR" };
-            Reject(() => WorkbookGroupedTotals.ResolveSheet(sheets, "Scribble Draft",
+            Reject(() => WorkbookGroupedTotals.ResolveSheet(sheets,
                 new[] { "Period", "Group" }, new[] { "RevenueEUR", "CostEUR" },
                 null));
 

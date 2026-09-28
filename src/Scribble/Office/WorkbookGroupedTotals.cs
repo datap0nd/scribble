@@ -166,7 +166,7 @@ namespace Scribble.Office
         // source table unambiguously; never silently pick a different table.
         public static string ResolveSheet(
             IReadOnlyDictionary<string, IReadOnlyList<string>> sheetHeaders,
-            string activeSheet, IReadOnlyList<string> groupBy,
+            IReadOnlyList<string> groupBy,
             IReadOnlyList<string> sumColumns, string filterColumn)
         {
             if (sheetHeaders == null || groupBy == null || sumColumns == null ||
@@ -183,8 +183,6 @@ namespace Scribble.Office
                     catch (InvalidOperationException) { return false; }
                 });
             }).Select(sheet => sheet.Key).ToArray();
-            if (matches.Contains(activeSheet, StringComparer.OrdinalIgnoreCase))
-                return activeSheet;
             if (matches.Length == 1) return matches[0];
             throw new InvalidOperationException(matches.Length == 0
                 ? "No worksheet has every requested grouped-total header. Name a source worksheet explicitly."
