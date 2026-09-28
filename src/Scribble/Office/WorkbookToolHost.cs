@@ -1141,12 +1141,12 @@ namespace Scribble.Office
                     var width = (int)used.Columns.Count;
                     if (width < 1 || width > MaxReadColumns) continue;
                     object headerValues = used.Rows[1].Value2;
-                    var grid = headerValues as object[,];
+                    var headerGrid = headerValues as object[,];
                     var labels = new string[width];
                     for (var column = 0; column < width; column++)
-                        labels[column] = CellText(grid == null
-                            ? headerValues : grid[grid.GetLowerBound(0),
-                                grid.GetLowerBound(1) + column]);
+                        labels[column] = CellText(headerGrid == null
+                            ? headerValues : headerGrid[headerGrid.GetLowerBound(0),
+                                headerGrid.GetLowerBound(1) + column]);
                     headers.Add(Convert.ToString(candidate.Name), labels);
                 }
                 string resolved;
