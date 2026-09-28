@@ -414,7 +414,8 @@ namespace Scribble.Chat
                       "never saved."
                     : string.Empty;
                 var excelHandoffInstruction = hostKind == "excel"
-                    ? (typedWorkbook
+                    ? (AnalysisDocumentPilot.Enabled && !hasExcelSelection &&
+                        !hasKoreanWorkbook
                         ? " The active workbook summary includes bounded sheet names, ranges and header labels. Use these to bind a complete read_grouped_totals call for the requested additive metrics; inspect source cells when the schema or data quality needs clarification. For a PowerPoint handoff, use the verified grouped facts and the in-memory draft audit with send_to_powerpoint. "
                         : " In Excel, list_worksheets is an inventory with no required arguments; use {} for it. Use read_cells with a worksheet name and range to read actual values. ") +
                       "A Scribble Draft sheet " +
