@@ -30,6 +30,8 @@ namespace Scribble.Office
 
         public string ComparePeriod { get; set; }
         public string FocusPeriod { get; set; }
+        public List<string> ReportMetrics { get; set; } =
+            new List<string>();
         public List<string> ChartSeries { get; set; } = new List<string>();
 
         public static AnalysisRequestPlan Resolve(AnalysisArtifact artifact,
@@ -66,6 +68,7 @@ namespace Scribble.Office
             if (metrics.Length == 0)
                 throw new InvalidOperationException(
                     "ANALYSIS_REQUEST_METRICS_MISSING");
+            plan.ReportMetrics = SelectReportMetrics(objective, metrics);
             var chartText = string.Join(" ", Regex.Matches(objective ?? "",
                 @"\bchart\b[^.!?]*", RegexOptions.IgnoreCase |
                 RegexOptions.CultureInvariant).Cast<Match>()
@@ -84,11 +87,11 @@ namespace Scribble.Office
                     >= 0 ||
                 chartText.IndexOf(ReadableMetric(metric),
                     StringComparison.OrdinalIgnoreCase) >= 0).ToArray();
-            plan.ChartSeries = both ? metrics.Take(2).ToList() :
-                primaryOnly ? metrics.Take(1).ToList() :
+            plan.ChartSeries = both ? plan.ReportMetrics.Take(2).ToList() :
+                primaryOnly ? plan.ReportMetrics.Take(1).ToList() :
                 named.Length > 0 ? named.ToList() :
-                metrics.Take(1).ToList();
-            if (both && metrics.Length != 2)
+                plan.ReportMetrics.Take(1).ToList();
+            if (both && plan.ReportMetrics.Count != 2)
                 throw new InvalidOperationException(
                     "ANALYSIS_REQUEST_CHART_SERIES_UNBOUND");
             ValidateSupplied(plan, supplied, metrics);
@@ -110,7 +113,13 @@ namespace Scribble.Office
                     "ANALYSIS_REQUEST_PERIOD_UNBOUND");
             var available = AvailableMetrics(artifact, ComparePeriod,
                 FocusPeriod);
-            if (ChartSeries == null || ChartSeries.Count == 0 ||
+            if (ReportMetrics == null || ReportMetrics.Count == 0 ||
+                ReportMetrics.Count + 1 > WorkbookDraftWriter.MaxDraftRows ||
+                ReportMetrics.Distinct(StringComparer.Ordinal).Count() !=
+                    ReportMetrics.Count ||
+                ReportMetrics.Any(metric => !available.Contains(metric,
+                    StringComparer.Ordinal)) ||
+                ChartSeries == null || ChartSeries.Count == 0 ||
                 ChartSeries.Count > PresentationDraftWriter.MaxChartSeries ||
                 ChartSeries.Distinct(StringComparer.Ordinal).Count() !=
                     ChartSeries.Count ||
@@ -128,17 +137,49 @@ namespace Scribble.Office
                 fact.Status == AnalysisContract.Verified &&
                 (fact.ValueType == AnalysisContract.DecimalValue ||
                  fact.ValueType == AnalysisContract.IntegerValue)).ToArray();
-            var headers = artifact.Snapshots[0].Tables[0].Cells.Where(cell =>
-                cell.Row == 0).ToArray();
             return facts.Where(fact => fact.Period == focus &&
                     facts.Any(other => other.Period == compare &&
                         other.Metric == fact.Metric &&
                         other.Unit == fact.Unit &&
                         other.Currency == fact.Currency))
                 .Select(fact => fact.Metric).Distinct(StringComparer.Ordinal)
-                .OrderBy(metric => headers.Where(cell => cell.Value == metric)
-                    .Select(cell => cell.Column).DefaultIfEmpty(int.MaxValue)
-                    .First()).ToArray();
+                .ToArray();
+        }
+
+        private static List<string> SelectReportMetrics(string objective,
+            string[] available)
+        {
+            var request = objective ?? string.Empty;
+            var placed = new List<Tuple<string, int, int>>();
+            foreach (var metric in available)
+            {
+                var label = ReadableMetric(metric);
+                var token = @"\b(?:" + Regex.Escape(metric) + "|" +
+                    Regex.Escape(label).Replace(@"\ ", @"\s+") +
+                    @")\s+in\s+A(?<row>[1-9][0-9]*)(?!:)\b";
+                foreach (Match match in Regex.Matches(request, token,
+                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+                    placed.Add(Tuple.Create(metric,
+                        int.Parse(match.Groups["row"].Value,
+                            CultureInfo.InvariantCulture),
+                        match.Groups[0].Length));
+            }
+            var requestedCells = Regex.Matches(request,
+                @"\bin\s+A[1-9][0-9]*(?!:)(?:\b|$)",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)
+                .Count;
+            if (requestedCells > 0)
+            {
+                var selected = placed.GroupBy(item => item.Item2)
+                    .OrderBy(group => group.Key)
+                    .Select(group => group.OrderByDescending(item =>
+                        item.Item3).First().Item1).ToList();
+                if (selected.Count != requestedCells)
+                    throw new InvalidOperationException(
+                        "ANALYSIS_REQUEST_REPORT_METRIC_UNBOUND");
+                return selected;
+            }
+            return available.Take(2).ToList();
         }
 
         private static string ResolvePeriod(string token, string[] periods)

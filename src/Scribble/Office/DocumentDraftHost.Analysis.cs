@@ -492,6 +492,7 @@ namespace Scribble.Office
                     WorkbookTitle = title,
                     ComparePeriod = selection.ComparePeriod,
                     FocusPeriod = selection.FocusPeriod,
+                    ReportMetrics = selection.ReportMetrics.ToList(),
                     ChartSeries = selection.ChartSeries.ToList(),
                     WorkbookRows = AnalysisWorkbookPlanBuilder.Build(
                         artifact, selection)

@@ -29,7 +29,7 @@ namespace Scribble.Chat
                 function = new ChatToolFunctionDefinition
                 {
                     name = SendToPowerPoint,
-                    description = "Create a new unsaved, marked PowerPoint deck from the retained verified analysis. The host builds the supported layouts, native chart, group table, fact references and citations. Read complete period and group totals first, then provide an analysis ID, optional concise narrative choices, and optional comparison periods and chart metric names from the user's request. The host validates every selection against the request and bound source.",
+                    description = "Create a new unsaved, marked PowerPoint deck from the retained verified analysis. The host builds the supported layouts, native chart, group table, fact references and citations. Read complete period and group totals first, then provide an analysis ID, optional concise narrative choices, and optional comparison periods from the user's request. The host selects chart metrics from the request and validates them against the bound source.",
                     parameters = ToolSchema.Build(new Dictionary<string, object>
                     {
                         { "AnalysisId", ToolSchema.String("Host-issued analysis_id from a grouped source read.") },
@@ -37,13 +37,7 @@ namespace Scribble.Chat
                         { "Lead", ToolSchema.String("Short qualitative lead sentence.") },
                         { "Caveat", ToolSchema.String("Short qualitative interpretation limit.") },
                         { "FocusPeriod", ToolSchema.String("Optional YYYY-MM period present in verified facts.") },
-                        { "ComparePeriod", ToolSchema.String("Optional earlier YYYY-MM period requested by the user.") },
-                        { "ChartSeries", new Dictionary<string, object> {
-                            { "type", "array" },
-                            { "description", "Optional ordered source metric names requested for the native chart; omit to let the host resolve the user's request." },
-                            { "items", ToolSchema.String("Exact source metric name.") },
-                            { "minItems", 1 },
-                            { "maxItems", 5 } } }
+                        { "ComparePeriod", ToolSchema.String("Optional earlier YYYY-MM period requested by the user.") }
                     }, "AnalysisId")
                 }
             };

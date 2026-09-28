@@ -175,19 +175,18 @@ a ≤ 10-line owner note in §5.
 | S1 XA02–10 | — | — | not run |
 | S2 PP01 | old | 2.0.395 | 0/3 (no terminal event after 23 min) |
 | S2 PP02–10 | — | — | not run (the pilot code rejects every one) |
-| New route, real model | new | 2.0.704.0 | 8 runs, 0 eligible passes; latest typed draft passed, but a generic source-bound write broke deck preflight |
+| New route, real model | new | 2.0.706.0 | 10 runs, 1 eligible XA01 pass after native gates and agent visual review; owner review remains for D2 |
 
-Current stage: **B2**. A1–A5 are done. Installed 2.0.704.0 came from green CI
-`36416255638` and hashes to `c25bb96b` (DLL SHA256 prefix). Its eighth real
-XA01 run used the new route. The first error was planning/schema: the generic
-dispatcher rejected the newly valid typed draft period arguments. The model
-then made a generic `write_cells` call bound to Ledger, changing source B3:C3
-while trying to relabel the new draft. Later grouped reads no longer extended
-the original source analysis, so deck preflight rejected the plan. No pptx or
-terminal receipt resulted; the modified disposable source was preserved. The
-run cost $0.221, leaving $12.7170 at 11:55 UTC on 28 Sep. Next: accept typed
-draft period arguments at dispatch, remove/reject source-bound cell edits on
-the typed route, verify regressions, rebuild/install, and rerun XA01.
+Current stage: **B4** after PR #44 merge. A1–A5 and B1–B2 are done. Installed
+2.0.706.0 came from green CI `36421402714` and hashes to `e079743a` (DLL
+SHA256 prefix). The tenth real XA01 run used the new route and completed
+unassisted with native XLSX/PPTX, terminal events, source preservation and all
+deterministic hard gates passing. Its B4:C5 formulas and single Revenue chart
+match the request. All four rendered slides passed agent visual inspection for
+legibility and overlap; owner visual approval remains Stage D2. The run cost
+$0.038, leaving $12.6231 at 12:39 UTC on 28 Sep; total paid spend today is
+about $0.301. Next: merge #44 after green CI, then run XA02–XA10 as one batch
+on this installed build, within the $4/day cap.
 
 ## 6. Rules for autonomous sessions
 

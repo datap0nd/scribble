@@ -31,16 +31,9 @@ namespace Scribble.Office
                 objective, choices);
             var focus = selection.FocusPeriod;
             var compare = selection.ComparePeriod;
-            var metrics = totals.Where(fact => fact.Period == focus &&
-                totals.Any(other => other.Period == compare &&
-                    other.Metric == fact.Metric &&
-                    other.Currency == fact.Currency &&
-                    other.Unit == fact.Unit))
-                .Select(fact => fact.Metric).Distinct(StringComparer.Ordinal)
-                .OrderBy(metric => SourceColumn(artifact, metric))
-                .Take(2).Concat(selection.ChartSeries)
-                .Distinct(StringComparer.Ordinal)
-                .OrderBy(metric => SourceColumn(artifact, metric)).ToArray();
+            var metrics = selection.ReportMetrics.Concat(
+                    selection.ChartSeries).Distinct(StringComparer.Ordinal)
+                .ToArray();
             if (metrics.Length == 0)
                 throw new InvalidOperationException(
                     "ANALYSIS_DECK_METRICS_MISSING");
@@ -155,6 +148,7 @@ namespace Scribble.Office
                 AnalysisId = artifact.AnalysisId,
                 WorkbookTitle = title,
                 ComparePeriod = compare, FocusPeriod = focus,
+                ReportMetrics = selection.ReportMetrics.ToList(),
                 ChartSeries = selection.ChartSeries.ToList(),
                 WorkbookRows = AnalysisWorkbookPlanBuilder.Build(artifact,
                     selection),
@@ -173,15 +167,6 @@ namespace Scribble.Office
             value = (value ?? string.Empty).Trim();
             return value.Length > 0 && value.Length <= maximum &&
                 !Regex.IsMatch(value, @"\d") ? value : fallback;
-        }
-
-        private static int SourceColumn(AnalysisArtifact artifact,
-            string metric)
-        {
-            var table = artifact.Snapshots[0].Tables[0];
-            var cell = table.Cells.FirstOrDefault(item => item.Row == 0 &&
-                item.Value == metric);
-            return cell == null ? int.MaxValue : cell.Column;
         }
 
         private static string Label(string metric)

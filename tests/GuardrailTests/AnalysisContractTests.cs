@@ -304,6 +304,69 @@ namespace GuardrailTests
                 new Dictionary<string, object> {
                     { "ChartSeries", new[] { "RevenueEUR", "Unknown" } } }),
                 "ANALYSIS_REQUEST_CHART_SERIES_UNBOUND");
+            var extraMetricTable = new TableDataset {
+                TableId = "extra-metrics", Name = "Ledger", Rows = 3,
+                Columns = 4, Cells = new List<DatasetCell> {
+                    Cell(0, 0, "A1", AnalysisContract.TextValue, "Period"),
+                    Cell(0, 1, "B1", AnalysisContract.TextValue, "Units"),
+                    Cell(0, 2, "C1", AnalysisContract.TextValue, "RevenueEUR"),
+                    Cell(0, 3, "D1", AnalysisContract.TextValue, "CostEUR"),
+                    Cell(1, 0, "A2", AnalysisContract.TextValue, "2026-05"),
+                    Cell(1, 1, "B2", AnalysisContract.DecimalValue, "943"),
+                    Cell(1, 2, "C2", AnalysisContract.DecimalValue, "85519"),
+                    Cell(1, 3, "D2", AnalysisContract.DecimalValue, "36702"),
+                    Cell(2, 0, "A3", AnalysisContract.TextValue, "2026-06"),
+                    Cell(2, 1, "B3", AnalysisContract.DecimalValue, "971"),
+                    Cell(2, 2, "C3", AnalysisContract.DecimalValue, "82992"),
+                    Cell(2, 3, "D3", AnalysisContract.DecimalValue, "36714") } };
+            var extraMetricSnapshot = AnalysisContract.CreateSnapshot(
+                "workbook-extra", "excel_workbook", "revision-1",
+                "complete_range", "literal_values", new[] {
+                    Locator("workbook-extra", "Ledger", "A1:D3", "") },
+                new[] { extraMetricTable });
+            var extraMetricBinding = new AnalysisTableBinding {
+                TableId = extraMetricTable.TableId,
+                PeriodHeader = "Period",
+                Metrics = new List<AnalysisMetricColumnBinding> {
+                    new AnalysisMetricColumnBinding { Header = "RevenueEUR",
+                        Metric = "RevenueEUR", Unit = "currency",
+                        Currency = "EUR" },
+                    new AnalysisMetricColumnBinding { Header = "CostEUR",
+                        Metric = "CostEUR", Unit = "currency",
+                        Currency = "EUR" },
+                    new AnalysisMetricColumnBinding { Header = "Units",
+                        Metric = "Units", Unit = "units" } } };
+            var extraMetricArtifact = AnalysisTableArtifactBuilder.BuildGrouped(
+                extraMetricSnapshot, extraMetricBinding);
+            var extraMetricSelection = AnalysisRequestPlan.Resolve(
+                extraMetricArtifact,
+                "Create a June-to-May audit table. Put Revenue EUR in A4 and Cost EUR in A5.");
+            var extraMetricRows = AnalysisWorkbookPlanBuilder.Build(
+                extraMetricArtifact, extraMetricSelection);
+            Check(extraMetricRows.Count == 3 &&
+                extraMetricSelection.ReportMetrics.SequenceEqual(new[] {
+                    "RevenueEUR", "CostEUR" }) &&
+                extraMetricRows[1].Cells[0].Text == "RevenueEUR" &&
+                extraMetricRows[2].Cells[0].Text == "CostEUR" &&
+                extraMetricRows[1].Cells[1].ExpectedFactId ==
+                    extraMetricArtifact.Facts.Single(fact =>
+                        fact.Metric == "RevenueEUR" &&
+                        fact.Period == "2026-05").FactId,
+                "The report replaced requested output metrics with source-column order.");
+            var extraMetricDeck = AnalysisDeckPlanBuilder.Build(
+                extraMetricArtifact, new Dictionary<string, object> {
+                    { "AnalysisId", extraMetricArtifact.AnalysisId } }, 3,
+                "Create a period comparison with a native chart. The chart must use only primary values for May and June.");
+            var extraMetricChart = extraMetricDeck.Slides.Single(slide =>
+                slide.Chart != null).Chart;
+            Check(extraMetricDeck.ReportMetrics.SequenceEqual(new[] {
+                    "RevenueEUR", "CostEUR" }) &&
+                extraMetricChart.Series.Count == 1 &&
+                extraMetricChart.Series[0].FactIds[0] ==
+                    extraMetricArtifact.Facts.Single(fact =>
+                        fact.Metric == "RevenueEUR" &&
+                        fact.Period == "2026-05").FactId,
+                "The primary chart series followed source-column order instead of the typed binding.");
             binding.DimensionHeaders.Add("Group");
             var dimensioned = AnalysisTableArtifactBuilder.BuildGrouped(
                 snapshot, binding, "Period", "2026-05");

@@ -63,9 +63,7 @@ namespace Scribble.Office
             var reportFacts = artifact.Facts.Where(fact =>
                 fact.Dimensions.Count == 0).ToArray();
             var metrics = reportFacts.Select(fact => fact.Metric)
-                .Distinct(StringComparer.Ordinal)
-                .OrderBy(metric => headers.ContainsKey(metric)
-                    ? headers[metric] : int.MaxValue).ToArray();
+                .Distinct(StringComparer.Ordinal).ToArray();
             if (metrics.Length == 0 ||
                 metrics.Length + 1 > WorkbookDraftWriter.MaxDraftRows ||
                 metrics.Any(metric => !headers.ContainsKey(metric)) ||
@@ -111,7 +109,7 @@ namespace Scribble.Office
             var rows = new List<AnalysisPlanRow>();
             rows.Add(Row(new[] { Label("Metric") }.Concat(
                 periods.Select(cell => Label(cell.Value)))));
-            foreach (var metric in metrics)
+            foreach (var metric in selection.ReportMetrics)
             {
                 var metricColumn = SourceColumnRange(table,
                     headers[metric]);
