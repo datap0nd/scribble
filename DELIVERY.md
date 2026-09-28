@@ -175,18 +175,19 @@ a ≤ 10-line owner note in §5.
 | S1 XA02–10 | — | — | not run |
 | S2 PP01 | old | 2.0.395 | 0/3 (no terminal event after 23 min) |
 | S2 PP02–10 | — | — | not run (the pilot code rejects every one) |
-| New route, real model | new | 2.0.701.0 | 7 runs, 0 eligible passes; latest passed deterministic gates but needs visual review and request selection repair |
+| New route, real model | new | 2.0.704.0 | 8 runs, 0 eligible passes; latest typed draft passed, but a generic source-bound write broke deck preflight |
 
-Current stage: **B2**. A1–A5 are done. The seventh real XA01 run on installed
-2.0.701.0 used the new route, reached a terminal event, and passed every
-deterministic native check in 10 requests. It remains at native visual review
-and does not count toward S1 because the workbook and chart still choose the
-latest two periods and first metric regardless of the request. The owner
-removed the daily run-count limit; the $4/day spend cap remains. Seven runs
-cost about $1.53 on Dubai-local 27 Sep. OpenRouter had $12.9402 remaining at
-06:22 UTC. Next: bind a typed comparison/series plan to the user's request,
-validate it against source facts before writing, add non-latest and both-series
-regressions, build, install and rerun XA01.
+Current stage: **B2**. A1–A5 are done. Installed 2.0.704.0 came from green CI
+`36416255638` and hashes to `c25bb96b` (DLL SHA256 prefix). Its eighth real
+XA01 run used the new route. The first error was planning/schema: the generic
+dispatcher rejected the newly valid typed draft period arguments. The model
+then made a generic `write_cells` call bound to Ledger, changing source B3:C3
+while trying to relabel the new draft. Later grouped reads no longer extended
+the original source analysis, so deck preflight rejected the plan. No pptx or
+terminal receipt resulted; the modified disposable source was preserved. The
+run cost $0.221, leaving $12.7170 at 11:55 UTC on 28 Sep. Next: accept typed
+draft period arguments at dispatch, remove/reject source-bound cell edits on
+the typed route, verify regressions, rebuild/install, and rerun XA01.
 
 ## 6. Rules for autonomous sessions
 

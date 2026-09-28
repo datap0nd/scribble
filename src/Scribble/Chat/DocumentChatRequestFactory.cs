@@ -31,6 +31,8 @@ namespace Scribble.Chat
             if (index < 0) return;
             request.tools[index] =
                 WorkbookToolCatalog.AnalysisDraftDefinition();
+            request.tools.RemoveAll(tool => tool.function.name ==
+                WorkbookToolCatalog.WriteCells);
             var deckIndex = request.tools.FindIndex(tool =>
                 tool.function.name ==
                 CrossAppToolCatalog.SendToPowerPoint);

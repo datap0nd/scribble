@@ -229,6 +229,26 @@ namespace GuardrailTests
             var requestedSelection = AnalysisRequestPlan.Resolve(
                 historicalArtifact,
                 "Compare March vs April and chart with both series.");
+            var priorPilot = AnalysisDocumentPilot.Enabled;
+            try
+            {
+                AnalysisDocumentPilot.SetEnabled(true);
+                var draftRequest = DocumentChatRequestFactory.Create(
+                    "test-model", "excel", "Ledger", new List<ChatTurn>(),
+                    "Create a new draft worksheet from the verified Ledger and preserve its source.",
+                    true);
+                Check(draftRequest.tools.Any(tool => tool.function.name ==
+                    WorkbookToolCatalog.WriteCells),
+                    "The generic request fixture did not expose guarded cell edits.");
+                DocumentChatRequestFactory.ApplyAnalysisPilot(draftRequest,
+                    historicalArtifact, "excel");
+                Check(!draftRequest.tools.Any(tool => tool.function.name ==
+                    WorkbookToolCatalog.WriteCells) &&
+                    draftRequest.tools.Any(tool => tool.function.name ==
+                        WorkbookToolCatalog.WriteDraftSheet),
+                    "The typed analysis route still exposed a source-bound cell edit.");
+            }
+            finally { AnalysisDocumentPilot.SetEnabled(priorPilot); }
             var requestedRows = AnalysisWorkbookPlanBuilder.Build(
                 historicalArtifact, requestedSelection);
             Check(requestedSelection.ComparePeriod == "2026-03" &&

@@ -353,6 +353,27 @@ namespace GuardrailTests
                                     tool_call_id = result.ToolCallId,
                                     content = result.Content });
                         task.RecordExchange(request, response, results);
+                        if (round == 0)
+                        {
+                            var sourceEdit = new ChatToolCall {
+                                id = "typed-source-edit", type = "function",
+                                function = new ChatToolCallFunction {
+                                    name = WorkbookToolCatalog.WriteCells,
+                                    arguments = "{\"start_cell\":\"B3\",\"rows\":[[\"May\",\"June\"]]}",
+                                }
+                            };
+                            var editPermission =
+                                new OneShotDraftAuthorization(true);
+                            var rejectedEdit = host.ExecuteAsync(sourceEdit,
+                                editPermission, true, prompt, reviewClient,
+                                reviewSettings, CancellationToken.None, null)
+                                .GetAwaiter().GetResult();
+                            Check(rejectedEdit.Outcome.ErrorCode ==
+                                "ANALYSIS_SOURCE_EDIT_FORBIDDEN" &&
+                                !editPermission.IsConsumed &&
+                                SourceValues(ledger) == sourceBefore,
+                                "XA01_TYPED_SOURCE_EDIT_WAS_NOT_REJECTED");
+                        }
                         if (cancelAfterRead && round == 0)
                             cancellation.Cancel();
                     }
