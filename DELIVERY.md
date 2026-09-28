@@ -202,9 +202,17 @@ with all native hard checks and agent visual review passing. The XA01
 repeatability bar is met. The required XA02–XA10 single batch on 2.0.715.0
 cost $0.498; XA07 and XA09 are eligible, while seven fail the request cap,
 duplicate RowID aggregation or chart-title units. The first actionable stage
-is source aggregation: exact duplicate RowIDs are counted twice by grouped
-facts and SUMIF workbook formulas. PR #45 will repair this generally, then
-the unit and request-count mechanisms. Owner visual approval remains D2.
+was source aggregation: exact duplicate RowIDs were counted twice by grouped
+facts and SUMIF workbook formulas. PR #45 now deduplicates source identities,
+binds requested chart units, and trims redundant typed reads, with regression
+tests. Installed 2.0.717.0 could not attach to a private Excel window because
+a busy global COM entry stopped the native window probe; 2.0.718.0 repaired
+that boundary. XA02 then produced the correct native workbook but no deck.
+Installed 2.0.719.0 isolated the first deck failure to the PowerPoint chart's
+embedded `ChartData.Workbook`; the test-owned PowerPoint process exited after
+that failure. PR #45 now tries the in-place chart data grid and a bounded
+clean-chart retry. The next step is to install that green build and rerun XA02,
+then the remaining B4 cases. Owner visual approval remains D2.
 
 ## 6. Rules for autonomous sessions
 

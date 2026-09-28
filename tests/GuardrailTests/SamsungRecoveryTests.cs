@@ -4,12 +4,32 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Web.Script.Serialization;
 using Scribble.Chat;
 using Scribble.Office;
 
 namespace GuardrailTests
 {
+    public sealed class ChartDataGridProbe
+    {
+        public readonly object ExpectedWorkbook = new object();
+        public int Reads;
+        public int GridOpens;
+        public void Activate() { }
+        public void ActivateChartDataWindow() { GridOpens++; }
+        public object Workbook
+        {
+            get
+            {
+                Reads++;
+                if (GridOpens == 0)
+                    throw new COMException("The embedded workbook is busy", unchecked((int)0x80010001));
+                return ExpectedWorkbook;
+            }
+        }
+    }
+
     internal static class SamsungRecoveryTests
     {
         private static readonly Assembly Assembly = typeof(SamsungAuthoringPolicy).Assembly;
@@ -255,6 +275,13 @@ namespace GuardrailTests
             Check((bool)Invoke(Type("PresentationDraftWriter"), "RetryableSamsungChartFailure", null,
                 "AddChart2: COMException 0x80004005 The chart data grid is already open in Presentation1"),
                 "The transient open chart grid did not receive a bounded retry.");
+            var grid = new ChartDataGridProbe();
+            Check(ReferenceEquals(Invoke(Type("PresentationDraftWriter"), "OpenChartDataWorkbook", null, grid),
+                    grid.ExpectedWorkbook) && grid.Reads == 2 && grid.GridOpens == 1,
+                "A rejected embedded workbook lookup did not open the in-place grid before retrying.");
+            Check((bool)Invoke(Type("PresentationDraftWriter"), "RetryableSamsungChartFailure", null,
+                "ChartData.Workbook: InvalidOperationException Embedded chart workbook did not become available after three attempts."),
+                "An unavailable embedded workbook did not receive bounded clean-chart retry.");
             Check(!(bool)Invoke(Type("PresentationDraftWriter"), "RetryableSamsungChartFailure", null,
                 "AddChart2: COMException 0x80004005 Access denied"),
                 "An unrelated chart creation failure was retried as a transient grid error.");

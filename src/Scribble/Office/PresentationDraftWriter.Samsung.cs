@@ -134,6 +134,8 @@ namespace Scribble.Office
                 message.IndexOf("series readback: COMException 0x800A01A8",
                     StringComparison.OrdinalIgnoreCase) >= 0 ||
                 message.IndexOf("ChartData.Workbook: COMException 0x80010001",
+                    StringComparison.OrdinalIgnoreCase) >= 0 ||
+                message.IndexOf("ChartData.Workbook: InvalidOperationException Embedded chart workbook did not become available after three attempts",
                     StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
