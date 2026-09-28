@@ -214,6 +214,7 @@
     <Compile Include="Office\AnalysisContracts.cs" />
     <Compile Include="Office\AnalysisTableArtifactBuilder.cs" />
     <Compile Include="Office\AnalysisWorkbookPlanBuilder.cs" />
+    <Compile Include="Office\AnalysisRequestPlan.cs" />
     <Compile Include="Office\AnalysisWorkbookSourceGuard.cs" />
     <Compile Include="Office\DocumentDraftHost.Analysis.cs" />
     <Compile Include="Office\AnalysisSlidePlanContract.cs" />

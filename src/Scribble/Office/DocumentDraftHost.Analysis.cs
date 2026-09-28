@@ -45,7 +45,8 @@ namespace Scribble.Office
                         throw new InvalidOperationException(
                             "ANALYSIS_PLAN_BINDING_INVALID");
                     plan = AnalysisDeckPlanBuilder.Build(artifact, choices,
-                        _taskContext.State.RequiredPresentationSlides);
+                        _taskContext.State.RequiredPresentationSlides,
+                        _taskContext.State.Objective);
                 }
                 else
                     plan = AnalysisSlidePlanContract.Parse(artifact,
@@ -460,11 +461,12 @@ namespace Scribble.Office
                 return Error(callId, authorization,
                     "DRAFT_PERMISSION_NOT_AVAILABLE",
                     "The task needs the user's explicit draft instruction.");
-            if (arguments.Keys.Except(new[] { "analysis_id", "title" },
+            if (arguments.Keys.Except(new[] { "analysis_id", "title",
+                    "compare_period", "focus_period" },
                     StringComparer.Ordinal).Any())
                 return Error(callId, authorization,
                     "ANALYSIS_DRAFT_ARGUMENTS_INVALID",
-                    "Supply only analysis_id and an optional title; the host builds rows and formulas.");
+                    "Supply analysis_id, an optional title, and optional request-bound comparison periods; the host builds rows and formulas.");
             AnalysisArtifact artifact;
             AnalysisDocumentPlan plan;
             int formulaCount;
@@ -482,12 +484,17 @@ namespace Scribble.Office
                     title.StartsWith("=", StringComparison.Ordinal))
                     throw new InvalidOperationException(
                         "ANALYSIS_WORKBOOK_TITLE_INVALID");
+                var selection = AnalysisRequestPlan.Resolve(artifact,
+                    _taskContext.State.Objective, arguments);
                 plan = new AnalysisDocumentPlan
                 {
                     AnalysisId = artifact.AnalysisId,
                     WorkbookTitle = title,
+                    ComparePeriod = selection.ComparePeriod,
+                    FocusPeriod = selection.FocusPeriod,
+                    ChartSeries = selection.ChartSeries.ToList(),
                     WorkbookRows = AnalysisWorkbookPlanBuilder.Build(
-                        artifact)
+                        artifact, selection)
                 };
                 formulaCount = AnalysisDocumentCompiler.Compile(artifact,
                     plan, false).ExpectedFormulaFacts.Count;

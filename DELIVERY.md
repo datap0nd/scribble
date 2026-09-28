@@ -175,19 +175,18 @@ a ≤ 10-line owner note in §5.
 | S1 XA02–10 | — | — | not run |
 | S2 PP01 | old | 2.0.395 | 0/3 (no terminal event after 23 min) |
 | S2 PP02–10 | — | — | not run (the pilot code rejects every one) |
-| New route, real model | new | 2.0.699.0 | 6 runs, 0 passes; latest produced both native outputs and a terminal event |
+| New route, real model | new | 2.0.701.0 | 7 runs, 0 eligible passes; latest passed deterministic gates but needs visual review and request selection repair |
 
-Current stage: **B2**. A1–A5 are done. The sixth paid XA01 run on installed
-2.0.699.0 reached a terminal event and created native Excel and PowerPoint
-outputs on the new route in 10 requests. The first failing stage was
-planning/schema: correct May/June live formulas landed in F/G because the
-host emitted all six periods, and the chart included Cost as a second series.
-The source inputs were unchanged and presentation checks passed. A regression
-fix now selects the latest comparison periods for the workbook and the primary
-metric for the chart. CI passed and pilot 2.0.701.0 is installed and verified;
-  it needs a real rerun. The owner removed the run-count limit on 27 Sep;
-  the $4/day spend cap remains. Six paid runs cost about $1.49 that Dubai-local
-  day. OpenRouter had $12.9812 remaining at 06:19 UTC on 27 Sep.
+Current stage: **B2**. A1–A5 are done. The seventh real XA01 run on installed
+2.0.701.0 used the new route, reached a terminal event, and passed every
+deterministic native check in 10 requests. It remains at native visual review
+and does not count toward S1 because the workbook and chart still choose the
+latest two periods and first metric regardless of the request. The owner
+removed the daily run-count limit; the $4/day spend cap remains. Seven runs
+cost about $1.53 on Dubai-local 27 Sep. OpenRouter had $12.9402 remaining at
+06:22 UTC. Next: bind a typed comparison/series plan to the user's request,
+validate it against source facts before writing, add non-latest and both-series
+regressions, build, install and rerun XA01.
 
 ## 6. Rules for autonomous sessions
 

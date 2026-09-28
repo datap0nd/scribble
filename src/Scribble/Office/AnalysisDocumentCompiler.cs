@@ -14,6 +14,10 @@ namespace Scribble.Office
     {
         public string AnalysisId { get; set; }
         public string WorkbookTitle { get; set; }
+        public string ComparePeriod { get; set; }
+        public string FocusPeriod { get; set; }
+        public List<string> ChartSeries { get; set; } =
+            new List<string>();
         public List<AnalysisPlanRow> WorkbookRows { get; set; } =
             new List<AnalysisPlanRow>();
         public List<AnalysisPlanSlide> Slides { get; set; } =

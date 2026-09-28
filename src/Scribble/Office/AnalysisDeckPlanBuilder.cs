@@ -11,7 +11,8 @@ namespace Scribble.Office
     public static class AnalysisDeckPlanBuilder
     {
         public static AnalysisDocumentPlan Build(AnalysisArtifact artifact,
-            IDictionary<string, object> choices, int requestedSlides)
+            IDictionary<string, object> choices, int requestedSlides,
+            string objective = null)
         {
             AnalysisContract.Serialize(artifact);
             if (artifact.Snapshots.Count != 1 ||
@@ -26,31 +27,20 @@ namespace Scribble.Office
                 (fact.ValueType == AnalysisContract.DecimalValue ||
                  fact.ValueType == AnalysisContract.IntegerValue))
                 .ToArray();
-            var periods = totals.Select(fact => fact.Period)
-                .Where(period => Regex.IsMatch(period ?? "",
-                    @"^[0-9]{4}-(?:0[1-9]|1[0-2])$"))
-                .Distinct(StringComparer.Ordinal)
-                .OrderBy(period => period, StringComparer.Ordinal).ToArray();
-            if (periods.Length < 2)
-                throw new InvalidOperationException(
-                    "ANALYSIS_DECK_PERIODS_MISSING");
-            var focus = SelectPeriod(choices, "FocusPeriod", periods,
-                periods[periods.Length - 1]);
-            var earlier = periods.Where(period =>
-                string.CompareOrdinal(period, focus) < 0).ToArray();
-            if (earlier.Length == 0)
-                throw new InvalidOperationException(
-                    "ANALYSIS_DECK_COMPARISON_MISSING");
-            var compare = SelectPeriod(choices, "ComparePeriod", earlier,
-                earlier[earlier.Length - 1]);
+            var selection = AnalysisRequestPlan.Resolve(artifact,
+                objective, choices);
+            var focus = selection.FocusPeriod;
+            var compare = selection.ComparePeriod;
             var metrics = totals.Where(fact => fact.Period == focus &&
-                !string.IsNullOrEmpty(fact.Currency) &&
                 totals.Any(other => other.Period == compare &&
                     other.Metric == fact.Metric &&
-                    other.Currency == fact.Currency))
+                    other.Currency == fact.Currency &&
+                    other.Unit == fact.Unit))
                 .Select(fact => fact.Metric).Distinct(StringComparer.Ordinal)
                 .OrderBy(metric => SourceColumn(artifact, metric))
-                .Take(2).ToArray();
+                .Take(2).Concat(selection.ChartSeries)
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(metric => SourceColumn(artifact, metric)).ToArray();
             if (metrics.Length == 0)
                 throw new InvalidOperationException(
                     "ANALYSIS_DECK_METRICS_MISSING");
@@ -60,11 +50,11 @@ namespace Scribble.Office
             var title = Narrative(choices, "Title", "Verified period results",
                 70);
             var lead = Narrative(choices, "Lead",
-                "Verified workbook totals for the latest period.", 100);
+                "Verified workbook totals for the selected period.", 100);
             var caveat = Narrative(choices, "Caveat",
                 "Only captured source rows and verified calculations are included.",
                 150);
-            var headlineFacts = metrics.Select(metric => total(metric,
+            var headlineFacts = metrics.Take(2).Select(metric => total(metric,
                 focus)).ToArray();
             if (headlineFacts.Length == 1)
                 headlineFacts = new[] { headlineFacts[0],
@@ -93,9 +83,12 @@ namespace Scribble.Office
                             focus).FactId } } }).ToList(),
                 Chart = new AnalysisPlanChart { Type = "column",
                     Title = "Verified values (" +
-                        headlineFacts[0].Currency + ")",
+                        (!string.IsNullOrEmpty(total(selection.ChartSeries[0],
+                            focus).Currency) ? total(selection.ChartSeries[0],
+                                focus).Currency : total(selection.ChartSeries[0],
+                                focus).Unit) + ")",
                     Categories = new List<string> { compare, focus },
-                    Series = metrics.Take(1).Select(metric =>
+                    Series = selection.ChartSeries.Select(metric =>
                         new AnalysisPlanSeries { Name = Label(metric),
                             FactIds = new List<string> {
                                 total(metric, compare).FactId,
@@ -126,7 +119,7 @@ namespace Scribble.Office
                     slides.Add(new AnalysisPlanSlide {
                         Id = "analysis-groups", Layout = "table",
                         Title = "Group analysis",
-                        Subtitle = Parts("Verified latest-period group totals."),
+                        Subtitle = Parts("Verified selected-period group totals."),
                         TableHeaders = new[] { dimension }
                             .Concat(groupMetrics.Select(Label)).ToList(),
                         TableRows = groups.Select(group => new AnalysisPlanRow {
@@ -161,21 +154,14 @@ namespace Scribble.Office
             var plan = new AnalysisDocumentPlan {
                 AnalysisId = artifact.AnalysisId,
                 WorkbookTitle = title,
-                WorkbookRows = AnalysisWorkbookPlanBuilder.Build(artifact),
+                ComparePeriod = compare, FocusPeriod = focus,
+                ChartSeries = selection.ChartSeries.ToList(),
+                WorkbookRows = AnalysisWorkbookPlanBuilder.Build(artifact,
+                    selection),
                 Slides = slides.Take(requestedSlides).ToList()
             };
             AnalysisDocumentCompiler.Compile(artifact, plan);
             return plan;
-        }
-
-        private static string SelectPeriod(IDictionary<string, object> choices,
-            string name, IEnumerable<string> periods, string fallback)
-        {
-            object value;
-            var chosen = choices.TryGetValue(name, out value) ?
-                value as string : null;
-            return chosen != null && periods.Contains(chosen,
-                StringComparer.Ordinal) ? chosen : fallback;
         }
 
         private static string Narrative(IDictionary<string, object> choices,

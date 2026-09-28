@@ -188,7 +188,7 @@ namespace GuardrailTests
                 rows[1].Cells[1].ExpectedFactId == may.FactId,
                 "The grouped report lost its source-bound formula.");
             var historicalTable = MappedTable();
-            historicalTable.Rows = 4;
+            historicalTable.Rows = 5;
             historicalTable.Cells.Add(Cell(3, 0, "A4",
                 AnalysisContract.TextValue, "2026-04"));
             historicalTable.Cells.Add(Cell(3, 1, "B4",
@@ -197,10 +197,18 @@ namespace GuardrailTests
                 AnalysisContract.DecimalValue, "80000"));
             historicalTable.Cells.Add(Cell(3, 3, "D4",
                 AnalysisContract.DecimalValue, "30000"));
+            historicalTable.Cells.Add(Cell(4, 0, "A5",
+                AnalysisContract.TextValue, "2026-03"));
+            historicalTable.Cells.Add(Cell(4, 1, "B5",
+                AnalysisContract.TextValue, "North"));
+            historicalTable.Cells.Add(Cell(4, 2, "C5",
+                AnalysisContract.DecimalValue, "75000"));
+            historicalTable.Cells.Add(Cell(4, 3, "D5",
+                AnalysisContract.DecimalValue, "28000"));
             var historicalSnapshot = AnalysisContract.CreateSnapshot(
                 "workbook-b", "excel_workbook", "revision-1",
                 "complete_range", "literal_values", new[] {
-                    Locator("workbook-b", "Ledger", "A1:D4", "") },
+                    Locator("workbook-b", "Ledger", "A1:D5", "") },
                 new[] { historicalTable });
             var historicalArtifact = AnalysisTableArtifactBuilder.BuildGrouped(
                 historicalSnapshot, binding);
@@ -218,6 +226,64 @@ namespace GuardrailTests
                         fact.Metric == "RevenueEUR" &&
                         fact.Period == "2026-06").FactId,
                 "The comparison did not put the latest verified periods in B and C.");
+            var requestedSelection = AnalysisRequestPlan.Resolve(
+                historicalArtifact,
+                "Compare March vs April and chart with both series.");
+            var requestedRows = AnalysisWorkbookPlanBuilder.Build(
+                historicalArtifact, requestedSelection);
+            Check(requestedSelection.ComparePeriod == "2026-03" &&
+                requestedSelection.FocusPeriod == "2026-04" &&
+                requestedRows[0].Cells[1].Text == "2026-03" &&
+                requestedRows[0].Cells[2].Text == "2026-04" &&
+                requestedRows[1].Cells[1].ExpectedFactId ==
+                    historicalArtifact.Facts.Single(fact =>
+                        fact.Metric == "RevenueEUR" &&
+                        fact.Period == "2026-03").FactId &&
+                requestedRows[1].Cells[2].ExpectedFactId ==
+                    historicalArtifact.Facts.Single(fact =>
+                        fact.Metric == "RevenueEUR" &&
+                        fact.Period == "2026-04").FactId,
+                "The user-requested non-latest comparison was not bound to the source.");
+            var requestedDeck = AnalysisDeckPlanBuilder.Build(
+                historicalArtifact, new Dictionary<string, object> {
+                    { "AnalysisId", historicalArtifact.AnalysisId },
+                    { "ComparePeriod", "2026-03" },
+                    { "FocusPeriod", "2026-04" },
+                    { "ChartSeries", new[] { "RevenueEUR", "CostEUR" } }
+                }, 3, "Compare March vs April and chart with both series.");
+            var requestedChart = requestedDeck.Slides.Single(slide =>
+                slide.Chart != null).Chart;
+            Check(requestedDeck.ComparePeriod == "2026-03" &&
+                requestedDeck.FocusPeriod == "2026-04" &&
+                requestedChart.Categories.SequenceEqual(new[] {
+                    "2026-03", "2026-04" }) &&
+                requestedChart.Series.Count == 2 &&
+                requestedChart.Series[0].FactIds[0] ==
+                    historicalArtifact.Facts.Single(fact =>
+                        fact.Metric == "RevenueEUR" &&
+                        fact.Period == "2026-03").FactId &&
+                requestedChart.Series[1].FactIds[1] ==
+                    historicalArtifact.Facts.Single(fact =>
+                        fact.Metric == "CostEUR" &&
+                        fact.Period == "2026-04").FactId,
+                "The user-requested second chart series was dropped.");
+            RejectTableBinding(() => AnalysisRequestPlan.Resolve(
+                historicalArtifact, "Compare February vs April."),
+                "ANALYSIS_REQUEST_PERIOD_UNBOUND");
+            RejectTableBinding(() => AnalysisRequestPlan.Resolve(
+                historicalArtifact, "Review March results."),
+                "ANALYSIS_REQUEST_COMPARISON_UNBOUND");
+            RejectTableBinding(() => AnalysisRequestPlan.Resolve(
+                historicalArtifact, "Compare March vs April.",
+                new Dictionary<string, object> {
+                    { "FocusPeriod", "2026-06" } }),
+                "ANALYSIS_REQUEST_PERIOD_MISMATCH");
+            RejectTableBinding(() => AnalysisRequestPlan.Resolve(
+                historicalArtifact,
+                "Compare March vs April and chart with both series.",
+                new Dictionary<string, object> {
+                    { "ChartSeries", new[] { "RevenueEUR", "Unknown" } } }),
+                "ANALYSIS_REQUEST_CHART_SERIES_UNBOUND");
             binding.DimensionHeaders.Add("Group");
             var dimensioned = AnalysisTableArtifactBuilder.BuildGrouped(
                 snapshot, binding, "Period", "2026-05");

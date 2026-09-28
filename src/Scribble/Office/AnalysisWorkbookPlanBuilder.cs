@@ -15,6 +15,12 @@ namespace Scribble.Office
 
         public static List<AnalysisPlanRow> Build(AnalysisArtifact artifact)
         {
+            return Build(artifact, null);
+        }
+
+        public static List<AnalysisPlanRow> Build(AnalysisArtifact artifact,
+            AnalysisRequestPlan selection)
+        {
             AnalysisContract.Serialize(artifact);
             if (artifact.Snapshots.Count != 1 ||
                 artifact.Snapshots[0].Tables.Count != 1 ||
@@ -54,11 +60,6 @@ namespace Scribble.Office
             var allPeriods = sourcePeriods.GroupBy(cell => cell.Value,
                     StringComparer.Ordinal).Select(group => group.First())
                 .OrderBy(cell => cell.Value, StringComparer.Ordinal).ToArray();
-            var periods = allPeriods.Skip(Math.Max(0,
-                allPeriods.Length - 2)).ToArray();
-            if (periods.Length + 1 > WorkbookDraftWriter.MaxDraftColumns)
-                throw new InvalidOperationException(
-                    "ANALYSIS_WORKBOOK_PERIOD_UNSUPPORTED");
             var reportFacts = artifact.Facts.Where(fact =>
                 fact.Dimensions.Count == 0).ToArray();
             var metrics = reportFacts.Select(fact => fact.Metric)
@@ -95,6 +96,16 @@ namespace Scribble.Office
                     binding).AnalysisId != artifact.AnalysisId)
                 throw new InvalidOperationException(
                     "ANALYSIS_WORKBOOK_FACTS_UNSUPPORTED");
+            selection = selection ?? AnalysisRequestPlan.Resolve(artifact,
+                null);
+            selection.Validate(artifact);
+            var periods = new[] { selection.ComparePeriod,
+                selection.FocusPeriod }.Select(period => allPeriods.SingleOrDefault(
+                    cell => cell.Value == period)).ToArray();
+            if (periods.Any(cell => cell == null) ||
+                periods.Length + 1 > WorkbookDraftWriter.MaxDraftColumns)
+                throw new InvalidOperationException(
+                    "ANALYSIS_WORKBOOK_PERIOD_UNSUPPORTED");
             var sourcePeriod = SourceColumnRange(table, periodColumn);
             var sheet = "'" + table.Name.Replace("'", "''") + "'!";
             var rows = new List<AnalysisPlanRow>();

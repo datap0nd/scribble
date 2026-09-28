@@ -32,7 +32,7 @@ leave a blank.
 
 Remaining OpenRouter balance: $14.4736 at 21:38 UTC on 26 Sep 2026 (existing
 `TestLabStressBudget.CheckAsync` against `/api/v1/key`; $25.5264 used of the
-$40 no-reset key). After six real XA01 runs: $12.9812 at 00:17 UTC on 27 Sep. Recheck
+$40 no-reset key). After seven real XA01 runs: $12.9402 at 06:22 UTC on 27 Sep. Recheck
 before the next paid batch.
 
 ## Installed builds
@@ -67,3 +67,4 @@ predate this file. Their source commits weren't recorded there.
 | 2026-09-26 | 2.0.697.0 (`b590816`, CI `36278264802`) | XA01 | new | FAIL: typed workbook draft succeeded; deck plan repeatedly failed numeric/text authority and expanded citations, with no deck or terminal event | planning/schema | 32 | $0.46 | 8.8 | `suite-20260926-231455-2049ec90` / `6b751d2c36ba4e02a7f3e6dc776c6ca6` |
 | 2026-09-26 | 2.0.698.0 (`1ce0670`, CI `36279656273`) | XA01 | new | FAIL: typed workbook draft succeeded; model could not produce a valid full deck plan within repeated schema attempts, no deck or terminal event | planning/schema | 33 | $0.44 | 8.8 | `suite-20260926-234245-02f61298` / `41012b165afd41f085c364abb3a08974` |
 | 2026-09-27 | 2.0.699.0 (`c632ec9`, CI `36281114429`) | XA01 | new | FAIL: terminal event and native xlsx/pptx; verified May/June formulas landed in F/G rather than B/C, and chart included a secondary series | planning/schema | 10 | $0.09 | 2.7 | `suite-20260927-001224-0954e081` / `04178e05b5114c618e3affbc34bea4d8` |
+| 2026-09-27 | 2.0.701.0 (`e1e1bb5`, CI `36282424477`) | XA01 | new | FAIL: all deterministic gates passed and terminal native outputs produced, but native visual review remains; hard-coded request selection makes this build ineligible for S1 | review | 10 | $0.04 | 2.1 | `suite-20260927-062019-291570f4` / `0d4efd81b59c446792a41970ad353b6e` |
