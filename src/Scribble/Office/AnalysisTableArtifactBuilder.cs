@@ -86,7 +86,25 @@ namespace Scribble.Office
                           StringComparison.Ordinal)))))
                 throw new InvalidOperationException(
                     "ANALYSIS_GROUP_BINDING_INVALID");
+            var dimensionsToBind = binding.DimensionHeaders.ToList();
+            if (!string.IsNullOrEmpty(filterColumn) &&
+                filterColumn != binding.PeriodHeader &&
+                !dimensionsToBind.Contains(filterColumn,
+                    StringComparer.Ordinal))
+                dimensionsToBind.Add(filterColumn);
             var groups = new Dictionary<string, GroupedValue>(
+                StringComparer.Ordinal);
+            // A grouped read over complete periods also carries the period
+            // totals needed by a later report. Recompute them from the same
+            // verified cells so a dimensional read remains self-contained.
+            var includePeriodTotals = dimensionsToBind.Count > 0 &&
+                (string.IsNullOrEmpty(filterColumn) ||
+                 filterColumn == binding.PeriodHeader);
+            var periodTotals = new Dictionary<string, GroupedValue>(
+                StringComparer.Ordinal);
+            var missingCounts = new Dictionary<string, int>(
+                StringComparer.Ordinal);
+            var firstMissing = new Dictionary<string, string>(
                 StringComparer.Ordinal);
             for (var row = 1; row < table.Rows; row++)
             {
@@ -102,7 +120,7 @@ namespace Scribble.Office
                         "ANALYSIS_TABLE_PERIOD_UNVERIFIED");
                 var dimensions = new Dictionary<string, string>(
                     StringComparer.Ordinal);
-                foreach (var name in binding.DimensionHeaders)
+                foreach (var name in dimensionsToBind)
                 {
                     var dimension = Required(cells, row, headers[name]);
                     if (dimension.ValueType != AnalysisContract.TextValue &&
@@ -118,10 +136,24 @@ namespace Scribble.Office
                         headers[metric.Header], out cell))
                         throw new InvalidOperationException(
                             "ANALYSIS_TABLE_VALUE_UNVERIFIED");
+                    if (cell.ValueType == AnalysisContract.MissingValue &&
+                        cell.Status == AnalysisContract.Unresolved &&
+                        string.IsNullOrEmpty(cell.Formula))
+                    {
+                        var missingKey = metric.Header + "\0" +
+                            period.Value;
+                        int count;
+                        missingCounts.TryGetValue(missingKey, out count);
+                        missingCounts[missingKey] = count + 1;
+                        if (!firstMissing.ContainsKey(missingKey))
+                            firstMissing[missingKey] = table.Name + "!" +
+                                cell.Reference;
+                        continue;
+                    }
                     var value = VerifiedMetricValue(cell, row,
                         cellsByReference);
                     var key = metric.Header + "\0" + period.Value + "\0" +
-                        string.Join("\0", binding.DimensionHeaders.Select(
+                        string.Join("\0", dimensionsToBind.Select(
                             name => dimensions[name]));
                     GroupedValue group;
                     if (!groups.TryGetValue(key, out group))
@@ -137,12 +169,33 @@ namespace Scribble.Office
                         SourceInstanceId = snapshot.SourceInstanceId,
                         WorksheetIdentity = table.Name,
                         Cell = cell.Reference });
+                    if (includePeriodTotals)
+                    {
+                        var periodKey = metric.Header + "\0" +
+                            period.Value;
+                        GroupedValue total;
+                        if (!periodTotals.TryGetValue(periodKey,
+                            out total))
+                        {
+                            total = new GroupedValue { Metric = metric,
+                                Period = period.Value,
+                                Dimensions = new Dictionary<string, string>(
+                                    StringComparer.Ordinal) };
+                            periodTotals.Add(periodKey, total);
+                        }
+                        total.Sum = checked(total.Sum + value);
+                        total.Locators.Add(new SourceLocator {
+                            Kind = "excel_cell",
+                            SourceInstanceId = snapshot.SourceInstanceId,
+                            WorksheetIdentity = table.Name,
+                            Cell = cell.Reference });
+                    }
                 }
             }
             if (groups.Count == 0)
                 throw new InvalidOperationException(
                     "ANALYSIS_GROUP_EMPTY");
-            var facts = groups.Values.Select(group =>
+            var facts = groups.Values.Concat(periodTotals.Values).Select(group =>
             {
                 var fact = AnalysisContract.CreateObservedFact(
                     snapshot.SnapshotId, group.Metric.Header,
@@ -156,8 +209,16 @@ namespace Scribble.Office
                 fact.FactId = AnalysisContract.ExpectedFactId(fact);
                 return fact;
             }).ToArray();
+            var unresolved = missingCounts.Select(item => {
+                var parts = item.Key.Split('\0');
+                return "Known subtotal for " + parts[0] + " " + parts[1] +
+                    " excludes " + item.Value.ToString(
+                        CultureInfo.InvariantCulture) +
+                    " blank source value(s), including " +
+                    firstMissing[item.Key] + ".";
+            }).ToArray();
             return AnalysisContract.CreateArtifact(new[] { snapshot }, facts,
-                new AnalysisCalculation[0], new string[0], new string[0]);
+                new AnalysisCalculation[0], new string[0], unresolved);
         }
 
         private sealed class GroupedValue
@@ -170,13 +231,22 @@ namespace Scribble.Office
         }
 
         // A formula cache is evidence only after the host reproduces the
-        // result from verified literal operands. This bounded evaluator
-        // supports same-row products, optionally guarded by IF(blank), and
-        // rejects every other formula rather than trusting its cached value.
+        // result from verified same-row operands. The bounded evaluator
+        // supports arithmetic and IF(blank/zero) guards, including short
+        // formula chains, and rejects every other expression.
         private static decimal VerifiedMetricValue(DatasetCell cell, int row,
             IDictionary<string, DatasetCell> cellsByReference)
         {
+            return VerifiedMetricValue(cell, row, cellsByReference,
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+        }
+
+        private static decimal VerifiedMetricValue(DatasetCell cell, int row,
+            IDictionary<string, DatasetCell> cellsByReference,
+            ISet<string> evaluating)
+        {
             if (cell == null || string.IsNullOrWhiteSpace(cell.Reference) ||
+                cell.Row != row ||
                 (cell.ValueType != AnalysisContract.DecimalValue &&
                  cell.ValueType != AnalysisContract.IntegerValue))
                 throw new InvalidOperationException(
@@ -196,53 +266,94 @@ namespace Scribble.Office
             if (cell.Status != AnalysisContract.Unresolved)
                 throw new InvalidOperationException(
                     "ANALYSIS_TABLE_VALUE_UNVERIFIED");
-            var expression = cell.Formula.Trim();
-            var guard = Regex.Match(expression,
-                @"^=IF\(([A-Z]{1,3}[1-9]\d*)="""","""",([A-Z]{1,3}[1-9]\d*)\*([A-Z]{1,3}[1-9]\d*)\)$",
-                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-            var product = guard.Success ? guard : Regex.Match(expression,
-                @"^=([A-Z]{1,3}[1-9]\d*)\*([A-Z]{1,3}[1-9]\d*)$",
-                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-            if (!product.Success)
+            if (evaluating.Count >= 4 || !evaluating.Add(cell.Reference))
                 throw new InvalidOperationException(
                     "ANALYSIS_TABLE_VALUE_UNVERIFIED");
-            var first = guard.Success ? product.Groups[2].Value :
-                product.Groups[1].Value;
-            var second = guard.Success ? product.Groups[3].Value :
-                product.Groups[2].Value;
-            if (guard.Success &&
-                !string.Equals(guard.Groups[1].Value, first,
-                    StringComparison.OrdinalIgnoreCase) &&
-                !string.Equals(guard.Groups[1].Value, second,
-                    StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException(
-                    "ANALYSIS_TABLE_VALUE_UNVERIFIED");
-            var left = LiteralOperand(first, row, cellsByReference);
-            var right = LiteralOperand(second, row, cellsByReference);
-            if (checked(left * right) != cached)
-                throw new InvalidOperationException(
-                    "ANALYSIS_TABLE_VALUE_UNVERIFIED");
-            return cached;
+            try
+            {
+                var expression = cell.Formula.Trim();
+                if (!expression.StartsWith("=", StringComparison.Ordinal) ||
+                    expression.Length > 120)
+                    throw new InvalidOperationException(
+                        "ANALYSIS_TABLE_VALUE_UNVERIFIED");
+                expression = expression.Substring(1);
+                for (var guardIndex = 0; guardIndex < 3; guardIndex++)
+                {
+                    var blank = Regex.Match(expression,
+                        @"^IF\(([A-Z]{1,3}[1-9]\d*)="""","""",(.+)\)$",
+                        RegexOptions.IgnoreCase |
+                        RegexOptions.CultureInvariant);
+                    var zero = blank.Success ? blank : Regex.Match(
+                        expression,
+                        @"^IF\(([A-Z]{1,3}[1-9]\d*)=0,"""",(.+)\)$",
+                        RegexOptions.IgnoreCase |
+                        RegexOptions.CultureInvariant);
+                    if (!zero.Success) break;
+                    var tested = VerifiedOperand(zero.Groups[1].Value,
+                        row, cellsByReference, evaluating);
+                    if (!blank.Success && tested == 0m)
+                        throw new InvalidOperationException(
+                            "ANALYSIS_TABLE_VALUE_UNVERIFIED");
+                    expression = zero.Groups[2].Value;
+                }
+                var arithmetic = Regex.Match(expression,
+                    @"^([A-Z]{1,3}[1-9]\d*)([+\-*/])([A-Z]{1,3}[1-9]\d*)(?:([+\-*/])([A-Z]{1,3}[1-9]\d*))?$",
+                    RegexOptions.IgnoreCase |
+                    RegexOptions.CultureInvariant);
+                if (!arithmetic.Success)
+                    throw new InvalidOperationException(
+                        "ANALYSIS_TABLE_VALUE_UNVERIFIED");
+                var left = VerifiedOperand(arithmetic.Groups[1].Value,
+                    row, cellsByReference, evaluating);
+                var right = VerifiedOperand(arithmetic.Groups[3].Value,
+                    row, cellsByReference, evaluating);
+                decimal expected;
+                var divide = arithmetic.Groups[2].Value == "/";
+                if (arithmetic.Groups[4].Success)
+                {
+                    if (arithmetic.Groups[2].Value != "+" ||
+                        arithmetic.Groups[4].Value != "-")
+                        throw new InvalidOperationException(
+                            "ANALYSIS_TABLE_VALUE_UNVERIFIED");
+                    expected = checked(left + right - VerifiedOperand(
+                        arithmetic.Groups[5].Value, row,
+                        cellsByReference, evaluating));
+                }
+                else if (arithmetic.Groups[2].Value == "+")
+                    expected = checked(left + right);
+                else if (arithmetic.Groups[2].Value == "-")
+                    expected = checked(left - right);
+                else if (arithmetic.Groups[2].Value == "*")
+                    expected = checked(left * right);
+                else if (divide && right != 0m)
+                    expected = left / right;
+                else
+                    throw new InvalidOperationException(
+                        "ANALYSIS_TABLE_VALUE_UNVERIFIED");
+                var tolerance = divide ? Math.Max(1m,
+                    Math.Abs(expected)) * 0.000000000001m : 0m;
+                if (Math.Abs(expected - cached) > tolerance)
+                    throw new InvalidOperationException(
+                        "ANALYSIS_TABLE_VALUE_UNVERIFIED");
+                return cached;
+            }
+            finally
+            {
+                evaluating.Remove(cell.Reference);
+            }
         }
 
-        private static decimal LiteralOperand(string reference, int row,
-            IDictionary<string, DatasetCell> cellsByReference)
+        private static decimal VerifiedOperand(string reference, int row,
+            IDictionary<string, DatasetCell> cellsByReference,
+            ISet<string> evaluating)
         {
             DatasetCell operand;
             if (!cellsByReference.TryGetValue(reference, out operand) ||
-                operand.Row != row ||
-                operand.Status != AnalysisContract.Verified ||
-                !string.IsNullOrEmpty(operand.Formula) ||
-                (operand.ValueType != AnalysisContract.DecimalValue &&
-                 operand.ValueType != AnalysisContract.IntegerValue))
+                operand.Row != row)
                 throw new InvalidOperationException(
                     "ANALYSIS_TABLE_VALUE_UNVERIFIED");
-            decimal value;
-            if (!decimal.TryParse(operand.Value, NumberStyles.Float,
-                CultureInfo.InvariantCulture, out value))
-                throw new InvalidOperationException(
-                    "ANALYSIS_TABLE_VALUE_UNVERIFIED");
-            return value;
+            return VerifiedMetricValue(operand, row, cellsByReference,
+                evaluating);
         }
 
         public static AnalysisArtifact Build(SourceSnapshot snapshot,

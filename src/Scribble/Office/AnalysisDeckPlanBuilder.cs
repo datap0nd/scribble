@@ -59,7 +59,9 @@ namespace Scribble.Office
                     Heading = Label(fact.Metric),
                     Points = new List<AnalysisPlanText> {
                         Reference(fact), new AnalysisPlanText {
-                            Text = "Verified period total" } } }).ToList(),
+                            Text = IsKnownSubtotal(artifact, fact) ?
+                                "Known subtotal; source has blanks" :
+                                "Verified period total" } } }).ToList(),
                 Takeaway = Parts("Compare verified periods before drawing a trend conclusion.")
             };
             var comparison = new AnalysisPlanSlide {
@@ -132,7 +134,9 @@ namespace Scribble.Office
                 Title = "Data quality and limits",
                 Subtitle = Parts("Evidence boundary for this draft."),
                 Cards = new List<AnalysisPlanCard> {
-                    new AnalysisPlanCard { Heading = "Verified total",
+                    new AnalysisPlanCard { Heading =
+                        IsKnownSubtotal(artifact, total(metrics[0], focus)) ?
+                            "Known subtotal" : "Verified total",
                         Points = new List<AnalysisPlanText> {
                             Reference(total(metrics[0], focus)) } },
                     new AnalysisPlanCard { Heading = "Source limits",
@@ -189,6 +193,10 @@ namespace Scribble.Office
 
         private static string SourceLimitation(AnalysisArtifact artifact)
         {
+            if (artifact.UnresolvedConflicts.Any(item =>
+                item.StartsWith("Known subtotal for ",
+                    StringComparison.Ordinal)))
+                return "Blank source values were excluded, never set to zero; affected figures are known subtotals.";
             var table = artifact.Snapshots[0].Tables[0];
             var identifier = table.Cells.FirstOrDefault(cell =>
                 cell.Row == 0 && cell.Value != null &&
@@ -208,6 +216,14 @@ namespace Scribble.Office
                 string.IsNullOrEmpty(cell.Formula)))
                 return "Blank source cells remain unresolved and are not imputed.";
             return "Only the captured source range is covered; later edits require a new analysis.";
+        }
+
+        private static bool IsKnownSubtotal(AnalysisArtifact artifact,
+            VerifiedFact fact)
+        {
+            return artifact.UnresolvedConflicts.Any(item =>
+                item.StartsWith("Known subtotal for " + fact.Metric + " " +
+                    fact.Period + " ", StringComparison.Ordinal));
         }
     }
 }

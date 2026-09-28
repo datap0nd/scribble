@@ -1200,10 +1200,9 @@ namespace Scribble.Office
                  ToolArguments.GetString(arguments, "filter_column",
                      string.Empty) == "Period"))
             {
-                if ((long)totalRows * totalColumns > 5000 ||
-                    result.SkippedCells != 0)
+                if ((long)totalRows * totalColumns > 5000)
                     return Error(callId, "ANALYSIS_GROUP_SOURCE_INCOMPLETE",
-                        "The complete grouped source must fit the typed capture and have no missing metric values.");
+                        "The complete grouped source must fit the typed capture.");
                 try
                 {
                     var typed = CaptureTypedPage((object)range,
