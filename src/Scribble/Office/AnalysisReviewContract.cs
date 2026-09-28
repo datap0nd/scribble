@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Web.Script.Serialization;
 using Scribble.Chat;
 
@@ -227,8 +228,13 @@ namespace Scribble.Office
         {
             if (context == null) throw new ArgumentNullException(nameof(context));
             Dictionary<string, object> map;
+            var payload = (json ?? string.Empty).Trim();
+            var fence = Regex.Match(payload,
+                @"\A```(?:json)?\r?\n(?<body>[\s\S]*?)\r?\n```\z",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (fence.Success) payload = fence.Groups["body"].Value;
             try { map = new JavaScriptSerializer { MaxJsonLength = 1000000 }
-                .Deserialize<Dictionary<string, object>>(json); }
+                .Deserialize<Dictionary<string, object>>(payload); }
             catch (Exception error) when (error is ArgumentException ||
                 error is InvalidOperationException)
             { throw new InvalidOperationException("REVIEW_JSON_INVALID", error); }

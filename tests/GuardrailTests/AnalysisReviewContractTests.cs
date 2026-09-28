@@ -325,6 +325,13 @@ namespace GuardrailTests
             var clean = AnalysisReviewContract.Parse(verdict(true,
                 new object[0]), context);
             Check(clean.Approved, "A clean review was rejected.");
+            var fenced = "```json\n" + verdict(true,
+                new object[0]) + "\n```";
+            Check(AnalysisReviewContract.Parse(fenced, context).Approved,
+                "An exact JSON code fence blocked an otherwise valid review.");
+            Reject(() => AnalysisReviewContract.Parse(
+                "Extra commentary\n" + fenced, context),
+                "REVIEW_JSON_INVALID");
             var oldApproval = verdict(true, new object[0]);
             page.NativeStateFingerprint = "sha256:changed-native-state";
             var changedNative = AnalysisReviewContract.Context(artifact, plan,
