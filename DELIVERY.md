@@ -175,7 +175,7 @@ a ≤ 10-line owner note in §5.
 | S1 XA02–10 | new | 2.0.706.0 | 0/9 eligible in one real batch; source binding, review parsing, metric selection and request count failures |
 | S2 PP01 | old | 2.0.395 | 0/3 (no terminal event after 23 min) |
 | S2 PP02–10 | — | — | not run (the pilot code rejects every one) |
-| New route, real model | new | 2.0.706.0 | XA01 produced terminal native outputs, but 19 requests exceeds the S1 cap of 12; 0 eligible S1 passes; owner visual review remains for D2 |
+| New route, real model | new | 2.0.713.0 | XA01 produced terminal native outputs with all hard gates and agent visual review passing, but 13 requests exceeds the S1 cap of 12; 0 eligible S1 passes; owner visual review remains D2 |
 
 Current stage: **B4**, mechanism fixes on PR #45. PR #44 merged into
 `codex/development`. The required single XA02–XA10 batch ran on installed
@@ -185,9 +185,14 @@ before terminal output, XA06 selected the wrong chart metric, and XA07/XA09
 passed native checks and agent visual review but exceeded the 12-request cap.
 XA01 on this build also exceeded that cap despite correct native outputs. The
 batch cost $1.343. PR #45 fixes the generalized binding, review JSON and draft
-metric-order mechanisms with regression tests. Next: green CI, install that
-build, check budget, and rerun the failed cases. Owner visual approval remains
-Stage D2.
+metric-order mechanisms with regression tests. Its green CI build 2.0.713.0
+was installed, and a real XA01 rerun passed every deterministic and agent
+visual check in 3.1 minutes, but used 13 requests (cap 12). The first failing
+stage is completion. The trace shows three sequential Ledger reads before the
+host aggregation; the generic prompt still requires row-by-row reading to the
+end. PR #45 now lets the typed route use complete host aggregates, with source
+cell inspection as needed. Next: green CI, install, check balance, and rerun.
+Owner visual approval remains Stage D2.
 
 ## 6. Rules for autonomous sessions
 

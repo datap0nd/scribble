@@ -34,6 +34,8 @@ Remaining OpenRouter balance: $14.4736 at 21:38 UTC on 26 Sep 2026 (existing
 `TestLabStressBudget.CheckAsync` against `/api/v1/key`; $25.5264 used of the
 $40 no-reset key). After seven real XA01 runs: $12.9402 at 06:22 UTC on 27 Sep. Recheck
 before the next paid batch.
+After the 28 Sep B4 batch: $11.2796 remaining at 14:01 UTC ($28.7204 used);
+recheck before another paid batch.
 
 ## Installed builds
 
@@ -46,6 +48,7 @@ before the next paid batch.
 | 2026-09-26 | 2.0.698.0 | PR #44 head `1ce0670`, CI run `36279656273` | `8474259bbb164f0ba52c5441ac13f82b316e3c762ec058834888e934141e64fe` | `1c2508e172b0a5cac3debc375ad74d0437fbe5426a51a8ce2932280fba4ea960` | Pilot installer exited 0; installed version, DLL and renderer payload verified; no Office processes existed before or after install. |
 | 2026-09-27 | 2.0.699.0 | PR #44 head `c632ec9`, CI run `36281114429` | `4243c202bc6fbeb08b08f0bf7caa5c0ca8c9065695645881b18caddf9af7ecf4` | `f6eb63e8075595a402ade24674fbee9dc3e0150d9edadadb19aa175b998d5684` | Pilot installer exited 0; installed version, DLL and renderer payload verified; no Office processes existed before or after install. |
 | 2026-09-27 | 2.0.701.0 | PR #44 head `e1e1bb5`, CI run `36282424477` | `66ce36603a0b081e71534c9f11dbc7d21de34a2c64815056b2d533729fa59850` | `6ea8f9abfd1247c1cbb38813839c9a3729d55737fed7a2762809f1eaa30b1459` | Pilot installer exited 0; installed version, DLL, browser host and renderer payload verified; no Office processes existed before or after install. |
+| 2026-09-28 | 2.0.713.0 | PR #45 head `c97a175`, CI run `36432733798` | `000f74e34c04ec7f95d3551e315545601eb98eecf319c033be6983ed5b573e06` | `20533a0b5089b379570a81278353ad439a586d128033bb423e6b59ef4cefa7c8` | Green CI; pilot installer exited 0; installed DLL and browser host hashes verified. Preexisting owner Excel PID 33464 and start time unchanged; no other Office process remained after install. |
 
 ## Runs
 
@@ -80,3 +83,4 @@ predate this file. Their source commits weren't recorded there.
 | 2026-09-28 | 2.0.706.0 (`ede1b26`, CI `36421402714`) | XA08 | new | FAIL: blank and guarded formula source values did not bind; no terminal deck; exceeds cap | capture/binding | 26 | $0.194 | 6.9 | `suite-20260928-125813-5ab7f507` / `61dca74daf224a8783a935da0ee65c9d` |
 | 2026-09-28 | 2.0.706.0 (`ede1b26`, CI `36421402714`) | XA09 | new | FAIL: native checks and agent visual review passed, but 15 requests exceed cap; owner visual review remains D2 | completion | 15 | $0.040 | 2.5 | `suite-20260928-125813-5ab7f507` / `159c3d6de32f408d80d2aed26dfe4e36` |
 | 2026-09-28 | 2.0.706.0 (`ede1b26`, CI `36421402714`) | XA10 | new | FAIL: reviewer returned fenced JSON; review parsing and later slide recovery blocked terminal handoff; exceeds cap | review | 23 | $0.152 | 7.3 | `suite-20260928-125813-5ab7f507` / `9be5dd57426f4e1b8c2551ae7df76a00` |
+| 2026-09-28 | 2.0.713.0 (`c97a175`, CI `36432733798`) | XA01 | new | FAIL: terminal typed workbook and four native slides; all deterministic hard checks, source preservation and agent visual review passed, but 13 requests exceed the S1 cap of 12; owner visual review remains D2 | completion | 13 | $0.033 | 3.1 | `suite-20260928-141119-ee36d02c` / `d4716076d15e4c81bc7381107379be71` |

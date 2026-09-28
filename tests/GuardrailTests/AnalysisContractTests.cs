@@ -237,6 +237,13 @@ namespace GuardrailTests
                     "test-model", "excel", "Ledger", new List<ChatTurn>(),
                     "Create a new draft worksheet from the verified Ledger and preserve its source.",
                     true);
+                var draftBoundary = Convert.ToString(draftRequest.messages
+                    .OfType<ChatCompletionInputMessage>()
+                    .First(message => message.role == "system").content);
+                Check(draftBoundary.Contains("read_grouped_totals") &&
+                    draftBoundary.Contains("complete bound source") &&
+                    !draftBoundary.Contains("read it to the END"),
+                    "Typed aggregate reads should cover the bound source without requiring row-by-row enumeration.");
                 Check(draftRequest.tools.Any(tool => tool.function.name ==
                     WorkbookToolCatalog.WriteCells),
                     "The generic request fixture did not expose guarded cell edits.");

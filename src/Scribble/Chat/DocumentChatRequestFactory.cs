@@ -423,16 +423,25 @@ namespace Scribble.Chat
                       "Do not claim that handoff is unavailable or ask the user to repeat values already readable " +
                       "from the active workbook; read the sheet and continue the requested deck."
                     : string.Empty;
+                var sourceReadInstruction = hostKind == "excel" &&
+                    AnalysisDocumentPilot.Enabled
+                    ? "FIRST identify the source sheets, headers and requested scope. " +
+                      "For aggregate workbook facts, use read_grouped_totals to " +
+                      "calculate over the complete bound source; inspect source " +
+                      "cells as needed for schema and data-quality exceptions. " +
+                      "The host verifies those totals and their source spans " +
+                      "before any typed draft write."
+                    : "FIRST gather everything you need: when the source is a " +
+                      "document, workbook, or presentation, read it to the END by " +
+                      "repeating the read tool with an increasing start offset until " +
+                      "you have the whole text. Never draft from a partial read.";
                 return boundary + selectionInstruction +
                     koreanWorkbookInstruction + excelHandoffInstruction +
                     " The local host recognized an explicit draft request in the " +
                     "user's latest prompt and authorized ONE deliverable for this " +
                     "request, which you may build over several bounded draft calls " +
                     "- each one the only tool call in its response. " +
-                    "FIRST gather everything you need: when the source is a " +
-                    "document, workbook, or presentation, read it to the END by " +
-                    "repeating the read tool with an increasing start offset until " +
-                    "you have the whole text. Never draft from a partial read. " +
+                    sourceReadInstruction + " " +
                     "THEN write the deliverable in batches (two or three slides, or " +
                     "one table, per call) and keep calling until it is complete. " +
                     "Make it DENSE and specific - carry the real numbers, names, " +
