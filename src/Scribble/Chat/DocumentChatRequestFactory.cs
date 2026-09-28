@@ -414,8 +414,10 @@ namespace Scribble.Chat
                       "never saved."
                     : string.Empty;
                 var excelHandoffInstruction = hostKind == "excel"
-                    ? " In Excel, list_worksheets is an inventory with no required arguments; use {} for it. " +
-                      "Use read_cells with a worksheet name and range to read actual values. A Scribble Draft sheet " +
+                    ? (typedWorkbook
+                        ? " The active workbook summary includes bounded sheet names, ranges and header labels. Use these to bind a complete read_grouped_totals call for the requested additive metrics; inspect source cells when the schema or data quality needs clarification. For a PowerPoint handoff, use the verified grouped facts and the in-memory draft audit with send_to_powerpoint. "
+                        : " In Excel, list_worksheets is an inventory with no required arguments; use {} for it. Use read_cells with a worksheet name and range to read actual values. ") +
+                      "A Scribble Draft sheet " +
                       "listed in the active workbook is available in memory even when the workbook is unsaved. " +
                       "For a draft audit table, put live formulas only in cells the user asked to calculate; " +
                       "write optional data-quality observations as sourced text unless the user explicitly " +
@@ -423,7 +425,7 @@ namespace Scribble.Chat
                       "syntax; do not add speculative array formulas or duplicate a metric in extra sections. " +
                       "For an authorized PowerPoint request, send_to_powerpoint is the live cross-app handoff. " +
                       "Do not claim that handoff is unavailable or ask the user to repeat values already readable " +
-                      "from the active workbook; read the sheet and continue the requested deck."
+                      "from the active workbook; continue the requested deck."
                     : string.Empty;
                 var sourceReadInstruction = hostKind == "excel" &&
                     AnalysisDocumentPilot.Enabled && !hasExcelSelection &&

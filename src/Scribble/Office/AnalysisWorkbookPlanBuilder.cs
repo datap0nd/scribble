@@ -106,6 +106,8 @@ namespace Scribble.Office
                     "ANALYSIS_WORKBOOK_PERIOD_UNSUPPORTED");
             var sourcePeriod = SourceColumnRange(table, periodColumn);
             var sheet = "'" + table.Name.Replace("'", "''") + "'!";
+            var duplicateRows = AnalysisTableArtifactBuilder
+                .DuplicateIdentityRows(table);
             var rows = new List<AnalysisPlanRow>();
             rows.Add(Row(new[] { Label("Metric") }.Concat(
                 periods.Select(cell => Label(cell.Value)))));
@@ -120,10 +122,25 @@ namespace Scribble.Office
                     var fact = reportFacts.Single(item =>
                         item.Metric == metric && item.Period == period);
                     var reportColumn = ColumnName(index + 2);
+                    var formula = "=SUMIF(" + sheet + sourcePeriod + "," +
+                        reportColumn + "$3," + sheet + metricColumn + ")";
+                    var repeated = duplicateRows.Where(row =>
+                        sourcePeriods.Single(cell => cell.Row == row).Value ==
+                            period).Select(row => table.Cells.Single(cell =>
+                                cell.Row == row && cell.Column ==
+                                headers[metric]).Reference).ToArray();
+                    if (repeated.Length > 0)
+                        formula += "-SUM(" + string.Join(",", repeated.Select(
+                            address => sheet + "$" +
+                                CellAddress.Match(address).Groups[1].Value +
+                                "$" + CellAddress.Match(address).Groups[2].Value)) + ")";
+                    if (formula.Length > 500 || repeated.Any(address =>
+                        !CellAddress.IsMatch(address ?? string.Empty)))
+                        throw new InvalidOperationException(
+                            "ANALYSIS_WORKBOOK_FORMULA_UNSUPPORTED");
                     cells.Add(new AnalysisPlanCell
                     {
-                        Formula = "=SUMIF(" + sheet + sourcePeriod + "," +
-                            reportColumn + "$3," + sheet + metricColumn + ")",
+                        Formula = formula,
                         ExpectedFactId = fact.FactId
                     });
                 }

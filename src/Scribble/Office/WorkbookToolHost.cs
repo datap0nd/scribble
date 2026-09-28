@@ -149,6 +149,37 @@ namespace Scribble.Office
                         " (used range " +
                         TextBoundary.SingleLine(used, 60) +
                         ")");
+                    if (AnalysisDocumentPilot.Enabled && count < 3)
+                    {
+                        try
+                        {
+                            dynamic source = sheet.UsedRange;
+                            if ((int)source.Row == 1)
+                            {
+                                var labels = new List<string>();
+                                var columns = Math.Min((int)source.Columns.Count,
+                                    24);
+                                for (var column = 1; column <= columns;
+                                    column++)
+                                {
+                                    var label = TextBoundary.SingleLine(
+                                        CellText(source.Cells[1, column].Value2),
+                                        60);
+                                    if (label.Length != 0)
+                                        labels.Add(ExcelSelectionOutputPolicy
+                                            .ColumnNumberToName(
+                                                (int)source.Column + column - 1) +
+                                            "=" + label);
+                                }
+                                if (labels.Count != 0)
+                                    lines.Add("Header labels for " +
+                                        TextBoundary.SingleLine(
+                                            Convert.ToString(sheet.Name), 120) +
+                                        ": " + string.Join(", ", labels));
+                            }
+                        }
+                        catch { /* Header inventory is optional context. */ }
+                    }
                     count++;
                 }
 

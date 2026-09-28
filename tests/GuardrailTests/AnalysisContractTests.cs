@@ -148,6 +148,76 @@ namespace GuardrailTests
             throw new Exception("Expected table binding failure " + code);
         }
 
+        public static void RepeatedSourceIdentityIsCountedOnce()
+        {
+            var table = new TableDataset {
+                TableId = "ledger-with-ids", Name = "Ledger", Rows = 4,
+                Columns = 4, Cells = new List<DatasetCell> {
+                    Cell(0, 0, "A1", AnalysisContract.TextValue, "RowID"),
+                    Cell(0, 1, "B1", AnalysisContract.TextValue, "Period"),
+                    Cell(0, 2, "C1", AnalysisContract.TextValue, "HoursWorked"),
+                    Cell(0, 3, "D1", AnalysisContract.TextValue, "HoursAvailable"),
+                    Cell(1, 0, "A2", AnalysisContract.TextValue, "record-one"),
+                    Cell(1, 1, "B2", AnalysisContract.TextValue, "2026-05"),
+                    Cell(1, 2, "C2", AnalysisContract.DecimalValue, "10"),
+                    Cell(1, 3, "D2", AnalysisContract.DecimalValue, "12"),
+                    Cell(2, 0, "A3", AnalysisContract.TextValue, "record-two"),
+                    Cell(2, 1, "B3", AnalysisContract.TextValue, "2026-06"),
+                    Cell(2, 2, "C3", AnalysisContract.DecimalValue, "20"),
+                    Cell(2, 3, "D3", AnalysisContract.DecimalValue, "25"),
+                    Cell(3, 0, "A4", AnalysisContract.TextValue, "record-two"),
+                    Cell(3, 1, "B4", AnalysisContract.TextValue, "2026-06"),
+                    Cell(3, 2, "C4", AnalysisContract.DecimalValue, "20"),
+                    Cell(3, 3, "D4", AnalysisContract.DecimalValue, "25") } };
+            Func<TableDataset, SourceSnapshot> snapshot = source =>
+                AnalysisContract.CreateSnapshot("workbook-with-ids",
+                    "excel_workbook", "revision-1", "complete_range",
+                    "literal_values", new[] { Locator("workbook-with-ids",
+                        "Ledger", "A1:D4", "") }, new[] { source });
+            var binding = new AnalysisTableBinding {
+                TableId = table.TableId, PeriodHeader = "Period",
+                Metrics = new List<AnalysisMetricColumnBinding> {
+                    new AnalysisMetricColumnBinding { Header = "HoursWorked",
+                        Metric = "HoursWorked" },
+                    new AnalysisMetricColumnBinding { Header = "HoursAvailable",
+                        Metric = "HoursAvailable" } } };
+            var artifact = AnalysisTableArtifactBuilder.BuildGrouped(
+                snapshot(table), binding);
+            var june = artifact.Facts.Single(fact =>
+                fact.Metric == "HoursWorked" && fact.Period == "2026-06");
+            var rows = AnalysisWorkbookPlanBuilder.Build(artifact);
+            var receipt = WorkbookGroupedTotals.Compute(new[] {
+                (IReadOnlyList<string>)new[] { "RowID", "Period",
+                    "HoursWorked", "HoursAvailable" },
+                new[] { "record-one", "2026-05", "10", "12" },
+                new[] { "record-two", "2026-06", "20", "25" },
+                new[] { "record-two", "2026-06", "20", "25" }
+            }, new[] { "Period" }, new[] { "HoursWorked" },
+                null, null);
+            Check(june.Value == "20" && june.Locators.Count == 1 &&
+                june.Locators.Single().Cell == "C3" &&
+                receipt.Table.Contains("2026-06\t1\t20") &&
+                rows[1].Cells[2].Formula ==
+                    "=SUMIF('Ledger'!$B$2:$B$4,C$3,'Ledger'!$C$2:$C$4)-SUM('Ledger'!$C$4)" &&
+                rows[2].Cells[2].ExpectedFactId == artifact.Facts.Single(
+                    fact => fact.Metric == "HoursAvailable" &&
+                    fact.Period == "2026-06").FactId,
+                "A repeated RowID was counted twice in facts or live formulas.");
+            var deck = AnalysisDeckPlanBuilder.Build(artifact,
+                new Dictionary<string, object> {
+                    { "AnalysisId", artifact.AnalysisId } }, 3,
+                "Compare May vs June with a primary chart and hours in the title.");
+            Check(deck.Slides.Single(slide => slide.Chart != null)
+                .Chart.Title.Contains("hours"),
+                "A requested noncurrency chart unit was lost.");
+            RejectTableBinding(() => AnalysisRequestPlan.Resolve(artifact,
+                "Compare May vs June with a primary chart and EUR in the title."),
+                "ANALYSIS_REQUEST_CHART_UNIT_UNBOUND");
+            table.Cells.Single(cell => cell.Reference == "D4").Value = "26";
+            RejectTableBinding(() => AnalysisTableArtifactBuilder.BuildGrouped(
+                snapshot(table), binding), "ANALYSIS_TABLE_ROW_ID_CONFLICT");
+        }
+
         public static void GroupedTypedFactsKeepSourceAndFormulaBinding()
         {
             var table = MappedTable();

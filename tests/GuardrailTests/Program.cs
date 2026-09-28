@@ -92,6 +92,7 @@ namespace GuardrailTests
                 Run("Typed analysis snapshots preserve identity and serialization", AnalysisContractTests.SnapshotIdentityInvalidationAndSerialization);
                 Run("Explicit typed table bindings issue only verified facts", AnalysisContractTests.ExplicitTableBindingsIssueOnlyVerifiedFacts);
                 Run("Grouped typed facts retain source-bound formulas", AnalysisContractTests.GroupedTypedFactsKeepSourceAndFormulaBinding);
+                Run("Repeated source identities are counted once", AnalysisContractTests.RepeatedSourceIdentityIsCountedOnce);
                 Run("Typed analysis calculations preserve source authority", AnalysisContractTests.DeterministicCalculationsPreserveAuthority);
                 Run("Native revision acceptance cannot expand its certified scope", PresentationAcceptanceTests.ScopedReceiptCannotCertifyCharts);
                 Run("Delivery transport budget persists across restart", PresentationAcceptanceTests.TransportBudgetSurvivesRestart);

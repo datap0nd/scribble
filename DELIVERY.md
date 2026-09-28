@@ -172,10 +172,10 @@ a ≤ 10-line owner note in §5.
 | Scenario | Route | Build | Result |
 | --- | --- | --- | --- |
 | S1 XA01 | old | 2.0.385 | 1/3 (22 Sep) |
-| S1 XA02–10 | new | 2.0.706.0 | 0/9 eligible in one real batch; source binding, review parsing, metric selection and request count failures |
+| S1 XA02–10 | new | 2.0.715.0 | 2/9 eligible in one real batch (XA07, XA09); duplicate RowID counting, chart-title units and request-count failures |
 | S2 PP01 | old | 2.0.395 | 0/3 (no terminal event after 23 min) |
 | S2 PP02–10 | — | — | not run (the pilot code rejects every one) |
-| New route, real model | new | 2.0.713.0 | XA01 produced terminal native outputs with all hard gates and agent visual review passing, but 13 requests exceeds the S1 cap of 12; 0 eligible S1 passes; owner visual review remains D2 |
+| New route, real model | new | 2.0.715.0 | XA01 passed terminal, native hard checks, source preservation, agent visual review and the 12-request cap three times consecutively (11, 12, 11 requests); S1 repeatability bar met, owner D2 pending |
 
 Current stage: **B4**, mechanism fixes on PR #45. PR #44 merged into
 `codex/development`. The required single XA02–XA10 batch ran on installed
@@ -195,9 +195,16 @@ XA02 reached a typed draft but an unmeasured model finding blocked review;
 XA04 took the generic draft route before binding; XA08 computed correct known
 subtotals but preflight rejected their disclosure. PR #45 now limits production
 review blockers to host measurements, exposes the typed writer from the first
-pilot turn, and allows disclosed known subtotals in workbook plans. Next:
-green CI, install, check balance and rerun XA01 plus targeted B4 cases. Owner
-visual approval remains Stage D2.
+pilot turn, and allows disclosed known subtotals in workbook plans. Installed
+2.0.715.0 passed XA01 in 11 requests with all native hard checks and agent
+visual review passing. Two consecutive repeats passed in 12 and 11 requests
+with all native hard checks and agent visual review passing. The XA01
+repeatability bar is met. The required XA02–XA10 single batch on 2.0.715.0
+cost $0.498; XA07 and XA09 are eligible, while seven fail the request cap,
+duplicate RowID aggregation or chart-title units. The first actionable stage
+is source aggregation: exact duplicate RowIDs are counted twice by grouped
+facts and SUMIF workbook formulas. PR #45 will repair this generally, then
+the unit and request-count mechanisms. Owner visual approval remains D2.
 
 ## 6. Rules for autonomous sessions
 

@@ -106,8 +106,10 @@ namespace Scribble.Office
                 StringComparer.Ordinal);
             var firstMissing = new Dictionary<string, string>(
                 StringComparer.Ordinal);
+            var duplicateRows = DuplicateIdentityRows(table);
             for (var row = 1; row < table.Rows; row++)
             {
+                if (duplicateRows.Contains(row)) continue;
                 if (!string.IsNullOrEmpty(filterColumn) &&
                     Required(cells, row, headers[filterColumn]).Value !=
                     filterEquals) continue;
@@ -228,6 +230,58 @@ namespace Scribble.Office
             public Dictionary<string, string> Dimensions;
             public decimal Sum;
             public List<SourceLocator> Locators = new List<SourceLocator>();
+        }
+
+        // RowID identifies one observation even when a source export repeats
+        // its row. Only exact value copies may be skipped; conflicting copies
+        // have no safe source of truth and must stop before a native write.
+        internal static HashSet<int> DuplicateIdentityRows(TableDataset table)
+        {
+            var duplicates = new HashSet<int>();
+            var identityHeaders = table.Cells.Where(cell => cell.Row == 0 &&
+                string.Equals(cell.Value, "RowID", StringComparison.Ordinal))
+                .ToArray();
+            if (identityHeaders.Length == 0) return duplicates;
+            if (identityHeaders.Length != 1)
+                throw new InvalidOperationException(
+                    "ANALYSIS_TABLE_ROW_ID_AMBIGUOUS");
+            var column = identityHeaders[0].Column;
+            var cells = table.Cells.ToDictionary(cell =>
+                cell.Row + ":" + cell.Column, StringComparer.Ordinal);
+            var firstRows = new Dictionary<string, int>(
+                StringComparer.Ordinal);
+            for (var row = 1; row < table.Rows; row++)
+            {
+                DatasetCell identity;
+                if (!cells.TryGetValue(row + ":" + column, out identity) ||
+                    identity.Status != AnalysisContract.Verified ||
+                    identity.ValueType != AnalysisContract.TextValue ||
+                    string.IsNullOrWhiteSpace(identity.Value))
+                    throw new InvalidOperationException(
+                        "ANALYSIS_TABLE_ROW_ID_UNVERIFIED");
+                int first;
+                if (!firstRows.TryGetValue(identity.Value, out first))
+                {
+                    firstRows.Add(identity.Value, row);
+                    continue;
+                }
+                for (var item = 0; item < table.Columns; item++)
+                {
+                    DatasetCell original, repeated;
+                    var hasOriginal = cells.TryGetValue(first + ":" + item,
+                        out original);
+                    var hasRepeated = cells.TryGetValue(row + ":" + item,
+                        out repeated);
+                    if (hasOriginal != hasRepeated ||
+                        (hasOriginal && (original.Value != repeated.Value ||
+                            original.ValueType != repeated.ValueType ||
+                            original.Status != repeated.Status)))
+                        throw new InvalidOperationException(
+                            "ANALYSIS_TABLE_ROW_ID_CONFLICT");
+                }
+                duplicates.Add(row);
+            }
+            return duplicates;
         }
 
         // A formula cache is evidence only after the host reproduces the

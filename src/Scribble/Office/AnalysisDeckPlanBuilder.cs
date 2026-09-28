@@ -50,6 +50,10 @@ namespace Scribble.Office
                 150);
             var headlineFacts = metrics.Take(2).Select(metric => total(metric,
                 focus)).ToArray();
+            var chartFact = total(selection.ChartSeries[0], focus);
+            var chartUnit = !string.IsNullOrEmpty(selection.ChartUnit) ?
+                selection.ChartUnit : !string.IsNullOrEmpty(chartFact.Currency) ?
+                    chartFact.Currency : chartFact.Unit;
             if (headlineFacts.Length == 1)
                 headlineFacts = new[] { headlineFacts[0],
                     total(metrics[0], compare) };
@@ -78,11 +82,9 @@ namespace Scribble.Office
                         new AnalysisPlanCell { FactId = total(metric,
                             focus).FactId } } }).ToList(),
                 Chart = new AnalysisPlanChart { Type = "column",
-                    Title = "Verified values (" +
-                        (!string.IsNullOrEmpty(total(selection.ChartSeries[0],
-                            focus).Currency) ? total(selection.ChartSeries[0],
-                                focus).Currency : total(selection.ChartSeries[0],
-                                focus).Unit) + ")",
+                    Title = "Verified values" +
+                        (string.IsNullOrEmpty(chartUnit) ? string.Empty :
+                            " (" + chartUnit + ")"),
                     Categories = new List<string> { compare, focus },
                     Series = selection.ChartSeries.Select(metric =>
                         new AnalysisPlanSeries { Name = Label(metric),

@@ -75,6 +75,16 @@ namespace Scribble.Office
             var groupIndexes = groupBy.Select(name => HeaderIndex(headers, name)).ToArray();
             var sumIndexes = sumColumns.Select(name => HeaderIndex(headers, name)).ToArray();
             var filterIndex = string.IsNullOrWhiteSpace(filterColumn) ? -1 : HeaderIndex(headers, filterColumn);
+            var identityColumns = Enumerable.Range(0, headers.Length).Where(
+                index => string.Equals(headers[index], "RowID",
+                    StringComparison.Ordinal)).ToArray();
+            if (identityColumns.Length > 1)
+                throw new InvalidOperationException(
+                    "More than one RowID header exists.");
+            var identityColumn = identityColumns.Length == 1 ?
+                identityColumns[0] : -1;
+            var firstRows = new Dictionary<string, IReadOnlyList<string>>(
+                StringComparer.Ordinal);
             var wanted = (filterEquals ?? "").Trim();
 
             var order = new List<string>();
@@ -88,6 +98,23 @@ namespace Scribble.Office
             {
                 var cells = table[row];
                 if (cells == null || cells.All(string.IsNullOrWhiteSpace)) continue;
+                if (identityColumn >= 0)
+                {
+                    var identity = Cell(cells, identityColumn);
+                    if (identity.Length == 0)
+                        throw new InvalidOperationException(
+                            "A source RowID is blank; grouped totals cannot establish row identity.");
+                    IReadOnlyList<string> original;
+                    if (firstRows.TryGetValue(identity, out original))
+                    {
+                        if (Enumerable.Range(0, headers.Length).Any(index =>
+                            Cell(original, index) != Cell(cells, index)))
+                            throw new InvalidOperationException(
+                                "A source RowID repeats with conflicting values.");
+                        continue;
+                    }
+                    firstRows.Add(identity, cells);
+                }
                 if (filterIndex >= 0 && !string.Equals(Cell(cells, filterIndex), wanted, StringComparison.OrdinalIgnoreCase)) continue;
                 matched++;
                 if (filterIndex >= 0 && filterText == null) filterText = Cell(cells, filterIndex);

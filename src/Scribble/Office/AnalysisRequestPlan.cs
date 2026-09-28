@@ -33,6 +33,7 @@ namespace Scribble.Office
         public List<string> ReportMetrics { get; set; } =
             new List<string>();
         public List<string> ChartSeries { get; set; } = new List<string>();
+        public string ChartUnit { get; set; }
 
         public static AnalysisRequestPlan Resolve(AnalysisArtifact artifact,
             string objective, IDictionary<string, object> supplied = null,
@@ -96,6 +97,11 @@ namespace Scribble.Office
             if (both && plan.ReportMetrics.Count != 2)
                 throw new InvalidOperationException(
                     "ANALYSIS_REQUEST_CHART_SERIES_UNBOUND");
+            var requestedUnit = Regex.Match(objective ?? string.Empty,
+                @"\b(?<unit>[A-Za-z][A-Za-z0-9%]{0,15})\s+in\s+the\s+(?:chart\s+)?title\b",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (requestedUnit.Success)
+                plan.ChartUnit = requestedUnit.Groups["unit"].Value;
             ValidateSupplied(plan, supplied, metrics);
             plan.Validate(artifact);
             return plan;
@@ -129,6 +135,22 @@ namespace Scribble.Office
                     StringComparer.Ordinal)))
                 throw new InvalidOperationException(
                     "ANALYSIS_REQUEST_CHART_SERIES_UNBOUND");
+            if (!string.IsNullOrEmpty(ChartUnit) && ChartSeries.Any(metric =>
+            {
+                var fact = artifact.Facts.First(item =>
+                    item.Metric == metric && item.Period == FocusPeriod &&
+                    item.Dimensions.Count == 0);
+                return !string.Equals(fact.Currency, ChartUnit,
+                           StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(fact.Unit, ChartUnit,
+                           StringComparison.OrdinalIgnoreCase) &&
+                    !Regex.IsMatch(ReadableMetric(metric), @"\b" +
+                        Regex.Escape(ChartUnit) + @"\b",
+                        RegexOptions.IgnoreCase |
+                        RegexOptions.CultureInvariant);
+            }))
+                throw new InvalidOperationException(
+                    "ANALYSIS_REQUEST_CHART_UNIT_UNBOUND");
         }
 
         private static string[] AvailableMetrics(AnalysisArtifact artifact,
