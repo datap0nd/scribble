@@ -328,10 +328,16 @@ namespace Scribble.Office
             if (context == null) throw new ArgumentNullException(nameof(context));
             Dictionary<string, object> map;
             var payload = (json ?? string.Empty).Trim();
-            var fence = Regex.Match(payload,
-                @"\A```(?:json)?\r?\n(?<body>[\s\S]*?)\r?\n```\z",
+            // Some providers explain their inspection before returning the
+            // one machine-readable verdict. Ignore that prose only when it
+            // encloses exactly one fenced JSON block; the strict envelope,
+            // context fingerprint and finding routes still validate below.
+            var fences = Regex.Matches(payload,
+                @"```(?:json)?\r?\n(?<body>[\s\S]*?)\r?\n```",
                 RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-            if (fence.Success) payload = fence.Groups["body"].Value;
+            if (fences.Count == 1 &&
+                Regex.Matches(payload, @"```").Count == 2)
+                payload = fences[0].Groups["body"].Value;
             try { map = new JavaScriptSerializer { MaxJsonLength = 1000000 }
                 .Deserialize<Dictionary<string, object>>(payload); }
             catch (Exception error) when (error is ArgumentException ||

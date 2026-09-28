@@ -212,10 +212,12 @@ Installed 2.0.719.0 isolated the first deck failure to the PowerPoint chart's
 embedded `ChartData.Workbook`; the test-owned PowerPoint process exited after
 that failure. PR #45 now tries the in-place chart data grid and a bounded
 clean-chart retry. Its green installed build 2.0.720.0 passed targeted XA02
-in 10 requests. A full XA01–XA10 batch on the same build yielded one eligible
-case (XA03): seven passed native hard checks but exceeded the 12-request cap;
-XA05 and XA06 passed workbook/chart gates but their scorecard used colors outside
-the supplied Samsung theme. All ten results are in the scoreboard. The first
+in 10 requests. A full XA01–XA10 batch on the same build yielded six
+deterministically eligible cases after auditing actual `inference_request`
+events: XA02/XA10 exceeded 12, and XA05/XA06 passed workbook/chart gates but
+their scorecards used colors outside the supplied Samsung theme. The original
+scoreboard rows overcounted two budget checks per case; a correction is in the
+scoreboard summary. The first
 repeatable mechanisms are an omitted grouped-total sheet resolving to the
 new active draft, full-range binding rejected at 500 cells despite the 5,000
 cell typed limit, and structured cards using colors absent from the theme.

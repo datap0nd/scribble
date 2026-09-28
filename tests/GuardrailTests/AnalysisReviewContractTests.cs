@@ -338,8 +338,12 @@ namespace GuardrailTests
             Check(measuredCompletion.Approved &&
                 measuredCompletion.Findings.Count == 0,
                 "An unmeasured model binding claim blocked native completion.");
+            Check(AnalysisReviewContract.Parse(
+                "The rendered slides match the host facts.\n" + fenced +
+                "\nNo unmeasured issue remains.", context).Approved,
+                "A single fenced verdict with provider commentary was rejected.");
             Reject(() => AnalysisReviewContract.Parse(
-                "Extra commentary\n" + fenced, context),
+                fenced + "\n" + fenced, context),
                 "REVIEW_JSON_INVALID");
             var oldApproval = verdict(true, new object[0]);
             page.NativeStateFingerprint = "sha256:changed-native-state";

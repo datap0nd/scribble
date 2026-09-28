@@ -25,10 +25,19 @@ leave a blank.
 
 | Scenario | Bar (DELIVERY.md §1) | Current build |
 | --- | --- | --- |
-| S1 XA01–XA10 batch | ≥ 9/10 | 1/10 eligible on 2.0.720.0; all ten ran as one batch, with seven request-cap failures and two theme failures |
+| S1 XA01–XA10 batch | ≥ 9/10 | 6/10 deterministically eligible on 2.0.720.0 after the trace-count correction below; owner D2 pending |
 | S1 XA01 consecutive | 3 | 3 eligible deterministic/agent visual passes on 2.0.715.0; owner D2 pending |
 | S2 PP01–PP10 batch | ≥ 8/10 | not run |
 | S2 PP01 consecutive | 3 | 0 |
+
+Measurement correction, 29 Sep: the 2.0.720.0 batch rows below counted
+`usage.jsonl` budget checks as requests. The trace's `inference_request`
+events are the actual model calls. Correct counts for XA01–XA10 are
+**11, 13, 10, 12, 8, 10, 11, 12, 11, 14**. XA01, XA03, XA04, XA07, XA08
+and XA09 therefore met the deterministic/request bar; XA02 and XA10 exceeded
+12, while XA05/XA06 failed the theme oracle. This correction supersedes only
+the affected request counts and cap classifications; original run rows remain
+intact. Owner D2 review remains pending.
 
 Remaining OpenRouter balance: $14.4736 at 21:38 UTC on 26 Sep 2026 (existing
 `TestLabStressBudget.CheckAsync` against `/api/v1/key`; $25.5264 used of the
@@ -64,6 +73,7 @@ Before the 2.0.720.0 XA01–XA10 batch: $10.0638 remaining at 21:55 UTC on
 | 2026-09-28 | 2.0.718.0 | PR #45 head `60c9be8`, CI run `36451867499` | `a9cbe855b0ed869a4a70fcc6da9c077c88356ef620c4ac1abf4724e15960174d` | `5863778d90eea0482181ae26b43a5420f796a151dbd02185eea9f3419b399fed` | Green CI; pilot installer exited 0; installed DLL and browser host hashes verified. Preexisting owner Excel PID 33464 and start time unchanged. |
 | 2026-09-28 | 2.0.719.0 | PR #45 head `814bdc2`, CI run `36454794749` | `0c14c2152ac4c5714a6c2a5a2b6fb2651c12ac7fe4230a925067d17a9087ddd9` | `3b777be0349b87779d671cea18b0623144c18bd865cda02b805709c381b5b7ae` | Green CI; pilot installer exited 0; installed DLL and browser host hashes verified. Preexisting owner Excel PID 33464 and start time unchanged. |
 | 2026-09-29 | 2.0.720.0 | PR #45 head `109ca65`, CI run `36487692509` | `3d36e6c981c8c562a5255bd342dfe225cbfb1471dcb28fac2e04e0413108eda9` | `27d1f977a68e97461eb1b561206c95e4af552deb05a31a74f56abfbe6a4ad39c` | Green CI; pilot installer exited 0; installed DLL and browser host hashes verified. Preexisting owner Excel PID 33464 and start time unchanged. |
+| 2026-09-29 | 2.0.724.0 | PR #45 head `6334e49`, CI run `36493228547` | `8576951d36ab37602f394eabcfbafb287dcd0767ed2b380fd067d1b20ab336bd` | `67cd4967d8b5814b4eabfc4934266e5857e0a0fcfd22adb6e2bf70e5bc1776f6` | Green CI; pilot installer exited 0; installed version, DLL and browser host hashes verified. Preexisting owner Excel PID 33464 and start time unchanged; no other Office process remained. |
 
 ## Runs
 
