@@ -5,6 +5,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
@@ -16,6 +17,11 @@ using Scribble.Testing;
 
 namespace GuardrailTests
 {
+    public sealed class BusyExcelRotProbe
+    {
+        public int Hwnd { get { throw new COMException("Busy", unchecked((int)0x80010001)); } }
+    }
+
     internal static class OfficeBootstrapTests
     {
         private static void Check(bool value, string message)
@@ -315,6 +321,16 @@ namespace GuardrailTests
                 "PowerPoint does not cover both supported native document-window classes.");
             Check(((string[])classes.Invoke(null, new object[] { "Excel" })).SequenceEqual(new[] { "EXCEL7" }),
                 "Excel's native attachment class changed unexpectedly.");
+        }
+
+        public static void BusyExcelRotEntryDoesNotBlockPrivateWindow()
+        {
+            var matches = typeof(TestLabOfficeConnection).GetMethod("ExcelRotCandidateMatches", BindingFlags.Static | BindingFlags.NonPublic);
+            Check(matches != null, "The Excel ROT match boundary is missing.");
+            var accepted = Convert.ToBoolean(matches.Invoke(null, new object[] {
+                new BusyExcelRotProbe(), Process.GetCurrentProcess().Id,
+                Process.GetCurrentProcess().StartTime.ToUniversalTime().Ticks, null }));
+            Check(!accepted, "A busy Excel ROT entry blocked the private window fallback.");
         }
 
         public static void NeutralEmbeddedDocuments()

@@ -488,6 +488,7 @@ namespace GuardrailTests
                 Run("Word source preservation survives draft reordering", OfficeBootstrapTests.WordSourcePreservationSurvivesDraftReordering);
                 Run("Word memo rejects universal budget claims", OfficeBootstrapTests.WordMemoRejectsUniversalBudgetClaim);
                 Run("PowerPoint bootstrap tracks reused and fresh native processes", OfficeBootstrapTests.PowerPointLaunchTracksReusedOrFreshProcess);
+                Run("Busy Excel ROT entry does not block private native window", OfficeBootstrapTests.BusyExcelRotEntryDoesNotBlockPrivateWindow);
                 Run("Office bootstrap rejects missing, foreign, stale and finished sibling bindings", OfficeBootstrapTests.UnverifiedSiblingCannotStartOffice);
                 Console.WriteLine("PASS: " + _passed + " guardrail tests");
                 if (_passed == 0) throw new InvalidOperationException("No tests matched the requested filter.");

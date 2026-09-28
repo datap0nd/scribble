@@ -25,8 +25,8 @@ leave a blank.
 
 | Scenario | Bar (DELIVERY.md §1) | Current build |
 | --- | --- | --- |
-| S1 XA01–XA10 batch | ≥ 9/10 | 0/9 eligible on 2.0.706.0; XA02–XA10 ran as one batch |
-| S1 XA01 consecutive | 3 | 1 eligible deterministic/agent visual pass on 2.0.715.0; owner D2 pending |
+| S1 XA01–XA10 batch | ≥ 9/10 | 2/9 eligible on 2.0.715.0; XA02–XA10 ran as one batch |
+| S1 XA01 consecutive | 3 | 3 eligible deterministic/agent visual passes on 2.0.715.0; owner D2 pending |
 | S2 PP01–PP10 batch | ≥ 8/10 | not run |
 | S2 PP01 consecutive | 3 | 0 |
 
@@ -38,6 +38,8 @@ After the 28 Sep B4 batch: $11.2796 remaining at 14:01 UTC ($28.7204 used);
 recheck before another paid batch.
 After the 2.0.713.0 XA02/XA04/XA08 targeted batch: $10.8176 remaining at
 14:40 UTC ($29.1824 used); recheck before another paid batch.
+Before the 2.0.717.0 targeted batch: $10.1942 remaining at 16:09 UTC on
+28 Sep ($29.8058 used); the Dubai-day $4 cap still has room.
 
 ## Installed builds
 
@@ -52,6 +54,7 @@ After the 2.0.713.0 XA02/XA04/XA08 targeted batch: $10.8176 remaining at
 | 2026-09-27 | 2.0.701.0 | PR #44 head `e1e1bb5`, CI run `36282424477` | `66ce36603a0b081e71534c9f11dbc7d21de34a2c64815056b2d533729fa59850` | `6ea8f9abfd1247c1cbb38813839c9a3729d55737fed7a2762809f1eaa30b1459` | Pilot installer exited 0; installed version, DLL, browser host and renderer payload verified; no Office processes existed before or after install. |
 | 2026-09-28 | 2.0.713.0 | PR #45 head `c97a175`, CI run `36432733798` | `000f74e34c04ec7f95d3551e315545601eb98eecf319c033be6983ed5b573e06` | `20533a0b5089b379570a81278353ad439a586d128033bb423e6b59ef4cefa7c8` | Green CI; pilot installer exited 0; installed DLL and browser host hashes verified. Preexisting owner Excel PID 33464 and start time unchanged; no other Office process remained after install. |
 | 2026-09-28 | 2.0.715.0 | PR #45 head `58247bd`, CI run `36438456788` | `0034daeb2dbcfed981c3aa6be5035421793281feeeb68ab8f74afbba7e0a2cb6` | `111e04f9c1049020ae78cbb89f46526b8d0e5ce3149cd8b5eb03c64b6814f946` | Green CI; pilot installer exited 0; installed DLL and browser host hashes verified. Preexisting owner Excel PID 33464 and start time unchanged; no other Office process remained after install. |
+| 2026-09-28 | 2.0.717.0 | PR #45 head `700374d`, CI run `36447686017` | `1ce662955ab7768f7f0bb91da15c05200a89ab949bc82e3169e2d151ad0e0f65` | `987dfc578641ac0cd7c8efb22e373ec14762541ed43b1a03307f02e8be6b9ef0` | Green CI; pilot installer exited 0; installed DLL and browser host hashes verified. Preexisting owner Excel PID 33464 and start time unchanged; no other Office process remained after install. |
 
 ## Runs
 
@@ -102,3 +105,7 @@ predate this file. Their source commits weren't recorded there.
 | 2026-09-28 | 2.0.715.0 (`58247bd`, CI `36438456788`) | XA08 | new | FAIL: terminal native outputs and source preservation; chart values correct but title lost units | rendering/chart | 12 | $0.046 | 2.9 | `suite-20260928-151428-817023f3` / `353e8da8666a404eb33eec1fcc1f4151` |
 | 2026-09-28 | 2.0.715.0 (`58247bd`, CI `36438456788`) | XA09 | new | PASS: terminal native workbook/deck, all hard checks and source preservation passed; four full-size slides legible with no overlaps (owner D2 pending) | — | 10 | $0.044 | 2.9 | `suite-20260928-151428-817023f3` / `1d1ea404ee6d4ccfa34b7ed67fe02636` |
 | 2026-09-28 | 2.0.715.0 (`58247bd`, CI `36438456788`) | XA10 | new | FAIL: duplicate RowID was counted twice in June workbook formulas, although the chart used correct deduplicated values; also exceeds cap | source aggregation | 13 | $0.123 | 6.0 | `suite-20260928-151428-817023f3` / `f1465e991ed94314aa50595809047817` |
+| 2026-09-28 | 2.0.717.0 (`700374d`, CI `36447686017`) | XA02–XA10 targeted retry | — | NOT RUN: XA02/XA03 blocked during private Excel attachment before model requests; stopped during XA04, remaining cases unsubmitted. Global Excel ROT entry rejected PID lookup before native window probe | environment/Office attachment | 0 | $0.00 | — | `suite-20260928-161518-405ebe8d` / `2634a797d2b240aca21c02ce04f1aef3` |
+| 2026-09-28 | 2.0.717.0 (`700374d`, CI `36447686017`) | XA02 | — | NOT RUN: same Office attachment rejection before model requests; test-owned Excel stopped after exact identity check | environment/Office attachment | 0 | $0.00 | — | `suite-20260928-162045-c9efc8b3` / `a3f089462a3f48d89367c8930fab0a21` |
+| 2026-09-28 | 2.0.715.0 (`58247bd`, CI `36438456788`) | XA02 | — | NOT RUN: control on previously passing build hit the same Office attachment rejection; restored 2.0.717.0 afterward | environment/Office attachment | 0 | $0.00 | — | `suite-20260928-162322-bb15f816` / `c6166f42d0d84bdea98a2c76d3b8003d` |
+| 2026-09-28 | 2.0.717.0 (`700374d`, CI `36447686017`) | XA02 | — | NOT RUN: diagnostic retry confirmed RPC_E_CALL_REJECTED in `ApplicationPid` for the global Excel ROT entry, before the native private window was probed | environment/Office attachment | 0 | $0.00 | — | `suite-20260928-162629-40bd18d7` / `beba30d7917547309cbbb1644562c3d8` |
