@@ -212,7 +212,7 @@ namespace Scribble.Office
                     .Select(cell => cell.Value).ToArray();
                 if (values.Length != values.Distinct(
                         StringComparer.Ordinal).Count())
-                    return "Repeated source identifiers remain in the captured rows; totals count each row.";
+                    return "Repeated identical source identifiers were counted once; conflicting repeats are rejected.";
             }
             if (table.Cells.Any(cell => cell.Row > 0 &&
                 cell.Status != AnalysisContract.Verified &&

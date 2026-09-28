@@ -210,6 +210,15 @@ namespace GuardrailTests
             Check(deck.Slides.Single(slide => slide.Chart != null)
                 .Chart.Title.Contains("hours"),
                 "A requested noncurrency chart unit was lost.");
+            Check(deck.Slides.SelectMany(slide => slide.Cards)
+                .SelectMany(card => card.Points)
+                .Any(point => point.Text != null &&
+                    point.Text.Contains("identifiers were counted once")) &&
+                !deck.Slides.SelectMany(slide => slide.Cards)
+                    .SelectMany(card => card.Points)
+                    .Any(point => point.Text != null &&
+                        point.Text.Contains("totals count each row")),
+                "The source-limit narrative must describe deduplicated totals accurately.");
             RejectTableBinding(() => AnalysisRequestPlan.Resolve(artifact,
                 "Compare May vs June with a primary chart and EUR in the title."),
                 "ANALYSIS_REQUEST_CHART_UNIT_UNBOUND");
