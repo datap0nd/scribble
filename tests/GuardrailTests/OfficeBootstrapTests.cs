@@ -22,6 +22,11 @@ namespace GuardrailTests
         public int Hwnd { get { throw new COMException("Busy", unchecked((int)0x80010001)); } }
     }
 
+    public sealed class BusyPowerPointRotProbe
+    {
+        public object Presentations { get { throw new COMException("Busy", unchecked((int)0x80010001)); } }
+    }
+
     internal static class OfficeBootstrapTests
     {
         private static void Check(bool value, string message)
@@ -331,6 +336,18 @@ namespace GuardrailTests
                 new BusyExcelRotProbe(), Process.GetCurrentProcess().Id,
                 Process.GetCurrentProcess().StartTime.ToUniversalTime().Ticks, null }));
             Check(!accepted, "A busy Excel ROT entry blocked the private window fallback.");
+        }
+
+        public static void BusyPowerPointRotEntryDoesNotBlockPrivateWindow()
+        {
+            var matches = typeof(TestLabOfficeConnection).GetMethod("PowerPointRotCandidateMatches", BindingFlags.Static | BindingFlags.NonPublic);
+            Check(matches != null, "The PowerPoint ROT match boundary is missing.");
+            var accepted = Convert.ToBoolean(matches.Invoke(null, new object[] {
+                new BusyPowerPointRotProbe(), Process.GetCurrentProcess().Id,
+                Process.GetCurrentProcess().StartTime.ToUniversalTime().Ticks,
+                Process.GetCurrentProcess().MainModule.FileName,
+                "private-startup.pptx" }));
+            Check(!accepted, "A busy PowerPoint ROT entry blocked the private window fallback.");
         }
 
         public static void NeutralEmbeddedDocuments()

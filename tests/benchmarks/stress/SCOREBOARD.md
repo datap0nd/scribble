@@ -40,6 +40,8 @@ After the 2.0.713.0 XA02/XA04/XA08 targeted batch: $10.8176 remaining at
 14:40 UTC ($29.1824 used); recheck before another paid batch.
 Before the 2.0.717.0 targeted batch: $10.1942 remaining at 16:09 UTC on
 28 Sep ($29.8058 used); the Dubai-day $4 cap still has room.
+After the 2.0.718.0 XA02 retry: $10.1438 remaining at 16:54 UTC on 28 Sep
+($29.8562 used); recheck before another paid batch.
 
 ## Installed builds
 
@@ -55,6 +57,7 @@ Before the 2.0.717.0 targeted batch: $10.1942 remaining at 16:09 UTC on
 | 2026-09-28 | 2.0.713.0 | PR #45 head `c97a175`, CI run `36432733798` | `000f74e34c04ec7f95d3551e315545601eb98eecf319c033be6983ed5b573e06` | `20533a0b5089b379570a81278353ad439a586d128033bb423e6b59ef4cefa7c8` | Green CI; pilot installer exited 0; installed DLL and browser host hashes verified. Preexisting owner Excel PID 33464 and start time unchanged; no other Office process remained after install. |
 | 2026-09-28 | 2.0.715.0 | PR #45 head `58247bd`, CI run `36438456788` | `0034daeb2dbcfed981c3aa6be5035421793281feeeb68ab8f74afbba7e0a2cb6` | `111e04f9c1049020ae78cbb89f46526b8d0e5ce3149cd8b5eb03c64b6814f946` | Green CI; pilot installer exited 0; installed DLL and browser host hashes verified. Preexisting owner Excel PID 33464 and start time unchanged; no other Office process remained after install. |
 | 2026-09-28 | 2.0.717.0 | PR #45 head `700374d`, CI run `36447686017` | `1ce662955ab7768f7f0bb91da15c05200a89ab949bc82e3169e2d151ad0e0f65` | `987dfc578641ac0cd7c8efb22e373ec14762541ed43b1a03307f02e8be6b9ef0` | Green CI; pilot installer exited 0; installed DLL and browser host hashes verified. Preexisting owner Excel PID 33464 and start time unchanged; no other Office process remained after install. |
+| 2026-09-28 | 2.0.718.0 | PR #45 head `60c9be8`, CI run `36451867499` | `a9cbe855b0ed869a4a70fcc6da9c077c88356ef620c4ac1abf4724e15960174d` | `5863778d90eea0482181ae26b43a5420f796a151dbd02185eea9f3419b399fed` | Green CI; pilot installer exited 0; installed DLL and browser host hashes verified. Preexisting owner Excel PID 33464 and start time unchanged. |
 
 ## Runs
 
@@ -109,3 +112,4 @@ predate this file. Their source commits weren't recorded there.
 | 2026-09-28 | 2.0.717.0 (`700374d`, CI `36447686017`) | XA02 | — | NOT RUN: same Office attachment rejection before model requests; test-owned Excel stopped after exact identity check | environment/Office attachment | 0 | $0.00 | — | `suite-20260928-162045-c9efc8b3` / `a3f089462a3f48d89367c8930fab0a21` |
 | 2026-09-28 | 2.0.715.0 (`58247bd`, CI `36438456788`) | XA02 | — | NOT RUN: control on previously passing build hit the same Office attachment rejection; restored 2.0.717.0 afterward | environment/Office attachment | 0 | $0.00 | — | `suite-20260928-162322-bb15f816` / `c6166f42d0d84bdea98a2c76d3b8003d` |
 | 2026-09-28 | 2.0.717.0 (`700374d`, CI `36447686017`) | XA02 | — | NOT RUN: diagnostic retry confirmed RPC_E_CALL_REJECTED in `ApplicationPid` for the global Excel ROT entry, before the native private window was probed | environment/Office attachment | 0 | $0.00 | — | `suite-20260928-162629-40bd18d7` / `beba30d7917547309cbbb1644562c3d8` |
+| 2026-09-28 | 2.0.718.0 (`60c9be8`, CI `36451867499`) | XA02 | new | FAIL: typed workbook formulas and source preservation passed; six `send_to_powerpoint` calls failed with RPC_E_CALL_REJECTED before native deck output; recovery stopped after repeated actions, 19 requests exceeds cap | native deck execution | 19 | $0.050 | 8.6 | `suite-20260928-164433-a2c31fd2` / `93fad6e5a0454de7b7263b8bb3ece5c7` |

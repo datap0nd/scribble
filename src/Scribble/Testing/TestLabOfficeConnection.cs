@@ -334,8 +334,7 @@ namespace Scribble.Testing
                 {
                     try { candidate = Marshal.GetActiveObject("PowerPoint.Application"); }
                     catch (COMException) { }
-                    if (candidate != null && (startup == null || FindDocument(candidate, host, startup, false)) &&
-                        PowerPointSingleton(pid, started, executable))
+                    if (candidate != null && PowerPointRotCandidateMatches(candidate, pid, started, executable, startup))
                     { var result = candidate; candidate = null; return result; }
                 }
                 finally { Release(candidate); }
@@ -370,6 +369,21 @@ namespace Scribble.Testing
             {
                 // GetActiveObject can return another, busy Excel instance.
                 // Its refusal must not prevent the exact private window probe.
+                return false;
+            }
+        }
+
+        private static bool PowerPointRotCandidateMatches(object application, int pid, long started, string executable, string startup)
+        {
+            try
+            {
+                return (startup == null || FindDocument(application, "PowerPoint", startup, false)) &&
+                    PowerPointSingleton(pid, started, executable);
+            }
+            catch (COMException)
+            {
+                // A temporarily busy singleton can reject its ROT document
+                // lookup. Keep probing its exact native document window.
                 return false;
             }
         }
