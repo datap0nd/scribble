@@ -12,7 +12,8 @@ namespace Scribble.Office
     {
         public static AnalysisDocumentPlan Build(AnalysisArtifact artifact,
             IDictionary<string, object> choices, int requestedSlides,
-            string objective = null)
+            string objective = null,
+            IEnumerable<string> draftMetricOrder = null)
         {
             AnalysisContract.Serialize(artifact);
             if (artifact.Snapshots.Count != 1 ||
@@ -28,7 +29,7 @@ namespace Scribble.Office
                  fact.ValueType == AnalysisContract.IntegerValue))
                 .ToArray();
             var selection = AnalysisRequestPlan.Resolve(artifact,
-                objective, choices);
+                objective, choices, draftMetricOrder);
             var focus = selection.FocusPeriod;
             var compare = selection.ComparePeriod;
             var metrics = selection.ReportMetrics.Concat(

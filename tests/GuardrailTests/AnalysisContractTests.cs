@@ -367,6 +367,25 @@ namespace GuardrailTests
                         fact.Metric == "RevenueEUR" &&
                         fact.Period == "2026-05").FactId,
                 "The primary chart series followed source-column order instead of the typed binding.");
+            var reorderedDraft = AnalysisDeckPlanBuilder.Build(
+                extraMetricArtifact, new Dictionary<string, object> {
+                    { "AnalysisId", extraMetricArtifact.AnalysisId } }, 3,
+                "Create a May vs June chart using only primary values.",
+                new[] { "Cost EUR", "Revenue EUR" });
+            Check(reorderedDraft.ReportMetrics.SequenceEqual(new[] {
+                    "CostEUR", "RevenueEUR" }) &&
+                reorderedDraft.ChartSeries.SequenceEqual(new[] {
+                    "CostEUR" }) &&
+                reorderedDraft.Slides.Single(slide => slide.Chart != null)
+                    .Chart.Series[0].FactIds[0] ==
+                    extraMetricArtifact.Facts.Single(fact =>
+                        fact.Metric == "CostEUR" &&
+                        fact.Period == "2026-05").FactId,
+                "The primary chart ignored the verified draft metric order.");
+            RejectTableBinding(() => AnalysisRequestPlan.Resolve(
+                extraMetricArtifact, "Compare May vs June with a chart.",
+                null, new[] { "Unknown metric" }),
+                "ANALYSIS_REQUEST_REPORT_METRIC_UNBOUND");
             binding.DimensionHeaders.Add("Group");
             var dimensioned = AnalysisTableArtifactBuilder.BuildGrouped(
                 snapshot, binding, "Period", "2026-05");
@@ -462,7 +481,8 @@ namespace GuardrailTests
             var known = AnalysisTableArtifactBuilder.BuildGrouped(
                 partialSnapshot, binding);
             Check(known.Facts.Single(fact => fact.Metric == "CostEUR" &&
-                    fact.Period == "2026-05").Value == "36702" &&
+                    fact.Period == "2026-05" &&
+                    fact.Dimensions.Count == 0).Value == "36702" &&
                 known.UnresolvedConflicts.Any(item => item.Contains(
                     "Ledger!D4")),
                 "A blank source value was imputed or the known subtotal was not disclosed.");

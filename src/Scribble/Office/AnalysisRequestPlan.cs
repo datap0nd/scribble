@@ -35,7 +35,8 @@ namespace Scribble.Office
         public List<string> ChartSeries { get; set; } = new List<string>();
 
         public static AnalysisRequestPlan Resolve(AnalysisArtifact artifact,
-            string objective, IDictionary<string, object> supplied = null)
+            string objective, IDictionary<string, object> supplied = null,
+            IEnumerable<string> draftMetricOrder = null)
         {
             AnalysisContract.Serialize(artifact);
             if (artifact.Snapshots.Count != 1 ||
@@ -68,7 +69,8 @@ namespace Scribble.Office
             if (metrics.Length == 0)
                 throw new InvalidOperationException(
                     "ANALYSIS_REQUEST_METRICS_MISSING");
-            plan.ReportMetrics = SelectReportMetrics(objective, metrics);
+            plan.ReportMetrics = SelectReportMetrics(objective, metrics,
+                draftMetricOrder);
             var chartText = string.Join(" ", Regex.Matches(objective ?? "",
                 @"\bchart\b[^.!?]*", RegexOptions.IgnoreCase |
                 RegexOptions.CultureInvariant).Cast<Match>()
@@ -147,7 +149,7 @@ namespace Scribble.Office
         }
 
         private static List<string> SelectReportMetrics(string objective,
-            string[] available)
+            string[] available, IEnumerable<string> draftMetricOrder)
         {
             var request = objective ?? string.Empty;
             var placed = new List<Tuple<string, int, int>>();
@@ -178,6 +180,27 @@ namespace Scribble.Office
                     throw new InvalidOperationException(
                         "ANALYSIS_REQUEST_REPORT_METRIC_UNBOUND");
                 return selected;
+            }
+            if (draftMetricOrder != null)
+            {
+                var ordered = new List<string>();
+                foreach (var label in draftMetricOrder.Take(2))
+                {
+                    var metric = available.FirstOrDefault(value =>
+                        string.Equals(value, label,
+                            StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(ReadableMetric(value), label,
+                            StringComparison.OrdinalIgnoreCase));
+                    if (metric == null || ordered.Contains(metric,
+                        StringComparer.Ordinal))
+                        throw new InvalidOperationException(
+                            "ANALYSIS_REQUEST_REPORT_METRIC_UNBOUND");
+                    ordered.Add(metric);
+                }
+                if (ordered.Count == 0)
+                    throw new InvalidOperationException(
+                        "ANALYSIS_REQUEST_REPORT_METRIC_UNBOUND");
+                return ordered;
             }
             return available.Take(2).ToList();
         }
