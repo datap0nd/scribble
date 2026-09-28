@@ -275,6 +275,8 @@ namespace GuardrailTests
                 Run(
                     "Document factory authorizes at most one marked draft",
                     DocumentFactoryGatesDraftTools);
+                Run("Production repair route excludes corpus labels",
+                    RepairRouteExcludesCorpusLabels);
                 Run(
                     "Browser context is bounded and tools are approved-only",
                     BrowserContextIsBoundedAndReadOnly);
@@ -7099,18 +7101,74 @@ namespace GuardrailTests
                 "The email draft tool must state that sending is impossible.");
         }
 
+        private static void RepairRouteExcludesCorpusLabels()
+        {
+            var directory = new DirectoryInfo(
+                AppDomain.CurrentDomain.BaseDirectory);
+            while (directory != null &&
+                !File.Exists(Path.Combine(directory.FullName,
+                    "Scribble.sln")))
+                directory = directory.Parent;
+            Assert(directory != null,
+                "The source root is required for the repair-route scan.");
+            var files = new[] { "Office", "Chat" }.SelectMany(folder =>
+                Directory.GetFiles(Path.Combine(directory.FullName,
+                    "src", "Scribble", folder), "*.cs",
+                    SearchOption.AllDirectories));
+            foreach (var file in files)
+            {
+                var content = File.ReadAllText(file);
+                Assert(!System.Text.RegularExpressions.Regex.IsMatch(
+                        content,
+                        @"\b(?:PP|XA|WB|PPT)\d{2}\b|Atlas Components|Meridian Retail|Cedar Logistics|Orion Services",
+                        System.Text.RegularExpressions.RegexOptions
+                            .IgnoreCase),
+                    "A corpus identifier or company appears in production code: " +
+                    file);
+                if (!new[] { "PresentationDraftCopy.cs",
+                        "DocumentDraftHost.PilotCopy.cs",
+                        "WorkbookMonthlyChartFacts.cs",
+                        "DocumentChatRequestFactory.cs" }
+                    .Contains(Path.GetFileName(file),
+                        StringComparer.OrdinalIgnoreCase))
+                    continue;
+                Assert(!content.Contains(" | sales | ") &&
+                    !content.Contains("Revenue EUR / Cost EUR (EUR)") &&
+                    !content.Contains("Cost EUR"),
+                    "A fixed corpus label appears in the repair route: " +
+                    file);
+            }
+        }
+
         private static string PilotCopyPolicyError(
+            params Dictionary<string, object>[] operations)
+        {
+            return PilotCopyPolicyErrorFor(4, 2, 100, operations);
+        }
+
+        private static string PilotCopyPolicyErrorFor(
+            int replacementSlideId, int chartSlideId, int chartShapeId,
             params Dictionary<string, object>[] operations)
         {
             var policy = typeof(DocumentDraftHost).GetMethod(
                 "ValidatePilotCopyOperations",
                 BindingFlags.Static | BindingFlags.NonPublic);
             Assert(policy != null,
-                "The PP01 pilot operation policy is missing.");
+                "The workbook-backed copy operation policy is missing.");
+            var bindingType = typeof(DocumentDraftHost).Assembly.GetType(
+                "Scribble.Office.PresentationDraftCopy+MonthlyChartBinding",
+                true);
+            var chart = Activator.CreateInstance(bindingType, true);
+            bindingType.GetField("SourceSlideId").SetValue(chart,
+                chartSlideId);
+            bindingType.GetField("SourceShapeId").SetValue(chart,
+                chartShapeId);
+            var charts = Array.CreateInstance(bindingType, 1);
+            charts.SetValue(chart, 0);
             try
             {
                 policy.Invoke(null, new object[] { operations,
-                    4, 2, 100 });
+                    new[] { replacementSlideId }, charts });
                 return string.Empty;
             }
             catch (TargetInvocationException error)
@@ -7197,8 +7255,8 @@ namespace GuardrailTests
                     Convert.ToString(((ChatCompletionInputMessage)
                         repair.messages[0]).content).Contains(
                             PresentationRevisionAcceptance.Enabled
-                                ? "copies the source into an unsaved draft"
-                                : "lacks a current native acceptance receipt"),
+                                ? "opens a separate unsaved native copy"
+                                : "copy repair is unavailable"),
                     "The workbook-backed PP01 pilot must expose the copy-and-patch route.");
                 if (!repair.tools.Any(tool => tool.function.name ==
                         PresentationToolCatalog.ReviseSlides))
@@ -7215,6 +7273,23 @@ namespace GuardrailTests
                     "Create a repaired draft of the source deck into exactly 6 output slides; preserve the original slides.");
                 Assert(repairTask.State.RequiredPresentationSlides == 6,
                     "The PP01 copy route lost its six-slide task count.");
+                var seven = DocumentChatRequestFactory.Create(
+                    "test-model", "powerpoint", "Presentation: Deck2",
+                    new List<ChatTurn>(),
+                    "Create a repaired draft of the source deck into exactly 7 output slides; preserve the original slides.",
+                    true,
+                    new[] { new ExternalContextDocument("Book",
+                        "Attached workbook", "C:\\pilot\\book.xlsx") });
+                Assert(seven.tools.Any(tool =>
+                        tool.function.name ==
+                            PresentationToolCatalog.ReviseSlides) &&
+                    !seven.tools.Any(tool =>
+                        tool.function.name ==
+                            PresentationToolCatalog.AddDraftSlides) &&
+                    new TaskContextManager(seven, "powerpoint",
+                        "Create a repaired draft of the source deck into exactly 7 output slides; preserve the original slides.")
+                        .State.RequiredPresentationSlides == 7,
+                    "Workbook-backed repair must retain the requested source deck length.");
                 var replacement = new Dictionary<string, object>
                 {
                     { "kind", "replace_slide" },
@@ -7222,7 +7297,7 @@ namespace GuardrailTests
                 };
                 Assert(PilotCopyPolicyError(replacement,
                         replacement).StartsWith(
-                            "ANALYSIS_MULTI_PAGE_REPLACEMENT_UNSUPPORTED") &&
+                            "PILOT_COPY_REPLACEMENT_AMBIGUOUS") &&
                     PilotCopyPolicyError(new Dictionary<string, object>
                     {
                         { "kind", "chart_point" },
@@ -7235,6 +7310,23 @@ namespace GuardrailTests
                     }).StartsWith("ANALYSIS_GEOMETRY_UNSUPPORTED") &&
                     PilotCopyPolicyError(replacement) == string.Empty,
                     "The PP01 pilot must reject unsupported chart, geometry, and multi-page edits before copying.");
+                var laterReplacement =
+                    new Dictionary<string, object>
+                    {
+                        { "kind", "replace_slide" },
+                        { "slide_id", 7 }
+                    };
+                Assert(PilotCopyPolicyErrorFor(7, 5, 44,
+                        laterReplacement) == string.Empty &&
+                    PilotCopyPolicyErrorFor(7, 5, 44,
+                        new Dictionary<string, object>
+                        {
+                            { "kind", "replace_text" },
+                            { "slide_id", 5 },
+                            { "shape_id", 44 }
+                        }).StartsWith(
+                            "ANALYSIS_CHART_REFLOW_UNSUPPORTED"),
+                    "A measured replacement and chart target must bind to their inspected IDs on any slide.");
             }
             finally
             {

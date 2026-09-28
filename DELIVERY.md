@@ -172,12 +172,12 @@ a ≤ 10-line owner note in §5.
 | Scenario | Route | Build | Result |
 | --- | --- | --- | --- |
 | S1 XA01 | old | 2.0.385 | 1/3 (22 Sep) |
-| S1 XA02–10 | new | 2.0.715.0 | 2/9 eligible in one real batch (XA07, XA09); duplicate RowID counting, chart-title units and request-count failures |
-| S2 PP01 | old | 2.0.395 | 0/3 (no terminal event after 23 min) |
-| S2 PP02–10 | — | — | not run (the pilot code rejects every one) |
-| New route, real model | new | 2.0.715.0 | XA01 passed terminal, native hard checks, source preservation, agent visual review and the 12-request cap three times consecutively (11, 12, 11 requests); S1 repeatability bar met, owner D2 pending |
+| S1 XA01–10 | new | 2.0.724.0 | 9/10 deterministic and request bar in one batch; owner D2 pending |
+| S1 XA01 consecutive | new | 2.0.724.0 | 3/3 (10, 10, 9 actual model requests); owner D2 pending |
+| S2 PP01 | new | 2.0.726.0 | C1 native repair failed in patch staging on the copied source chart's overflow; generic repair fix in PR #45 |
+| S2 PP02–10 | — | — | not yet run |
 
-Current stage: **B4**, mechanism fixes on PR #45. PR #44 merged into
+Current stage: **C2**, generic repair on PR #45. PR #44 merged into
 `codex/development`. The required single XA02–XA10 batch ran on installed
 2.0.706.0 (`e079743a` DLL SHA256 prefix), with the new route confirmed and all
 nine results recorded in the scoreboard. None is eligible for S1: six blocked
@@ -227,7 +227,8 @@ all nine reached terminal events within 20 minutes, used at most 12 actual
 `inference_request` calls, passed native oracles, preserved sources and passed
 agent visual review. XA05 first failed at review because fenced JSON with
 surrounding prose was rejected; retries hit slide recovery and exceeded the
-request cap. A strict single-fence parser fix has green CI and awaits install.
+request cap. A strict single-fence parser fix has green CI and is installed
+in 2.0.726.0, pending a targeted real rerun.
 XA01 passed three consecutive runs on 2.0.724.0 (10, 10, 9 requests), each
 with terminal native outputs, all hard checks, source preservation and agent
 visual review. S1 deterministic and repeatability bars are met on this build;
@@ -236,8 +237,15 @@ PPT01–PPT06: opening a separate disposable byte copy as read-only and untitled
 preserved 6–11 slides, notes, shapes and 1–3 charts without changing source
 bytes or terminating PowerPoint. Opening the already-open source path returned
 the saved source instead, so the production path uses a distinct temporary
-copy and deletes it after the untitled deck opens. Stage C2 generalization is
-next.
+copy and deletes it after the untitled deck opens. Installed 2.0.726.0
+then reached the existing native PP01 repair harness: the source and workbook
+stayed unchanged, but the copied monthly chart still overflowed during patch
+staging. The first failing stage is native execution. PR #45 now verifies the
+full native copy, removes only its monthly chart shapes from the owned draft
+before staging, binds their series to typed workbook aggregates, and rebuilds
+them after the content patch. C2 also removes fixed slide indices, measures
+overflow and style defects, and tests for corpus labels in product code.
+Build and native verification are next, followed by real PP01.
 
 ## 6. Rules for autonomous sessions
 

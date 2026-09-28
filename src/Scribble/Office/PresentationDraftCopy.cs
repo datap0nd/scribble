@@ -1,7 +1,9 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Web.Script.Serialization;
 using Scribble.Chat;
@@ -50,6 +52,213 @@ namespace Scribble.Office
         private PresentationDraftCopy(object source, object draft,
             int[] sourceOrder)
         { Source = source; Draft = draft; _sourceOrder = sourceOrder; }
+
+        internal sealed class MonthlyChartBinding
+        {
+            public int SourceSlideId;
+            public int SourceShapeId;
+            public float Left;
+            public float Top;
+            public float Width;
+            public float Height;
+            public WorkbookMonthlyChartFacts.BoundSeries Facts;
+        }
+
+        // Reading series names and category labels does not open the
+        // embedded ChartData.Workbook. Reject ambiguous or unbound source
+        // series before consuming write authorization.
+        internal static MonthlyChartBinding[] BindMonthlyCharts(
+            object sourcePresentation, string workbookPath,
+            string trustedRequest, CancellationToken token)
+        {
+            dynamic source = sourcePresentation;
+            var request = trustedRequest ?? string.Empty;
+            var onlyPrimary = Regex.IsMatch(request,
+                @"\bonly (?:the )?primary\b|\bsingle (?:primary )?series\b",
+                RegexOptions.IgnoreCase);
+            var primary = RequestedMeasure(request, "primary");
+            var secondary = RequestedMeasure(request, "secondary");
+            var bindings = new List<MonthlyChartBinding>();
+            var cache = new Dictionary<string,
+                WorkbookMonthlyChartFacts.BoundSeries>(
+                    StringComparer.Ordinal);
+            for (var slideIndex = 1; slideIndex <=
+                (int)source.Slides.Count; slideIndex++)
+            {
+                dynamic slide = source.Slides[slideIndex];
+                for (var shapeIndex = 1; shapeIndex <=
+                    (int)slide.Shapes.Count; shapeIndex++)
+                {
+                    token.ThrowIfCancellationRequested();
+                    dynamic shape = slide.Shapes[shapeIndex];
+                    if ((int)shape.HasChart == 0) continue;
+                    var count = (int)shape.Chart.SeriesCollection().Count;
+                    if (count < 1 || count > 6)
+                        throw new InvalidOperationException(
+                            "REVISION_CHART_SERIES_AMBIGUOUS");
+                    var names = new List<string>();
+                    string[] categories = null;
+                    for (var index = 1; index <= count; index++)
+                    {
+                        dynamic item = shape.Chart.SeriesCollection(index);
+                        var labels = CategoryLabels((object)item.XValues);
+                        if (categories == null) categories = labels;
+                        else if (!categories.SequenceEqual(labels,
+                            StringComparer.Ordinal))
+                            throw new InvalidOperationException(
+                                "REVISION_CHART_CATEGORIES_AMBIGUOUS");
+                        names.Add(Convert.ToString(item.Name).Trim());
+                    }
+                    if (categories == null || categories.Length < 2 ||
+                        categories.Any(label => !Regex.IsMatch(label,
+                            @"^\d{4}-(?:0[1-9]|1[0-2])$")))
+                        continue;
+                    if (names.Any(string.IsNullOrWhiteSpace) ||
+                        names.Distinct(StringComparer.OrdinalIgnoreCase)
+                            .Count() != names.Count ||
+                        (!string.IsNullOrEmpty(primary) &&
+                         NormalizeChartName(primary) !=
+                         NormalizeChartName(names[0])) ||
+                        (!onlyPrimary && !string.IsNullOrEmpty(secondary) &&
+                         (names.Count < 2 ||
+                          NormalizeChartName(secondary) !=
+                          NormalizeChartName(names[1]))))
+                        throw new InvalidOperationException(
+                            "REVISION_CHART_SERIES_AMBIGUOUS");
+                    var chosen = onlyPrimary
+                        ? names.Take(1).ToArray() : names.ToArray();
+                    var key = string.Join("\0", chosen);
+                    WorkbookMonthlyChartFacts.BoundSeries facts;
+                    if (!cache.TryGetValue(key, out facts))
+                    {
+                        facts = WorkbookMonthlyChartFacts.ReadBoundSeries(
+                            workbookPath, chosen, token);
+                        cache.Add(key, facts);
+                    }
+                    if (categories.Length != facts.Categories.Length)
+                        throw new InvalidOperationException(
+                            "REVISION_CHART_PERIOD_COVERAGE_INVALID");
+                    bindings.Add(new MonthlyChartBinding {
+                        SourceSlideId = (int)slide.SlideID,
+                        SourceShapeId = (int)shape.Id,
+                        Left = (float)shape.Left,
+                        Top = (float)shape.Top,
+                        Width = (float)shape.Width,
+                        Height = (float)shape.Height,
+                        Facts = facts
+                    });
+                }
+            }
+            if (bindings.Count == 0)
+                throw new InvalidOperationException(
+                    "REVISION_CHART_SOURCE_MISSING");
+            return bindings.ToArray();
+        }
+
+        private static string[] CategoryLabels(object value)
+        {
+            if (value is string) return new[] { (string)value };
+            var values = value as IEnumerable;
+            return values == null ? new string[0] : values.Cast<object>()
+                .Select(item => Convert.ToString(item).Trim()).ToArray();
+        }
+
+        private static string RequestedMeasure(string request,
+            string role)
+        {
+            var match = Regex.Match(request,
+                @"\b" + role +
+                @"\s+(?:measure|metric|series)\s+(?:is|:|=)\s*(?<name>[^.;\r\n]+)",
+                RegexOptions.IgnoreCase);
+            return match.Success ? match.Groups["name"].Value.Trim() :
+                string.Empty;
+        }
+
+        private static string NormalizeChartName(string value)
+        {
+            return Regex.Replace(value ?? string.Empty, @"[^a-z0-9]",
+                string.Empty, RegexOptions.IgnoreCase).ToLowerInvariant();
+        }
+
+        private static bool MonthlyChartCategories(object chartShape)
+        {
+            dynamic shape = chartShape;
+            if ((int)shape.HasChart == 0) return false;
+            var count = (int)shape.Chart.SeriesCollection().Count;
+            if (count < 1 || count > 6) return false;
+            string[] first = null;
+            for (var index = 1; index <= count; index++)
+            {
+                dynamic series = shape.Chart.SeriesCollection(index);
+                var labels = CategoryLabels((object)series.XValues);
+                if (first == null) first = labels;
+                else if (!first.SequenceEqual(labels,
+                    StringComparer.Ordinal)) return false;
+            }
+            return first != null && first.Length >= 2 &&
+                first.All(label => Regex.IsMatch(label,
+                    @"^\d{4}-(?:0[1-9]|1[0-2])$"));
+        }
+
+        internal static int[] MeasuredReplacementSlides(
+            object sourcePresentation)
+        {
+            dynamic source = sourcePresentation;
+            var width = (float)source.PageSetup.SlideWidth;
+            var height = (float)source.PageSetup.SlideHeight;
+            var damaged = new List<int>();
+            for (var slideIndex = 1; slideIndex <=
+                (int)source.Slides.Count; slideIndex++)
+            {
+                dynamic slide = source.Slides[slideIndex];
+                var overflow = false;
+                for (var shapeIndex = 1; shapeIndex <=
+                    (int)slide.Shapes.Count; shapeIndex++)
+                {
+                    dynamic shape = slide.Shapes[shapeIndex];
+                    if ((int)shape.HasChart != 0) continue;
+                    if ((float)shape.Left < -.5f ||
+                        (float)shape.Top < -.5f ||
+                        (float)shape.Left + (float)shape.Width >
+                            width + .5f ||
+                        (float)shape.Top + (float)shape.Height >
+                            height + .5f)
+                    { overflow = true; break; }
+                    if ((int)shape.HasTable != 0)
+                    {
+                        dynamic table = shape.Table;
+                        for (var row = 1; row <= (int)table.Rows.Count &&
+                            !overflow; row++)
+                        for (var column = 1; column <=
+                            (int)table.Columns.Count; column++)
+                        {
+                            dynamic cell = table.Cell(row, column).Shape;
+                            dynamic range = cell.TextFrame.TextRange;
+                            if (PresentationRevision.NativeTextOverflows(
+                                    Convert.ToString(range.Text),
+                                    (float)range.BoundHeight,
+                                    (float)range.BoundWidth,
+                                    (float)cell.Height,
+                                    (float)cell.Width))
+                            { overflow = true; break; }
+                        }
+                    }
+                    else if ((int)shape.HasTextFrame != 0)
+                    {
+                        dynamic range = shape.TextFrame.TextRange;
+                        if (PresentationRevision.NativeTextOverflows(
+                                Convert.ToString(range.Text),
+                                (float)range.BoundHeight,
+                                (float)range.BoundWidth,
+                                (float)shape.Height,
+                                (float)shape.Width))
+                        { overflow = true; break; }
+                    }
+                }
+                if (overflow) damaged.Add((int)slide.SlideID);
+            }
+            return damaged.ToArray();
+        }
 
         internal static PresentationDraftCopy Create(object application,
             object sourcePresentation, string owner)
@@ -122,6 +331,24 @@ namespace Scribble.Office
                     result._slideIds[originalId] = (int)copy.SlideID;
                     MapShapes((object)original.Shapes,
                         (object)copy.Shapes, shapes);
+                    // Verify the native copy first, then remove only its
+                    // monthly charts before patch staging. The source chart
+                    // remains untouched and is rebuilt from bound facts.
+                    for (var shapeIndex = 1; shapeIndex <=
+                        (int)original.Shapes.Count; shapeIndex++)
+                    {
+                        dynamic sourceShape =
+                            original.Shapes[shapeIndex];
+                        if ((int)sourceShape.HasChart == 0 ||
+                            !MonthlyChartCategories((object)sourceShape))
+                            continue;
+                        var sourceShapeId = (int)sourceShape.Id;
+                        var draftShapeId = shapes[sourceShapeId];
+                        dynamic draftShape = PresentationInspection
+                            .FindShape((object)copy, draftShapeId);
+                        draftShape.Delete();
+                        shapes[sourceShapeId] = -1;
+                    }
                     result._shapeIds[originalId] = shapes;
                 }
                 for (var index = 1; index <= count; index++)
@@ -338,24 +565,22 @@ namespace Scribble.Office
             return bound.ToArray();
         }
 
-        internal WorkbookMonthlyChartFacts.Result RecreateSalesChartFromWorkbook(
-            int sourceSlideId, int sourceShapeId, string workbookPath,
-            float left, float top, float width, float height)
+        internal void RecreateBoundChart(MonthlyChartBinding binding)
         {
             VerifySource();
             VerifyDraft();
-            var facts = WorkbookMonthlyChartFacts.ReadSalesLedger(
-                workbookPath, CancellationToken.None);
-            if (facts.Categories.Length != 6 ||
-                facts.RevenueEur.Length != 6 || facts.CostEur.Length != 6)
+            if (binding == null || binding.Facts == null ||
+                binding.Facts.Names == null ||
+                binding.Facts.Values == null ||
+                binding.Facts.Names.Length != binding.Facts.Values.Length)
                 throw new InvalidOperationException(
-                    "REVISION_CHART_FACTS_INCOMPLETE");
+                    "REVISION_CHART_BINDING_INVALID");
             int draftSlideId;
             int draftShapeId;
-            if (!_slideIds.TryGetValue(sourceSlideId,
+            if (!_slideIds.TryGetValue(binding.SourceSlideId,
                     out draftSlideId) ||
-                !_shapeIds[sourceSlideId].TryGetValue(sourceShapeId,
-                    out draftShapeId))
+                !_shapeIds[binding.SourceSlideId].TryGetValue(
+                    binding.SourceShapeId, out draftShapeId))
                 throw new InvalidOperationException(
                     "REVISION_CHART_SOURCE_CHANGED");
             dynamic slide = PresentationInspection.FindSlide(Draft,
@@ -364,30 +589,43 @@ namespace Scribble.Office
                 PresentationInspection.FindShape((object)slide,
                     draftShapeId);
             if (((object)oldChart == null &&
-                    !_sourceChartFingerprints.ContainsKey(sourceSlideId)) ||
-                ((object)oldChart != null && (int)oldChart.HasChart == 0) ||
-                left < 0 || top < 0 || width < 100 || height < 100 ||
-                left + width > (float)((dynamic)Draft).PageSetup.SlideWidth ||
-                top + height > (float)((dynamic)Draft).PageSetup.SlideHeight)
+                    !_sourceChartFingerprints.ContainsKey(
+                        binding.SourceSlideId)) ||
+                ((object)oldChart != null &&
+                    (int)oldChart.HasChart == 0))
                 throw new InvalidOperationException(
-                    "REVISION_CHART_REPLACEMENT_INVALID");
+                    "REVISION_CHART_SOURCE_CHANGED");
+            var unit = ChartUnit(binding.Facts.Names);
+            var title = string.Join(" / ", binding.Facts.Names) +
+                " (" + unit + ")";
             var chart = new PresentationDraftWriter.DraftChart(
-                DraftChartTypes.ColumnClustered,
-                "Revenue EUR / Cost EUR (EUR)", facts.Categories,
-                new[] {
-                    new PresentationDraftWriter.DraftChartSeries(
-                        "Revenue EUR", facts.RevenueEur.Select(value =>
-                            (double?)value).ToArray()),
-                    new PresentationDraftWriter.DraftChartSeries(
-                        "Cost EUR", facts.CostEur.Select(value =>
-                            (double?)value).ToArray())
-                });
+                DraftChartTypes.ColumnClustered, title,
+                binding.Facts.Categories,
+                binding.Facts.Names.Select((name, index) =>
+                    new PresentationDraftWriter.DraftChartSeries(name,
+                        binding.Facts.Values[index].Select(value =>
+                            (double?)value).ToArray())).ToArray());
+            var width = (float)((dynamic)Draft).PageSetup.SlideWidth;
+            var height = (float)((dynamic)Draft).PageSetup.SlideHeight;
+            var left = binding.Left;
+            var top = binding.Top;
+            var chartWidth = binding.Width;
+            var chartHeight = binding.Height;
+            if (left < 0 || top < 0 || chartWidth < 100 ||
+                chartHeight < 100 || left + chartWidth > width ||
+                top + chartHeight > height)
+            {
+                left = width * .069f;
+                top = height * .293f;
+                chartWidth = width * .859f;
+                chartHeight = height * .515f;
+            }
             var before = (int)slide.Shapes.Count;
             var created = false;
             for (var attempt = 0; attempt < 3; attempt++)
             {
                 if (PresentationDraftWriter.AddChartToSlide(slide,
-                        chart, left, top, width, height))
+                        chart, left, top, chartWidth, chartHeight))
                 { created = true; break; }
                 while ((int)slide.Shapes.Count > before)
                     slide.Shapes[(int)slide.Shapes.Count].Delete();
@@ -415,22 +653,13 @@ namespace Scribble.Office
                     throw;
                 }
             }
-            _shapeIds[sourceSlideId][sourceShapeId] =
+            _shapeIds[binding.SourceSlideId][binding.SourceShapeId] =
                 replacementId;
-            // Office can finish updating the saved chart cache after the
-            // embedded workbook closes. Seal only a state that stays the
-            // same across several spaced package snapshots. A later change
-            // still fails the ordinary exact draft verification.
             string stable = null;
             string previous = null;
             var consecutive = 0;
             for (var attempt = 0; attempt < 8; attempt++)
             {
-                // Chart COM enumeration has terminated chart.dll on this
-                // Office build after native chart creation. The owned,
-                // unsaved draft may be copied to a bounded temp package;
-                // that package includes this slide and its related chart
-                // and embedded workbook parts.
                 var current = PresentationInspection
                     .PackageSlideFingerprint((object)slide);
                 consecutive = current == previous ? consecutive + 1 : 1;
@@ -445,7 +674,18 @@ namespace Scribble.Office
             _draftFingerprints[draftSlideId] = "pkg:" + stable;
             VerifySource();
             VerifyDraft();
-            return facts;
+        }
+
+        private static string ChartUnit(string[] names)
+        {
+            if (names.All(name => name.EndsWith("EUR",
+                StringComparison.OrdinalIgnoreCase))) return "EUR";
+            if (names.All(name => Regex.IsMatch(name, @"\bhours?\b",
+                RegexOptions.IgnoreCase))) return "hours";
+            if (names.All(name => Regex.IsMatch(name, @"\bunits?\b",
+                RegexOptions.IgnoreCase))) return "units";
+            throw new InvalidOperationException(
+                "REVISION_CHART_UNITS_AMBIGUOUS");
         }
 
         internal void VerifyDraft()
@@ -531,95 +771,117 @@ namespace Scribble.Office
             VerifyDraft();
         }
 
-        // The PP01 fixture has three fixed native style defects. Their target
-        // shapes and current values are read back from the owned chartless
-        // draft; the model never supplies RGB, font-size or geometry values.
-        internal object[] Pp01NativeStyleOperations()
+        // Native style repairs use measured geometry and table header rows.
+        // The model never supplies a color or a font-size threshold.
+        internal object[] MeasuredNativeStyleOperations(
+            int[] replacedSourceSlideIds)
         {
             VerifySource();
             VerifyDraft();
             dynamic draft = Draft;
-            if ((int)draft.Slides.Count != 6)
-                throw new InvalidOperationException(
-                    "PILOT_COPY_LAYOUT_UNSUPPORTED");
             var operations = new List<object>();
-            dynamic tableSlide = draft.Slides[3];
-            dynamic table = UniqueShape((object)tableSlide,
-                shape => (int)shape.HasTable != 0);
+            var replaced = new HashSet<int>(
+                replacedSourceSlideIds ?? new int[0]);
             var blue = MetoTheme.Rgb(SamsungSlideDesign.Blue);
-            for (var column = 1; column <= 3; column++)
+            var pageHeight = (float)draft.PageSetup.SlideHeight;
+            for (var index = 1; index <= _sourceOrder.Length; index++)
             {
-                var oldColor = (int)table.Table.Cell(1, column)
-                    .Shape.Fill.ForeColor.RGB;
-                if (oldColor == blue) continue;
-                operations.Add(new Dictionary<string, object>
-                {
-                    { "kind", "table_cell_fill" },
-                    { "slide_id", (int)tableSlide.SlideID },
-                    { "fingerprint", PresentationInspection
-                        .Fingerprint((object)tableSlide) },
-                    { "shape_id", (int)table.Id },
-                    { "row", 1 }, { "column", column },
-                    { "before_color", oldColor }, { "color", blue }
-                });
-            }
-            for (var index = 1; index <= 6; index++)
-            {
-                if (index == 4) continue;
+                if (replaced.Contains(_sourceOrder[index - 1]))
+                    continue;
                 dynamic slide = draft.Slides[index];
-                dynamic byline = UniqueShape((object)slide,
-                    shape => (int)shape.HasTextFrame != 0 &&
-                        Convert.ToString(shape.TextFrame.TextRange.Text)
-                            .Contains(" | sales | "));
-                var before = (float)byline.TextFrame.TextRange.Font.Size;
-                if (before >= 14f) continue;
-                operations.Add(new Dictionary<string, object>
+                var fingerprint = PresentationInspection.Fingerprint(
+                    (object)slide);
+                var textShapes = new List<object>();
+                for (var shapeIndex = 1; shapeIndex <=
+                    (int)slide.Shapes.Count; shapeIndex++)
                 {
-                    { "kind", "shape_font_size" },
-                    { "slide_id", (int)slide.SlideID },
-                    { "fingerprint", PresentationInspection
-                        .Fingerprint((object)slide) },
-                    { "shape_id", (int)byline.Id },
-                    { "before_size", before }, { "size", 14f }
-                });
+                    dynamic shape = slide.Shapes[shapeIndex];
+                    if ((int)shape.HasTable != 0)
+                    {
+                        dynamic table = shape.Table;
+                        if ((int)table.Rows.Count < 2) continue;
+                        var headers = Enumerable.Range(1,
+                            (int)table.Columns.Count).Select(column =>
+                            Convert.ToString(table.Cell(1, column).Shape
+                                .TextFrame.TextRange.Text)).ToArray();
+                        if (headers.Any(string.IsNullOrWhiteSpace) ||
+                            headers.Distinct(StringComparer.OrdinalIgnoreCase)
+                                .Count() != headers.Length)
+                            continue;
+                        for (var column = 1; column <=
+                            (int)table.Columns.Count; column++)
+                        {
+                            var oldColor = (int)table.Cell(1, column)
+                                .Shape.Fill.ForeColor.RGB;
+                            if (oldColor == blue) continue;
+                            operations.Add(new Dictionary<string, object>
+                            {
+                                { "kind", "table_cell_fill" },
+                                { "slide_id", (int)slide.SlideID },
+                                { "fingerprint", fingerprint },
+                                { "shape_id", (int)shape.Id },
+                                { "row", 1 }, { "column", column },
+                                { "before_color", oldColor },
+                                { "color", blue }
+                            });
+                        }
+                    }
+                    if ((int)shape.HasTextFrame == 0 ||
+                        (int)shape.HasChart != 0 ||
+                        (float)shape.Top >= pageHeight * .9f ||
+                        string.IsNullOrWhiteSpace(Convert.ToString(
+                            shape.TextFrame.TextRange.Text)))
+                        continue;
+                    textShapes.Add((object)shape);
+                }
+                var targets = new Dictionary<int, float>();
+                foreach (dynamic shape in textShapes)
+                {
+                    var before = (float)shape.TextFrame.TextRange.Font.Size;
+                    if (before > 0 && before < 14f)
+                        targets[(int)shape.Id] = 14f;
+                }
+                foreach (dynamic shape in textShapes)
+                {
+                    var before = (float)shape.TextFrame.TextRange.Font.Size;
+                    if (before < 14f || before >= 30f) continue;
+                    var peers = textShapes.Cast<dynamic>().Where(peer =>
+                        (int)peer.Id != (int)shape.Id &&
+                        Math.Abs((float)peer.Top -
+                            (float)shape.Top) <= 2f &&
+                        Math.Abs((float)peer.Height -
+                            (float)shape.Height) <= 5f)
+                        .Select(peer => (float)peer.TextFrame.TextRange
+                            .Font.Size).ToArray();
+                    if (peers.Length == 0) continue;
+                    var target = peers.Max();
+                    if (target - before < 2f || target > 30f) continue;
+                    dynamic range = shape.TextFrame.TextRange;
+                    if ((float)range.BoundHeight * target / before >
+                            (float)shape.Height + 1f ||
+                        (float)range.BoundWidth * target / before >
+                            (float)shape.Width + 1f)
+                        continue;
+                    targets[(int)shape.Id] = target;
+                }
+                foreach (dynamic shape in textShapes)
+                {
+                    float target;
+                    if (!targets.TryGetValue((int)shape.Id, out target))
+                        continue;
+                    operations.Add(new Dictionary<string, object>
+                    {
+                        { "kind", "shape_font_size" },
+                        { "slide_id", (int)slide.SlideID },
+                        { "fingerprint", fingerprint },
+                        { "shape_id", (int)shape.Id },
+                        { "before_size", (float)shape.TextFrame.TextRange
+                            .Font.Size },
+                        { "size", target }
+                    });
+                }
             }
-            dynamic cover = draft.Slides[1];
-            dynamic cost = UniqueShape((object)cover,
-                shape => (int)shape.HasTextFrame != 0 &&
-                    Convert.ToString(shape.TextFrame.TextRange.Text)
-                        .StartsWith("Cost EUR", StringComparison.Ordinal));
-            var costSize = (float)cost.TextFrame.TextRange.Font.Size;
-            if (costSize < 27f)
-                operations.Add(new Dictionary<string, object>
-                {
-                    { "kind", "shape_font_size" },
-                    { "slide_id", (int)cover.SlideID },
-                    { "fingerprint", PresentationInspection
-                        .Fingerprint((object)cover) },
-                    { "shape_id", (int)cost.Id },
-                    { "before_size", costSize }, { "size", 27f }
-                });
             return operations.ToArray();
-        }
-
-        private static dynamic UniqueShape(object slide,
-            Func<dynamic, bool> predicate)
-        {
-            dynamic page = slide;
-            object match = null;
-            for (var index = 1; index <= (int)page.Shapes.Count; index++)
-            {
-                dynamic shape = page.Shapes[index];
-                if (!predicate(shape)) continue;
-                if (match != null)
-                    throw new InvalidOperationException(
-                        "PILOT_COPY_LAYOUT_AMBIGUOUS");
-                match = (object)shape;
-            }
-            if (match == null)
-                throw new InvalidOperationException(
-                    "PILOT_COPY_LAYOUT_UNSUPPORTED");
-            return match;
         }
 
         internal void VerifySource()

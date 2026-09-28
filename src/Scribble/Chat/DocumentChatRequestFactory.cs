@@ -95,9 +95,10 @@ namespace Scribble.Chat
                 allowDraftCreate &&
                 AnalysisDocumentPilot.Enabled &&
                 Regex.IsMatch(userPrompt ?? "",
-                    @"\b(?:6|six)\b.{0,24}\bslides?\b", RegexOptions.IgnoreCase) &&
+                    @"\b(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b.{0,48}\bslides?\b",
+                    RegexOptions.IgnoreCase) &&
                 DocumentDraftHost.ShouldDraftRepairedDeck(hostKind,
-                    userPrompt, 6) &&
+                    userPrompt, 1) &&
                 externalContext != null && externalContext.Any(document =>
                     new[] { ".xlsx", ".xlsm" }.Contains(
                         Path.GetExtension(document.SourcePath ?? ""),
@@ -346,10 +347,10 @@ namespace Scribble.Chat
                 }
                 if (pilotRepair && !PresentationRevisionAcceptance.Enabled)
                     return boundary +
-                        " The six-slide copy repair is unavailable because this PowerPoint build lacks a current native acceptance receipt. Explain this local gate; do not claim an output was produced.";
+                        " The workbook-backed copy repair is unavailable on this PowerPoint build. Do not claim an output was produced.";
                 if (pilotRepair)
                     return boundary +
-                        " For this six-slide workbook-backed repair, inspect all six saved source slides and the attached workbook completely. Make one exclusive revise_slides call on the inspected presentation ID. The host copies the source into an unsaved draft, applies your bounded content patches and one fourth-page replacement there, repairs known table/font styling from native Office state, and recreates its one native chart from the attached workbook. Do not request chart reflow, multiple full-slide replacements, slide insertion, deletion, or reordering. The source deck and workbook remain unchanged. The draft needs human visual review before sharing. Never claim it was saved.";
+                        " For this workbook-backed repair, inspect every saved source slide and the attached workbook completely. Make one exclusive revise_slides call on the inspected presentation ID. The host opens a separate unsaved native copy, applies bounded content repairs there, fixes measured table and text defects, and binds monthly charts to verified workbook series. Name the source slide IDs that need replacement based on measured overflow. Do not request chart mutation, slide insertion, deletion, or reordering. The source deck and workbook remain unchanged. The draft needs human visual review before sharing. Never claim it was saved.";
                 var selectionInstruction = hasExcelSelection
                     ? " For a one-to-one transformation of the attached " +
                       "Excel selection, including translation, use " +

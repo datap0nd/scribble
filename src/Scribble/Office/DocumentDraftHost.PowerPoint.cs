@@ -46,13 +46,14 @@ namespace Scribble.Office
             {
                 if (call.function.name == PresentationToolCatalog.AddDraftSlides &&
                     _taskContext != null &&
-                    _taskContext.State.RequiredPresentationSlides == 6 &&
+                    _taskContext.State.RequiredPresentationSlides > 0 &&
                     AnalysisDocumentPilot.Enabled &&
                     ShouldDraftRepairedDeck(_hostKind,
-                        string.Join("\n", _taskContext.State.OriginalDecisions), 6))
+                        string.Join("\n", _taskContext.State.OriginalDecisions),
+                        _taskContext.State.RequiredPresentationSlides))
                     return Error(call.id, authorization,
                         "PILOT_COPY_REVISE_REQUIRED",
-                        "Inspect the saved six-slide source and use revise_slides; the pilot copies and repairs it as an unsaved draft.");
+                        "Inspect the saved source and use revise_slides; the pilot copies and repairs it as an unsaved draft.");
                 if (!exclusive || authorization == null || !authorization.CanCreate || !IsDraftTool(_hostKind, call.function.name))
                     return Error(call.id, authorization, "DRAFT_PERMISSION_NOT_AVAILABLE", "Slide creation requires the original explicit draft instruction and an exclusive tool call.");
                 var args = ToolArguments.Parse(_serializer, call.function.arguments);

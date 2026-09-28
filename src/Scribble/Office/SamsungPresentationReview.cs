@@ -28,8 +28,8 @@ namespace Scribble.Office
             return true;
         }
 
-        // Models often write the citation line into footnote ("Source: WB01
-        // Ledger") and leave sources empty. Both render in the same visible
+        // Models often write a source citation into footnote and leave
+        // sources empty. Both render in the same visible
         // footer and reach the notes, so a footnote that is plainly a source
         // line is the citation; nothing is invented.
         public static void AdoptFootnoteCitation(IDictionary<string, object> slide)
@@ -84,7 +84,7 @@ namespace Scribble.Office
             if (!explanatory && (!data.TryGetValue("subtitle", out raw) || string.IsNullOrWhiteSpace(Convert.ToString(raw))))
                 throw new InvalidOperationException("SLIDE_ACTION_TITLE_REQUIRED: An analytical slide needs a nonempty subtitle stating its evidence-backed finding. Add subtitle, or set purpose to explanatory for a definitions or setup slide.");
             if (!data.TryGetValue("sources", out raw) || string.IsNullOrWhiteSpace(Convert.ToString(raw)))
-                throw new InvalidOperationException("SLIDE_CITATION_REQUIRED: Every factual slide needs a nonempty sources string, the visible citation line such as 'Source: WB01 Ledger; Scribble Draft audit'. A footnote is a separate qualifying note and does not replace sources. Add sources to this slide and to every other factual slide in the batch.");
+                throw new InvalidOperationException("SLIDE_CITATION_REQUIRED: Every factual slide needs a nonempty sources string, a visible citation line naming the source workbook or document. A footnote is a separate qualifying note and does not replace sources. Add sources to this slide and to every other factual slide in the batch.");
         }
         private static string NormalizeSource(string value) { return Regex.Replace(value ?? "", @"\s+", " ").Trim(); }
 

@@ -20,8 +20,7 @@ namespace Scribble.Office
                 AnalysisDocumentPilot.Enabled &&
                 ShouldDraftRepairedDeck(_hostKind,
                     string.Join("\n", _taskContext.State.OriginalDecisions),
-                    _taskContext.State.RequiredPresentationSlides) &&
-                _taskContext.State.RequiredPresentationSlides == 6;
+                    _taskContext.State.RequiredPresentationSlides);
         }
 
         private async Task<MailboxToolResult> ExecutePilotCopyRevisionAsync(
@@ -54,25 +53,16 @@ namespace Scribble.Office
                 if (SamsungAuthoringPolicy.Text(args,
                         "presentation_id") != PresentationInspection
                             .IdentityFor(sourceDeck) ||
-                    (int)source.Slides.Count != 6 ||
+                    (int)source.Slides.Count !=
+                        _taskContext.State.RequiredPresentationSlides ||
                     string.IsNullOrEmpty(Convert.ToString(source.Path)) ||
                     (int)source.Saved == 0)
                     throw new InvalidOperationException(
-                        "PILOT_COPY_SOURCE_CHANGED: Inspect the saved six-slide source again.");
+                        "PILOT_COPY_SOURCE_CHANGED: Inspect the saved source deck again.");
                 var operations = SamsungAuthoringPolicy.Array(args,
                     "operations");
                 var mapped = operations.Select(
                     SamsungAuthoringPolicy.ReadMap).ToArray();
-                dynamic chartSlide = source.Slides[2];
-                dynamic chartShape = chartSlide.Shapes[
-                    (int)chartSlide.Shapes.Count];
-                if ((int)chartShape.HasChart == 0)
-                    throw new InvalidOperationException(
-                        "PILOT_COPY_CHART_SOURCE_UNSUPPORTED");
-                var chartShapeId = (int)chartShape.Id;
-                ValidatePilotCopyOperations(mapped,
-                    (int)source.Slides[4].SlideID,
-                    (int)chartSlide.SlideID, chartShapeId);
                 var contract = PresentationToolCatalog
                     .RevisionDefinitions().Single(tool =>
                         tool.function.name ==
@@ -101,6 +91,15 @@ namespace Scribble.Office
                         StringComparison.OrdinalIgnoreCase))
                     throw new InvalidOperationException(
                         "PILOT_COPY_WORKBOOK_CHANGED: Reattach one saved workbook before repair.");
+                var trustedRequest = string.Join("\n",
+                    _taskContext.State.OriginalDecisions);
+                var chartBindings = PresentationDraftCopy
+                    .BindMonthlyCharts(sourceDeck,
+                        workbooks[0].SourcePath, trustedRequest, token);
+                var measuredReplacements = PresentationDraftCopy
+                    .MeasuredReplacementSlides(sourceDeck);
+                ValidatePilotCopyOperations(mapped,
+                    measuredReplacements, chartBindings);
                 token.ThrowIfCancellationRequested();
                 if (!authorization.TryConsume())
                     throw new InvalidOperationException(
@@ -115,7 +114,8 @@ namespace Scribble.Office
                 _taskContext.State.HostData[statusKey] = "copied";
                 _taskContext.Checkpoint();
                 var bound = copy.BindOperations(operations);
-                var nativeStyle = copy.Pp01NativeStyleOperations();
+                var nativeStyle = copy.MeasuredNativeStyleOperations(
+                    measuredReplacements);
                 var combined = bound.Concat(nativeStyle).ToArray();
                 if (combined.Length > 24)
                     throw new InvalidOperationException(
@@ -141,7 +141,7 @@ namespace Scribble.Office
                 var internalAuthorization =
                     new OneShotDraftAuthorization(true, false);
                 var patchPrompt = prompt +
-                    "\nPilot patch stage: review content edits and the single fourth-page replacement. The host applies the bounded native font/table styling and recreates the workbook-backed chart after this stage. Do not require model-authored style or chart operations in this batch.";
+                    "\nCopy repair stage: review the requested content edits and measured overflow replacements. The host applies bounded native font/table styling and recreates workbook-backed monthly charts after this stage. Do not require model-authored style or chart operations in this batch.";
                 var patch = await ExecuteRevisionAsync(draftCall,
                     internalAuthorization, true, patchPrompt, client, settings,
                     token, progress, true);
@@ -170,22 +170,22 @@ namespace Scribble.Office
                 stage = "chart";
                 _taskContext.State.HostData[statusKey] = "charting";
                 _taskContext.Checkpoint();
-                var chartFacts = copy.RecreateSalesChartFromWorkbook(
-                    (int)chartSlide.SlideID, chartShapeId,
-                    workbooks[0].SourcePath, 66f, 158.25f, 825f,
-                    278.25f);
-                if (chartFacts.Categories.Length != 6 ||
-                    !string.Equals(chartFacts.SourceSha256,
-                        workbooks[0].SourceFingerprint,
-                        StringComparison.OrdinalIgnoreCase))
-                    throw new InvalidOperationException(
-                        "PILOT_COPY_CHART_FACTS_INVALID");
+                foreach (var binding in chartBindings)
+                {
+                    if (!string.Equals(binding.Facts.SourceSha256,
+                            workbooks[0].SourceFingerprint,
+                            StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidOperationException(
+                            "PILOT_COPY_CHART_FACTS_INVALID");
+                    copy.RecreateBoundChart(binding);
+                }
                 copy.VerifySource();
                 copy.VerifyDraft();
                 _taskContext.State.HostData["pilot_copy_snapshot"] =
                     copy.Snapshot();
                 _taskContext.State.HostData[statusKey] = "complete";
-                for (var index = 1; index <= 6; index++)
+                for (var index = 1; index <=
+                    (int)source.Slides.Count; index++)
                 {
                     var pageId = "ppt:" + index;
                     if (!_taskContext.State.ExpectedSourceIds
@@ -206,10 +206,10 @@ namespace Scribble.Office
                 _taskContext.State.PresentationReviewReceipt =
                     SamsungAuthoringPolicy.CacheKey(settings.Model,
                         settings.BaseUrl, patchReviewReceipt,
-                        chartFacts.SourceSha256);
+                        workbooks[0].SourceFingerprint);
                 _taskContext.State.HostData[
                     "pilot_copy_review_scope"] =
-                    "model-reviewed chartless content; host-verified workbook chart; human visual approval pending";
+                        "model-reviewed chartless content; host-verified workbook chart; human visual approval pending";
                 _taskContext.Checkpoint();
                 Scribble.Testing.TestLab.RegisterOutput(copy.Draft,
                     "pptx");
@@ -217,13 +217,14 @@ namespace Scribble.Office
                 return new MailboxToolResult(call.id,
                     _serializer.Serialize(new
                     {
-                        ok = true, saved = false, copied_slides = 6,
+                        ok = true, saved = false,
+                        copied_slides = (int)source.Slides.Count,
                         revised_slides = revision.Items.Count,
                         native_style_changes = nativeStyle.Length,
-                        chart_recreated = true,
+                        charts_recreated = chartBindings.Length,
                         visual_approval_required = true,
                         revert_available = false
-                    }), "Opened a six-slide unsaved repair draft. The source and workbook were preserved; visual approval is still required.");
+                    }), "Opened an unsaved native repair draft. The source and workbook were preserved; visual approval is still required.");
             }
             catch (OperationCanceledException)
             { throw; }
@@ -246,17 +247,28 @@ namespace Scribble.Office
         }
 
         private static void ValidatePilotCopyOperations(
-            Dictionary<string, object>[] mapped, int replacementSlideId,
-            int chartSlideId, int chartShapeId)
+            Dictionary<string, object>[] mapped,
+            int[] measuredReplacementIds,
+            PresentationDraftCopy.MonthlyChartBinding[] charts)
         {
             if (mapped == null || mapped.Length == 0 ||
-                mapped.Length > 15)
+                mapped.Length > 24 ||
+                measuredReplacementIds == null || charts == null ||
+                charts.Length == 0)
                 throw new InvalidOperationException(
                     "PILOT_COPY_OPERATIONS_INVALID");
-            if (mapped.Count(operation => SamsungAuthoringPolicy.Text(
-                    operation, "kind") == "replace_slide") > 1)
+            var replacements = mapped.Where(operation =>
+                SamsungAuthoringPolicy.Text(operation,
+                    "kind") == "replace_slide").Select(operation =>
+                Convert.ToInt32(operation["slide_id"])).ToArray();
+            if (replacements.Distinct().Count() !=
+                    replacements.Length)
                 throw new InvalidOperationException(
-                    "ANALYSIS_MULTI_PAGE_REPLACEMENT_UNSUPPORTED");
+                    "PILOT_COPY_REPLACEMENT_AMBIGUOUS");
+            if (replacements.Any(id => charts.Any(chart =>
+                    chart.SourceSlideId == id)))
+                throw new InvalidOperationException(
+                    "PILOT_COPY_CHART_SLIDE_REPLACEMENT_UNSUPPORTED");
             foreach (var operation in mapped)
             {
                 var kind = SamsungAuthoringPolicy.Text(operation,
@@ -275,18 +287,19 @@ namespace Scribble.Office
                         "PILOT_COPY_OPERATION_UNSUPPORTED");
                 object target;
                 if (operation.TryGetValue("shape_id", out target) &&
-                    Convert.ToInt32(target) == chartShapeId &&
-                    Convert.ToInt32(operation["slide_id"]) ==
-                        chartSlideId)
+                    charts.Any(chart =>
+                        Convert.ToInt32(operation["slide_id"]) ==
+                            chart.SourceSlideId &&
+                        Convert.ToInt32(target) ==
+                            chart.SourceShapeId))
                     throw new InvalidOperationException(
-                        "ANALYSIS_CHART_REFLOW_UNSUPPORTED: The pilot recreates the chart from the bound workbook after patching.");
+                        "ANALYSIS_CHART_REFLOW_UNSUPPORTED: The host recreates monthly charts from the bound workbook after patching.");
             }
-            if (mapped.Count(operation => SamsungAuthoringPolicy.Text(
-                    operation, "kind") == "replace_slide" &&
-                Convert.ToInt32(operation["slide_id"]) ==
-                    replacementSlideId) != 1)
+            if (!replacements.OrderBy(id => id).SequenceEqual(
+                    measuredReplacementIds.OrderBy(id => id)))
                 throw new InvalidOperationException(
-                    "PILOT_COPY_LAYOUT_SCOPE_REQUIRED: Recompose the overflowing fourth page once.");
+                    "PILOT_COPY_LAYOUT_SCOPE_REQUIRED: Replace exactly the source slides with measured overflow: " +
+                    string.Join(", ", measuredReplacementIds));
         }
     }
 }
