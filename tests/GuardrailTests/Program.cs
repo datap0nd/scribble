@@ -7161,13 +7161,16 @@ namespace GuardrailTests
                 source.FullName = sourcePath;
                 dynamic app = new System.Dynamic.ExpandoObject();
                 app.ActivePresentation = source;
-                var objective = "Repair the source deck into exactly 6 slides; preserve the original slides.";
+                var objective = "Create a repaired draft of the source deck into exactly 6 output slides; preserve the original slides.";
                 var request = MakeRequest(new List<ChatTurn>());
                 request.tools = new List<ChatToolDefinition> {
                     PresentationToolCatalog.RevisionDefinitions().Single(tool =>
                         tool.function.name == PresentationToolCatalog.ReviseSlides) };
                 var task = new TaskContextManager(request, "powerpoint",
                     objective, new TaskCheckpointStore(root));
+                Assert(task.State.RequiredPresentationSlides == 6 &&
+                    AnalysisDocumentPilot.Enabled,
+                    "The regression must enter the workbook-backed pilot copy route.");
                 using (var client = new OpenAiCompatibleClient())
                 using (var host = new DocumentDraftHost("powerpoint", (object)app))
                 {
