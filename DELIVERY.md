@@ -269,6 +269,11 @@ slide used the source ChatGPT design; assigning the source design to staging
 resolved `+mn-ea` to Calibri. PR #45 now sets the source design on staging
 and recovery copies before applying edits, then verifies full content
 equality. Native verification is next.
+The 2.0.733.0 PP01 native repair harness passed: the reviewed replacement
+committed, the workbook-derived native chart was recreated, recovery and PDF
+export package equivalence passed, and source/workbook hashes were unchanged.
+No test-owned Office process remained. Green CI, installation and the first
+real PP01 run are next; independent grading and owner D2 review remain open.
 
 ## 6. Rules for autonomous sessions
 

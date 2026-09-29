@@ -172,6 +172,23 @@ namespace GuardrailTests
                 stage = "stage_patch";
                 Invoke(revision, RevisionType, "Stage", (object)app,
                     combined);
+                var stagedItems = (System.Collections.IEnumerable)
+                    RevisionType.GetField("Items", BindingFlags.Instance |
+                        BindingFlags.NonPublic).GetValue(revision);
+                foreach (var stagedItem in stagedItems)
+                {
+                    var itemType = stagedItem.GetType();
+                    dynamic livePage = itemType.GetField("Original",
+                        BindingFlags.Instance | BindingFlags.NonPublic)
+                        .GetValue(stagedItem);
+                    dynamic reviewedPage = itemType.GetField("Staged",
+                        BindingFlags.Instance | BindingFlags.NonPublic)
+                        .GetValue(stagedItem);
+                    if (Convert.ToString(livePage.Design.Name) !=
+                        Convert.ToString(reviewedPage.Design.Name))
+                        throw new InvalidOperationException(
+                            "PP01_STAGING_DESIGN_CHANGED");
+                }
                 stage = "commit_patch";
                 Invoke(revision, RevisionType, "Commit",
                     (Action<string>)(status => { }));
