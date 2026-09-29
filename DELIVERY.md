@@ -246,6 +246,9 @@ before staging, binds their series to typed workbook aggregates, and rebuilds
 them after the content patch. C2 also removes fixed slide indices, measures
 overflow and style defects, and tests for corpus labels in product code.
 Build and native verification are next, followed by real PP01.
+The targeted XA05 rerun on installed 2.0.726.0 passed all native hard
+checks and source preservation in 10 actual requests; all four slide renders
+were legible in agent visual review. Owner D2 acceptance remains pending.
 
 ## 6. Rules for autonomous sessions
 

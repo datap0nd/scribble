@@ -607,19 +607,26 @@ namespace Scribble.Office
                             (double?)value).ToArray())).ToArray());
             var width = (float)((dynamic)Draft).PageSetup.SlideWidth;
             var height = (float)((dynamic)Draft).PageSetup.SlideHeight;
-            var left = binding.Left;
-            var top = binding.Top;
-            var chartWidth = binding.Width;
-            var chartHeight = binding.Height;
-            if (left < 0 || top < 0 || chartWidth < 100 ||
-                chartHeight < 100 || left + chartWidth > width ||
-                top + chartHeight > height)
-            {
-                left = width * .069f;
-                top = height * .293f;
-                chartWidth = width * .859f;
-                chartHeight = height * .515f;
-            }
+            var candidates = new[] {
+                new[] { binding.Left, binding.Top,
+                    binding.Width, binding.Height },
+                new[] { width * .069f, height * .293f,
+                    width * .859f, height * .515f },
+                new[] { width * .52f, height * .28f,
+                    width * .41f, height * .54f },
+                new[] { width * .07f, height * .28f,
+                    width * .41f, height * .54f }
+            };
+            var placement = candidates.FirstOrDefault(candidate =>
+                ChartPlacementClear((object)slide, candidate,
+                    width, height));
+            if (placement == null)
+                throw new InvalidOperationException(
+                    "REVISION_CHART_PLACEMENT_AMBIGUOUS");
+            var left = placement[0];
+            var top = placement[1];
+            var chartWidth = placement[2];
+            var chartHeight = placement[3];
             var before = (int)slide.Shapes.Count;
             var created = false;
             for (var attempt = 0; attempt < 3; attempt++)
@@ -686,6 +693,36 @@ namespace Scribble.Office
                 RegexOptions.IgnoreCase))) return "units";
             throw new InvalidOperationException(
                 "REVISION_CHART_UNITS_AMBIGUOUS");
+        }
+
+        private static bool ChartPlacementClear(object slide,
+            float[] box, float pageWidth, float pageHeight)
+        {
+            if (box[0] < 0 || box[1] < 0 || box[2] < 100 ||
+                box[3] < 100 || box[0] + box[2] > pageWidth ||
+                box[1] + box[3] > pageHeight)
+                return false;
+            dynamic page = slide;
+            for (var index = 1; index <= (int)page.Shapes.Count;
+                index++)
+            {
+                dynamic shape = page.Shapes[index];
+                var meaningful = (int)shape.HasTable != 0 ||
+                    (int)shape.HasChart != 0 ||
+                    ((int)shape.HasTextFrame != 0 &&
+                     !string.IsNullOrWhiteSpace(Convert.ToString(
+                         shape.TextFrame.TextRange.Text)));
+                if (!meaningful) continue;
+                var overlapWidth = Math.Min(box[0] + box[2],
+                    (float)shape.Left + (float)shape.Width) -
+                    Math.Max(box[0], (float)shape.Left);
+                var overlapHeight = Math.Min(box[1] + box[3],
+                    (float)shape.Top + (float)shape.Height) -
+                    Math.Max(box[1], (float)shape.Top);
+                if (overlapWidth > 2f && overlapHeight > 2f)
+                    return false;
+            }
+            return true;
         }
 
         internal void VerifyDraft()
@@ -802,8 +839,8 @@ namespace Scribble.Office
                         if ((int)table.Rows.Count < 2) continue;
                         var headers = Enumerable.Range(1,
                             (int)table.Columns.Count).Select(column =>
-                            Convert.ToString(table.Cell(1, column).Shape
-                                .TextFrame.TextRange.Text)).ToArray();
+                            (string)Convert.ToString(table.Cell(1, column)
+                                .Shape.TextFrame.TextRange.Text)).ToArray();
                         if (headers.Any(string.IsNullOrWhiteSpace) ||
                             headers.Distinct(StringComparer.OrdinalIgnoreCase)
                                 .Count() != headers.Length)
