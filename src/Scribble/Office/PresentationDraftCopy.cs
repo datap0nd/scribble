@@ -154,6 +154,11 @@ namespace Scribble.Office
                             cache.Add(contextKey, contextFacts);
                         }
                     }
+                    if (!string.Equals(contextFacts.SourceSha256,
+                            facts.SourceSha256,
+                            StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidOperationException(
+                            "REVISION_CHART_SOURCE_CHANGED");
                     if (categories.Length != facts.Categories.Length)
                         throw new InvalidOperationException(
                             "REVISION_CHART_PERIOD_COVERAGE_INVALID");
