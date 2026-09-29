@@ -174,7 +174,7 @@ a ≤ 10-line owner note in §5.
 | S1 XA01 | old | 2.0.385 | 1/3 (22 Sep) |
 | S1 XA01–10 | new | 2.0.724.0 | 9/10 deterministic and request bar in one batch; owner D2 pending |
 | S1 XA01 consecutive | new | 2.0.724.0 | 3/3 (10, 10, 9 actual model requests); owner D2 pending |
-| S2 PP01 | new | 2.0.741.0 | C2 native repair passed; real rerun passed source-locator review but exposed a structured calculation-operand binding failure; approach change in PR #45 |
+| S2 PP01 | new | 2.0.742.0 | C2 native repair passed; real run stopped at a model review of the old overflowing slide before native staging; deterministic pilot preflight change in PR #45 |
 | S2 PP02–10 | — | — | not yet run |
 
 Current stage: **C3**, real PP01 repair on PR #45. PR #44 merged into
@@ -337,6 +337,17 @@ for host-typed rows: the label, period, unit and value must bind as fields of
 one exact row. Stop local label patches; parse such rows and verify that full
 operand tuple against one metric field, falling back to the existing strict
 passage check for other source formats. Rebuild, install and rerun PP01.
+Installed 2.0.742.0 passed green CI and an offline replay of the prior
+operand failure. Its real PP01 run used 15 requests and $0.1962. The first
+chart-bearing slide replacement was safely rejected; the corrected proposal
+excluded that chart. Before native staging, a model reviewer then rejected
+the unchanged old chart and the original overflowing slide, which the host
+would rebuild. No final deck appeared; both sources stayed unchanged. This
+is a review-stage recurrence after the structured evidence approach. The
+mechanism is review of pre-repair content as if it were proposed output.
+PR #45 changes approach: the pilot checks changed numeric text and notes
+against bound source data before writing, then reviews staged native output
+under the existing geometry and visual checks. Rebuild, install and rerun.
 
 ## 6. Rules for autonomous sessions
 

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Scribble.Chat;
@@ -101,6 +102,9 @@ namespace Scribble.Office
                     .MeasuredReplacementSlides(sourceDeck);
                 ValidatePilotCopyOperations(mapped,
                     measuredReplacements, chartBindings);
+                ValidatePilotCopyTextEvidence(mapped,
+                    SamsungPresentationReview.SourceCorpus(_taskContext,
+                        trustedRequest));
                 token.ThrowIfCancellationRequested();
                 if (!authorization.TryConsume())
                     throw new InvalidOperationException(
@@ -304,6 +308,43 @@ namespace Scribble.Office
                 throw new InvalidOperationException(
                     "PILOT_COPY_LAYOUT_SCOPE_REQUIRED: Replace exactly the source slides with measured overflow: " +
                     string.Join(", ", measuredReplacementIds));
+        }
+
+        internal static void ValidatePilotCopyTextEvidence(
+            Dictionary<string, object>[] operations, string source)
+        {
+            if (operations == null)
+                throw new InvalidOperationException("PILOT_COPY_OPERATIONS_INVALID");
+            foreach (var operation in operations)
+            {
+                var kind = SamsungAuthoringPolicy.Text(operation, "kind");
+                if (kind == "replace_text")
+                {
+                    var before = SamsungAuthoringPolicy.Text(operation,
+                        "before");
+                    var after = SamsungAuthoringPolicy.Text(operation,
+                        "text");
+                    var oldNumbers = Regex.Matches(before,
+                        @"\d[\d,.]*%?")
+                        .Cast<Match>().Select(match => match.Value);
+                    var newNumbers = Regex.Matches(after,
+                        @"\d[\d,.]*%?")
+                        .Cast<Match>().Select(match => match.Value);
+                    if (!oldNumbers.SequenceEqual(newNumbers))
+                        throw new InvalidOperationException(
+                            "PILOT_COPY_TEXT_NUMBER_CHANGED: Use a cited replacement slide for changed numeric claims.");
+                }
+                else if (kind == "notes_append")
+                {
+                    var notes = SamsungAuthoringPolicy.Text(operation,
+                        "notes").Trim();
+                    if (notes.Length > 0 &&
+                        (source ?? "").IndexOf(notes,
+                            StringComparison.OrdinalIgnoreCase) < 0)
+                        throw new InvalidOperationException(
+                            "PILOT_COPY_NOTES_UNVERIFIED");
+                }
+            }
         }
     }
 }

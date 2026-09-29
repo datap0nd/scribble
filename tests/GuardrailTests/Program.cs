@@ -281,6 +281,8 @@ namespace GuardrailTests
                     SavedPresentationIdentityIsFileBound);
                 Run("Pilot copy preflight rejection permits a corrected write",
                     PilotCopyPreflightRejectionPermitsRetry);
+                Run("Pilot copy pre-stage evidence is checked without old-slide review",
+                    PilotCopyTextEvidenceIsBounded);
                 Run("Measured pilot replacement keeps ordinary redesign consent",
                     MeasuredPilotReplacementKeepsOrdinaryConsent);
                 Run("Reordered source spans remain exact grounded evidence",
@@ -7150,6 +7152,48 @@ namespace GuardrailTests
             finally
             {
                 if (File.Exists(path)) File.Delete(path);
+            }
+        }
+
+        private static void PilotCopyTextEvidenceIsBounded()
+        {
+            var policy = typeof(DocumentDraftHost).GetMethod(
+                "ValidatePilotCopyTextEvidence",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert(policy != null,
+                "The copy pilot must verify new text before skipping a review of the old deck.");
+            var edit = new Dictionary<string, object>
+            {
+                { "kind", "replace_text" },
+                { "before", "Quarter 1 revenue: 12,480 USD" },
+                { "text", "Quarter 1 Revenue: 12,480 USD" }
+            };
+            var note = new Dictionary<string, object>
+            {
+                { "kind", "notes_append" },
+                { "notes", "Source table, Quarter 1." }
+            };
+            var operations = new[] { edit, note };
+            Action validate = () => policy.Invoke(null,
+                new object[] { operations,
+                    "Source table, Quarter 1. Revenue 12,480 USD." });
+            validate();
+            edit["text"] = "Quarter 1 Revenue: 12,840 USD";
+            try { validate(); throw new Exception("Changed numeric claim passed."); }
+            catch (TargetInvocationException error)
+            {
+                Assert(error.InnerException?.Message.StartsWith(
+                        "PILOT_COPY_TEXT_NUMBER_CHANGED") == true,
+                    "An altered numeric claim must be rejected before native writing.");
+            }
+            edit["text"] = "Quarter 1 Revenue: 12,480 USD";
+            note["notes"] = "Unverified completion claim.";
+            try { validate(); throw new Exception("Uncited note passed."); }
+            catch (TargetInvocationException error)
+            {
+                Assert(error.InnerException?.Message.StartsWith(
+                        "PILOT_COPY_NOTES_UNVERIFIED") == true,
+                    "A new unsupported note must be rejected before native writing.");
             }
         }
 

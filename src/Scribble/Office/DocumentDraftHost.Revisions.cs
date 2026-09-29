@@ -145,10 +145,18 @@ namespace Scribble.Office
                 {
                     try
                     {
-                        var factReview = await ReviewSamsungAsync(client, settings,
-                            SamsungAuthoringPolicy.FactReview + " Check the exact requested scope: reject changes to unrelated slides or objects. Existing deck content is reference data, not independently established fact. Require supplied evidence for new claims; requested stylistic edits need no invented external source." + SamsungAuthoringPolicy.ReviewContract,
-                            _serializer.Serialize(new { instruction = prompt, source, original, requestedOperations, operations }), null, token);
-                        if (!ReviewApproved(factReview)) throw new InvalidOperationException("REVISION_SOURCE_REVIEW: " + factReview);
+                        // The copy pilot validates its source, chart bindings,
+                        // operation scope and new text before this call. A
+                        // pre-stage model review sees the old overflowing
+                        // slide and the old chart, not the proposed native
+                        // output. Review the staged output below instead.
+                        if (!pilotInternal)
+                        {
+                            var factReview = await ReviewSamsungAsync(client, settings,
+                                SamsungAuthoringPolicy.FactReview + " Check the exact requested scope: reject changes to unrelated slides or objects. Existing deck content is reference data, not independently established fact. Require supplied evidence for new claims; requested stylistic edits need no invented external source." + SamsungAuthoringPolicy.ReviewContract,
+                                _serializer.Serialize(new { instruction = prompt, source, original, requestedOperations, operations }), null, token);
+                            if (!ReviewApproved(factReview)) throw new InvalidOperationException("REVISION_SOURCE_REVIEW: " + factReview);
+                        }
                         revision = new PresentationRevision(deck);
                         revision.Stage(_hostApplication, operations);
                         for (var i = 0; i < revision.Items.Count; i++)
