@@ -408,6 +408,47 @@ namespace Scribble.Office
                     Convert.ToDouble(operation["before_value"]), Convert.ToDouble(operation["value"]));
             }
         }
+        private static void ApplyReviewedReplacement(object reviewed,
+            object live)
+        {
+            if (PresentationInspection.ContainsNativeChart(reviewed))
+                throw new InvalidOperationException(
+                    "REVISION_REPLACEMENT_CHART_UNSUPPORTED");
+            dynamic source = reviewed;
+            dynamic target = live;
+            for (var index = (int)target.Shapes.Count; index >= 1;
+                index--)
+                target.Shapes[index].Delete();
+            if ((int)source.Shapes.Count > 0)
+            {
+                source.Shapes.Range().Copy();
+                target.Shapes.Paste();
+                if ((int)target.Shapes.Count !=
+                        (int)source.Shapes.Count)
+                    throw new InvalidOperationException(
+                        "REVISION_REPLACEMENT_COPY_INCOMPLETE");
+                for (var index = 1; index <=
+                    (int)source.Shapes.Count; index++)
+                    target.Shapes[index].Name =
+                        "Scribble Replacement " + Guid.NewGuid().ToString("N");
+                for (var index = 1; index <=
+                    (int)source.Shapes.Count; index++)
+                    target.Shapes[index].Name =
+                        source.Shapes[index].Name;
+            }
+            target.FollowMasterBackground = 0;
+            target.Background.Fill.Solid();
+            target.Background.Fill.ForeColor.RGB =
+                source.Background.Fill.ForeColor.RGB;
+            target.Background.Fill.Transparency =
+                source.Background.Fill.Transparency;
+            target.FollowMasterBackground =
+                source.FollowMasterBackground;
+            source.NotesPage.Shapes.Placeholders[2]
+                .TextFrame.TextRange.Copy();
+            target.NotesPage.Shapes.Placeholders[2]
+                .TextFrame.TextRange.PasteSpecial(9);
+        }
         internal static void ValidateNativeGeometry(object slide)
         {
             dynamic page = slide; dynamic deck = page.Parent;
@@ -558,7 +599,12 @@ namespace Scribble.Office
                     {
                         dynamic live = item.Original;
                         var oldCount = (int)live.Shapes.Count;
-                        Apply(item.Original, item.Original, operation);
+                        if (SamsungAuthoringPolicy.Text(operation,
+                                "kind") == "replace_slide")
+                            ApplyReviewedReplacement(item.Staged,
+                                item.Original);
+                        else Apply(item.Original, item.Original,
+                            operation);
                         item.LastKnownContent = PresentationInspection.ContentFingerprint(item.Original);
                         if (SamsungAuthoringPolicy.Text(operation, "kind") == "annotate")
                             for (var n = oldCount + 1; n <= (int)live.Shapes.Count; n++) item.AddedShapeIds.Add((int)live.Shapes[n].Id);

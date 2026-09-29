@@ -249,11 +249,14 @@ Build and native verification are next, followed by real PP01.
 The targeted XA05 rerun on installed 2.0.726.0 passed all native hard
 checks and source preservation in 10 actual requests; all four slide renders
 were legible in agent visual review. Owner D2 acceptance remains pending.
-The 2.0.727.0 native PP01 repair then passed copy preservation and patch
-staging but stopped at `REVISION_LIVE_MISMATCH` during commit. The source and
-workbook remained byte-identical. The next step is to compare the live and
-staged native captures and fix the first divergent property without relaxing
-the equality gate.
+The 2.0.728.0 native PP01 repair twice passed copy preservation and patch
+staging but stopped at `REVISION_LIVE_MISMATCH` during commit. Build 2.0.729.0
+confirmed a persistent mismatch on replacement slide 4 after allowing native
+layout to settle. Source and workbook bytes stayed unchanged. The mechanism
+hypothesis is that independently drawing the reviewed replacement into the
+staging deck and again into the live draft yields different native content.
+PR #45 now copies the already reviewed slide content into the owned draft,
+then still requires exact native content equality. Native verification is next.
 
 ## 6. Rules for autonomous sessions
 
