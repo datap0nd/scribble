@@ -160,6 +160,7 @@ namespace GuardrailTests
                 Run("Phase 4 reference matrix covers six native layout families and three densities", SamsungSlideTests.Phase4ReferenceMatrix);
                 Run("Phase 4 defect matrix seeds one labeled blocker per reference", SamsungSlideTests.Phase4DefectMatrix);
                 Run("Samsung slide numbers require verified source evidence", SamsungSlideTests.EvidenceAndNumbers);
+                Run("Truncated read receipts stay raw source evidence", TruncatedSourceReceiptRemainsRaw);
                 Run("PowerPoint and Outlook slide tool calls reach independent review", SlideToolCallsReachReview);
                 Run("Empty endpoint responses retry twice without replaying tools", EmptyEndpointResponsesRecover);
                 Run("Repeated evidence expands model request payloads", RepeatedEvidenceExpandsRequestPayloads);
@@ -9494,6 +9495,21 @@ namespace GuardrailTests
                 !unrelated.ContainsKey("reasoning") &&
                 (bool)unrelated["parallel_tool_calls"],
                 "Provider-specific policy must not change unrelated endpoints.");
+        }
+
+        private static void TruncatedSourceReceiptRemainsRaw()
+        {
+            var sources = new List<string>();
+            var truncated = "{\"SourceSha256\":\"" +
+                new string('a', 48000);
+            SamsungPresentationReview.AppendSourceReceipt(
+                truncated, sources);
+            Assert(sources.Count == 1 && sources[0] == truncated,
+                "A cut JSON read receipt must remain raw evidence without crashing preflight.");
+            SamsungPresentationReview.AppendSourceReceipt(
+                "{\"label\":\"verified display\"}", sources);
+            Assert(sources.Contains("verified display"),
+                "A complete JSON receipt should still expose decoded text.");
         }
 
         private static void EmptyEndpointResponsesRecover()

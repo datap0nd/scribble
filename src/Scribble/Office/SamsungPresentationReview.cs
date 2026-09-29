@@ -316,14 +316,25 @@ namespace Scribble.Office
                     object callId, content;
                     if (result.TryGetValue("ToolCallId", out callId) && allowed.Contains(Convert.ToString(callId)) && result.TryGetValue("Content", out content))
                     {
-                        var text = Convert.ToString(content); sources.Add(text);
-                        // Include decoded strings from JSON receipts so quoted source
-                        // text is compared to the actual value, not its JSON escaping.
-                        try { AddStrings(json.DeserializeObject(text), sources); } catch (ArgumentException) { }
+                        AppendSourceReceipt(Convert.ToString(content), sources);
                     }
                 }
             }
             return string.Join("\n", sources);
+        }
+        internal static void AppendSourceReceipt(string text, List<string> sources)
+        {
+            sources.Add(text);
+            // Keep bounded read receipts as source text even when their JSON
+            // was cut mid-string. Only a fully decoded receipt adds fields.
+            try
+            {
+                AddStrings(new JavaScriptSerializer {
+                    MaxJsonLength = int.MaxValue
+                }.DeserializeObject(text), sources);
+            }
+            catch (ArgumentException) { }
+            catch (InvalidOperationException) { }
         }
         private static void AddStrings(object value, List<string> result)
         {
