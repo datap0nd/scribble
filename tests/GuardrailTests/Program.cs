@@ -161,7 +161,7 @@ namespace GuardrailTests
                 Run("Phase 4 defect matrix seeds one labeled blocker per reference", SamsungSlideTests.Phase4DefectMatrix);
                 Run("Samsung slide numbers require verified source evidence", SamsungSlideTests.EvidenceAndNumbers);
                 Run("PowerPoint and Outlook slide tool calls reach independent review", SlideToolCallsReachReview);
-                Run("Empty endpoint responses retry once without replaying tools", EmptyEndpointResponsesRecover);
+                Run("Empty endpoint responses retry twice without replaying tools", EmptyEndpointResponsesRecover);
                 Run("Repeated evidence expands model request payloads", RepeatedEvidenceExpandsRequestPayloads);
                 Run("Embedded provider errors retry without executing partial tools", EmbeddedProviderErrorsRecover);
                 Run("Provider and empty response retries stay independent", ProviderAndEmptyResponseRetriesAreIndependent);
@@ -9501,7 +9501,9 @@ namespace GuardrailTests
             const string empty = "{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":null}}],\"usage\":{\"completion_tokens\":1}}";
             const string success = "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"Recovered\"}}]}";
             foreach (var persistent in new[] { false, true })
-            using (var server = new FakeEndpoint(empty, persistent ? empty : success))
+            using (var server = persistent
+                ? new FakeEndpoint(empty, empty, empty)
+                : new FakeEndpoint(empty, empty, success))
             using (var client = new OpenAiCompatibleClient())
             {
                 try
@@ -9514,7 +9516,9 @@ namespace GuardrailTests
                     Assert(persistent && exception.Code == "RESPONSE_MISSING_CONTENT", "Unexpected recovery error: " + exception.Message);
                 }
                 server.Wait();
-                Assert(server.Bodies.Count == 2 && server.Bodies[0] == server.Bodies[1], "Recovery must retry the identical inference once.");
+                Assert(server.Bodies.Count == 3 &&
+                    server.Bodies.Distinct().Count() == 1,
+                    "Recovery must retry the identical inference twice.");
             }
         }
 

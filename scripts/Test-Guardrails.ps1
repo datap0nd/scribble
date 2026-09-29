@@ -541,6 +541,7 @@ if (Compare-Object $presentationToolNames (@(
     "read_slide",
     "inspect_slide",
     "revise_slides",
+    "read_revision_facts",
     "revert_scribble_changes",
     "add_draft_slides") | Sort-Object)) {
     throw "Presentation tool catalog contains an unexpected capability."
