@@ -163,9 +163,17 @@ namespace Scribble.Chat
                 {
                     if (!pilotRepair)
                         tools.Add(PresentationToolCatalog.DraftDefinition());
+                    if (pilotRepair)
+                        tools.Add(PresentationToolCatalog
+                            .RevisionFactsDefinition());
                     tools.AddRange(PresentationToolCatalog.RevisionDefinitions()
                         .Where(tool => !pilotRepair || tool.function.name ==
                             PresentationToolCatalog.ReviseSlides));
+                    if (pilotRepair)
+                        tools.Last(tool => tool.function.name ==
+                            PresentationToolCatalog.ReviseSlides)
+                            .function.description =
+                                "Repair the saved source deck by opening an owned unsaved copy. First call read_revision_facts. In every new text field reference host FactIds with [[fact:FACT_ID:value]], :metric, :period, :unit, :percent, :locator or :dimension:KEY. Literal digits, month names, metric labels and units are rejected. The host applies verified edits directly to its untitled copy and discards it on failure; chart values come only from the workbook. Do not edit the source, request a chart operation, or save the result.";
                 }
 
                 if (!pilotRepair)
@@ -350,7 +358,7 @@ namespace Scribble.Chat
                         " The workbook-backed copy repair is unavailable on this PowerPoint build. Do not claim an output was produced.";
                 if (pilotRepair)
                     return boundary +
-                        " For this workbook-backed repair, inspect every saved source slide and the attached workbook completely. Make one exclusive revise_slides call on the inspected presentation ID. The host opens a separate unsaved native copy, applies bounded content repairs there, fixes measured table and text defects, and binds monthly charts to verified workbook series. Name the source slide IDs that need replacement based on measured overflow. Do not request chart mutation, slide insertion, deletion, or reordering. The source deck and workbook remain unchanged. The draft needs human visual review before sharing. Never claim it was saved.";
+                        " For this workbook-backed repair, inspect every saved source slide and call read_revision_facts before revise_slides. Use its FactIds in [[fact:ID:field]] references for every new number, metric label, period and unit; the host renders them. Make one exclusive revise_slides call on the inspected presentation ID. The host opens a separate unsaved native copy, applies bounded content repairs directly there, fixes measured table and text defects, and binds monthly charts to verified workbook series. Name the source slide IDs that need replacement based on measured overflow. Do not request chart mutation, slide insertion, deletion, or reordering. The source deck and workbook remain unchanged. The draft needs human visual review before sharing. Never claim it was saved.";
                 var selectionInstruction = hasExcelSelection
                     ? " For a one-to-one transformation of the attached " +
                       "Excel selection, including translation, use " +

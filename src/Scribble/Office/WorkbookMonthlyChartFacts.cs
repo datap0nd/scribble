@@ -20,6 +20,7 @@ namespace Scribble.Office
             public string[] Names { get; set; }
             public decimal[][] Values { get; set; }
             public string[] Limitations { get; set; }
+            public VerifiedFact[] Facts { get; set; }
         }
 
         // Chart series are selected by their visible names, then bound to
@@ -123,7 +124,8 @@ namespace Scribble.Office
                 Categories = categories,
                 Names = seriesNames.ToArray(),
                 Values = values.ToArray(),
-                Limitations = facts.UnresolvedConflicts.ToArray()
+                Limitations = facts.UnresolvedConflicts.ToArray(),
+                Facts = facts.Facts.ToArray()
             };
         }
 

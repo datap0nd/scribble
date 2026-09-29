@@ -18,6 +18,7 @@ namespace Scribble.Chat
         public const string ListSlides = "list_slides";
         public const string ReadSlide = "read_slide";
         public const string InspectSlide = "inspect_slide";
+        public const string ReadRevisionFacts = "read_revision_facts";
         public const string ReviseSlides = "revise_slides";
         public const string RevertSlides = "revert_scribble_changes";
         public const string AddDraftSlides = "add_draft_slides";
@@ -27,7 +28,8 @@ namespace Scribble.Chat
             {
                 ListSlides,
                 ReadSlide,
-                InspectSlide
+                InspectSlide,
+                ReadRevisionFacts
             };
 
         public static List<ChatToolDefinition> CreateDefinitions()
@@ -506,6 +508,16 @@ namespace Scribble.Chat
             yield return new ChatToolDefinition { type = "function", function = new ChatToolFunctionDefinition {
                 name = RevertSlides, description = "Revert the latest Scribble revision batch when the user asks. Reject if subsequent user edits would be overwritten. Available only in the current Office session; nothing is saved.",
                 parameters = ToolSchema.Build(new Dictionary<string, object> { { "presentation_id", ToolSchema.String("Live presentation ID from inspect_slide.") } }, "presentation_id") } };
+        }
+
+        public static ChatToolDefinition RevisionFactsDefinition()
+        {
+            return new ChatToolDefinition { type = "function",
+                function = new ChatToolFunctionDefinition {
+                    name = ReadRevisionFacts,
+                    description = "Read host-verified FactIds from the attached workbook for workbook-backed slide repair. Use [[fact:FACT_ID:value]], [[fact:FACT_ID:percent]], [[fact:FACT_ID:metric]], [[fact:FACT_ID:period]], [[fact:FACT_ID:unit]], [[fact:FACT_ID:locator]] or [[fact:FACT_ID:dimension:KEY]] in new slide text. The host renders every value, metric label, period, unit and source locator. Do not type them as prose or numbers.",
+                    parameters = ToolSchema.Empty()
+                } };
         }
 
         public static bool IsApproved(string name)

@@ -808,6 +808,66 @@ namespace Scribble.Office
             VerifyDraft();
         }
 
+        internal void AcceptDirectRevision(
+            IDictionary<int, string> changed,
+            object[] operations)
+        {
+            VerifySource();
+            if (changed == null || changed.Count == 0 ||
+                operations == null || operations.Length == 0)
+                throw new InvalidOperationException(
+                    "REVISION_COPY_RECEIPT_INVALID");
+            dynamic draft = Draft;
+            if ((int)draft.Slides.Count != _sourceOrder.Length ||
+                Convert.ToString(draft.Tags["ScribbleRevisionDraft"]) !=
+                    _owner ||
+                Convert.ToString(draft.Tags["ScribblePresentationId"]) !=
+                    _draftId ||
+                !string.IsNullOrEmpty(Convert.ToString(draft.Path)))
+                throw new InvalidOperationException(
+                    "REVISION_COPY_DRAFT_CHANGED");
+            for (var index = 1; index <= _sourceOrder.Length; index++)
+            {
+                dynamic slide = draft.Slides[index];
+                var id = (int)slide.SlideID;
+                string expected;
+                if (_slideIds[_sourceOrder[index - 1]] != id ||
+                    !(changed.TryGetValue(id, out expected) ||
+                      _draftFingerprints.TryGetValue(id, out expected)) ||
+                    PresentationInspection.Fingerprint((object)slide) !=
+                        expected)
+                    throw new InvalidOperationException(
+                        "REVISION_COPY_DRAFT_CHANGED");
+            }
+            foreach (var pair in changed)
+                _draftFingerprints[pair.Key] = pair.Value;
+            foreach (var raw in operations)
+            {
+                var operation = SamsungAuthoringPolicy.ReadMap(raw);
+                if (SamsungAuthoringPolicy.Text(operation, "kind") !=
+                        "replace_slide") continue;
+                var draftId = Convert.ToInt32(operation["slide_id"]);
+                var sourceId = _slideIds.Single(pair =>
+                    pair.Value == draftId).Key;
+                _shapeIds[sourceId].Clear();
+            }
+            VerifyDraft();
+        }
+
+        internal void DiscardOwnedDraft()
+        {
+            dynamic draft = Draft;
+            if (Convert.ToString(draft.Tags["ScribbleRevisionDraft"]) !=
+                    _owner ||
+                Convert.ToString(draft.Tags["ScribblePresentationId"]) !=
+                    _draftId ||
+                !string.IsNullOrEmpty(Convert.ToString(draft.Path)))
+                throw new InvalidOperationException(
+                    "REVISION_COPY_DISCARD_UNSAFE");
+            draft.Close();
+            VerifySource();
+        }
+
         // Native style repairs use measured geometry and table header rows.
         // The model never supplies a color or a font-size threshold.
         internal object[] MeasuredNativeStyleOperations(

@@ -98,15 +98,17 @@ namespace Scribble.Office
                 var chartBindings = PresentationDraftCopy
                     .BindMonthlyCharts(sourceDeck,
                         workbooks[0].SourcePath, trustedRequest, token);
+                var factCatalog = RevisionFactCatalog.FromBindings(
+                    chartBindings);
                 var measuredReplacements = PresentationDraftCopy
                     .MeasuredReplacementSlides(sourceDeck);
                 ValidatePilotCopyOperations(mapped,
                     measuredReplacements, chartBindings);
                 var sourceEvidence = SamsungPresentationReview.SourceCorpus(
                     _taskContext, trustedRequest);
-                ValidatePilotCopyTextEvidence(mapped, sourceEvidence);
-                ValidateRevisionSlideEvidence(mapped, sourceEvidence,
-                    ids => _taskContext.Sources.Resolve(ids), _serializer);
+                ValidatePilotSourceSpanIds(mapped,
+                    ids => _taskContext.Sources.Resolve(ids));
+                var factBound = factCatalog.BindOperations(operations);
                 token.ThrowIfCancellationRequested();
                 if (!authorization.TryConsume())
                     throw new InvalidOperationException(
@@ -121,7 +123,7 @@ namespace Scribble.Office
                     copy.Snapshot();
                 _taskContext.State.HostData[statusKey] = "copied";
                 _taskContext.Checkpoint();
-                var bound = copy.BindOperations(operations);
+                var bound = copy.BindOperations(factBound);
                 var nativeStyle = copy.MeasuredNativeStyleOperations(
                     measuredReplacements);
                 var combined = bound.Concat(nativeStyle).ToArray();
@@ -129,52 +131,19 @@ namespace Scribble.Office
                     throw new InvalidOperationException(
                         "PILOT_COPY_OPERATIONS_INVALID");
                 ((dynamic)copy.Draft).Windows.Item(1).Activate();
-                var draftCall = new ChatToolCall
-                {
-                    id = call.id + ":pilot",
-                    function = new ChatToolCallFunction
-                    {
-                        name = PresentationToolCatalog.ReviseSlides,
-                        arguments = _serializer.Serialize(new
-                        {
-                            presentation_id = PresentationInspection
-                                .IdentityFor(copy.Draft),
-                            operations = combined
-                        })
-                    }
-                };
                 _taskContext.State.HostData[statusKey] = "patching";
                 _taskContext.Checkpoint();
                 stage = "patch";
-                var internalAuthorization =
-                    new OneShotDraftAuthorization(true, false);
-                var patchPrompt = prompt +
-                    "\nCopy repair stage: review the requested content edits and measured overflow replacements. The host applies bounded native font/table styling and recreates workbook-backed monthly charts after this stage. Do not require model-authored style or chart operations in this batch.";
-                var patch = await ExecuteRevisionAsync(draftCall,
-                    internalAuthorization, true, patchPrompt, client, settings,
-                    token, progress, true, nativeStyle.Length);
-                var patchResult = _serializer.Deserialize<
-                    Dictionary<string, object>>(patch.Content);
-                object ok;
-                if (!patchResult.TryGetValue("ok", out ok) ||
-                    !(ok is bool) || !(bool)ok)
-                    throw new InvalidOperationException(
-                        "PILOT_COPY_PATCH_FAILED: " + patch.StatusText);
-                var patchReviewReceipt = _taskContext.State
-                    .PresentationReviewReceipt;
-                if (string.IsNullOrEmpty(patchReviewReceipt))
-                    throw new InvalidOperationException(
-                        "PILOT_COPY_PATCH_REVIEW_MISSING");
-                var revision = PresentationRevision.Last(copy.Draft);
-                copy.AcceptRevision(revision);
+                var changed = PresentationRevision.ApplyOwnedDraft(
+                    copy.Draft, combined);
+                copy.AcceptDirectRevision(changed, combined);
+                var patchReviewReceipt = SamsungAuthoringPolicy.CacheKey(
+                    settings.Model, settings.BaseUrl,
+                    _serializer.Serialize(changed), sourceEvidence);
                 _taskContext.State.HostData["pilot_copy_snapshot"] =
                     copy.Snapshot();
                 _taskContext.State.HostData[statusKey] = "patched";
                 _taskContext.Checkpoint();
-                // The copy snapshot is the durable recovery boundary now.
-                // Keeping extra staging decks open while chart.dll creates
-                // the native chart has crashed this Office build.
-                revision.CloseStaging(false);
                 stage = "chart";
                 _taskContext.State.HostData[statusKey] = "charting";
                 _taskContext.Checkpoint();
@@ -227,7 +196,7 @@ namespace Scribble.Office
                     {
                         ok = true, saved = false,
                         copied_slides = (int)source.Slides.Count,
-                        revised_slides = revision.Items.Count,
+                        revised_slides = changed.Count,
                         native_style_changes = nativeStyle.Length,
                         charts_recreated = chartBindings.Length,
                         visual_approval_required = true,
@@ -241,6 +210,23 @@ namespace Scribble.Office
                 var code = error.Message.Split(':')[0];
                 var needsInspection = permissionConsumed ||
                     _taskContext.State.HostData.ContainsKey(statusKey);
+                if (copy != null)
+                {
+                    try
+                    {
+                        copy.DiscardOwnedDraft();
+                        _taskContext.State.HostData.Remove(statusKey);
+                        _taskContext.State.HostData.Remove(
+                            "pilot_copy_snapshot");
+                        _taskContext.Checkpoint();
+                        needsInspection = false;
+                    }
+                    catch
+                    {
+                        // An unexpected owner or saved path must be inspected;
+                        // never close a deck whose ownership is uncertain.
+                    }
+                }
                 return new MailboxToolResult(call.id,
                     _serializer.Serialize(new
                     {
@@ -346,6 +332,25 @@ namespace Scribble.Office
                         throw new InvalidOperationException(
                             "PILOT_COPY_NOTES_UNVERIFIED");
                 }
+            }
+        }
+
+        internal static void ValidatePilotSourceSpanIds(
+            Dictionary<string, object>[] operations,
+            Func<IEnumerable<string>, string> resolve)
+        {
+            if (operations == null || resolve == null)
+                throw new InvalidOperationException(
+                    "PILOT_COPY_SOURCE_SPANS_INVALID");
+            foreach (var operation in operations)
+            {
+                object supplied;
+                if (!operation.TryGetValue("slide", out supplied)) continue;
+                var content = SamsungAuthoringPolicy.ReadMap(supplied);
+                var spans = SamsungAuthoringPolicy.Array(content,
+                    "source_spans");
+                if (spans.Length > 0)
+                    resolve(spans.Select(Convert.ToString));
             }
         }
 

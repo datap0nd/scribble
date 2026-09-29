@@ -2095,6 +2095,7 @@ namespace Scribble.UI
             }
 
             var taskContext = new TaskContextManager(request, _hostKind, prompt, resume: _resumeRecovery);
+            presentationTools?.BindTask(taskContext);
             _diagnostics.BindTask(taskContext.State.Id, request.model);
             _currentTask = taskContext;
             if (_resumeRecovery == null)

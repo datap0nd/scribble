@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Text.RegularExpressions;
 using System.Web.Script.Serialization;
 
 namespace Scribble.Office
@@ -41,6 +42,290 @@ namespace Scribble.Office
             return ids.ToArray();
         }
         internal PresentationRevision(object presentation) { Presentation = presentation; }
+
+        // The workbook-backed pilot owns an untitled copy of the source deck.
+        // Its rollback is to discard that whole copy, so it can apply directly
+        // without a staging presentation or any clipboard transfer.
+        internal static Dictionary<int, string> ApplyOwnedDraft(
+            object presentation, object[] rawOperations)
+        {
+            dynamic deck = presentation;
+            if (deck == null ||
+                string.IsNullOrWhiteSpace(Convert.ToString(
+                    deck.Tags["ScribbleRevisionDraft"])) ||
+                !string.IsNullOrEmpty(Convert.ToString(deck.Path)) ||
+                rawOperations == null || rawOperations.Length == 0 ||
+                rawOperations.Length > 24)
+                throw new InvalidOperationException(
+                    "REVISION_OWNED_DRAFT_REQUIRED");
+            var order = Enumerable.Range(1, (int)deck.Slides.Count)
+                .Select(index => (int)deck.Slides[index].SlideID).ToArray();
+            var before = order.ToDictionary(id => id,
+                id => PresentationInspection.Fingerprint(
+                    PresentationInspection.FindSlide(presentation, id)));
+            var operations = rawOperations.Select(
+                SamsungAuthoringPolicy.ReadMap).ToArray();
+            var grouped = operations.GroupBy(operation =>
+                Convert.ToInt32(operation["slide_id"])).ToArray();
+            var replacementIds = new HashSet<int>(operations.Where(
+                operation => SamsungAuthoringPolicy.Text(operation,
+                    "kind") == "replace_slide").Select(operation =>
+                    Convert.ToInt32(operation["slide_id"])));
+            var replacementStyles = replacementIds.ToDictionary(id => id,
+                id => NativeSlideStyle.ForReplacement(presentation, id,
+                    replacementIds));
+            var serializer = new JavaScriptSerializer();
+            var links = new Dictionary<int, string>();
+            foreach (var group in grouped)
+            {
+                if (!before.ContainsKey(group.Key) ||
+                    group.Any(operation => !string.Equals(
+                        SamsungAuthoringPolicy.Text(operation, "fingerprint"),
+                        before[group.Key], StringComparison.Ordinal)))
+                    throw new InvalidOperationException(
+                        "SLIDE_CHANGED: Inspect the owned draft again.");
+                if (group.Count() > 1 && group.Any(operation =>
+                    SamsungAuthoringPolicy.Text(operation, "kind") ==
+                        "replace_slide"))
+                    throw new InvalidOperationException(
+                        "REVISION_RECOMPOSE_CONFLICT");
+                var slide = PresentationInspection.FindSlide(presentation,
+                    group.Key);
+                links[group.Key] = serializer.Serialize(
+                    PresentationInspection.Hyperlinks(slide));
+                foreach (var operation in group)
+                {
+                    var kind = SamsungAuthoringPolicy.Text(operation, "kind");
+                    if (kind == "insert" || kind == "delete" ||
+                        kind == "move" || kind == "chart_point")
+                        throw new InvalidOperationException(
+                            "REVISION_OWNED_DRAFT_SCOPE_INVALID");
+                    ValidateOperation(slide, operation);
+                }
+            }
+            foreach (var operation in operations)
+            {
+                var slide = PresentationInspection.FindSlide(presentation,
+                    Convert.ToInt32(operation["slide_id"]));
+                Apply(slide, slide, operation);
+                if (SamsungAuthoringPolicy.Text(operation, "kind") ==
+                    "replace_slide")
+                    replacementStyles[Convert.ToInt32(
+                        operation["slide_id"])].Apply(slide);
+            }
+            var afterOrder = Enumerable.Range(1, (int)deck.Slides.Count)
+                .Select(index => (int)deck.Slides[index].SlideID).ToArray();
+            if (!order.SequenceEqual(afterOrder))
+                throw new InvalidOperationException(
+                    "REVISION_OWNED_DRAFT_ORDER_CHANGED");
+            var changed = new HashSet<int>(grouped.Select(group => group.Key));
+            var receipt = new Dictionary<int, string>();
+            foreach (var id in order)
+            {
+                var slide = PresentationInspection.FindSlide(presentation, id);
+                var fingerprint = PresentationInspection.Fingerprint(slide);
+                if (changed.Contains(id))
+                {
+                    ValidateNativeGeometry(slide);
+                    if (links[id] != serializer.Serialize(
+                        PresentationInspection.Hyperlinks(slide)))
+                        throw new InvalidOperationException(
+                            "REVISION_PRESERVATION: Existing hyperlinks changed.");
+                    receipt.Add(id, fingerprint);
+                }
+                else if (fingerprint != before[id])
+                    throw new InvalidOperationException(
+                        "REVISION_PRESERVATION: Unrelated slide changed.");
+            }
+            return receipt;
+        }
+
+        private sealed class NativeSlideStyle
+        {
+            private sealed class TextRole
+            {
+                internal string Text, Font;
+                internal float Left, Top, Width, Height, Size;
+                internal int ShapeId, Color, Alignment;
+
+                internal void Apply(object slide, TextRole current,
+                    string replacementText)
+                {
+                    dynamic page = slide;
+                    dynamic shape = current == null
+                        ? page.Shapes.AddTextbox(1, Left, Top, Width, Height)
+                        : PresentationInspection.FindShape(slide,
+                            current.ShapeId);
+                    if (shape == null)
+                        throw new InvalidOperationException(
+                            "REVISION_STYLE_TARGET_MISSING");
+                    shape.Left = Left;
+                    shape.Top = Top;
+                    shape.Width = Width;
+                    shape.Height = Height;
+                    dynamic range = shape.TextFrame.TextRange;
+                    if (replacementText != null) range.Text = replacementText;
+                    if (!string.IsNullOrWhiteSpace(Font)) range.Font.Name = Font;
+                    range.Font.Size = Size;
+                    range.Font.Color.RGB = Color;
+                    range.ParagraphFormat.Alignment = Alignment;
+                }
+            }
+
+            private readonly TextRole _title, _subtitle, _footer,
+                _pageNumber;
+            private readonly string _footerText, _pageText;
+
+            private NativeSlideStyle(TextRole title, TextRole subtitle,
+                TextRole footer, TextRole pageNumber,
+                string footerText, string pageText)
+            {
+                _title = title;
+                _subtitle = subtitle;
+                _footer = footer;
+                _pageNumber = pageNumber;
+                _footerText = footerText;
+                _pageText = pageText;
+            }
+
+            internal static NativeSlideStyle ForReplacement(object deck,
+                int targetId, ISet<int> replacements)
+            {
+                dynamic presentation = deck;
+                dynamic target = PresentationInspection.FindSlide(deck,
+                    targetId);
+                var targetIndex = (int)target.SlideIndex;
+                var neighbors = new List<object>();
+                for (var offset = 1; offset <
+                    (int)presentation.Slides.Count; offset++)
+                {
+                    foreach (var index in new[] { targetIndex - offset,
+                        targetIndex + offset })
+                    {
+                        if (index < 1 || index >
+                            (int)presentation.Slides.Count) continue;
+                        dynamic slide = presentation.Slides[index];
+                        if (replacements.Contains((int)slide.SlideID))
+                            continue;
+                        neighbors.Add((object)slide);
+                        if (neighbors.Count == 2) break;
+                    }
+                    if (neighbors.Count == 2) break;
+                }
+                var guide = neighbors.Count == 0 ? (object)target :
+                    neighbors[0];
+                var title = Role(guide, "title");
+                var subtitle = Role(guide, "subtitle");
+                var footer = Role(guide, "footer");
+                var page = Role(guide, "page");
+                if (title == null || page == null ||
+                    (neighbors.Count > 1 &&
+                     (!Compatible(title, Role(neighbors[1], "title")) ||
+                      !Compatible(subtitle,
+                          Role(neighbors[1], "subtitle")) ||
+                      !Compatible(footer,
+                          Role(neighbors[1], "footer")) ||
+                      !Compatible(page, Role(neighbors[1], "page")))))
+                    throw new InvalidOperationException(
+                        "REVISION_STYLE_NEIGHBORS_AMBIGUOUS");
+                var sourceFooter = Role((object)target, "footer");
+                var sourcePage = Role((object)target, "page");
+                var footerText = sourceFooter != null && footer != null &&
+                    string.Equals(sourceFooter.Text, footer.Text,
+                        StringComparison.Ordinal)
+                    ? sourceFooter.Text : footer?.Text;
+                var pageText = sourcePage != null && page != null &&
+                    Regex.Replace(sourcePage.Text, @"\d+", "#") ==
+                    Regex.Replace(page.Text, @"\d+", "#")
+                    ? sourcePage.Text : Regex.Replace(page.Text,
+                        @"\d+", targetIndex.ToString());
+                return new NativeSlideStyle(title, subtitle, footer,
+                    page, footerText, pageText);
+            }
+
+            internal void Apply(object slide)
+            {
+                _title.Apply(slide, Role(slide, "title"), null);
+                if (_subtitle != null)
+                    _subtitle.Apply(slide, Role(slide, "subtitle"),
+                        null);
+                if (_footer != null)
+                    _footer.Apply(slide, Role(slide, "footer"),
+                        _footerText);
+                _pageNumber.Apply(slide, Role(slide, "page"),
+                    _pageText);
+            }
+
+            private static bool Compatible(TextRole first,
+                TextRole second)
+            {
+                if (first == null || second == null)
+                    return first == null && second == null;
+                return first.Font == second.Font &&
+                    Math.Abs(first.Size - second.Size) < .25f &&
+                    first.Color == second.Color &&
+                    first.Alignment == second.Alignment &&
+                    Math.Abs(first.Left - second.Left) < .5f &&
+                    Math.Abs(first.Top - second.Top) < .5f;
+            }
+
+            private static TextRole Role(object slide, string role)
+            {
+                dynamic page = slide;
+                dynamic deck = page.Parent;
+                var width = (float)deck.PageSetup.SlideWidth;
+                var height = (float)deck.PageSetup.SlideHeight;
+                var candidates = new List<object>();
+                for (var index = 1; index <= (int)page.Shapes.Count;
+                    index++)
+                {
+                    dynamic shape = page.Shapes[index];
+                    if ((int)shape.HasTextFrame == 0 ||
+                        (int)shape.TextFrame.HasText == 0) continue;
+                    var content = Convert.ToString(
+                        shape.TextFrame.TextRange.Text);
+                    if (string.IsNullOrWhiteSpace(content)) continue;
+                    var top = (float)shape.Top;
+                    var left = (float)shape.Left;
+                    var chosen = role == "title"
+                        ? top < height * .15f && left < width * .75f
+                        : role == "subtitle"
+                            ? top >= height * .15f &&
+                              top < height * .28f &&
+                              left < width * .75f
+                            : role == "footer"
+                                ? top > height * .85f &&
+                                  left < width * .75f
+                                : top > height * .85f &&
+                                  left >= width * .75f &&
+                                  Regex.IsMatch(content.Trim(), @"\d");
+                    if (chosen) candidates.Add((object)shape);
+                }
+                if (candidates.Count == 0) return null;
+                dynamic selected = role == "footer"
+                    ? candidates.OrderBy(item =>
+                        (float)((dynamic)item).Top).First()
+                    : role == "page"
+                        ? candidates.OrderByDescending(item =>
+                            (float)((dynamic)item).Left).First()
+                        : candidates.OrderBy(item =>
+                            (float)((dynamic)item).Top).First();
+                dynamic text = selected.TextFrame.TextRange;
+                return new TextRole {
+                    Text = Convert.ToString(text.Text),
+                    ShapeId = (int)selected.Id,
+                    Font = Convert.ToString(text.Font.Name),
+                    Size = (float)text.Font.Size,
+                    Color = (int)text.Font.Color.RGB,
+                    Alignment = (int)text.ParagraphFormat.Alignment,
+                    Left = (float)selected.Left,
+                    Top = (float)selected.Top,
+                    Width = (float)selected.Width,
+                    Height = (float)selected.Height
+                };
+            }
+
+        }
 
         internal void Stage(object application, object[] operations)
         {

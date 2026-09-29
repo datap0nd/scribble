@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
+using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Web.Script.Serialization;
 using Scribble.Chat;
 using Scribble.Security;
@@ -20,6 +23,7 @@ namespace Scribble.Office
         public const int MaxPreviewCharacters = 240;
 
         private readonly object _powerPointApplication;
+        private TaskContextManager _taskContext;
         private readonly JavaScriptSerializer _serializer =
             new JavaScriptSerializer();
 
@@ -28,6 +32,11 @@ namespace Scribble.Office
             _powerPointApplication = powerPointApplication ??
                 throw new ArgumentNullException(
                     nameof(powerPointApplication));
+        }
+
+        public void BindTask(TaskContextManager task)
+        {
+            _taskContext = task;
         }
 
         public MailboxToolResult Execute(ChatToolCall call)
@@ -58,6 +67,8 @@ namespace Scribble.Office
                     call.function.arguments);
                 switch (name)
                 {
+                    case PresentationToolCatalog.ReadRevisionFacts:
+                        return ReadRevisionFacts(call.id);
                     case PresentationToolCatalog.ListSlides:
                         return ListSlides(call.id);
                     case PresentationToolCatalog.InspectSlide:
@@ -92,6 +103,44 @@ namespace Scribble.Office
                         exception,
                         "PRESENTATION_TOOL_FAILED"));
             }
+        }
+
+        private MailboxToolResult ReadRevisionFacts(string callId)
+        {
+            if (!AnalysisDocumentPilot.Enabled || _taskContext == null ||
+                !_taskContext.State.HostData.ContainsKey("recovery_input"))
+                throw new InvalidOperationException(
+                    "REVISION_FACT_CONTEXT_MISSING");
+            var workbooks = TaskRecoveryInput.Read(_taskContext.State)
+                .Documents.Where(document =>
+                    new[] { ".xlsx", ".xlsm" }.Contains(
+                        Path.GetExtension(document.SourcePath ?? ""),
+                        StringComparer.OrdinalIgnoreCase)).ToArray();
+            if (workbooks.Length != 1 ||
+                string.IsNullOrWhiteSpace(workbooks[0].SourcePath) ||
+                !File.Exists(workbooks[0].SourcePath) ||
+                !string.Equals(workbooks[0].SourceFingerprint,
+                    ExternalContextDocument.FingerprintFile(
+                        workbooks[0].SourcePath),
+                    StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException(
+                    "REVISION_FACT_WORKBOOK_CHANGED");
+            var deck = ActivePresentation();
+            if (deck == null)
+                throw new InvalidOperationException(
+                    "REVISION_FACT_PRESENTATION_MISSING");
+            var trustedRequest = string.Join("\n",
+                _taskContext.State.OriginalDecisions);
+            var bindings = PresentationDraftCopy.BindMonthlyCharts(
+                deck, workbooks[0].SourcePath, trustedRequest,
+                CancellationToken.None);
+            var catalog = RevisionFactCatalog.FromBindings(bindings);
+            return new MailboxToolResult(callId,
+                _serializer.Serialize(new {
+                    source_workbook = Path.GetFileName(
+                        workbooks[0].SourcePath),
+                    facts = catalog.PublicFacts()
+                }), "Read host-verified workbook FactIds for slide repair.");
         }
 
         public string DescribeActiveContext()
