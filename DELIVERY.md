@@ -263,6 +263,12 @@ PR #45 now explicitly assigns those replacement-shape fonts before review
 and still requires exact native equality. Build 2.0.731.0 reduced the
 remaining mismatch to 12 individual text runs' East Asian fonts; PR #45 now
 pins those run fonts too. Native verification is next.
+Build 2.0.732.0 showed PowerPoint ignored that assignment. A native probe
+confirmed the staging slide retained the default Office Theme while the live
+slide used the source ChatGPT design; assigning the source design to staging
+resolved `+mn-ea` to Calibri. PR #45 now sets the source design on staging
+and recovery copies before applying edits, then verifies full content
+equality. Native verification is next.
 
 ## 6. Rules for autonomous sessions
 

@@ -86,6 +86,24 @@ namespace Scribble.Office
             {
                 item.Staged = CopySlide(item.Original, Working);
                 item.Backup = CopySlide(item.Original, Recovery);
+                // Pasting a slide into an empty presentation selects its
+                // default Office theme. Match the source design before
+                // applying edits: inherited run fonts and their native
+                // text bounds are part of the reviewed content receipt.
+                ((dynamic)item.Staged).Design =
+                    ((dynamic)item.Original).Design;
+                ((dynamic)item.Backup).Design =
+                    ((dynamic)item.Original).Design;
+                if (PresentationInspection.ContentFingerprint(
+                        item.Original) !=
+                    PresentationInspection.ContentFingerprint(
+                        item.Staged) ||
+                    PresentationInspection.ContentFingerprint(
+                        item.Original) !=
+                    PresentationInspection.ContentFingerprint(
+                        item.Backup))
+                    throw new InvalidOperationException(
+                        "REVISION_COPY_DESIGN_MISMATCH");
                 foreach (var operation in item.Operations)
                 {
                     if (SamsungAuthoringPolicy.Text(operation, "kind") == "insert")
@@ -339,13 +357,6 @@ namespace Scribble.Office
                 // changes native text bounds after a reviewed replacement.
                 if (string.IsNullOrEmpty(Convert.ToString(range.Text)))
                     range.Font.Name = MetoTheme.LabelFont;
-                range.Font.NameFarEast = range.Font.Name;
-                for (var runIndex = 1; runIndex <=
-                    (int)range.Runs().Count; runIndex++)
-                {
-                    dynamic run = range.Runs(runIndex, 1);
-                    run.Font.NameFarEast = run.Font.Name;
-                }
             }
             return output;
         }
