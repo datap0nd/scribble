@@ -515,57 +515,45 @@ namespace Scribble.Chat
         // apply. Chart data, footer/page style and source evidence are supplied
         // by the host from the inspected deck and verified workbook.
         public static ChatToolDefinition PilotRevisionDefinition(
-            IEnumerable<int> measuredReplacementSlideIds = null)
+            IEnumerable<int> measuredReplacementSlideIds = null,
+            IEnumerable<string> namedSlots = null)
         {
             var measured = measuredReplacementSlideIds == null
-                ? null : measuredReplacementSlideIds.Distinct().ToArray();
-            var allowReplacement = measured == null || measured.Length > 0;
-            var slideProperties = (Dictionary<string, object>)
-                SlideSchema()["properties"];
-            var visible = new[] { "title", "subtitle", "layout", "bullets",
-                "cards", "table", "secondary_table", "takeaway", "caption" };
-            var pilotSlide = ToolSchema.Build(slideProperties
-                .Where(pair => visible.Contains(pair.Key))
-                .ToDictionary(pair => pair.Key, pair => pair.Value),
-                "title");
-            var operationFields = new Dictionary<string, object> {
-                { "kind", new { type = "string", @enum = allowReplacement
-                    ? new[] { "replace_text", "table_cell",
-                        "replace_slide", "notes_append" }
-                    : new[] { "replace_text", "table_cell",
-                        "notes_append" } } },
-                { "slide_id", ToolSchema.Integer(
-                    "Stable source slide ID from inspect_slide.", 1, int.MaxValue) },
-                { "fingerprint", ToolSchema.String(
-                    "Exact fingerprint from inspect_slide.") },
-                { "shape_id", ToolSchema.Integer(
-                    "Target shape ID for text or table edits.", 1, int.MaxValue) },
-                { "before", ToolSchema.String("Exact existing text span.") },
-                { "text", ToolSchema.String(
-                    "New text with FactId references for every data value, metric, period and unit.") },
-                { "row", ToolSchema.Integer("1-based table row.", 1, 1000) },
-                { "column", ToolSchema.Integer("1-based table column.", 1, 100) },
-                { "notes", ToolSchema.String(
-                    "Source note with FactId references for data claims.") }
+                ? new int[0] : measuredReplacementSlideIds.Distinct()
+                    .ToArray();
+            var slots = namedSlots == null ? new string[0] : namedSlots
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Distinct(StringComparer.Ordinal).ToArray();
+            var slotFields = slots.ToDictionary(name => name,
+                name => (object)ToolSchema.String(
+                    "Optional wording for the host-named slot. Use FactId " +
+                    "references for every new metric, value, period and unit."),
+                StringComparer.Ordinal);
+            var slotValues = new Dictionary<string, object> {
+                { "type", "object" },
+                { "properties", slotFields },
+                // Unknown historical fields are ignored by the host. They
+                // cannot turn into an operation or broaden measured scope.
+                { "additionalProperties", true }
             };
-            if (allowReplacement)
-                operationFields.Add("slide", pilotSlide);
-            var operation = ToolSchema.Build(operationFields,
-                "kind", "slide_id", "fingerprint");
-            var scope = measured == null ? string.Empty :
-                measured.Length == 0
-                    ? " No source slides measured overflow; use text or table edits."
-                    : " Replacement scope is exactly slide IDs " +
-                        string.Join(", ", measured) + ".";
+            var parameters = new Dictionary<string, object> {
+                { "type", "object" },
+                { "properties", new Dictionary<string, object> {
+                    { "slot_values", slotValues }
+                } },
+                { "additionalProperties", true }
+            };
+            var scope = " Host replacement scope: " +
+                (measured.Length == 0 ? "no measured overflow" :
+                    "slide IDs " + string.Join(", ", measured)) +
+                ". Named wording slots: " +
+                (slots.Length == 0 ? "read_revision_facts first" :
+                    string.Join(", ", slots)) + ".";
             return new ChatToolDefinition { type = "function",
                 function = new ChatToolFunctionDefinition {
                     name = ReviseSlides,
-                    description = "Repair the inspected source through an owned unsaved copy. Read read_revision_facts for the exact measured replacement scope and FactIds. Supply only the measured replacement slides and necessary text/table corrections." + scope + " The host recreates charts and inherits footer and page style. Every new number, period, metric label and unit must be a [[fact:ID:field]] reference. The source remains unchanged.",
-                    parameters = ToolSchema.Build(new Dictionary<string, object> {
-                        { "presentation_id", ToolSchema.String(
-                            "Exact live presentation ID from inspect_slide.") },
-                        { "operations", SamsungWorkflowSchema.List(operation) }
-                    }, "presentation_id", "operations") } };
+                    description = "Repair an owned unsaved copy. Read read_revision_facts, then supply only optional wording in slot_values keyed by the returned slot names. The host owns every slide, shape, table, chart, layout, geometry, style and source fingerprint." + scope + " Use [[fact:ID:field]] for every new number, period, metric label or unit. Omitted or invalid wording falls back to source text; extra legacy fields are ignored. The source remains unchanged.",
+                    parameters = parameters } };
         }
 
         public static ChatToolDefinition RevisionFactsDefinition()

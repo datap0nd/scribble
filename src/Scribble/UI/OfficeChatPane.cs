@@ -2356,10 +2356,29 @@ namespace Scribble.UI
                             if (receipt != null && receipt.TryGetValue(
                                     "measured_replacement_slide_ids",
                                     out rawScope) && rawScope is object[])
+                            {
+                                object rawSlots;
+                                var slotNames = receipt.TryGetValue(
+                                        "wording_slots", out rawSlots) &&
+                                    rawSlots is object[]
+                                    ? ((object[])rawSlots).Select(raw =>
+                                        {
+                                            var item = raw as
+                                                Dictionary<string, object>;
+                                            object name;
+                                            return item != null &&
+                                                item.TryGetValue("name",
+                                                    out name)
+                                                ? Convert.ToString(name)
+                                                : string.Empty;
+                                        }).Where(name =>
+                                        !string.IsNullOrWhiteSpace(name))
+                                    : Enumerable.Empty<string>();
                                 DocumentChatRequestFactory
                                     .ApplyPilotRevisionScope(request,
                                         ((object[])rawScope).Select(
-                                            Convert.ToInt32));
+                                            Convert.ToInt32), slotNames);
+                            }
                         }
                         catch (ArgumentException)
                         {

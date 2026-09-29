@@ -293,7 +293,8 @@ namespace Scribble.Chat
         // chart or otherwise sound slide cannot be offered for replacement.
         public static void ApplyPilotRevisionScope(
             ChatCompletionRequest request,
-            IEnumerable<int> measuredReplacementIds)
+            IEnumerable<int> measuredReplacementIds,
+            IEnumerable<string> namedSlots = null)
         {
             if (request?.tools == null || measuredReplacementIds == null)
                 return;
@@ -301,7 +302,8 @@ namespace Scribble.Chat
                 tool?.function?.name == PresentationToolCatalog.ReviseSlides);
             if (index >= 0)
                 request.tools[index] = PresentationToolCatalog
-                    .PilotRevisionDefinition(measuredReplacementIds);
+                    .PilotRevisionDefinition(measuredReplacementIds,
+                        namedSlots);
         }
 
         private const string EnglishToKoreanWorkbookInstruction =

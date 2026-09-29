@@ -208,35 +208,13 @@ namespace GuardrailTests
                 fact.Metric == "RevenueEUR" &&
                 fact.Period == "2026-06" &&
                 fact.Dimensions.Count == 0);
-            var cost = series.Facts.Single(fact =>
-                fact.Metric == "CostEUR" &&
-                fact.Period == "2026-06" &&
-                fact.Dimensions.Count == 0);
-            VerifiedFact margin;
-            AnalysisCalculator.Calculate(AnalysisCalculator.Margin,
-                new[] { revenue, cost }, "Gross margin", "2026-06",
-                out margin);
-            Func<VerifiedFact, string, string> token = (fact, field) =>
-                "[[fact:" + fact.FactId + ":" + field + "]]";
-            var labels = new[] { token(revenue, "metric"),
-                token(cost, "metric"), token(margin, "metric"),
-                "Interpretation" };
-            var points = new[] {
-                token(revenue, "value") + " in " +
-                    token(revenue, "period"),
-                token(cost, "value") + " in " +
-                    token(cost, "period"),
-                token(margin, "percent") + " in " +
-                    token(margin, "period"),
-                "A period change does not establish a cause."
-            };
+            var slot = "slide_" + (int)page.SlideID + "_title";
             return new ChatToolCall { id = "repair", type = "function", function = new ChatToolCallFunction {
                 name = PresentationToolCatalog.ReviseSlides, arguments = json.Serialize(new {
-                    presentation_id = PresentationInspection.IdentityFor(sourceDeck), operations = new[] { new {
-                        kind = "replace_slide", slide_id = (int)page.SlideID, fingerprint = PresentationInspection.Fingerprint((object)page),
-                        slide = new { title = "Operating review and evidence boundaries", subtitle = "Source-backed measures and interpretation limits",
-                            layout = "cards", cards = points.Select((point, index) => new { heading = labels[index], points = new[] { point } }).ToArray() }
-                    } } }) } };
+                    slot_values = new Dictionary<string, string> {
+                        { slot, "Operating review: [[fact:" +
+                            revenue.FactId + ":metric]]" }
+                    } }) } };
         }
 
         private static void Check(bool condition, string message)

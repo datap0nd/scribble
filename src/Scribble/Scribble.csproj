@@ -252,6 +252,7 @@
     <Compile Include="Office\PresentationInspection.cs" />
     <Compile Include="Office\PresentationRevision.cs" />
     <Compile Include="Office\PresentationDraftCopy.cs" />
+    <Compile Include="Office\PilotRepairSkeleton.cs" />
     <Compile Include="Office\RevisionFactCatalog.cs" />
     <Compile Include="Office\PresentationRevision.Recovery.cs" />
     <Compile Include="Office\PresentationChartEdit.cs" />

@@ -7588,11 +7588,13 @@ namespace GuardrailTests
                         permission.RemainingCalls == 1,
                         "A saved-source preflight rejection must report no native write or consumed permission: " +
                         result.Content);
+                    task.State.HostData["pilot_source_path"] =
+                        Path.GetFullPath(sourcePath);
+                    task.State.HostData["pilot_source_hash"] =
+                        ExternalContextDocument.FingerprintFile(sourcePath);
                     var corrected = MailboxCall("corrected",
                         PresentationToolCatalog.ReviseSlides,
-                        "{\"presentation_id\":\"" +
-                        PresentationInspection.IdentityFor((object)source) +
-                        "\",\"operations\":[]}");
+                        "{\"slot_values\":{}}");
                     task.BeforeTool(corrected, true);
                     Assert(task.State.Writes.Last().Status == "pending",
                         "A corrected proposal was quarantined after safe preflight rejection.");

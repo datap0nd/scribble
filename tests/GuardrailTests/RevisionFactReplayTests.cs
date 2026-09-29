@@ -301,55 +301,30 @@ namespace GuardrailTests
                 definition.function.parameters;
             var rootProperties = (Dictionary<string, object>)
                 root["properties"];
-            var operations = (Dictionary<string, object>)
-                rootProperties["operations"];
-            var operation = (Dictionary<string, object>)
-                operations["items"];
-            var fields = (Dictionary<string, object>)
-                operation["properties"];
-            var slide = (Dictionary<string, object>)fields["slide"];
-            var slideFields = (Dictionary<string, object>)
-                slide["properties"];
-            if (fields.ContainsKey("series") ||
-                fields.ContainsKey("category") ||
-                fields.ContainsKey("new_index") ||
-                slideFields.ContainsKey("chart") ||
-                slideFields.ContainsKey("secondary_chart") ||
-                slideFields.ContainsKey("footnote") ||
-                slideFields.ContainsKey("sources") ||
-                slideFields.ContainsKey("evidence") ||
-                !slideFields.ContainsKey("cards") ||
-                !slideFields.ContainsKey("table"))
-                throw new Exception("Pilot revision exposes unsupported " +
-                    "model-owned chart, layout or source metadata.");
+            if (rootProperties.Count != 1 ||
+                !rootProperties.ContainsKey("slot_values"))
+                throw new Exception("Pilot revision still exposes " +
+                    "model-authored slide operations.");
             var restricted = Scribble.Chat.PresentationToolCatalog
                 .PilotRevisionDefinition(new int[0]);
-            var restrictedProperties = (Dictionary<string, object>)
-                ((Dictionary<string, object>)restricted.function.parameters)
-                    ["properties"];
-            var restrictedOperations = (Dictionary<string, object>)
-                restrictedProperties["operations"];
-            var restrictedFields = (Dictionary<string, object>)
-                ((Dictionary<string, object>)restrictedOperations["items"])
-                    ["properties"];
             var json = new JavaScriptSerializer();
-            if (restrictedFields.ContainsKey("slide") ||
-                json.Serialize(restricted.function.parameters)
-                    .Contains("replace_slide"))
-                throw new Exception("A sound source slide was offered " +
-                    "for replacement before measured scope was known.");
             var request = new Scribble.Chat.ChatCompletionRequest {
                 tools = new List<Scribble.Chat.ChatToolDefinition> {
                     restricted }
             };
             Scribble.Chat.DocumentChatRequestFactory
-                .ApplyPilotRevisionScope(request, new[] { 17 });
+                .ApplyPilotRevisionScope(request, new[] { 17 },
+                    new[] { "slide_17_title", "slide_17_subtitle" });
             var scoped = request.tools.Single();
-            if (!json.Serialize(scoped.function.parameters)
-                    .Contains("replace_slide") ||
+            var serialized = json.Serialize(scoped.function.parameters);
+            if (serialized.Contains("replace_slide") ||
+                serialized.Contains("shape_id") ||
+                serialized.Contains("fingerprint") ||
+                !serialized.Contains("slide_17_title") ||
+                !serialized.Contains("slide_17_subtitle") ||
                 !scoped.function.description.Contains("slide IDs 17"))
-                throw new Exception("The host-measured overflow scope " +
-                    "was not exposed to the next model turn.");
+                throw new Exception("The next model turn was not " +
+                    "limited to host-named wording slots.");
         }
 
         private static void Reject(MethodInfo render, object catalog,

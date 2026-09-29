@@ -53,22 +53,24 @@ namespace Scribble.Office
                 dynamic source = sourceDeck;
                 var args = ToolArguments.Parse(_serializer,
                     call.function.arguments);
-                if (SamsungAuthoringPolicy.Text(args,
-                        "presentation_id") != PresentationInspection
-                            .IdentityFor(sourceDeck) ||
+                string trustedSourcePath, trustedSourceHash;
+                var sourcePath = Convert.ToString(source.FullName);
+                if (!_taskContext.State.HostData.TryGetValue(
+                        "pilot_source_path", out trustedSourcePath) ||
+                    !_taskContext.State.HostData.TryGetValue(
+                        "pilot_source_hash", out trustedSourceHash) ||
+                    !string.Equals(Path.GetFullPath(sourcePath),
+                        trustedSourcePath,
+                        StringComparison.OrdinalIgnoreCase) ||
+                    !File.Exists(sourcePath) ||
+                    !string.Equals(ExternalContextDocument.FingerprintFile(
+                        sourcePath), trustedSourceHash,
+                        StringComparison.OrdinalIgnoreCase) ||
                     (int)source.Slides.Count !=
                         _taskContext.State.RequiredPresentationSlides ||
                     string.IsNullOrEmpty(Convert.ToString(source.Path)))
                     throw new InvalidOperationException(
                         "PILOT_COPY_SOURCE_CHANGED: Inspect the saved source deck again.");
-                var operations = SamsungAuthoringPolicy.Array(args,
-                    "operations");
-                var mapped = operations.Select(
-                    SamsungAuthoringPolicy.ReadMap).ToArray();
-                if (PresentationRevisionAcceptance
-                    .ContainsChartOperation(operations))
-                    throw new InvalidOperationException(
-                        "PILOT_COPY_MODEL_CHART_UNSUPPORTED");
                 if (!_taskContext.State.HostData.ContainsKey(
                         "recovery_input"))
                     throw new InvalidOperationException(
@@ -96,18 +98,23 @@ namespace Scribble.Office
                     chartBindings);
                 var measuredReplacements = PresentationDraftCopy
                     .MeasuredReplacementSlides(sourceDeck);
+                var skeleton = PilotRepairSkeleton.Build(sourceDeck,
+                    measuredReplacements, chartBindings);
                 var contract = PresentationToolCatalog
-                    .PilotRevisionDefinition(measuredReplacements);
+                    .PilotRevisionDefinition(measuredReplacements,
+                        skeleton.SlotNames);
                 var contractErrors = ToolContractValidator.Validate(
                     call, contract);
                 if (contractErrors.Count != 0)
                     throw new InvalidOperationException(
                         "PILOT_COPY_SCHEMA: " +
                         string.Join("; ", contractErrors));
-                ValidatePilotCopyOperations(mapped,
-                    measuredReplacements, chartBindings);
-                ValidatePilotSourceSpanIds(mapped,
-                    ids => _taskContext.Sources.Resolve(ids));
+                object rawValues;
+                var slotValues = args.TryGetValue("slot_values",
+                        out rawValues) && rawValues is
+                            IDictionary<string, object>
+                    ? (IDictionary<string, object>)rawValues
+                    : new Dictionary<string, object>();
                 var sourceFact = chartBindings.SelectMany(binding =>
                         binding.Facts.Facts).Where(fact =>
                         fact.Dimensions.Count == 0)
@@ -115,22 +122,6 @@ namespace Scribble.Office
                         StringComparer.Ordinal).First();
                 var sourceReference = "[[fact:" + sourceFact.FactId +
                     ":locator]]";
-                foreach (var operation in mapped.Where(item =>
-                    SamsungAuthoringPolicy.Text(item, "kind") ==
-                        "replace_slide"))
-                {
-                    var slide = SamsungAuthoringPolicy.ReadMap(
-                        operation["slide"]);
-                    var sourceSlide = PresentationInspection.FindSlide(
-                        sourceDeck, Convert.ToInt32(operation["slide_id"]));
-                    slide["sources"] = sourceReference;
-                    slide["footnote"] = sourceReference;
-                    slide["evidence"] =
-                        PresentationInspection.CitationTextFromCaptured(
-                            PresentationInspection.Capture(sourceSlide));
-                }
-                var factBound = factCatalog.BindOperations(
-                    mapped.Cast<object>().ToArray());
                 token.ThrowIfCancellationRequested();
                 if (!authorization.TryConsume())
                     throw new InvalidOperationException(
@@ -145,7 +136,28 @@ namespace Scribble.Office
                     copy.Snapshot();
                 _taskContext.State.HostData[statusKey] = "copied";
                 _taskContext.Checkpoint();
-                var bound = copy.BindOperations(factBound);
+                int ignoredSlots;
+                var mapped = skeleton.Operations(slotValues,
+                    factCatalog, out ignoredSlots).Select(
+                    SamsungAuthoringPolicy.ReadMap).ToArray();
+                ValidatePilotCopyOperations(mapped,
+                    measuredReplacements, chartBindings);
+                foreach (var operation in mapped.Where(item =>
+                    SamsungAuthoringPolicy.Text(item, "kind") ==
+                        "replace_slide"))
+                {
+                    var slide = SamsungAuthoringPolicy.ReadMap(
+                        operation["slide"]);
+                    var sourceSlide = PresentationInspection.FindSlide(
+                        sourceDeck, Convert.ToInt32(operation["slide_id"]));
+                    slide["sources"] = sourceReference;
+                    slide["footnote"] = sourceReference;
+                    slide["evidence"] =
+                        PresentationInspection.CitationTextFromCaptured(
+                            PresentationInspection.Capture(sourceSlide));
+                }
+                var bound = copy.BindOperations(mapped.Cast<object>()
+                    .ToArray());
                 var nativeStyle = copy.MeasuredNativeStyleOperations(
                     measuredReplacements);
                 var combined = bound.Concat(nativeStyle).ToArray();
@@ -210,7 +222,7 @@ namespace Scribble.Office
                         workbooks[0].SourceFingerprint);
                 _taskContext.State.HostData[
                     "pilot_copy_review_scope"] =
-                        "model-reviewed chartless content; host-verified workbook chart; human visual approval pending";
+                        "host-structured content with reviewed wording; host-verified workbook chart; human visual approval pending";
                 _taskContext.Checkpoint();
                 Scribble.Testing.TestLab.RegisterOutput(copy.Draft,
                     "pptx");
@@ -223,6 +235,7 @@ namespace Scribble.Office
                         revised_slides = changed.Count,
                         native_style_changes = nativeStyle.Length,
                         charts_recreated = chartBindings.Length,
+                        ignored_wording_slots = ignoredSlots,
                         visual_approval_required = true,
                         revert_available = false
                     }), "Opened an unsaved native repair draft. The source and workbook were preserved; visual approval is still required.");

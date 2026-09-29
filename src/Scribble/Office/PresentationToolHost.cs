@@ -138,12 +138,25 @@ namespace Scribble.Office
             var catalog = RevisionFactCatalog.FromBindings(bindings);
             var replacements = PresentationDraftCopy
                 .MeasuredReplacementSlides(deck);
+            var skeleton = PilotRepairSkeleton.Build((object)deck,
+                replacements, bindings);
+            var sourcePath = Convert.ToString(deck.FullName);
+            if (string.IsNullOrWhiteSpace(Convert.ToString(deck.Path)) ||
+                !File.Exists(sourcePath))
+                throw new InvalidOperationException(
+                    "REVISION_FACT_SAVED_SOURCE_REQUIRED");
+            _taskContext.State.HostData["pilot_source_path"] =
+                Path.GetFullPath(sourcePath);
+            _taskContext.State.HostData["pilot_source_hash"] =
+                ExternalContextDocument.FingerprintFile(sourcePath);
+            _taskContext.Checkpoint();
             return new MailboxToolResult(callId,
                 _serializer.Serialize(new {
                     source_workbook = Path.GetFileName(
                         workbooks[0].SourcePath),
                     facts = catalog.PublicFacts(),
                     measured_replacement_slide_ids = replacements,
+                    wording_slots = skeleton.PublicSlots(),
                     host_recreated_chart_slide_ids = bindings.Select(
                         binding => binding.SourceSlideId)
                         .Distinct().ToArray()
