@@ -127,6 +127,12 @@ namespace GuardrailTests
                             {
                                 stage = "public_revise_slides";
                                 Check(response.tool_calls.Count == 1 && inspected == 6, "WRITE_WITHOUT_COMPLETE_INSPECTION");
+                                // A read-only source can carry Office's dirty
+                                // flag after inspection. Its bytes and native
+                                // content still have to match the fresh copy.
+                                source.Saved = 0;
+                                Check((int)source.Saved == 0,
+                                    "DIRTY_SOURCE_REGRESSION_NOT_EXERCISED");
                                 result = host.ExecuteAsync(call, authorization, true, prompt, client, settings,
                                     CancellationToken.None, null).GetAwaiter().GetResult();
                             }
@@ -158,6 +164,16 @@ namespace GuardrailTests
                     }
                     Check((object)draft != null && (int)draft.Slides.Count == 6 && string.IsNullOrEmpty(Convert.ToString(draft.Path)), "OWNED_UNSAVED_DRAFT_MISSING");
                     Check((int)source.Slides.Count == 6, "SOURCE_SLIDES_CHANGED");
+                    dynamic replacement = draft.Slides[4];
+                    var deckHeight = (float)draft.PageSetup.SlideHeight;
+                    for (var shapeIndex = 1; shapeIndex <= (int)replacement.Shapes.Count; shapeIndex++)
+                    {
+                        dynamic shape = replacement.Shapes[shapeIndex];
+                        if ((int)shape.HasTextFrame == 0 || (int)shape.TextFrame.HasText == 0 ||
+                            (float)shape.Top >= deckHeight * .90f) continue;
+                        Check((float)shape.TextFrame.TextRange.Font.Size >= 14f,
+                            "REPLACEMENT_BODY_FONT_BELOW_MINIMUM");
+                    }
                     stage = "capture_native_output";
                     draft.SaveCopyAs(Path.Combine(output, "candidate.pptx"));
                     draft.SaveAs(Path.Combine(output, "candidate.pdf"), 32);

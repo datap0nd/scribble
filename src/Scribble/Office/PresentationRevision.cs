@@ -149,7 +149,7 @@ namespace Scribble.Office
                 internal int ShapeId, Color, Alignment;
 
                 internal void Apply(object slide, TextRole current,
-                    string replacementText)
+                    string replacementText, float minimumSize = 0)
                 {
                     dynamic page = slide;
                     dynamic shape = current == null
@@ -166,7 +166,7 @@ namespace Scribble.Office
                     dynamic range = shape.TextFrame.TextRange;
                     if (replacementText != null) range.Text = replacementText;
                     if (!string.IsNullOrWhiteSpace(Font)) range.Font.Name = Font;
-                    range.Font.Size = Size;
+                    range.Font.Size = Math.Max(Size, minimumSize);
                     range.Font.Color.RGB = Color;
                     range.ParagraphFormat.Alignment = Alignment;
                 }
@@ -248,7 +248,7 @@ namespace Scribble.Office
                 _title.Apply(slide, Role(slide, "title"), null);
                 if (_subtitle != null)
                     _subtitle.Apply(slide, Role(slide, "subtitle"),
-                        null);
+                        null, 14);
                 if (_footer != null)
                     _footer.Apply(slide, Role(slide, "footer"),
                         _footerText);
