@@ -285,6 +285,8 @@ namespace GuardrailTests
                     MeasuredPilotReplacementKeepsOrdinaryConsent);
                 Run("Reordered source spans remain exact grounded evidence",
                     ReorderedSourceSpansRemainGrounded);
+                Run("Compound claim labels bind every cited component",
+                    CompoundClaimLabelsBindCitedComponents);
                 Run(
                     "Browser context is bounded and tools are approved-only",
                     BrowserContextIsBoundedAndReadOnly);
@@ -7263,6 +7265,33 @@ namespace GuardrailTests
             { rejected = error.Message.StartsWith("SLIDE_NUMBERS_UNVERIFIED"); }
             Assert(rejected,
                 "Trusted source spans cannot authorize an invented displayed value.");
+        }
+
+        private static void CompoundClaimLabelsBindCitedComponents()
+        {
+            const string passage = "Period 2026-04; Group East; Rows 6; SalesUSD 19219 USD; ExpenseUSD 8082 USD";
+            var claim = new Dictionary<string, object>
+            {
+                { "text", "April sales 19,219 USD and expense 8,082 USD" },
+                { "label", "April Sales/Expense USD" },
+                { "unit", "USD" }, { "period", "2026-04" },
+                { "evidence", passage }
+            };
+            var slide = new Dictionary<string, object> {
+                { "claims", new object[] { claim } } };
+            SamsungEvidence.ValidateClaims(slide, passage);
+            foreach (var invalidLabel in new[] {
+                "March Sales/Expense USD", "April Sales/Profit USD" })
+            {
+                claim["label"] = invalidLabel;
+                var rejected = false;
+                try { SamsungEvidence.ValidateClaims(slide, passage); }
+                catch (InvalidOperationException error)
+                { rejected = error.Message.StartsWith("SLIDE_CLAIM_ASSOCIATION"); }
+                Assert(rejected,
+                    "A compound label introduced an uncited month or metric: " +
+                    invalidLabel);
+            }
         }
 
         private static void RepairRouteExcludesCorpusLabels()

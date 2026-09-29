@@ -174,7 +174,7 @@ a ≤ 10-line owner note in §5.
 | S1 XA01 | old | 2.0.385 | 1/3 (22 Sep) |
 | S1 XA01–10 | new | 2.0.724.0 | 9/10 deterministic and request bar in one batch; owner D2 pending |
 | S1 XA01 consecutive | new | 2.0.724.0 | 3/3 (10, 10, 9 actual model requests); owner D2 pending |
-| S2 PP01 | new | 2.0.738.0 | C2 native repair passed; real C3 run reached patch review but combined valid source spans were rejected as one noncontiguous excerpt; fix in PR #45 |
+| S2 PP01 | new | 2.0.739.0 | C2 native repair passed; real C3 run reached claim association in patch review; compound display label needs source-component binding in PR #45 |
 | S2 PP02–10 | — | — | not yet run |
 
 Current stage: **C3**, real PP01 repair on PR #45. PR #44 merged into
@@ -301,6 +301,16 @@ check rejected the combined text. No final deck was produced; source and
 workbook bytes stayed unchanged. PR #45 now validates the exact host-resolved
 span combination as a cited unit while retaining the strict check for uncited
 evidence and all numeric checks. Rebuild, install and rerun PP01.
+Installed 2.0.739.0 passed green CI. Real PP01 used 8 model requests and
+$0.1103; cited spans passed review, but patch review rejected a compound
+claim label that named two source columns and the current month in display
+form. This is the second review-stage failure. The mechanism hypothesis is
+that exact contiguous label matching treats a display label as one source
+field, though a claim can name multiple verified fields in one cited passage.
+PR #45 changes the approach: split compound labels into components and verify
+every component against that same exact passage, with month matched to its
+period; uncited metrics/months still fail. No final deck was produced and
+source/workbook bytes stayed unchanged. Rebuild, install and rerun PP01.
 
 ## 6. Rules for autonomous sessions
 

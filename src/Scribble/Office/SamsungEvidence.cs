@@ -34,6 +34,9 @@ namespace Scribble.Office
                 if (compactAssociation.Length >= 2 && compactPassage.IndexOf(
                     compactAssociation, StringComparison.OrdinalIgnoreCase) >= 0) return true;
             }
+            if (string.Equals(key, "label", StringComparison.Ordinal) &&
+                (association ?? "").IndexOf('/') >= 0 &&
+                CompoundLabelOccurs(passage, association)) return true;
             if (!string.Equals(key, "period", StringComparison.Ordinal)) return false;
 
             var expected = CanonicalPeriods(association);
@@ -44,6 +47,40 @@ namespace Scribble.Office
 
         private static readonly string[] MonthNames = { "January", "February", "March", "April", "May", "June",
             "July", "August", "September", "October", "November", "December" };
+
+        // A slash label can name multiple source columns and a group or month.
+        // Require every component in the same exact cited passage; a month
+        // component must match that passage's period rather than arbitrary text.
+        private static bool CompoundLabelOccurs(string passage,
+            string association)
+        {
+            var parts = Regex.Matches(association ?? "", @"[A-Za-z0-9]+")
+                .Cast<Match>().Select(match => match.Value).ToArray();
+            if (parts.Length < 2) return false;
+            var compactPassage = Regex.Replace(passage ?? "",
+                @"[^A-Za-z0-9]", "");
+            var periods = CanonicalPeriods(passage);
+            foreach (var part in parts)
+            {
+                var month = Array.FindIndex(MonthNames, name =>
+                    string.Equals(name, part,
+                        StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(name.Substring(0, 3), part,
+                        StringComparison.OrdinalIgnoreCase));
+                if (month >= 0)
+                {
+                    var monthNumber = (month + 1).ToString("00",
+                        CultureInfo.InvariantCulture);
+                    if (!periods.Any(period => period.EndsWith("-" +
+                            monthNumber, StringComparison.Ordinal)))
+                        return false;
+                }
+                else if (compactPassage.IndexOf(part,
+                        StringComparison.OrdinalIgnoreCase) < 0)
+                    return false;
+            }
+            return true;
+        }
 
         // An audit table often heads its columns "May" and "June" while the
         // deck must label them 2026-05 and 2026-06. The capitalized month name
