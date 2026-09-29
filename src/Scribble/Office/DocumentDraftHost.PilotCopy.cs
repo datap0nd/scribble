@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Web.Script.Serialization;
 using Scribble.Chat;
 using Scribble.Configuration;
 using Scribble.Security;
@@ -141,7 +142,7 @@ namespace Scribble.Office
                 copy.AcceptDirectRevision(changed, combined);
                 var patchReviewReceipt = SamsungAuthoringPolicy.CacheKey(
                     settings.Model, settings.BaseUrl,
-                    _serializer.Serialize(changed),
+                    SerializeChangedSlideFingerprints(changed),
                     copy.Snapshot() + "|" +
                     workbooks[0].SourceFingerprint);
                 _taskContext.State.HostData["pilot_copy_snapshot"] =
@@ -261,6 +262,20 @@ namespace Scribble.Office
                         permission_consumed = needsInspection
                     }), error.Message);
             }
+        }
+
+        internal static string SerializeChangedSlideFingerprints(
+            IDictionary<int, string> changed)
+        {
+            if (changed == null || changed.Count == 0)
+                throw new InvalidOperationException(
+                    "PILOT_COPY_RECEIPT_INVALID");
+            return new JavaScriptSerializer { MaxJsonLength = 16000000 }
+                .Serialize(changed.OrderBy(pair => pair.Key)
+                    .Select(pair => new {
+                        slide_id = pair.Key,
+                        fingerprint = pair.Value
+                    }).ToArray());
         }
 
         private static void ValidatePilotCopyOperations(

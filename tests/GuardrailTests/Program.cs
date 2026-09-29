@@ -285,6 +285,8 @@ namespace GuardrailTests
                     PilotCopyPreflightRejectionPermitsRetry);
                 Run("Pilot copy pre-stage evidence is checked without old-slide review",
                     PilotCopyTextEvidenceIsBounded);
+                Run("Pilot patch receipt serializes native slide IDs",
+                    PilotPatchReceiptSerializesSlideIds);
                 Run("Workbook FactIds safely replay all historical PP01 responses",
                     RevisionFactReplayTests.FactReferencesAndHistoricalResponses);
                 Run("Measured pilot replacement keeps ordinary redesign consent",
@@ -7382,6 +7384,31 @@ namespace GuardrailTests
             Assert(ToolContractValidator.Validate(incomplete, definition)
                     .Count != 0,
                 "An incomplete encoded revision array was accepted.");
+        }
+
+        private static void PilotPatchReceiptSerializesSlideIds()
+        {
+            var serialize = typeof(DocumentDraftHost).GetMethod(
+                "SerializeChangedSlideFingerprints",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert(serialize != null,
+                "The pilot patch receipt serializer is unavailable.");
+            var receipt = (string)serialize.Invoke(null,
+                new object[] { new Dictionary<int, string> {
+                    { 9, "after-nine" }, { 3, "after-three" }
+                } });
+            var items = (object[])new JavaScriptSerializer()
+                .DeserializeObject(receipt);
+            var first = (Dictionary<string, object>)items[0];
+            var second = (Dictionary<string, object>)items[1];
+            Assert(items.Length == 2 &&
+                Convert.ToInt32(first["slide_id"]) == 3 &&
+                Convert.ToString(first["fingerprint"]) ==
+                    "after-three" &&
+                Convert.ToInt32(second["slide_id"]) == 9 &&
+                Convert.ToString(second["fingerprint"]) ==
+                    "after-nine",
+                "The patch receipt must order slide IDs and use JSON fields, not integer dictionary keys.");
         }
 
         private static void PilotCopyTextEvidenceIsBounded()
