@@ -174,7 +174,7 @@ a ≤ 10-line owner note in §5.
 | S1 XA01 | old | 2.0.385 | 1/3 (22 Sep) |
 | S1 XA01–10 | new | 2.0.724.0 | 9/10 deterministic and request bar in one batch; owner D2 pending |
 | S1 XA01 consecutive | new | 2.0.724.0 | 3/3 (10, 10, 9 actual model requests); owner D2 pending |
-| S2 PP01 | new | 2.0.745.0 | C2 native repair passed; real run reached reviewed native patch, then PowerPoint COM E_FAIL at first replacement commit |
+| S2 PP01 | new | 2.0.746.0 | Native preview-before-commit repair passed; real run failed earlier when a staging paste returned without exactly one slide |
 | S2 PP02–10 | — | — | not yet run |
 
 Current stage: **C3**, real PP01 repair on PR #45. PR #44 merged into
@@ -370,6 +370,16 @@ is native execution. Hypothesis: the staged visual preview sequence leaves
 the native shape/notes clipboard transfer transiently unavailable. Add a
 native preview-before-commit regression and retry clipboard transfer only
 when the target is provably unchanged; rebuild, install and rerun.
+Installed 2.0.746.0 passed CI and the native preview-before-commit repair
+harness (0 paid requests, source/workbook preserved). Real PP01 used 6
+requests and $0.0260; the measured replacement entered native staging, but
+`CopySlideTo` reported a paste that did not add exactly one slide. No final
+deck appeared; sources were unchanged. First failing stage is native
+execution again. The first clipboard hypothesis was too narrow: repeated
+staging slide copies also rely on a volatile Office clipboard. PR #45 now
+waits for native slide-count settlement and retries only when the destination
+remains at its exact pre-paste count; any extra or uncertain slide aborts.
+Rebuild, run native harness, install and rerun real PP01.
 
 ## 6. Rules for autonomous sessions
 

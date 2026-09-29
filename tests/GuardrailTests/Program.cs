@@ -295,6 +295,8 @@ namespace GuardrailTests
                     HostSummaryOperandsBindOneField);
                 Run("Native clipboard retry requires an unchanged target",
                     NativeClipboardRetryRequiresUnchangedTarget);
+                Run("Native slide copy waits for the destination count to settle",
+                    NativeSlideCopyWaitsForCountSettlement);
                 Run(
                     "Browser context is bounded and tools are approved-only",
                     BrowserContextIsBoundedAndReadOnly);
@@ -7199,6 +7201,33 @@ namespace GuardrailTests
                         "REPLACEMENT_UNCERTAIN") == true,
                     "A native transfer retried after the destination changed.");
             }
+        }
+
+        private sealed class SettlingSlideCollection
+        {
+            public int Reads { get; private set; }
+            public int Count
+            {
+                get { return ++Reads >= 3 ? 2 : 1; }
+            }
+        }
+
+        private sealed class SettlingPresentation
+        {
+            public SettlingSlideCollection Slides { get; } =
+                new SettlingSlideCollection();
+        }
+
+        private static void NativeSlideCopyWaitsForCountSettlement()
+        {
+            var settle = typeof(PresentationInspection).GetMethod(
+                "SettledSlideCount", BindingFlags.Static | BindingFlags.NonPublic);
+            Assert(settle != null,
+                "The native slide-copy settlement boundary is missing.");
+            var deck = new SettlingPresentation();
+            var count = (int)settle.Invoke(null, new object[] { deck, 1 });
+            Assert(count == 2 && deck.Slides.Reads >= 3,
+                "A delayed native paste was treated as an unchanged destination.");
         }
 
         private static void PilotCopyTextEvidenceIsBounded()
