@@ -382,10 +382,14 @@ namespace Scribble.Office
                     return a == 0m ? "unchanged" : a > 0m
                         ? "up from zero" : "down from zero";
                 var change = (a - b) / Math.Abs(b) * 100m;
-                return change == 0m ? "unchanged" :
-                    (change > 0m ? "up " : "down ") +
-                    Math.Abs(change).ToString("0.0",
-                        CultureInfo.InvariantCulture) + "%";
+                if (change == 0m) return "unchanged";
+                var magnitude = Math.Abs(change);
+                var precision = magnitude < 0.05m ? "0.00" : "0.0";
+                var displayed = magnitude < 0.005m ? "<0.01" :
+                    magnitude.ToString(precision,
+                        CultureInfo.InvariantCulture);
+                return (change > 0m ? "up " : "down ") +
+                    displayed + "%";
             }
             if (part.Calculation == "share_percent" &&
                 first.Period == second.Period &&

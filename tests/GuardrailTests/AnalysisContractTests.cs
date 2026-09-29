@@ -862,12 +862,25 @@ namespace GuardrailTests
                 marginPoints[1].Contains("prior period:") &&
                 marginPoints[1].Contains("pts"),
                 "The margin card lost its host-calculated value or change.");
+            var cost = ((object[])compiledA.Slides[0]["cards"])
+                .Cast<Dictionary<string, object>>()
+                .Single(card => Convert.ToString(card["heading"]) ==
+                    "Cost EUR");
+            var costPoints = ((object[])cost["points"])
+                .Select(Convert.ToString).ToArray();
+            Check(costPoints[1].Contains("up 0.03%"),
+                "A small nonzero change was rounded to zero on the slide.");
             var pages = ((System.Collections.IEnumerable)json.DeserializeObject(
                 json.Serialize(SamsungPresentationReview.InspectPlan(
                     json.Serialize(compiledA.Slides)))))
                 .Cast<Dictionary<string, object>>().ToArray();
             var limitElements = ((System.Collections.IEnumerable)pages[3]["elements"])
                 .Cast<Dictionary<string, object>>().ToArray();
+            Check(a.Slides[3].Cards.Count == 3 &&
+                a.Slides[3].Cards.All(card => card.Points.Count == 1) &&
+                Convert.ToString(compiledA.Slides[3]["subtitle"]) ==
+                    "Scope and exclusions",
+                "The limits page must keep three concise notes.");
             Check(limitElements.Any(element =>
                 Convert.ToString(element["fill"]) ==
                     SamsungSlideDesign.Navy &&

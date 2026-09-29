@@ -217,21 +217,17 @@ namespace Scribble.Office
                     new AnalysisPlanCard { Heading = "Scope",
                         Points = new List<AnalysisPlanText> {
                             new AnalysisPlanText { Text =
-                                "Totals use the selected workbook rows." },
-                            new AnalysisPlanText { Text =
-                                "Changes compare the same metric across periods." } } },
+                                "Current results cover", PeriodFactId =
+                                    leadFocus.FactId } } },
                     new AnalysisPlanCard { Heading = "Exclusions",
                         Points = new List<AnalysisPlanText> {
-                            new AnalysisPlanText { Text = limitation },
-                            new AnalysisPlanText { Text =
-                                "Later workbook edits are outside these figures." } } },
-                    new AnalysisPlanCard { Heading = "Reading the totals",
+                            new AnalysisPlanText { Text = limitation } } },
+                    new AnalysisPlanCard { Heading = "Comparison",
                         Points = new List<AnalysisPlanText> {
                             new AnalysisPlanText { Text =
-                                "Differences describe changes, not their causes." },
-                            new AnalysisPlanText { Text =
-                                "Compare groups within the same period." } } } },
-                Takeaway = Parts("The comparison shows what changed, not why.")
+                                "Changes compare with", PeriodFactId =
+                                    leadCompare.FactId } } } },
+                Takeaway = Parts("A period change does not establish a cause.")
             });
             if (slides.Count < requestedSlides)
                 throw new InvalidOperationException(
@@ -330,7 +326,7 @@ namespace Scribble.Office
                 cell.Status != AnalysisContract.Verified &&
                 string.IsNullOrEmpty(cell.Formula)))
                 return "Missing entries are omitted; they are not zero.";
-            return "Figures cover the selected workbook rows.";
+            return "Later workbook edits are outside these figures.";
         }
 
         private static bool IsKnownSubtotal(AnalysisArtifact artifact,
