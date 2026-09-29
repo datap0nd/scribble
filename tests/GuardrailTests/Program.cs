@@ -7195,6 +7195,46 @@ namespace GuardrailTests
                         "PILOT_COPY_NOTES_UNVERIFIED") == true,
                     "A new unsupported note must be rejected before native writing.");
             }
+            var slidePolicy = typeof(DocumentDraftHost).GetMethod(
+                "ValidateRevisionSlideEvidence",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert(slidePolicy != null,
+                "The pilot must check cited replacement slide content before consuming permission.");
+            var citation = "Sales Q1 100 units.";
+            var slide = new Dictionary<string, object>
+            {
+                { "title", "Sales" },
+                { "subtitle", "Sales Q1 100 units" },
+                { "sources", "Supplied report" },
+                { "source_spans", new[] { "verified-span" } },
+                { "evidence", "unverified model text" }
+            };
+            var replacement = new Dictionary<string, object>
+            {
+                { "kind", "replace_slide" }, { "slide", slide }
+            };
+            var resolved = false;
+            Func<IEnumerable<string>, string> resolver = ids =>
+            {
+                Assert(ids.SequenceEqual(new[] { "verified-span" }),
+                    "The pilot changed source span identity.");
+                resolved = true;
+                return citation;
+            };
+            Action validateSlide = () => slidePolicy.Invoke(null,
+                new object[] { new[] { replacement }, citation, resolver,
+                    new System.Web.Script.Serialization.JavaScriptSerializer() });
+            validateSlide();
+            Assert(resolved && Convert.ToString(slide["evidence"]) == citation,
+                "The pilot did not replace model evidence with exact host-resolved text.");
+            slide["subtitle"] = "Sales Q1 101 units";
+            try { validateSlide(); throw new Exception("Unsupported replacement slide passed."); }
+            catch (TargetInvocationException error)
+            {
+                Assert(error.InnerException?.Message.StartsWith(
+                        "SLIDE_NUMBERS_UNVERIFIED") == true,
+                    "An unsupported replacement number must fail in pilot preflight.");
+            }
         }
 
         private static void PilotCopyPreflightRejectionPermitsRetry()

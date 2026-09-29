@@ -118,24 +118,16 @@ namespace Scribble.Office
                     if (kind == "move" && !Regex.IsMatch(prompt ?? "", @"\b(move|reorder|reorganize|sort)\b", RegexOptions.IgnoreCase)) throw new InvalidOperationException("SLIDE_REORDER_NOT_REQUESTED");
                 }
                 var source = SamsungPresentationReview.SourceCorpus(_taskContext, prompt);
-                foreach (var raw in operations.Select(SamsungAuthoringPolicy.ReadMap))
-                {
-                    object supplied;
-                    if (!raw.TryGetValue("slide", out supplied)) continue;
-                    var content = SamsungAuthoringPolicy.ReadMap(supplied);
-                    var spans = SamsungAuthoringPolicy.Array(content, "source_spans");
-                    string resolvedEvidence = null;
-                    if (spans.Length > 0)
+                ValidateRevisionSlideEvidence(
+                    operations.Select(SamsungAuthoringPolicy.ReadMap).ToArray(),
+                    source,
+                    ids =>
                     {
-                        if (_taskContext == null) throw new InvalidOperationException("SLIDE_SOURCE_REF_INVALID");
-                        resolvedEvidence = _taskContext.Sources.Resolve(
-                            spans.Select(Convert.ToString));
-                        content["evidence"] = resolvedEvidence;
-                    }
-                    SamsungPresentationReview.ValidateEvidence(
-                        _serializer.Serialize(content), source,
-                        resolvedEvidence);
-                }
+                        if (_taskContext == null)
+                            throw new InvalidOperationException(
+                                "SLIDE_SOURCE_REF_INVALID");
+                        return _taskContext.Sources.Resolve(ids);
+                    }, _serializer);
                 var original = operations.Select(SamsungAuthoringPolicy.ReadMap).Select(o => Convert.ToInt32(o["slide_id"])).Distinct()
                     .Select(id => PresentationInspection.Capture(PresentationInspection.FindSlide(deck, id))).ToArray();
                 var requestedOperations = operations;

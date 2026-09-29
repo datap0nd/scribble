@@ -174,7 +174,7 @@ a ≤ 10-line owner note in §5.
 | S1 XA01 | old | 2.0.385 | 1/3 (22 Sep) |
 | S1 XA01–10 | new | 2.0.724.0 | 9/10 deterministic and request bar in one batch; owner D2 pending |
 | S1 XA01 consecutive | new | 2.0.724.0 | 3/3 (10, 10, 9 actual model requests); owner D2 pending |
-| S2 PP01 | new | 2.0.742.0 | C2 native repair passed; real run stopped at a model review of the old overflowing slide before native staging; deterministic pilot preflight change in PR #45 |
+| S2 PP01 | new | 2.0.744.0 | C2 native repair passed; real run rejected unsupported numeric claims correctly but quarantined the corrected retry because evidence validation followed permission consumption |
 | S2 PP02–10 | — | — | not yet run |
 
 Current stage: **C3**, real PP01 repair on PR #45. PR #44 merged into
@@ -348,6 +348,16 @@ mechanism is review of pre-repair content as if it were proposed output.
 PR #45 changes approach: the pilot checks changed numeric text and notes
 against bound source data before writing, then reviews staged native output
 under the existing geometry and visual checks. Rebuild, install and rerun.
+Installed 2.0.744.0 passed green CI. Real PP01 used 6 model requests and
+$0.0379. A chart-slide replacement and a wrong replacement scope were safely
+rejected before writing. The third proposal contained unsupported 55.8% and
+144-row claims; the existing evidence check correctly rejected them, but it
+ran after copy permission was consumed, so the corrected retry was
+quarantined. No final deck appeared; source and workbook remained unchanged.
+The first failing stage is evidence preflight ordering. PR #45 now runs the
+same exact-span and numeric validation before consuming permission or making
+a copy, with a regression for unsupported replacement numbers. Rebuild,
+install and rerun PP01.
 
 ## 6. Rules for autonomous sessions
 

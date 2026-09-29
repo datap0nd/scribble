@@ -102,9 +102,11 @@ namespace Scribble.Office
                     .MeasuredReplacementSlides(sourceDeck);
                 ValidatePilotCopyOperations(mapped,
                     measuredReplacements, chartBindings);
-                ValidatePilotCopyTextEvidence(mapped,
-                    SamsungPresentationReview.SourceCorpus(_taskContext,
-                        trustedRequest));
+                var sourceEvidence = SamsungPresentationReview.SourceCorpus(
+                    _taskContext, trustedRequest);
+                ValidatePilotCopyTextEvidence(mapped, sourceEvidence);
+                ValidateRevisionSlideEvidence(mapped, sourceEvidence,
+                    ids => _taskContext.Sources.Resolve(ids), _serializer);
                 token.ThrowIfCancellationRequested();
                 if (!authorization.TryConsume())
                     throw new InvalidOperationException(
@@ -344,6 +346,31 @@ namespace Scribble.Office
                         throw new InvalidOperationException(
                             "PILOT_COPY_NOTES_UNVERIFIED");
                 }
+            }
+        }
+
+        internal static void ValidateRevisionSlideEvidence(
+            Dictionary<string, object>[] operations, string source,
+            Func<IEnumerable<string>, string> resolve,
+            System.Web.Script.Serialization.JavaScriptSerializer serializer)
+        {
+            if (operations == null || resolve == null || serializer == null)
+                throw new InvalidOperationException("PILOT_COPY_OPERATIONS_INVALID");
+            foreach (var operation in operations)
+            {
+                object supplied;
+                if (!operation.TryGetValue("slide", out supplied)) continue;
+                var content = SamsungAuthoringPolicy.ReadMap(supplied);
+                var spans = SamsungAuthoringPolicy.Array(content,
+                    "source_spans");
+                string resolvedEvidence = null;
+                if (spans.Length > 0)
+                {
+                    resolvedEvidence = resolve(spans.Select(Convert.ToString));
+                    content["evidence"] = resolvedEvidence;
+                }
+                SamsungPresentationReview.ValidateEvidence(
+                    serializer.Serialize(content), source, resolvedEvidence);
             }
         }
     }
