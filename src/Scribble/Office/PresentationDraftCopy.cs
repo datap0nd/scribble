@@ -862,7 +862,7 @@ namespace Scribble.Office
                     PresentationInspection.Fingerprint((object)slide) !=
                         expected)
                     throw new InvalidOperationException(
-                        "REVISION_COPY_DRAFT_CHANGED");
+                        "REVISION_COPY_DRAFT_CHANGED: slide " + id);
             }
             foreach (var pair in changed)
                 _draftFingerprints[pair.Key] = pair.Value;

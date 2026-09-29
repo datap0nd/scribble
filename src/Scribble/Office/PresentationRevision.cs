@@ -123,7 +123,6 @@ namespace Scribble.Office
             foreach (var id in order)
             {
                 var slide = PresentationInspection.FindSlide(presentation, id);
-                var fingerprint = PresentationInspection.Fingerprint(slide);
                 if (changed.Contains(id))
                 {
                     ValidateNativeGeometry(slide);
@@ -131,9 +130,14 @@ namespace Scribble.Office
                         PresentationInspection.Hyperlinks(slide)))
                         throw new InvalidOperationException(
                             "REVISION_PRESERVATION: Existing hyperlinks changed.");
-                    receipt.Add(id, fingerprint);
+                    // Native geometry reads can settle an editable chart's
+                    // package. Snapshot only after every read that belongs to
+                    // validation, so the returned receipt is the final state.
+                    receipt.Add(id,
+                        PresentationInspection.Fingerprint(slide));
                 }
-                else if (fingerprint != before[id])
+                else if (PresentationInspection.Fingerprint(slide) !=
+                    before[id])
                     throw new InvalidOperationException(
                         "REVISION_PRESERVATION: Unrelated slide changed.");
             }
