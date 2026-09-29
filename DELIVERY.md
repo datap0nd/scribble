@@ -260,7 +260,9 @@ native capture showed the actual difference: the source theme supplied
 Calibri in the live deck while the staging deck supplied Aptos or `+mn-ea`
 for empty-shape/default East Asian fonts, changing measured text bounds.
 PR #45 now explicitly assigns those replacement-shape fonts before review
-and still requires exact native equality. Native verification is next.
+and still requires exact native equality. Build 2.0.731.0 reduced the
+remaining mismatch to 12 individual text runs' East Asian fonts; PR #45 now
+pins those run fonts too. Native verification is next.
 
 ## 6. Rules for autonomous sessions
 

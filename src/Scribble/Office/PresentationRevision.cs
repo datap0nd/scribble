@@ -340,6 +340,12 @@ namespace Scribble.Office
                 if (string.IsNullOrEmpty(Convert.ToString(range.Text)))
                     range.Font.Name = MetoTheme.LabelFont;
                 range.Font.NameFarEast = range.Font.Name;
+                for (var runIndex = 1; runIndex <=
+                    (int)range.Runs().Count; runIndex++)
+                {
+                    dynamic run = range.Runs(runIndex, 1);
+                    run.Font.NameFarEast = run.Font.Name;
+                }
             }
             return output;
         }
