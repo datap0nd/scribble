@@ -172,12 +172,26 @@ a ≤ 10-line owner note in §5.
 | Scenario | Route | Build | Result |
 | --- | --- | --- | --- |
 | S1 XA01 | old | 2.0.385 | 1/3 (22 Sep) |
-| S1 XA01–10 | new | 2.0.724.0 | 9/10 deterministic and request bar in one batch; owner D2 pending |
+| S1 XA01–10 | new | 2.0.760.0 | 10/10 terminal native outputs, hard checks and request bar in one batch; Claude/owner D2 pending |
 | S1 XA01 consecutive | new | 2.0.724.0 | 3/3 (10, 10, 9 actual model requests); owner D2 pending |
 | S2 PP01 | new | 2.0.750.0 | Native repair passed; real run stopped on a complete operations array encoded as a JSON string |
 | S2 PP02–10 | — | — | not yet run |
 
-Current stage: **C3**, real PP01 repair on PR #45. PR #44 merged into
+Current stage: **P1 workbook-backed deck repair** under owner-authorized issue #46 R1.
+P0 final installed build 2.0.760.0 (`773e20f`) passed green CI and an
+unassisted XA01–XA10 batch on 29 September. All ten produced four-slide
+native decks and workbooks through the new route, passed hard checks and
+source preservation, and used 8–11 model requests per case. Agent visual
+inspection found readable, distinct charts and findings, with at most three
+limits notes and no visible system narration or absolute path. The batch
+cost $0.3884; contact sheets are in
+`C:\Users\keeoh\Documents\Scribble Testcases\p0-contacts-suite-20260929-080504-e91e5cdc`.
+Claude and owner D2 review remain open; the S1 three-consecutive-XA01 bar
+has not been rerun on this build.
+PR #45 merged into `codex/development` on 29 September with green CI.
+The 2.0.751.0 PP01 run stopped on direction; paid PP01 is paused until the
+P1 FactId and draft-only repair changes pass offline replay. Earlier C3 work:
+PR #44 merged into
 `codex/development`. The required single XA02–XA10 batch ran on installed
 2.0.706.0 (`e079743a` DLL SHA256 prefix), with the new route confirmed and all
 nine results recorded in the scoreboard. None is eligible for S1: six blocked

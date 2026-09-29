@@ -6,6 +6,8 @@ using System.IO.Compression;
 using System.Linq;
 using System.Text;
 using System.Threading;
+using System.Text.RegularExpressions;
+using System.Web.Script.Serialization;
 using Scribble.Chat;
 using Scribble.Office;
 
@@ -213,7 +215,7 @@ namespace GuardrailTests
             Check(deck.Slides.SelectMany(slide => slide.Cards)
                 .SelectMany(card => card.Points)
                 .Any(point => point.Text != null &&
-                    point.Text.Contains("identifiers were counted once")) &&
+                    point.Text.Contains("Identical repeated IDs count once")) &&
                 !deck.Slides.SelectMany(slide => slide.Cards)
                     .SelectMany(card => card.Points)
                     .Any(point => point.Text != null &&
@@ -797,6 +799,110 @@ namespace GuardrailTests
                     ((object[])headline["cards"])[0])["points"])[0]
                     .ToString().Contains("Verified revenue"),
                 "Verified labels or exact grouped-cell citations did not survive deck compilation.");
+        }
+
+        public static void SlideQualityUsesBoundFindingsAndSafeFooters()
+        {
+            var binding = new AnalysisTableBinding {
+                TableId = "ledger", PeriodHeader = "Period",
+                DimensionHeaders = new List<string> { "Group" },
+                Metrics = new List<AnalysisMetricColumnBinding> {
+                    new AnalysisMetricColumnBinding { Header = "RevenueEUR",
+                        Metric = "RevenueEUR", Unit = "currency",
+                        Currency = "EUR" },
+                    new AnalysisMetricColumnBinding { Header = "CostEUR",
+                        Metric = "CostEUR", Unit = "currency",
+                        Currency = "EUR" } } };
+            Func<string, TableDataset, AnalysisArtifact> capture =
+                (path, table) => AnalysisTableArtifactBuilder.BuildGrouped(
+                    AnalysisContract.CreateSnapshot(path,
+                        "excel_workbook", "revision-1", "complete_range",
+                        "literal_values", new[] { Locator(path,
+                            "Ledger", "A1:D3", "") },
+                        new[] { table }), binding);
+            var first = capture(@"excel:C:\Users\example\Sales.xlsx",
+                MappedTable());
+            var changed = MappedTable();
+            changed.Cells.Single(cell => cell.Reference == "C3")
+                .Value = "100000";
+            var second = capture(@"excel:C:\Users\example\Other.xlsx",
+                changed);
+            Func<AnalysisArtifact, AnalysisDocumentPlan> build = artifact =>
+                AnalysisDeckPlanBuilder.Build(artifact,
+                    new Dictionary<string, object> {
+                        { "AnalysisId", artifact.AnalysisId } }, 4,
+                    "Compare May vs June with a primary revenue chart.");
+            var a = build(first);
+            var b = build(second);
+            var json = new JavaScriptSerializer();
+            var compiledA = AnalysisDocumentCompiler.Compile(first, a);
+            var compiledB = AnalysisDocumentCompiler.Compile(second, b);
+            var titlesA = compiledA.Slides.Select(slide =>
+                Convert.ToString(slide["title"])).ToArray();
+            var titlesB = compiledB.Slides.Select(slide =>
+                Convert.ToString(slide["title"])).ToArray();
+            Check(!titlesA.SequenceEqual(titlesB) &&
+                titlesA[0].Contains("82,992") &&
+                titlesB[0].Contains("100,000") &&
+                titlesA[0].Contains("down") &&
+                titlesB[0].Contains("up"),
+                "Different workbooks produced the same headline findings.");
+            var chartTitle = a.Slides.Single(slide =>
+                slide.Chart != null).Chart.Title;
+            Check(chartTitle.Contains("Revenue EUR") &&
+                !chartTitle.Contains("EUR (EUR)"),
+                "The chart title duplicated its metric unit.");
+            var margin = ((object[])compiledA.Slides[0]["cards"])
+                .Cast<Dictionary<string, object>>()
+                .Single(card => Convert.ToString(card["heading"]) ==
+                    "Gross margin");
+            var marginPoints = ((object[])margin["points"])
+                .Select(Convert.ToString).ToArray();
+            Check(marginPoints[0] == "55.8%" &&
+                marginPoints[1].Contains("prior period:") &&
+                marginPoints[1].Contains("pts"),
+                "The margin card lost its host-calculated value or change.");
+            var cost = ((object[])compiledA.Slides[0]["cards"])
+                .Cast<Dictionary<string, object>>()
+                .Single(card => Convert.ToString(card["heading"]) ==
+                    "Cost EUR");
+            var costPoints = ((object[])cost["points"])
+                .Select(Convert.ToString).ToArray();
+            Check(costPoints[1].Contains("up 0.03%"),
+                "A small nonzero change was rounded to zero on the slide.");
+            var pages = ((System.Collections.IEnumerable)json.DeserializeObject(
+                json.Serialize(SamsungPresentationReview.InspectPlan(
+                    json.Serialize(compiledA.Slides)))))
+                .Cast<Dictionary<string, object>>().ToArray();
+            var limitElements = ((System.Collections.IEnumerable)pages[3]["elements"])
+                .Cast<Dictionary<string, object>>().ToArray();
+            Check(a.Slides[3].Cards.Count == 3 &&
+                a.Slides[3].Cards.All(card => card.Points.Count == 1) &&
+                Convert.ToString(compiledA.Slides[3]["subtitle"]) ==
+                    "Scope and exclusions",
+                "The limits page must keep three concise notes.");
+            Check(limitElements.Any(element =>
+                Convert.ToString(element["fill"]) ==
+                    SamsungSlideDesign.Navy &&
+                Convert.ToDouble(element["height"]) > 150),
+                "Short scope notes fell back to large empty card panels.");
+            var visible = pages.SelectMany(page =>
+                ((System.Collections.IEnumerable)page["elements"])
+                    .Cast<Dictionary<string, object>>())
+                .Select(element => Convert.ToString(element["text"]))
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Select(value => value.Replace("[Scribble draft]", ""))
+                .ToArray();
+            Check(!visible.Any(value => Regex.IsMatch(value,
+                    @"\b(?:verified|captured|bound|native|draft)\b|evidence boundary",
+                    RegexOptions.IgnoreCase)),
+                "System narration leaked onto a slide.");
+            Check(!visible.Any(value => Regex.IsMatch(value,
+                    @"[A-Za-z]:[\\/]|[/\\]Users[/\\]",
+                    RegexOptions.IgnoreCase)) &&
+                visible.Any(value => value.Contains(
+                    "Sales.xlsx / Ledger!")),
+                "A slide footer lost the workbook name or exposed a local path.");
         }
 
         private static TableDataset MappedTable()

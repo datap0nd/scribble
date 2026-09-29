@@ -154,7 +154,8 @@ namespace Scribble.Office
                     result.FactIdsBySlide.ContainsKey(slide.Id))
                     throw new InvalidOperationException("REVIEW_LOGICAL_SLIDE_INVALID");
                 var ids = new HashSet<string>(StringComparer.Ordinal);
-                Add(ids, slide.Subtitle); Add(ids, slide.Takeaway);
+                Add(ids, slide.TitleParts); Add(ids, slide.Subtitle);
+                Add(ids, slide.Takeaway);
                 foreach (var card in slide.Cards ?? new List<AnalysisPlanCard>())
                     if (card != null) Add(ids, card.Points);
                 foreach (var row in slide.TableRows ?? new List<AnalysisPlanRow>())
@@ -404,8 +405,16 @@ namespace Scribble.Office
             IEnumerable<AnalysisPlanText> text)
         {
             foreach (var part in text ?? new AnalysisPlanText[0])
-                if (part != null && !string.IsNullOrWhiteSpace(part.FactId))
+            {
+                if (part == null) continue;
+                if (!string.IsNullOrWhiteSpace(part.FactId))
                     ids.Add(part.FactId);
+                if (!string.IsNullOrWhiteSpace(part.PeriodFactId))
+                    ids.Add(part.PeriodFactId);
+                foreach (var id in part.InputFactIds ??
+                    new List<string>())
+                    if (!string.IsNullOrWhiteSpace(id)) ids.Add(id);
+            }
         }
 
         private static bool Keys(IDictionary<string, object> map,

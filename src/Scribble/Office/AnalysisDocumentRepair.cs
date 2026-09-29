@@ -155,7 +155,9 @@ namespace Scribble.Office
         {
             if (slide == null || string.IsNullOrWhiteSpace(targetId))
                 throw new InvalidOperationException("REPAIR_TARGET_INVALID");
-            if (targetId == "title") return new List<string> { slide.Title };
+            if (targetId == "title")
+                return slide.TitleParts != null && slide.TitleParts.Count > 0
+                    ? new List<string>() : new List<string> { slide.Title };
             List<AnalysisPlanText> parts = null;
             if (targetId == "subtitle") parts = slide.Subtitle;
             else if (targetId == "takeaway") parts = slide.Takeaway;
@@ -171,7 +173,9 @@ namespace Scribble.Office
             }
             if (parts == null)
                 throw new InvalidOperationException("REPAIR_TARGET_UNSUPPORTED");
-            return parts.Select(part => part != null && part.FactId == null
+            return parts.Select(part => part != null &&
+                part.FactId == null && part.PeriodFactId == null &&
+                part.Calculation == null
                 ? part.Text : null).ToList();
         }
 
@@ -243,6 +247,8 @@ namespace Scribble.Office
         {
             if (patch.TargetId == "title")
             {
+                if (slide.TitleParts != null && slide.TitleParts.Count > 0)
+                    throw new InvalidOperationException("REPAIR_TARGET_UNSUPPORTED");
                 if (patch.SegmentIndex != 0 ||
                     slide.Title != patch.ExpectedText)
                     throw new InvalidOperationException("REPAIR_TEXT_CHANGED");
@@ -266,6 +272,8 @@ namespace Scribble.Office
                 patch.SegmentIndex >= parts.Count ||
                 parts[patch.SegmentIndex] == null ||
                 parts[patch.SegmentIndex].FactId != null ||
+                parts[patch.SegmentIndex].PeriodFactId != null ||
+                parts[patch.SegmentIndex].Calculation != null ||
                 parts[patch.SegmentIndex].Text != patch.ExpectedText)
                 throw new InvalidOperationException("REPAIR_TEXT_CHANGED");
             parts[patch.SegmentIndex].Text = patch.ReplacementText;

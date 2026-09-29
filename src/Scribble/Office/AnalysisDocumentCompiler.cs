@@ -46,6 +46,10 @@ namespace Scribble.Office
     {
         public string Text { get; set; }
         public string FactId { get; set; }
+        public string PeriodFactId { get; set; }
+        public string Calculation { get; set; }
+        public List<string> InputFactIds { get; set; } =
+            new List<string>();
         public bool IncludeUnit { get; set; }
     }
 
@@ -54,6 +58,8 @@ namespace Scribble.Office
         public string Id { get; set; }
         public string Layout { get; set; }
         public string Title { get; set; }
+        public List<AnalysisPlanText> TitleParts { get; set; } =
+            new List<AnalysisPlanText>();
         public List<AnalysisPlanText> Subtitle { get; set; } =
             new List<AnalysisPlanText>();
         public List<AnalysisPlanText> Takeaway { get; set; } =
@@ -151,14 +157,21 @@ namespace Scribble.Office
             foreach (var slide in plan.Slides ?? new List<AnalysisPlanSlide>())
             {
                 if (slide == null || string.IsNullOrWhiteSpace(slide.Id) ||
-                    !ids.Add(slide.Id) || string.IsNullOrWhiteSpace(slide.Title))
+                    !ids.Add(slide.Id) ||
+                    (string.IsNullOrWhiteSpace(slide.Title) &&
+                     (slide.TitleParts == null || slide.TitleParts.Count == 0)))
                     throw new InvalidOperationException("ANALYSIS_SLIDE_ID_INVALID");
-                RejectNumericLiteral(slide.Title, verifiedLabels);
                 var used = new HashSet<string>(StringComparer.Ordinal);
+                var title = slide.TitleParts != null &&
+                    slide.TitleParts.Count > 0
+                        ? Text(slide.TitleParts, facts, used, verifiedLabels)
+                        : CheckedProse(slide.Title, verifiedLabels);
+                if (string.IsNullOrWhiteSpace(title))
+                    throw new InvalidOperationException("ANALYSIS_SLIDE_TITLE_EMPTY");
                 var map = new Dictionary<string, object>
                 {
                     { "id", slide.Id }, { "layout", slide.Layout ?? string.Empty },
-                    { "title", slide.Title },
+                    { "title", title },
                     { "subtitle", Text(slide.Subtitle, facts, used,
                         verifiedLabels) },
                     { "takeaway", Text(slide.Takeaway, facts, used,
@@ -278,17 +291,21 @@ namespace Scribble.Office
             foreach (var part in parts ?? new AnalysisPlanText[0])
             {
                 if (part == null || (part.Text == null &&
-                    part.FactId == null))
+                    part.FactId == null && part.PeriodFactId == null &&
+                    part.Calculation == null))
                     throw new InvalidOperationException("ANALYSIS_TEXT_AUTHORITY_AMBIGUOUS");
-                if (part.FactId == null)
+                var references = (part.FactId == null ? 0 : 1) +
+                    (part.PeriodFactId == null ? 0 : 1) +
+                    (part.Calculation == null ? 0 : 1);
+                if (references > 1)
+                    throw new InvalidOperationException("ANALYSIS_TEXT_AUTHORITY_AMBIGUOUS");
+                if (references == 0)
                 {
                     RejectNumericLiteral(part.Text, verifiedLabels);
                     rendered.Add(part.Text);
                 }
                 else
                 {
-                    used.Add(part.FactId);
-                    var fact = Fact(facts, part.FactId);
                     if (part.Text != null)
                     {
                         RejectNumericLiteral(part.Text, verifiedLabels);
@@ -297,12 +314,137 @@ namespace Scribble.Office
                              char.IsWhiteSpace(part.Text[part.Text.Length - 1])
                                 ? string.Empty : " "));
                     }
-                    rendered.Add(Display(fact) + (part.IncludeUnit &&
-                        !string.IsNullOrWhiteSpace(fact.Currency)
-                            ? " " + fact.Currency : string.Empty));
+                    if (part.FactId != null)
+                    {
+                        used.Add(part.FactId);
+                        var fact = Fact(facts, part.FactId);
+                        var unit = !string.IsNullOrWhiteSpace(fact.Currency)
+                            ? fact.Currency : fact.Unit == "ratio" ||
+                                fact.Unit == "currency" ? string.Empty : fact.Unit;
+                        rendered.Add(Display(fact) + (part.IncludeUnit &&
+                            !string.IsNullOrWhiteSpace(unit)
+                                ? " " + unit : string.Empty));
+                    }
+                    else if (part.PeriodFactId != null)
+                    {
+                        used.Add(part.PeriodFactId);
+                        rendered.Add(Period(Fact(facts,
+                            part.PeriodFactId).Period));
+                    }
+                    else rendered.Add(Calculate(part, facts, used));
                 }
             }
             return string.Join("", rendered);
+        }
+
+        private static string Period(string value)
+        {
+            DateTime date;
+            return DateTime.TryParseExact(value, "yyyy-MM",
+                CultureInfo.InvariantCulture, DateTimeStyles.None, out date)
+                ? date.ToString("MMMM yyyy", CultureInfo.InvariantCulture)
+                : value ?? string.Empty;
+        }
+
+        private static string Calculate(AnalysisPlanText part,
+            IDictionary<string, VerifiedFact> facts, ISet<string> used)
+        {
+            if (part.Calculation == "margin_percent" ||
+                part.Calculation == "margin_change_points")
+                return Margin(part, facts, used);
+            if (part.InputFactIds == null || part.InputFactIds.Count != 2)
+                throw new InvalidOperationException("ANALYSIS_CALCULATION_INPUTS_INVALID");
+            var first = Fact(facts, part.InputFactIds[0]);
+            var second = Fact(facts, part.InputFactIds[1]);
+            if (first.ValueType != AnalysisContract.DecimalValue &&
+                first.ValueType != AnalysisContract.IntegerValue ||
+                second.ValueType != AnalysisContract.DecimalValue &&
+                second.ValueType != AnalysisContract.IntegerValue ||
+                first.Metric != second.Metric ||
+                first.Currency != second.Currency ||
+                first.Unit != second.Unit ||
+                first.SnapshotId != second.SnapshotId)
+                throw new InvalidOperationException("ANALYSIS_CALCULATION_BINDING_INVALID");
+            decimal a, b;
+            if (!decimal.TryParse(first.Value, NumberStyles.Float,
+                    CultureInfo.InvariantCulture, out a) ||
+                !decimal.TryParse(second.Value, NumberStyles.Float,
+                    CultureInfo.InvariantCulture, out b))
+                throw new InvalidOperationException("ANALYSIS_CALCULATION_VALUE_INVALID");
+            used.Add(first.FactId);
+            used.Add(second.FactId);
+            if (part.Calculation == "percent_change" &&
+                first.Dimensions.Count == 0 &&
+                second.Dimensions.Count == 0 &&
+                first.Period != second.Period)
+            {
+                if (b == 0m)
+                    return a == 0m ? "unchanged" : a > 0m
+                        ? "up from zero" : "down from zero";
+                var change = (a - b) / Math.Abs(b) * 100m;
+                if (change == 0m) return "unchanged";
+                var magnitude = Math.Abs(change);
+                var precision = magnitude < 0.05m ? "0.00" : "0.0";
+                var displayed = magnitude < 0.005m ? "<0.01" :
+                    magnitude.ToString(precision,
+                        CultureInfo.InvariantCulture);
+                return (change > 0m ? "up " : "down ") +
+                    displayed + "%";
+            }
+            if (part.Calculation == "share_percent" &&
+                first.Period == second.Period &&
+                first.Dimensions.Count == 1 &&
+                second.Dimensions.Count == 0)
+                return b == 0m ? "share unavailable" :
+                    (a / b * 100m).ToString("0.0",
+                        CultureInfo.InvariantCulture) + "%";
+            throw new InvalidOperationException("ANALYSIS_CALCULATION_BINDING_INVALID");
+        }
+
+        private static string Margin(AnalysisPlanText part,
+            IDictionary<string, VerifiedFact> facts, ISet<string> used)
+        {
+            var count = part.Calculation == "margin_percent" ? 2 : 4;
+            if (part.InputFactIds == null || part.InputFactIds.Count != count)
+                throw new InvalidOperationException("ANALYSIS_CALCULATION_INPUTS_INVALID");
+            var inputs = part.InputFactIds.Select(id => Fact(facts, id))
+                .ToArray();
+            if (inputs.Any(fact => fact.Dimensions.Count != 0 ||
+                    fact.ValueType != AnalysisContract.DecimalValue &&
+                    fact.ValueType != AnalysisContract.IntegerValue) ||
+                inputs.Select(fact => fact.Currency).Distinct(
+                    StringComparer.Ordinal).Count() != 1 ||
+                string.IsNullOrWhiteSpace(inputs[0].Currency) ||
+                inputs.Select(fact => fact.SnapshotId).Distinct(
+                    StringComparer.Ordinal).Count() != 1 ||
+                inputs[0].Metric == inputs[1].Metric ||
+                inputs[0].Period != inputs[1].Period ||
+                count == 4 && (inputs[0].Metric != inputs[2].Metric ||
+                    inputs[1].Metric != inputs[3].Metric ||
+                    inputs[2].Period != inputs[3].Period ||
+                    inputs[0].Period == inputs[2].Period))
+                throw new InvalidOperationException("ANALYSIS_CALCULATION_BINDING_INVALID");
+            var values = new decimal[count];
+            for (var index = 0; index < count; index++)
+            {
+                if (!decimal.TryParse(inputs[index].Value,
+                        NumberStyles.Float, CultureInfo.InvariantCulture,
+                        out values[index]))
+                    throw new InvalidOperationException("ANALYSIS_CALCULATION_VALUE_INVALID");
+                used.Add(inputs[index].FactId);
+            }
+            if (values[0] == 0m || count == 4 && values[2] == 0m)
+                return "unavailable";
+            var current = (values[0] - values[1]) / values[0] * 100m;
+            if (count == 2)
+                return current.ToString("0.0",
+                    CultureInfo.InvariantCulture) + "%";
+            var previous = (values[2] - values[3]) / values[2] * 100m;
+            var change = current - previous;
+            return change == 0m ? "unchanged" :
+                (change > 0m ? "up " : "down ") +
+                Math.Abs(change).ToString("0.0",
+                    CultureInfo.InvariantCulture) + " pts";
         }
 
         // A fact reference cannot launder a separate model-supplied number
