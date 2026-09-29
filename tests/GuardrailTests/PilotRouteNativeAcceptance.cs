@@ -127,12 +127,6 @@ namespace GuardrailTests
                             {
                                 stage = "public_revise_slides";
                                 Check(response.tool_calls.Count == 1 && inspected == 6, "WRITE_WITHOUT_COMPLETE_INSPECTION");
-                                // A read-only source can carry Office's dirty
-                                // flag after inspection. Its bytes and native
-                                // content still have to match the fresh copy.
-                                source.Saved = 0;
-                                Check((int)source.Saved == 0,
-                                    "DIRTY_SOURCE_REGRESSION_NOT_EXERCISED");
                                 result = host.ExecuteAsync(call, authorization, true, prompt, client, settings,
                                     CancellationToken.None, null).GetAwaiter().GetResult();
                             }

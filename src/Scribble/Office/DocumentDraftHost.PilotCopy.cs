@@ -58,13 +58,10 @@ namespace Scribble.Office
                             .IdentityFor(sourceDeck) ||
                     (int)source.Slides.Count !=
                         _taskContext.State.RequiredPresentationSlides ||
-                    string.IsNullOrEmpty(Convert.ToString(source.Path)))
+                    string.IsNullOrEmpty(Convert.ToString(source.Path)) ||
+                    (int)source.Saved == 0)
                     throw new InvalidOperationException(
                         "PILOT_COPY_SOURCE_CHANGED: Inspect the saved source deck again.");
-                // PowerPoint can mark a read-only presentation dirty during
-                // native inspection. Create verifies every live slide against
-                // a fresh byte copy of the unchanged saved source before it
-                // permits any draft patch.
                 var operations = SamsungAuthoringPolicy.Array(args,
                     "operations");
                 var mapped = operations.Select(

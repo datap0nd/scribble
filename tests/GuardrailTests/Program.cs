@@ -281,6 +281,8 @@ namespace GuardrailTests
                     RepairRouteExcludesCorpusLabels);
                 Run("Saved presentation identity survives COM rewrapping",
                     SavedPresentationIdentityIsFileBound);
+                Run("Empty native text frames do not trigger text getters",
+                    EmptyNativeTextFramesDoNotTriggerTextGetters);
                 Run("Pilot copy preflight rejection permits a corrected write",
                     PilotCopyPreflightRejectionPermitsRetry);
                 Run("Pilot copy pre-stage evidence is checked without old-slide review",
@@ -7176,6 +7178,40 @@ namespace GuardrailTests
             }
         }
 
+        private static void EmptyNativeTextFramesDoNotTriggerTextGetters()
+        {
+            var frame = new EmptyNativeTextFrame();
+            var shape = new EmptyNativeShape(frame);
+            dynamic slide = new System.Dynamic.ExpandoObject();
+            slide.SlideID = 1;
+            slide.SlideIndex = 1;
+            slide.Shapes = new EmptyNativeShapes(shape);
+            slide.NotesPage = new System.Dynamic.ExpandoObject();
+            slide.NotesPage.Shapes = new EmptyNativeShapes(shape);
+            slide.Background = new System.Dynamic.ExpandoObject();
+            slide.Background.Fill = new System.Dynamic.ExpandoObject();
+            slide.Background.Fill.Type = 1;
+            slide.Background.Fill.ForeColor = new System.Dynamic.ExpandoObject();
+            slide.Background.Fill.ForeColor.RGB = 0;
+            slide.Background.Fill.Transparency = 0f;
+            slide.FollowMasterBackground = 0;
+            slide.SlideShowTransition = new System.Dynamic.ExpandoObject();
+            slide.SlideShowTransition.Hidden = 0;
+            slide.TimeLine = new System.Dynamic.ExpandoObject();
+            slide.TimeLine.MainSequence = new List<object>();
+            slide.Hyperlinks = new List<object>();
+            PresentationInspection.Capture((object)slide);
+            Assert(frame.TextRangeReads == 0,
+                "Inspection must not dereference an empty text range.");
+            var append = typeof(PresentationToolHost).GetMethod(
+                "AppendShapeText", BindingFlags.Static |
+                BindingFlags.NonPublic);
+            append.Invoke(null, new object[] {
+                new StringBuilder(), shape });
+            Assert(frame.TextRangeReads == 0,
+                "Slide listing must not dereference an empty text range.");
+        }
+
         private static void NativeClipboardRetryRequiresUnchangedTarget()
         {
             var revision = typeof(DocumentDraftHost).Assembly.GetType(
@@ -10784,6 +10820,50 @@ namespace GuardrailTests
 
     // Public types keep the cross-assembly dynamic COM shim accessible to
     // PresentationInspection's runtime binder.
+    public sealed class EmptyNativeTextFrame
+    {
+        public int HasText { get { return 0; } }
+        public int TextRangeReads { get; private set; }
+        public object TextRange
+        {
+            get
+            {
+                TextRangeReads++;
+                throw new InvalidOperationException(
+                    "An empty Office text range must not be read.");
+            }
+        }
+    }
+
+    public sealed class EmptyNativeShape
+    {
+        public EmptyNativeShape(EmptyNativeTextFrame frame)
+        { TextFrame = frame; }
+        public int Id { get { return 1; } }
+        public string Name { get { return "Empty frame"; } }
+        public int Type { get { return 1; } }
+        public float Left { get { return 1; } }
+        public float Top { get { return 1; } }
+        public float Width { get { return 10; } }
+        public float Height { get { return 10; } }
+        public float Rotation { get { return 0; } }
+        public int ZOrderPosition { get { return 1; } }
+        public int HasTextFrame { get { return -1; } }
+        public EmptyNativeTextFrame TextFrame { get; }
+        public int HasTable { get { return 0; } }
+        public int HasChart { get { return 0; } }
+    }
+
+    public sealed class EmptyNativeShapes
+    {
+        private readonly EmptyNativeShape _shape;
+        public EmptyNativeShapes(EmptyNativeShape shape)
+        { _shape = shape; }
+        public int Count { get { return 1; } }
+        public EmptyNativeShape this[int index]
+        { get { if (index != 1) throw new IndexOutOfRangeException(); return _shape; } }
+    }
+
     public sealed class SettlingSlideCollection
     {
         public int Reads { get; private set; }

@@ -403,7 +403,8 @@ namespace Scribble.Office
         {
             try
             {
-                if ((int)shape.HasTextFrame == 0)
+                if ((int)shape.HasTextFrame == 0 ||
+                    (int)shape.TextFrame.HasText == 0)
                 {
                     return;
                 }
