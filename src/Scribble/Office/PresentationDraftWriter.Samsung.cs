@@ -386,8 +386,9 @@ namespace Scribble.Office
         {
             var count = draft.Cards.Count;
             if (draft.Layout == "cards" && count == 3 &&
-                draft.Cards.All(card => (card.Points.Count == 1 ||
-                    card.Points.Count == 2) &&
+                (draft.Cards.All(card => card.Points.Count == 1) ||
+                 draft.Cards.All(card => card.Points.Count == 2)) &&
+                draft.Cards.All(card =>
                     card.Heading.Length <= 28 &&
                     card.Points[0].Length <= (card.Points.Count == 1
                         ? 100 : 70) &&
