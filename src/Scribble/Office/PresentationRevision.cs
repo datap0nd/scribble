@@ -328,7 +328,19 @@ namespace Scribble.Office
             // Assign names to generated shapes so the reviewed slide has the
             // same native identity when it is applied to the live deck.
             for (var i = 1; i <= (int)page.Shapes.Count; i++)
-                page.Shapes[i].Name = "Scribble Revision Shape " + i;
+            {
+                dynamic shape = page.Shapes[i];
+                shape.Name = "Scribble Revision Shape " + i;
+                if ((int)shape.HasTextFrame == 0) continue;
+                dynamic range = shape.TextFrame.TextRange;
+                // PowerPoint otherwise substitutes the parent deck's theme
+                // font on empty shapes and for East Asian runs. A staging
+                // deck and an owned draft can have different themes, which
+                // changes native text bounds after a reviewed replacement.
+                if (string.IsNullOrEmpty(Convert.ToString(range.Text)))
+                    range.Font.Name = MetoTheme.LabelFont;
+                range.Font.NameFarEast = range.Font.Name;
+            }
             return output;
         }
         private static void Apply(object original, object target, Dictionary<string, object> operation)

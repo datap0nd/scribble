@@ -255,8 +255,12 @@ confirmed a persistent mismatch on replacement slide 4 after allowing native
 layout to settle. Source and workbook bytes stayed unchanged. The mechanism
 hypothesis is that independently drawing the reviewed replacement into the
 staging deck and again into the live draft yields different native content.
-PR #45 now copies the already reviewed slide content into the owned draft,
-then still requires exact native content equality. Native verification is next.
+Copying the reviewed content into the owned draft still failed. A disposable
+native capture showed the actual difference: the source theme supplied
+Calibri in the live deck while the staging deck supplied Aptos or `+mn-ea`
+for empty-shape/default East Asian fonts, changing measured text bounds.
+PR #45 now explicitly assigns those replacement-shape fonts before review
+and still requires exact native equality. Native verification is next.
 
 ## 6. Rules for autonomous sessions
 
