@@ -32,6 +32,7 @@ namespace Scribble.Office
             PresentationDraftCopy copy = null;
             var stage = "preflight";
             var statusKey = "pilot_copy_status";
+            var permissionConsumed = false;
             try
             {
                 if (!PresentationRevisionAcceptance.Enabled || !exclusive ||
@@ -104,6 +105,7 @@ namespace Scribble.Office
                 if (!authorization.TryConsume())
                     throw new InvalidOperationException(
                         "PILOT_COPY_PERMISSION_UNAVAILABLE");
+                permissionConsumed = true;
                 _taskContext.State.HostData[statusKey] = "creating";
                 _taskContext.Checkpoint();
                 stage = "copy";
@@ -231,6 +233,8 @@ namespace Scribble.Office
             catch (Exception error)
             {
                 var code = error.Message.Split(':')[0];
+                var needsInspection = permissionConsumed ||
+                    _taskContext.State.HostData.ContainsKey(statusKey);
                 return new MailboxToolResult(call.id,
                     _serializer.Serialize(new
                     {
@@ -240,8 +244,8 @@ namespace Scribble.Office
                         message = error.Message,
                         stage,
                         saved = false,
-                        needs_inspection = _taskContext.State.HostData
-                            .ContainsKey(statusKey)
+                        needs_inspection = needsInspection,
+                        permission_consumed = needsInspection
                     }), error.Message);
             }
         }

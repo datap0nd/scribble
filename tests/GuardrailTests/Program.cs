@@ -279,6 +279,8 @@ namespace GuardrailTests
                     RepairRouteExcludesCorpusLabels);
                 Run("Saved presentation identity survives COM rewrapping",
                     SavedPresentationIdentityIsFileBound);
+                Run("Pilot copy preflight rejection permits a corrected write",
+                    PilotCopyPreflightRejectionPermitsRetry);
                 Run(
                     "Browser context is bounded and tools are approved-only",
                     BrowserContextIsBoundedAndReadOnly);
@@ -7138,6 +7140,69 @@ namespace GuardrailTests
             finally
             {
                 if (File.Exists(path)) File.Delete(path);
+            }
+        }
+
+        private static void PilotCopyPreflightRejectionPermitsRetry()
+        {
+            var root = Path.Combine(Path.GetTempPath(),
+                "scribble-pilot-preflight-" + Guid.NewGuid().ToString("N"));
+            var sourcePath = Path.Combine(root, "source.pptx");
+            var pilotWasEnabled = AnalysisDocumentPilot.Enabled;
+            try
+            {
+                Directory.CreateDirectory(root);
+                File.WriteAllText(sourcePath, "unchanged saved source");
+                AnalysisDocumentPilot.SetEnabled(true);
+                dynamic source = new System.Dynamic.ExpandoObject();
+                source.Tags = new Dictionary<string, string> {
+                    { "ScribblePresentationId", "" } };
+                source.Path = root;
+                source.FullName = sourcePath;
+                dynamic app = new System.Dynamic.ExpandoObject();
+                app.ActivePresentation = source;
+                var objective = "Repair the source deck into exactly 6 slides; preserve the original slides.";
+                var request = MakeRequest(new List<ChatTurn>());
+                request.tools = new List<ChatToolDefinition> {
+                    PresentationToolCatalog.RevisionDefinitions().Single(tool =>
+                        tool.function.name == PresentationToolCatalog.ReviseSlides) };
+                var task = new TaskContextManager(request, "powerpoint",
+                    objective, new TaskCheckpointStore(root));
+                using (var client = new OpenAiCompatibleClient())
+                using (var host = new DocumentDraftHost("powerpoint", (object)app))
+                {
+                    host.BindTaskAsync(task, CancellationToken.None)
+                        .GetAwaiter().GetResult();
+                    var call = MailboxCall("stale",
+                        PresentationToolCatalog.ReviseSlides,
+                        "{\"presentation_id\":\"stale\",\"operations\":[]}");
+                    var permission = new OneShotDraftAuthorization(true);
+                    var settings = EndpointSettings("http://127.0.0.1:1");
+                    settings.Model = "qwen3-vl";
+                    task.BeforeTool(call, true);
+                    var result = host.ExecuteAsync(call, permission, true,
+                        objective, client, settings, CancellationToken.None,
+                        null).GetAwaiter().GetResult();
+                    task.AfterTool(call, result);
+                    Assert(result.Outcome.ErrorCode ==
+                            "PILOT_COPY_SOURCE_CHANGED" &&
+                        result.Outcome.PermissionConsumed == false &&
+                        !task.State.HostData.ContainsKey("pilot_copy_status") &&
+                        permission.RemainingCalls == 1,
+                        "A saved-source preflight rejection must report no native write or consumed permission: " +
+                        result.Content);
+                    var corrected = MailboxCall("corrected",
+                        PresentationToolCatalog.ReviseSlides,
+                        "{\"presentation_id\":\"corrected\",\"operations\":[]}");
+                    task.BeforeTool(corrected, true);
+                    Assert(task.State.Writes.Last().Status == "pending",
+                        "A corrected proposal was quarantined after safe preflight rejection.");
+                }
+            }
+            finally
+            {
+                AnalysisDocumentPilot.SetEnabled(pilotWasEnabled);
+                if (Directory.Exists(root)) Directory.Delete(root, true);
             }
         }
 
