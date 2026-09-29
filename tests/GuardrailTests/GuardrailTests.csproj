@@ -55,6 +55,9 @@
     <Content Include="Fixtures\structured.xls"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>
     <Content Include="Fixtures\phase4-reference.json"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>
     <Content Include="Fixtures\phase4-defects.json"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>
+    <Content Include="Fixtures\pp01-model-replay.jsonl"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>
+    <Content Include="Fixtures\p1-model-replay.jsonl"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>
+    <Compile Include="RevisionFactReplayTests.cs" />
     <Compile Include="CrossAppFixture.cs" />
     <Compile Include="ScaleTaskTests.cs" />
     <Compile Include="HardeningTests.cs" />

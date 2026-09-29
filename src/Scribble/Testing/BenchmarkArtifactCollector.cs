@@ -297,9 +297,18 @@ namespace Scribble.Testing
             dynamic slide = value;
             for (int i = 1; i <= (int)slide.Shapes.Count; i++) {
                 dynamic shape = slide.Shapes.Item(i);
-                if ((int)shape.HasTextFrame != 0 && Convert.ToString(shape.TextFrame.TextRange.Text).Contains("[Scribble draft]")) return true;
+                if (ReadShapeTextIfPresent((object)shape).Contains("[Scribble draft]")) return true;
             }
             return false;
+        }
+
+        private static string ReadShapeTextIfPresent(object value)
+        {
+            dynamic shape = value;
+            if ((int)shape.HasTextFrame == 0 ||
+                (int)shape.TextFrame.HasText == 0)
+                return string.Empty;
+            return Convert.ToString(shape.TextFrame.TextRange.Text) ?? string.Empty;
         }
 
         private static bool IsValidOfficePackage(string path, string kind)
@@ -389,11 +398,12 @@ namespace Scribble.Testing
                         dynamic shape = slide.Shapes.Item(j);
                         text.AppendLine("Shape " + j + " | type " + Convert.ToString(shape.Type) + " | x,y,w,h: " +
                             Convert.ToString(shape.Left) + "," + Convert.ToString(shape.Top) + "," + Convert.ToString(shape.Width) + "," + Convert.ToString(shape.Height));
-                        if ((int)shape.HasTextFrame != 0) text.AppendLine(Convert.ToString(shape.TextFrame.TextRange.Text));
+                        if ((int)shape.HasTextFrame != 0) text.AppendLine(ReadShapeTextIfPresent((object)shape));
                         if ((int)shape.HasTable != 0) {
                             dynamic table = shape.Table;
                             for (int r = 1; r <= (int)table.Rows.Count; r++) for (int c = 1; c <= (int)table.Columns.Count; c++)
-                                text.AppendLine("Table R" + r + "C" + c + ": " + Convert.ToString(table.Cell(r, c).Shape.TextFrame.TextRange.Text));
+                                text.AppendLine("Table R" + r + "C" + c + ": " +
+                                    ReadShapeTextIfPresent((object)table.Cell(r, c).Shape));
                         }
                         if ((int)shape.HasChart != 0)
                         {
@@ -422,13 +432,9 @@ namespace Scribble.Testing
                         for (int j = 1; j <= (int)notes.Shapes.Count; j++)
                         {
                             dynamic noteShape = notes.Shapes.Item(j);
-                            if ((int)noteShape.HasTextFrame != 0)
-                            {
-                                var noteValue = Convert.ToString(
-                                    noteShape.TextFrame.TextRange.Text);
-                                if (!string.IsNullOrWhiteSpace(noteValue))
-                                    noteText.Append(noteValue).Append(" ");
-                            }
+                            var noteValue = ReadShapeTextIfPresent((object)noteShape);
+                            if (!string.IsNullOrWhiteSpace(noteValue))
+                                noteText.Append(noteValue).Append(" ");
                         }
                         if (noteText.Length > 0)
                             text.AppendLine("Notes: " + noteText.ToString().Trim());

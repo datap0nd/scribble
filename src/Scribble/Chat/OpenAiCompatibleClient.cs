@@ -220,7 +220,7 @@ namespace Scribble.Chat
                 ChatCompletionRequest requestModel,
                 bool includeOptionalToolControls,
                 CancellationToken cancellationToken,
-                bool retryEmptyResponse = true,
+                int emptyRetriesRemaining = 2,
                 bool retryTransientResponse = true,
                 string ignoredProvider = null,
                 int providerRetriesRemaining = 2,
@@ -230,7 +230,7 @@ namespace Scribble.Chat
             lock (_optionalToolControlSync)
             {
                 DateTime until;
-                if (retryEmptyResponse && _emptyResponseCircuits.TryGetValue(circuitKey, out until) && until > DateTime.UtcNow)
+                if (emptyRetriesRemaining > 0 && _emptyResponseCircuits.TryGetValue(circuitKey, out until) && until > DateTime.UtcNow)
                     throw new AiEndpointException("MODEL_CIRCUIT_OPEN", "This endpoint/model repeatedly returned empty completions. The task is retained. Wait 30 seconds or select another model before resuming.");
             }
             var payload = SerializablePayload(
@@ -361,7 +361,7 @@ namespace Scribble.Chat
                                         cancellationToken).ConfigureAwait(true);
                                 return await CompleteOpenAiAsync(settings, endpoint,
                                     requestModel, includeOptionalToolControls,
-                                    cancellationToken, retryEmptyResponse,
+                                    cancellationToken, emptyRetriesRemaining,
                                     retryTransientResponse, ignoredProvider,
                                     providerRetriesRemaining,
                                     rateLimitRetriesRemaining - 1).ConfigureAwait(true);
@@ -385,7 +385,7 @@ namespace Scribble.Chat
                                     requestModel,
                                     includeOptionalToolControls,
                                     cancellationToken,
-                                    retryEmptyResponse,
+                                    emptyRetriesRemaining,
                                     false,
                                     ignoredProvider,
                                     providerRetriesRemaining,
@@ -469,7 +469,7 @@ namespace Scribble.Chat
                                 requestModel,
                                 includeOptionalToolControls,
                                 cancellationToken,
-                                retryEmptyResponse,
+                                emptyRetriesRemaining,
                                 false,
                                 string.Join("\n", excludedProviders),
                                 providerRetriesRemaining - 1,
@@ -500,9 +500,10 @@ namespace Scribble.Chat
                          string.IsNullOrWhiteSpace(message.content)))
                     {
                         // No assistant message or tool action was delivered, so
-                        // retry this inference once without replaying any tools.
+                        // retry this inference within a fixed limit without
+                        // replaying any tools.
                         // Persistent empty responses remain a resumable failure.
-                        if (retryEmptyResponse)
+                        if (emptyRetriesRemaining > 0)
                         {
                             var excludedProviders =
                                 SplitProviders(ignoredProvider);
@@ -532,7 +533,7 @@ namespace Scribble.Chat
                                 requestModel,
                                 includeOptionalToolControls,
                                 cancellationToken,
-                                false,
+                                emptyRetriesRemaining - 1,
                                 retryTransientResponse,
                                 string.Join("\n", excludedProviders),
                                 providerRetriesRemaining,
@@ -541,7 +542,7 @@ namespace Scribble.Chat
                         lock (_optionalToolControlSync) _emptyResponseCircuits[circuitKey] = DateTime.UtcNow.AddSeconds(30);
                         throw new AiEndpointException(
                             "RESPONSE_MISSING_CONTENT",
-                            "The AI endpoint returned an empty response twice. No new tool actions ran. The task is preserved; resume or choose another model.",
+                            "The AI endpoint returned three empty responses. No new tool actions ran. The task is preserved; resume or choose another model.",
                             httpStatus: (int)response.StatusCode,
                             requestId: requestId,
                             responseSnippet: responseText);
@@ -1137,15 +1138,21 @@ namespace Scribble.Chat
                 var hasNativePresentationDraftTool = isDraftRequest &&
                     requestModel.tools != null &&
                     requestModel.tools.Any(tool => tool?.function != null &&
-                        string.Equals(tool.function.name,
-                            PresentationToolCatalog.AddDraftSlides,
-                            StringComparison.Ordinal));
+                        (string.Equals(tool.function.name,
+                             PresentationToolCatalog.AddDraftSlides,
+                             StringComparison.Ordinal) ||
+                         string.Equals(tool.function.name,
+                             PresentationToolCatalog.ReviseSlides,
+                             StringComparison.Ordinal)));
                 if (isDraftRequest)
                 {
                     var hasPresentationDraftTool = requestModel.tools != null &&
                         requestModel.tools.Any(tool => tool?.function != null &&
                             (string.Equals(tool.function.name,
                                  PresentationToolCatalog.AddDraftSlides,
+                                 StringComparison.Ordinal) ||
+                             string.Equals(tool.function.name,
+                                 PresentationToolCatalog.ReviseSlides,
                                  StringComparison.Ordinal) ||
                              string.Equals(tool.function.name,
                                  CrossAppToolCatalog.SendToPowerPoint,

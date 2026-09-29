@@ -160,8 +160,9 @@ namespace GuardrailTests
                 Run("Phase 4 reference matrix covers six native layout families and three densities", SamsungSlideTests.Phase4ReferenceMatrix);
                 Run("Phase 4 defect matrix seeds one labeled blocker per reference", SamsungSlideTests.Phase4DefectMatrix);
                 Run("Samsung slide numbers require verified source evidence", SamsungSlideTests.EvidenceAndNumbers);
+                Run("Truncated read receipts stay raw source evidence", TruncatedSourceReceiptRemainsRaw);
                 Run("PowerPoint and Outlook slide tool calls reach independent review", SlideToolCallsReachReview);
-                Run("Empty endpoint responses retry once without replaying tools", EmptyEndpointResponsesRecover);
+                Run("Empty endpoint responses retry twice without replaying tools", EmptyEndpointResponsesRecover);
                 Run("Repeated evidence expands model request payloads", RepeatedEvidenceExpandsRequestPayloads);
                 Run("Embedded provider errors retry without executing partial tools", EmbeddedProviderErrorsRecover);
                 Run("Provider and empty response retries stay independent", ProviderAndEmptyResponseRetriesAreIndependent);
@@ -280,10 +281,20 @@ namespace GuardrailTests
                     RepairRouteExcludesCorpusLabels);
                 Run("Saved presentation identity survives COM rewrapping",
                     SavedPresentationIdentityIsFileBound);
+                Run("Empty native text frames do not trigger text getters",
+                    EmptyNativeTextFramesDoNotTriggerTextGetters);
                 Run("Pilot copy preflight rejection permits a corrected write",
                     PilotCopyPreflightRejectionPermitsRetry);
                 Run("Pilot copy pre-stage evidence is checked without old-slide review",
                     PilotCopyTextEvidenceIsBounded);
+                Run("Pilot patch receipt serializes native slide IDs",
+                    PilotPatchReceiptSerializesSlideIds);
+                Run("Workbook FactIds safely replay all historical PP01 responses",
+                    RevisionFactReplayTests.FactReferencesAndHistoricalResponses);
+                Run("Primary-only charts retain secondary table FactIds",
+                    RevisionFactReplayTests.SeparateTableMetricAvailableWithPrimaryOnlyChart);
+                Run("Pilot revision exposes only host-supported edits",
+                    RevisionFactReplayTests.NarrowPilotRevisionSchema);
                 Run("Measured pilot replacement keeps ordinary redesign consent",
                     MeasuredPilotReplacementKeepsOrdinaryConsent);
                 Run("Reordered source spans remain exact grounded evidence",
@@ -6924,6 +6935,7 @@ namespace GuardrailTests
                 {
                     "inspect_slide",
                     "list_slides",
+                    "read_revision_facts",
                     "read_slide"
                 }),
                 "The presentation read catalog gained an unexpected capability.");
@@ -7166,6 +7178,40 @@ namespace GuardrailTests
             }
         }
 
+        private static void EmptyNativeTextFramesDoNotTriggerTextGetters()
+        {
+            var frame = new EmptyNativeTextFrame();
+            var shape = new EmptyNativeShape(frame);
+            dynamic slide = new System.Dynamic.ExpandoObject();
+            slide.SlideID = 1;
+            slide.SlideIndex = 1;
+            slide.Shapes = new EmptyNativeShapes(shape);
+            slide.NotesPage = new System.Dynamic.ExpandoObject();
+            slide.NotesPage.Shapes = new EmptyNativeShapes(shape);
+            slide.Background = new System.Dynamic.ExpandoObject();
+            slide.Background.Fill = new System.Dynamic.ExpandoObject();
+            slide.Background.Fill.Type = 1;
+            slide.Background.Fill.ForeColor = new System.Dynamic.ExpandoObject();
+            slide.Background.Fill.ForeColor.RGB = 0;
+            slide.Background.Fill.Transparency = 0f;
+            slide.FollowMasterBackground = 0;
+            slide.SlideShowTransition = new System.Dynamic.ExpandoObject();
+            slide.SlideShowTransition.Hidden = 0;
+            slide.TimeLine = new System.Dynamic.ExpandoObject();
+            slide.TimeLine.MainSequence = new List<object>();
+            slide.Hyperlinks = new List<object>();
+            PresentationInspection.Capture((object)slide);
+            Assert(frame.TextRangeReads == 0,
+                "Inspection must not dereference an empty text range.");
+            var append = typeof(PresentationToolHost).GetMethod(
+                "AppendShapeText", BindingFlags.Static |
+                BindingFlags.NonPublic);
+            append.Invoke(null, new object[] {
+                new StringBuilder(), shape });
+            Assert(frame.TextRangeReads == 0,
+                "Slide listing must not dereference an empty text range.");
+        }
+
         private static void NativeClipboardRetryRequiresUnchangedTarget()
         {
             var revision = typeof(DocumentDraftHost).Assembly.GetType(
@@ -7380,6 +7426,31 @@ namespace GuardrailTests
                 "An incomplete encoded revision array was accepted.");
         }
 
+        private static void PilotPatchReceiptSerializesSlideIds()
+        {
+            var serialize = typeof(DocumentDraftHost).GetMethod(
+                "SerializeChangedSlideFingerprints",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert(serialize != null,
+                "The pilot patch receipt serializer is unavailable.");
+            var receipt = (string)serialize.Invoke(null,
+                new object[] { new Dictionary<int, string> {
+                    { 9, "after-nine" }, { 3, "after-three" }
+                } });
+            var items = (object[])new JavaScriptSerializer()
+                .DeserializeObject(receipt);
+            var first = (Dictionary<string, object>)items[0];
+            var second = (Dictionary<string, object>)items[1];
+            Assert(items.Length == 2 &&
+                Convert.ToInt32(first["slide_id"]) == 3 &&
+                Convert.ToString(first["fingerprint"]) ==
+                    "after-three" &&
+                Convert.ToInt32(second["slide_id"]) == 9 &&
+                Convert.ToString(second["fingerprint"]) ==
+                    "after-nine",
+                "The patch receipt must order slide IDs and use JSON fields, not integer dictionary keys.");
+        }
+
         private static void PilotCopyTextEvidenceIsBounded()
         {
             var policy = typeof(DocumentDraftHost).GetMethod(
@@ -7478,6 +7549,10 @@ namespace GuardrailTests
                     { "ScribblePresentationId", "" } };
                 source.Path = root;
                 source.FullName = sourcePath;
+                source.Saved = 0;
+                dynamic slides = new System.Dynamic.ExpandoObject();
+                slides.Count = 6;
+                source.Slides = slides;
                 dynamic app = new System.Dynamic.ExpandoObject();
                 app.ActivePresentation = source;
                 var objective = "Create a repaired draft of the source deck into exactly 6 output slides; preserve the original slides.";
@@ -7513,12 +7588,25 @@ namespace GuardrailTests
                         permission.RemainingCalls == 1,
                         "A saved-source preflight rejection must report no native write or consumed permission: " +
                         result.Content);
+                    task.State.HostData["pilot_source_path"] =
+                        Path.GetFullPath(sourcePath);
+                    task.State.HostData["pilot_source_hash"] =
+                        ExternalContextDocument.FingerprintFile(sourcePath);
                     var corrected = MailboxCall("corrected",
                         PresentationToolCatalog.ReviseSlides,
-                        "{\"presentation_id\":\"corrected\",\"operations\":[]}");
+                        "{\"slot_values\":{}}");
                     task.BeforeTool(corrected, true);
                     Assert(task.State.Writes.Last().Status == "pending",
                         "A corrected proposal was quarantined after safe preflight rejection.");
+                    var retry = host.ExecuteAsync(corrected, permission,
+                        true, objective, client, settings,
+                        CancellationToken.None, null).GetAwaiter()
+                        .GetResult();
+                    Assert(retry.Outcome.ErrorCode ==
+                            "PILOT_COPY_WORKBOOK_MISSING" &&
+                        permission.RemainingCalls == 1,
+                        "A read-dirtied source with unchanged file bytes " +
+                        "must pass saved-source identity preflight.");
                 }
             }
             finally
@@ -9289,11 +9377,39 @@ namespace GuardrailTests
                     true
                 });
             var nativeReasoning = (Dictionary<string, object>)nativeDraft["reasoning"];
+            var revisionDraft = (Dictionary<string, object>)method.Invoke(null,
+                new object[]
+                {
+                    new ChatCompletionRequest
+                    {
+                        model = "qwen/qwen3.8-27b",
+                        messages = new List<object>(),
+                        tools = new List<ChatToolDefinition>
+                        {
+                            new ChatToolDefinition
+                            {
+                                function = new ChatToolFunctionDefinition
+                                {
+                                    name = PresentationToolCatalog.ReviseSlides
+                                }
+                            }
+                        },
+                        max_tokens = DocumentChatRequestFactory.DraftResponseTokens
+                    },
+                    new Uri(openRouterUrl),
+                    true
+                });
+            var revisionReasoning =
+                (Dictionary<string, object>)revisionDraft["reasoning"];
             Assert(nativeReasoning.ContainsKey("enabled") &&
                 !(bool)nativeReasoning["enabled"] &&
                 !nativeReasoning.ContainsKey("effort") &&
+                (int)revisionDraft["max_tokens"] == 32768 &&
+                revisionReasoning.ContainsKey("enabled") &&
+                !(bool)revisionReasoning["enabled"] &&
+                !revisionReasoning.ContainsKey("effort") &&
                 (string)((Dictionary<string, object>)authoring["reasoning"])["effort"] == "low",
-                "Only native multi-slide authoring should disable Qwen reasoning after a 32K-token truncation; other source handoffs retain low reasoning.");
+                "Native PowerPoint authoring and revision need output room without reasoning-only truncation; other source handoffs retain low reasoning.");
             var request = new ChatCompletionRequest
             {
                 model = "qwen/qwen3.8-27b",
@@ -9493,12 +9609,34 @@ namespace GuardrailTests
                 "Provider-specific policy must not change unrelated endpoints.");
         }
 
+        private static void TruncatedSourceReceiptRemainsRaw()
+        {
+            var sources = new List<string>();
+            var truncated = "{\"SourceSha256\":\"" +
+                new string('a', 48000);
+            var append = typeof(SamsungPresentationReview).GetMethod(
+                "AppendSourceReceipt", BindingFlags.NonPublic |
+                BindingFlags.Static);
+            Assert(append != null,
+                "The bounded source receipt decoder is unavailable.");
+            append.Invoke(null, new object[] { truncated, sources });
+            Assert(sources.Count == 1 && sources[0] == truncated,
+                "A cut JSON read receipt must remain raw evidence without crashing preflight.");
+            append.Invoke(null, new object[] {
+                "{\"label\":\"verified display\"}", sources
+            });
+            Assert(sources.Contains("verified display"),
+                "A complete JSON receipt should still expose decoded text.");
+        }
+
         private static void EmptyEndpointResponsesRecover()
         {
             const string empty = "{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":null}}],\"usage\":{\"completion_tokens\":1}}";
             const string success = "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"Recovered\"}}]}";
             foreach (var persistent in new[] { false, true })
-            using (var server = new FakeEndpoint(empty, persistent ? empty : success))
+            using (var server = persistent
+                ? new FakeEndpoint(empty, empty, empty)
+                : new FakeEndpoint(empty, empty, success))
             using (var client = new OpenAiCompatibleClient())
             {
                 try
@@ -9511,7 +9649,9 @@ namespace GuardrailTests
                     Assert(persistent && exception.Code == "RESPONSE_MISSING_CONTENT", "Unexpected recovery error: " + exception.Message);
                 }
                 server.Wait();
-                Assert(server.Bodies.Count == 2 && server.Bodies[0] == server.Bodies[1], "Recovery must retry the identical inference once.");
+                Assert(server.Bodies.Count == 3 &&
+                    server.Bodies.Distinct().Count() == 1,
+                    "Recovery must retry the identical inference twice.");
             }
         }
 
@@ -10697,6 +10837,94 @@ namespace GuardrailTests
 
     // Public types keep the cross-assembly dynamic COM shim accessible to
     // PresentationInspection's runtime binder.
+    public sealed class EmptyNativeTextFrame
+    {
+        public int HasText { get { return 0; } }
+        public int TextRangeReads { get; private set; }
+        public object TextRange
+        {
+            get
+            {
+                TextRangeReads++;
+                throw new InvalidOperationException(
+                    "An empty Office text range must not be read.");
+            }
+        }
+    }
+
+    public sealed class EmptyNativeShape
+    {
+        public EmptyNativeShape(EmptyNativeTextFrame frame)
+        { TextFrame = frame; }
+        public int Id { get { return 1; } }
+        public string Name { get { return "Empty frame"; } }
+        public int Type { get { return 1; } }
+        public float Left { get { return 1; } }
+        public float Top { get { return 1; } }
+        public float Width { get { return 10; } }
+        public float Height { get { return 10; } }
+        public float Rotation { get { return 0; } }
+        public int ZOrderPosition { get { return 1; } }
+        public int HasTextFrame { get { return -1; } }
+        public EmptyNativeTextFrame TextFrame { get; }
+        public int HasTable { get { return 0; } }
+        public int HasChart { get { return 0; } }
+    }
+
+    public sealed class EmptyNativeShapes : System.Dynamic.DynamicObject
+    {
+        private readonly EmptyNativeShape _shape;
+        public EmptyNativeShapes(EmptyNativeShape shape)
+        { _shape = shape; }
+        public int Count { get { return 1; } }
+        public EmptyNativeShape Item(int index)
+        { if (index != 1) throw new IndexOutOfRangeException(); return _shape; }
+        public override bool TryGetIndex(
+            System.Dynamic.GetIndexBinder binder, object[] indexes,
+            out object result)
+        {
+            result = null;
+            if (indexes.Length != 1 || !(indexes[0] is int)) return false;
+            result = Item((int)indexes[0]);
+            return true;
+        }
+    }
+
+    public sealed class EmptyNativeSlide
+    {
+        public EmptyNativeSlide(EmptyNativeTextFrame frame)
+        {
+            Shapes = new EmptyNativeShapes(new EmptyNativeShape(frame));
+            NotesPage = new EmptyNativeNotePage(frame);
+        }
+        public EmptyNativeShapes Shapes { get; }
+        public EmptyNativeNotePage NotesPage { get; }
+    }
+
+    public sealed class EmptyNativeNotePage
+    {
+        public EmptyNativeNotePage(EmptyNativeTextFrame frame)
+        { Shapes = new EmptyNativeShapes(new EmptyNativeShape(frame)); }
+        public EmptyNativeShapes Shapes { get; }
+    }
+
+    public sealed class EmptyNativeSlides
+    {
+        private readonly EmptyNativeSlide _slide;
+        public EmptyNativeSlides(EmptyNativeTextFrame frame)
+        { _slide = new EmptyNativeSlide(frame); }
+        public int Count { get { return 1; } }
+        public EmptyNativeSlide Item(int index)
+        { if (index != 1) throw new IndexOutOfRangeException(); return _slide; }
+    }
+
+    public sealed class EmptyNativePresentation
+    {
+        public EmptyNativePresentation(EmptyNativeTextFrame frame)
+        { Slides = new EmptyNativeSlides(frame); }
+        public EmptyNativeSlides Slides { get; }
+    }
+
     public sealed class SettlingSlideCollection
     {
         public int Reads { get; private set; }

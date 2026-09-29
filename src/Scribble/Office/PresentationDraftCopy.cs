@@ -62,6 +62,7 @@ namespace Scribble.Office
             public float Width;
             public float Height;
             public WorkbookMonthlyChartFacts.BoundSeries Facts;
+            public WorkbookMonthlyChartFacts.BoundSeries ContextFacts;
         }
 
         // Reading series names and category labels does not open the
@@ -135,6 +136,29 @@ namespace Scribble.Office
                             workbookPath, chosen, token);
                         cache.Add(key, facts);
                     }
+                    var contextFacts = facts;
+                    if (onlyPrimary &&
+                        !string.IsNullOrWhiteSpace(secondary))
+                    {
+                        var contextNames = chosen.Concat(new[] {
+                            secondary
+                        }).ToArray();
+                        var contextKey = string.Join("\0",
+                            contextNames);
+                        if (!cache.TryGetValue(contextKey,
+                                out contextFacts))
+                        {
+                            contextFacts = WorkbookMonthlyChartFacts
+                                .ReadBoundSeries(workbookPath,
+                                    contextNames, token);
+                            cache.Add(contextKey, contextFacts);
+                        }
+                    }
+                    if (!string.Equals(contextFacts.SourceSha256,
+                            facts.SourceSha256,
+                            StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidOperationException(
+                            "REVISION_CHART_SOURCE_CHANGED");
                     if (categories.Length != facts.Categories.Length)
                         throw new InvalidOperationException(
                             "REVISION_CHART_PERIOD_COVERAGE_INVALID");
@@ -145,7 +169,8 @@ namespace Scribble.Office
                         Top = (float)shape.Top,
                         Width = (float)shape.Width,
                         Height = (float)shape.Height,
-                        Facts = facts
+                        Facts = facts,
+                        ContextFacts = contextFacts
                     });
                 }
             }
@@ -806,6 +831,67 @@ namespace Scribble.Office
                 }
             }
             VerifyDraft();
+        }
+
+        internal void AcceptDirectRevision(
+            IDictionary<int, string> changed,
+            object[] operations)
+        {
+            VerifySource();
+            if (changed == null || changed.Count == 0 ||
+                operations == null || operations.Length == 0)
+                throw new InvalidOperationException(
+                    "REVISION_COPY_RECEIPT_INVALID");
+            dynamic draft = Draft;
+            if ((int)draft.Slides.Count != _sourceOrder.Length ||
+                Convert.ToString(draft.Tags["ScribbleRevisionDraft"]) !=
+                    _owner ||
+                Convert.ToString(draft.Tags["ScribblePresentationId"]) !=
+                    _draftId ||
+                !string.IsNullOrEmpty(Convert.ToString(draft.Path)))
+                throw new InvalidOperationException(
+                    "REVISION_COPY_DRAFT_CHANGED");
+            for (var index = 1; index <= _sourceOrder.Length; index++)
+            {
+                dynamic slide = draft.Slides[index];
+                var id = (int)slide.SlideID;
+                string expected;
+                if (_slideIds[_sourceOrder[index - 1]] != id ||
+                    !(changed.TryGetValue(id, out expected) ||
+                      _draftFingerprints.TryGetValue(id, out expected)) ||
+                    PresentationInspection.Fingerprint((object)slide) !=
+                        expected)
+                    throw new InvalidOperationException(
+                        "REVISION_COPY_DRAFT_CHANGED: slide " + id);
+            }
+            foreach (var pair in changed)
+                _draftFingerprints[pair.Key] = pair.Value;
+            foreach (var raw in operations)
+            {
+                var operation = SamsungAuthoringPolicy.ReadMap(raw);
+                if (SamsungAuthoringPolicy.Text(operation, "kind") !=
+                        "replace_slide") continue;
+                var draftId = Convert.ToInt32(operation["slide_id"]);
+                var sourceId = _slideIds.Single(pair =>
+                    pair.Value == draftId).Key;
+                _shapeIds[sourceId].Clear();
+            }
+            VerifyDraft();
+        }
+
+        internal void DiscardOwnedDraft()
+        {
+            dynamic draft = Draft;
+            if (Convert.ToString(draft.Tags["ScribbleRevisionDraft"]) !=
+                    _owner ||
+                Convert.ToString(draft.Tags["ScribblePresentationId"]) !=
+                    _draftId ||
+                !string.IsNullOrEmpty(Convert.ToString(draft.Path)))
+                throw new InvalidOperationException(
+                    "REVISION_COPY_DISCARD_UNSAFE");
+            draft.Saved = -1;
+            draft.Close();
+            VerifySource();
         }
 
         // Native style repairs use measured geometry and table header rows.

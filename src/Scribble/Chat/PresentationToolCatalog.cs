@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Scribble.Office;
 
 namespace Scribble.Chat
@@ -18,6 +19,7 @@ namespace Scribble.Chat
         public const string ListSlides = "list_slides";
         public const string ReadSlide = "read_slide";
         public const string InspectSlide = "inspect_slide";
+        public const string ReadRevisionFacts = "read_revision_facts";
         public const string ReviseSlides = "revise_slides";
         public const string RevertSlides = "revert_scribble_changes";
         public const string AddDraftSlides = "add_draft_slides";
@@ -27,7 +29,8 @@ namespace Scribble.Chat
             {
                 ListSlides,
                 ReadSlide,
-                InspectSlide
+                InspectSlide,
+                ReadRevisionFacts
             };
 
         public static List<ChatToolDefinition> CreateDefinitions()
@@ -506,6 +509,61 @@ namespace Scribble.Chat
             yield return new ChatToolDefinition { type = "function", function = new ChatToolFunctionDefinition {
                 name = RevertSlides, description = "Revert the latest Scribble revision batch when the user asks. Reject if subsequent user edits would be overwritten. Available only in the current Office session; nothing is saved.",
                 parameters = ToolSchema.Build(new Dictionary<string, object> { { "presentation_id", ToolSchema.String("Live presentation ID from inspect_slide.") } }, "presentation_id") } };
+        }
+
+        // The workbook-backed copy route exposes only operations its host can
+        // apply. Chart data, footer/page style and source evidence are supplied
+        // by the host from the inspected deck and verified workbook.
+        public static ChatToolDefinition PilotRevisionDefinition(
+            IEnumerable<int> measuredReplacementSlideIds = null,
+            IEnumerable<string> namedSlots = null)
+        {
+            var measured = measuredReplacementSlideIds == null
+                ? new int[0] : measuredReplacementSlideIds.Distinct()
+                    .ToArray();
+            var slots = namedSlots == null ? new string[0] : namedSlots
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Distinct(StringComparer.Ordinal).ToArray();
+            var slotFields = slots.ToDictionary(name => name,
+                name => (object)ToolSchema.String(
+                    "Optional wording for the host-named slot. Use FactId " +
+                    "references for every new metric, value, period and unit."),
+                StringComparer.Ordinal);
+            var slotValues = new Dictionary<string, object> {
+                { "type", "object" },
+                { "properties", slotFields },
+                // Unknown historical fields are ignored by the host. They
+                // cannot turn into an operation or broaden measured scope.
+                { "additionalProperties", true }
+            };
+            var parameters = new Dictionary<string, object> {
+                { "type", "object" },
+                { "properties", new Dictionary<string, object> {
+                    { "slot_values", slotValues }
+                } },
+                { "additionalProperties", true }
+            };
+            var scope = " Host replacement scope: " +
+                (measured.Length == 0 ? "no measured overflow" :
+                    "slide IDs " + string.Join(", ", measured)) +
+                ". Named wording slots: " +
+                (slots.Length == 0 ? "read_revision_facts first" :
+                    string.Join(", ", slots)) + ".";
+            return new ChatToolDefinition { type = "function",
+                function = new ChatToolFunctionDefinition {
+                    name = ReviseSlides,
+                    description = "Repair an owned unsaved copy. Read read_revision_facts, then supply only optional wording in slot_values keyed by the returned slot names. The host owns every slide, shape, table, chart, layout, geometry, style and source fingerprint." + scope + " Use [[fact:ID:field]] for every new number, period, metric label or unit. Omitted or invalid wording falls back to source text; extra legacy fields are ignored. The source remains unchanged.",
+                    parameters = parameters } };
+        }
+
+        public static ChatToolDefinition RevisionFactsDefinition()
+        {
+            return new ChatToolDefinition { type = "function",
+                function = new ChatToolFunctionDefinition {
+                    name = ReadRevisionFacts,
+                    description = "Read host-verified FactIds from the attached workbook for workbook-backed slide repair. Use [[fact:FACT_ID:value]], [[fact:FACT_ID:percent]], [[fact:FACT_ID:metric]], [[fact:FACT_ID:period]], [[fact:FACT_ID:unit]], [[fact:FACT_ID:locator]] or [[fact:FACT_ID:dimension:KEY]] in new slide text. The host renders every value, metric label, period, unit and source locator. Do not type them as prose or numbers.",
+                    parameters = ToolSchema.Empty()
+                } };
         }
 
         public static bool IsApproved(string name)

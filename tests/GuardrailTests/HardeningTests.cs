@@ -66,6 +66,19 @@ namespace GuardrailTests
                 sourceText.Contains("Worksheet: Sales") &&
                 !sourceText.Contains("Worksheet: Scribble Draft"),
                 "Final source-preservation readback included run-created draft sheets.");
+
+            var emptyFrame = new EmptyNativeTextFrame();
+            var emptyPresentation = new EmptyNativePresentation(emptyFrame);
+            var slideReadback = (string)read.Invoke(null,
+                new object[] { emptyPresentation, "PowerPoint" });
+            Check(slideReadback.Contains("Slide count: 1") &&
+                slideReadback.Contains("Shape 1") &&
+                emptyFrame.TextRangeReads == 0,
+                "Native source readback touched an empty PowerPoint text range.");
+            Check(!(bool)hasDraft.Invoke(null,
+                new object[] { emptyPresentation, "PowerPoint" }) &&
+                emptyFrame.TextRangeReads == 0,
+                "Draft detection touched an empty PowerPoint text range.");
         }
 
         public static void DuplicateDraftIsRecoverable()

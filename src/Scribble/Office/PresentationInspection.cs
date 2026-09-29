@@ -215,7 +215,8 @@ namespace Scribble.Office
                 // It is a displayed ordinal, not authored note content.
                 if ((int)shape.Type == 14 &&
                     (int)shape.PlaceholderFormat.Type == 13) continue;
-                if ((int)shape.HasTextFrame != 0)
+                if ((int)shape.HasTextFrame != 0 &&
+                    (int)shape.TextFrame.HasText != 0)
                     result.Add(Convert.ToString(shape.TextFrame.TextRange.Text));
             }
             return string.Join("\n", result);
@@ -237,7 +238,8 @@ namespace Scribble.Office
                 if ((int)shape.Type == 6) data["children"] = Shapes(
                     (object)shape.GroupItems, unsupported, depth + 1,
                     readChartData);
-                if ((int)shape.HasTextFrame != 0)
+                if ((int)shape.HasTextFrame != 0 &&
+                    (int)shape.TextFrame.HasText != 0)
                 {
                     dynamic range = shape.TextFrame.TextRange;
                     data["text"] = Convert.ToString(range.Text);

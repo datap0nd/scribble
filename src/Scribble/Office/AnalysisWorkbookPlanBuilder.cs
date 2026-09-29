@@ -108,6 +108,24 @@ namespace Scribble.Office
             var sheet = "'" + table.Name.Replace("'", "''") + "'!";
             var duplicateRows = AnalysisTableArtifactBuilder
                 .DuplicateIdentityRows(table);
+            int identityColumn;
+            var hasIdentity = headers.TryGetValue("RowID", out identityColumn);
+            if (duplicateRows.Count > 0 && table.Cells.Where(cell =>
+                    cell.Row > 0 && cell.Column == identityColumn)
+                .GroupBy(cell => cell.Value,
+                    StringComparer.OrdinalIgnoreCase)
+                .Any(group => group.Select(cell => cell.Value)
+                    .Distinct(StringComparer.Ordinal).Count() > 1))
+                throw new InvalidOperationException(
+                    "ANALYSIS_WORKBOOK_ROW_ID_CASE_AMBIGUOUS");
+            var identityRange = hasIdentity
+                ? SourceColumnRange(table, identityColumn) : null;
+            var firstIdentity = hasIdentity ? table.Cells.Single(cell =>
+                cell.Row == 1 && cell.Column == identityColumn).Reference : null;
+            var firstIdentityMatch = CellAddress.Match(firstIdentity ?? "");
+            var firstIdentityAddress = hasIdentity
+                ? "$" + firstIdentityMatch.Groups[1].Value + "$" +
+                    firstIdentityMatch.Groups[2].Value : null;
             var rows = new List<AnalysisPlanRow>();
             rows.Add(Row(new[] { Label("Metric") }.Concat(
                 periods.Select(cell => Label(cell.Value)))));
@@ -124,18 +142,16 @@ namespace Scribble.Office
                     var reportColumn = ColumnName(index + 2);
                     var formula = "=SUMIF(" + sheet + sourcePeriod + "," +
                         reportColumn + "$3," + sheet + metricColumn + ")";
-                    var repeated = duplicateRows.Where(row =>
-                        sourcePeriods.Single(cell => cell.Row == row).Value ==
-                            period).Select(row => table.Cells.Single(cell =>
-                                cell.Row == row && cell.Column ==
-                                headers[metric]).Reference).ToArray();
-                    if (repeated.Length > 0)
-                        formula += "-SUM(" + string.Join(",", repeated.Select(
-                            address => sheet + "$" +
-                                CellAddress.Match(address).Groups[1].Value +
-                                "$" + CellAddress.Match(address).Groups[2].Value)) + ")";
-                    if (formula.Length > 500 || repeated.Any(address =>
-                        !CellAddress.IsMatch(address ?? string.Empty)))
+                    if (duplicateRows.Count > 0)
+                        formula = "=SUMPRODUCT((" + sheet + sourcePeriod +
+                            "=" + reportColumn + "$3)*(MATCH(" + sheet +
+                            identityRange + "," + sheet + identityRange +
+                            ",0)=ROW(" + sheet + identityRange +
+                            ")-ROW(" + sheet + firstIdentityAddress +
+                            ")+1)*IFERROR(1*" + sheet + metricColumn +
+                            ",0))";
+                    if (formula.Length > 500 ||
+                        (hasIdentity && !firstIdentityMatch.Success))
                         throw new InvalidOperationException(
                             "ANALYSIS_WORKBOOK_FORMULA_UNSUPPORTED");
                     cells.Add(new AnalysisPlanCell
@@ -146,12 +162,20 @@ namespace Scribble.Office
                 }
                 rows.Add(Row(cells));
             }
-            var knownSubtotalNotes = periods.Select(period =>
-                string.Join("; ", selection.ReportMetrics.Where(metric =>
+            var knownSubtotalNotes = periods.Select(period => {
+                var notes = selection.ReportMetrics.Where(metric =>
                     AnalysisContract.IsKnownSubtotal(artifact, metric,
-                        period.Value)).Select(metric =>
-                    metric + ": known subtotal; blank source values excluded")))
-                .ToArray();
+                        period.Value)).Select(metric => metric +
+                    ": known subtotal; blank source values excluded")
+                    .ToList();
+                var repeated = duplicateRows.Count(row =>
+                    sourcePeriods.Single(cell => cell.Row == row).Value ==
+                        period.Value);
+                if (repeated > 0)
+                    notes.Add(repeated.ToString(CultureInfo.InvariantCulture) +
+                        " repeated RowID(s) counted once");
+                return string.Join("; ", notes);
+            }).ToArray();
             if (knownSubtotalNotes.Any(note => note.Length != 0))
             {
                 if (rows.Count + 1 > WorkbookDraftWriter.MaxDraftRows)

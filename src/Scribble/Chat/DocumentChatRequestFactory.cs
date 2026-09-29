@@ -89,7 +89,8 @@ namespace Scribble.Chat
             Scribble.Configuration.TopicConfig activeTopic = null,
             bool hasExcelSelection = false,
             bool hasKoreanWorkbook = false,
-            string workbookTranslationTarget = null)
+            string workbookTranslationTarget = null,
+            IEnumerable<int> pilotReplacementIds = null)
         {
             var pilotRepair = hostKind == "powerpoint" &&
                 allowDraftCreate &&
@@ -163,9 +164,18 @@ namespace Scribble.Chat
                 {
                     if (!pilotRepair)
                         tools.Add(PresentationToolCatalog.DraftDefinition());
-                    tools.AddRange(PresentationToolCatalog.RevisionDefinitions()
-                        .Where(tool => !pilotRepair || tool.function.name ==
-                            PresentationToolCatalog.ReviseSlides));
+                    if (pilotRepair &&
+                        PresentationRevisionAcceptance.Enabled)
+                        tools.Add(PresentationToolCatalog
+                            .RevisionFactsDefinition());
+                    if (pilotRepair &&
+                        PresentationRevisionAcceptance.Enabled)
+                        tools.Add(PresentationToolCatalog
+                            .PilotRevisionDefinition(pilotReplacementIds ??
+                                new int[0]));
+                    else
+                        tools.AddRange(PresentationToolCatalog
+                            .RevisionDefinitions());
                 }
 
                 if (!pilotRepair)
@@ -278,6 +288,24 @@ namespace Scribble.Chat
             };
         }
 
+        // The revision facts receipt contains host-measured overflow scope.
+        // Replace the exposed tool contract before the next model turn so a
+        // chart or otherwise sound slide cannot be offered for replacement.
+        public static void ApplyPilotRevisionScope(
+            ChatCompletionRequest request,
+            IEnumerable<int> measuredReplacementIds,
+            IEnumerable<string> namedSlots = null)
+        {
+            if (request?.tools == null || measuredReplacementIds == null)
+                return;
+            var index = request.tools.FindIndex(tool =>
+                tool?.function?.name == PresentationToolCatalog.ReviseSlides);
+            if (index >= 0)
+                request.tools[index] = PresentationToolCatalog
+                    .PilotRevisionDefinition(measuredReplacementIds,
+                        namedSlots);
+        }
+
         private const string EnglishToKoreanWorkbookInstruction =
             " The local Excel host found every literal English text cell " +
             "across the active workbook before this request. Use " +
@@ -350,7 +378,7 @@ namespace Scribble.Chat
                         " The workbook-backed copy repair is unavailable on this PowerPoint build. Do not claim an output was produced.";
                 if (pilotRepair)
                     return boundary +
-                        " For this workbook-backed repair, inspect every saved source slide and the attached workbook completely. Make one exclusive revise_slides call on the inspected presentation ID. The host opens a separate unsaved native copy, applies bounded content repairs there, fixes measured table and text defects, and binds monthly charts to verified workbook series. Name the source slide IDs that need replacement based on measured overflow. Do not request chart mutation, slide insertion, deletion, or reordering. The source deck and workbook remain unchanged. The draft needs human visual review before sharing. Never claim it was saved.";
+                        " For this workbook-backed repair, inspect every saved source slide and call read_revision_facts before revise_slides. Use its FactIds in [[fact:ID:field]] references for every new number, metric label, period and unit; the host renders them. Make one exclusive revise_slides call on the inspected presentation ID. The host opens a separate unsaved native copy, applies bounded content repairs directly there, fixes measured table and text defects, and binds monthly charts to verified workbook series. Name the source slide IDs that need replacement based on measured overflow. Do not request chart mutation, slide insertion, deletion, or reordering. The source deck and workbook remain unchanged. The draft needs human visual review before sharing. Never claim it was saved.";
                 var selectionInstruction = hasExcelSelection
                     ? " For a one-to-one transformation of the attached " +
                       "Excel selection, including translation, use " +

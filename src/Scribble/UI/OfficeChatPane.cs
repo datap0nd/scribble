@@ -2095,6 +2095,7 @@ namespace Scribble.UI
             }
 
             var taskContext = new TaskContextManager(request, _hostKind, prompt, resume: _resumeRecovery);
+            presentationTools?.BindTask(taskContext);
             _diagnostics.BindTask(taskContext.State.Id, request.model);
             _currentTask = taskContext;
             if (_resumeRecovery == null)
@@ -2342,6 +2343,48 @@ namespace Scribble.UI
                             _hostApplication);
                         result = presentationTools.Execute(
                             toolCall);
+                    }
+
+                    if (name == PresentationToolCatalog.ReadRevisionFacts &&
+                        !string.IsNullOrWhiteSpace(result.Content))
+                    {
+                        try
+                        {
+                            var receipt = _serializer.DeserializeObject(
+                                result.Content) as Dictionary<string, object>;
+                            object rawScope;
+                            if (receipt != null && receipt.TryGetValue(
+                                    "measured_replacement_slide_ids",
+                                    out rawScope) && rawScope is object[])
+                            {
+                                object rawSlots;
+                                var slotNames = receipt.TryGetValue(
+                                        "wording_slots", out rawSlots) &&
+                                    rawSlots is object[]
+                                    ? ((object[])rawSlots).Select(raw =>
+                                        {
+                                            var item = raw as
+                                                Dictionary<string, object>;
+                                            object name;
+                                            return item != null &&
+                                                item.TryGetValue("name",
+                                                    out name)
+                                                ? Convert.ToString(name)
+                                                : string.Empty;
+                                        }).Where(name =>
+                                        !string.IsNullOrWhiteSpace(name))
+                                    : Enumerable.Empty<string>();
+                                DocumentChatRequestFactory
+                                    .ApplyPilotRevisionScope(request,
+                                        ((object[])rawScope).Select(
+                                            Convert.ToInt32), slotNames);
+                            }
+                        }
+                        catch (ArgumentException)
+                        {
+                            // An invalid receipt cannot broaden the initial
+                            // text/table-only revision contract.
+                        }
                     }
 
                     taskContext.AfterTool(toolCall, result);
