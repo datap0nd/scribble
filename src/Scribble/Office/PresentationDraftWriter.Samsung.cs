@@ -386,13 +386,16 @@ namespace Scribble.Office
         {
             var count = draft.Cards.Count;
             if (draft.Layout == "cards" && count == 3 &&
-                draft.Cards.All(card => card.Points.Count == 2 &&
+                draft.Cards.All(card => (card.Points.Count == 1 ||
+                    card.Points.Count == 2) &&
                     card.Heading.Length <= 28 &&
-                    card.Points[0].Length <= 70 &&
-                    card.Points[1].Length <= 60 &&
+                    card.Points[0].Length <= (card.Points.Count == 1
+                        ? 100 : 70) &&
+                    (card.Points.Count == 1 ||
+                        card.Points[1].Length <= 60) &&
                     !Regex.IsMatch(card.Points[0], @"^\s*[\d,.%]+\s*$")))
             {
-                // Three short evidence pairs read as a sequence rather than
+                // Three concise notes read as a sequence rather than
                 // isolated equal-weight panels. Preserve every source line.
                 var rail = new RectangleF(region.X, region.Y + 8f,
                     region.Width * .28f, region.Height - 16f);
@@ -422,14 +425,23 @@ namespace Scribble.Office
                             rail.Width - 44f, rowHeight - 28f),
                         18, 16, "Arial", true, null,
                         "#D7DDE3"));
-                    elements.Add(TextElement(card.Points[0],
-                        new RectangleF(bodyX, top + 4f, bodyWidth, 39f),
-                        19, 16, MetoTheme.TitleFont, true, null,
-                        SamsungSlideDesign.Blue));
-                    elements.Add(TextElement(card.Points[1],
-                        new RectangleF(bodyX, top + 43f,
-                            bodyWidth, rowHeight - 47f),
-                        16, 14, "Arial", false, null, "#202A35"));
+                    if (card.Points.Count == 1)
+                        elements.Add(TextElement(card.Points[0],
+                            new RectangleF(bodyX, top + 22f,
+                                bodyWidth, rowHeight - 32f),
+                            19, 16, MetoTheme.TitleFont, true, null,
+                            SamsungSlideDesign.Blue));
+                    else
+                    {
+                        elements.Add(TextElement(card.Points[0],
+                            new RectangleF(bodyX, top + 4f, bodyWidth, 39f),
+                            19, 16, MetoTheme.TitleFont, true, null,
+                            SamsungSlideDesign.Blue));
+                        elements.Add(TextElement(card.Points[1],
+                            new RectangleF(bodyX, top + 43f,
+                                bodyWidth, rowHeight - 47f),
+                            16, 14, "Arial", false, null, "#202A35"));
+                    }
                 }
                 return;
             }
