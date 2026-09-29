@@ -349,6 +349,9 @@ namespace Scribble.Office
         private static string Calculate(AnalysisPlanText part,
             IDictionary<string, VerifiedFact> facts, ISet<string> used)
         {
+            if (part.Calculation == "margin_percent" ||
+                part.Calculation == "margin_change_points")
+                return Margin(part, facts, used);
             if (part.InputFactIds == null || part.InputFactIds.Count != 2)
                 throw new InvalidOperationException("ANALYSIS_CALCULATION_INPUTS_INVALID");
             var first = Fact(facts, part.InputFactIds[0]);
@@ -359,7 +362,8 @@ namespace Scribble.Office
                 second.ValueType != AnalysisContract.IntegerValue ||
                 first.Metric != second.Metric ||
                 first.Currency != second.Currency ||
-                first.Unit != second.Unit)
+                first.Unit != second.Unit ||
+                first.SnapshotId != second.SnapshotId)
                 throw new InvalidOperationException("ANALYSIS_CALCULATION_BINDING_INVALID");
             decimal a, b;
             if (!decimal.TryParse(first.Value, NumberStyles.Float,
@@ -391,6 +395,52 @@ namespace Scribble.Office
                     (a / b * 100m).ToString("0.0",
                         CultureInfo.InvariantCulture) + "%";
             throw new InvalidOperationException("ANALYSIS_CALCULATION_BINDING_INVALID");
+        }
+
+        private static string Margin(AnalysisPlanText part,
+            IDictionary<string, VerifiedFact> facts, ISet<string> used)
+        {
+            var count = part.Calculation == "margin_percent" ? 2 : 4;
+            if (part.InputFactIds == null || part.InputFactIds.Count != count)
+                throw new InvalidOperationException("ANALYSIS_CALCULATION_INPUTS_INVALID");
+            var inputs = part.InputFactIds.Select(id => Fact(facts, id))
+                .ToArray();
+            if (inputs.Any(fact => fact.Dimensions.Count != 0 ||
+                    fact.ValueType != AnalysisContract.DecimalValue &&
+                    fact.ValueType != AnalysisContract.IntegerValue) ||
+                inputs.Select(fact => fact.Currency).Distinct(
+                    StringComparer.Ordinal).Count() != 1 ||
+                string.IsNullOrWhiteSpace(inputs[0].Currency) ||
+                inputs.Select(fact => fact.SnapshotId).Distinct(
+                    StringComparer.Ordinal).Count() != 1 ||
+                inputs[0].Metric == inputs[1].Metric ||
+                inputs[0].Period != inputs[1].Period ||
+                count == 4 && (inputs[0].Metric != inputs[2].Metric ||
+                    inputs[1].Metric != inputs[3].Metric ||
+                    inputs[2].Period != inputs[3].Period ||
+                    inputs[0].Period == inputs[2].Period))
+                throw new InvalidOperationException("ANALYSIS_CALCULATION_BINDING_INVALID");
+            var values = new decimal[count];
+            for (var index = 0; index < count; index++)
+            {
+                if (!decimal.TryParse(inputs[index].Value,
+                        NumberStyles.Float, CultureInfo.InvariantCulture,
+                        out values[index]))
+                    throw new InvalidOperationException("ANALYSIS_CALCULATION_VALUE_INVALID");
+                used.Add(inputs[index].FactId);
+            }
+            if (values[0] == 0m || count == 4 && values[2] == 0m)
+                return "unavailable";
+            var current = (values[0] - values[1]) / values[0] * 100m;
+            if (count == 2)
+                return current.ToString("0.0",
+                    CultureInfo.InvariantCulture) + "%";
+            var previous = (values[2] - values[3]) / values[2] * 100m;
+            var change = current - previous;
+            return change == 0m ? "unchanged" :
+                (change > 0m ? "up " : "down ") +
+                Math.Abs(change).ToString("0.0",
+                    CultureInfo.InvariantCulture) + " pts";
         }
 
         // A fact reference cannot launder a separate model-supplied number

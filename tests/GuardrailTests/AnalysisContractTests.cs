@@ -852,6 +852,16 @@ namespace GuardrailTests
             Check(chartTitle.Contains("Revenue EUR") &&
                 !chartTitle.Contains("EUR (EUR)"),
                 "The chart title duplicated its metric unit.");
+            var margin = ((object[])compiledA.Slides[0]["cards"])
+                .Cast<Dictionary<string, object>>()
+                .Single(card => Convert.ToString(card["heading"]) ==
+                    "Gross margin");
+            var marginPoints = ((object[])margin["points"])
+                .Select(Convert.ToString).ToArray();
+            Check(marginPoints[0] == "55.8%" &&
+                marginPoints[1].Contains("prior period:") &&
+                marginPoints[1].Contains("pts"),
+                "The margin card lost its host-calculated value or change.");
             var pages = ((System.Collections.IEnumerable)json.DeserializeObject(
                 json.Serialize(SamsungPresentationReview.InspectPlan(
                     json.Serialize(compiledA.Slides)))))

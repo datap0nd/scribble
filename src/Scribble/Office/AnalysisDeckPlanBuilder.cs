@@ -82,6 +82,39 @@ namespace Scribble.Office
                                 Text = "Previous period" } } }).ToList(),
                 Takeaway = Finding(leadFocus, leadCompare)
             };
+            var revenueMetric = metrics.FirstOrDefault(metric =>
+                Regex.IsMatch(metric, "revenue|sales|income",
+                    RegexOptions.IgnoreCase));
+            var costMetric = metrics.FirstOrDefault(metric =>
+                Regex.IsMatch(metric, "cost|expense",
+                    RegexOptions.IgnoreCase));
+            if (revenueMetric != null && costMetric != null &&
+                revenueMetric != costMetric && headline.Cards.Count < 4)
+            {
+                var revenue = total(revenueMetric, focus);
+                var cost = total(costMetric, focus);
+                var priorRevenue = total(revenueMetric, compare);
+                var priorCost = total(costMetric, compare);
+                if (!string.IsNullOrWhiteSpace(revenue.Currency) &&
+                    revenue.Currency == cost.Currency &&
+                    revenue.Currency == priorRevenue.Currency &&
+                    revenue.Currency == priorCost.Currency &&
+                    decimal.Parse(revenue.Value, NumberStyles.Float,
+                        CultureInfo.InvariantCulture) != 0m &&
+                    decimal.Parse(priorRevenue.Value, NumberStyles.Float,
+                        CultureInfo.InvariantCulture) != 0m)
+                {
+                    var marginChange = Calculation(
+                        "margin_change_points", revenue, cost,
+                        priorRevenue, priorCost);
+                    marginChange.Text = "Change from prior period:";
+                    headline.Cards.Add(new AnalysisPlanCard {
+                        Heading = "Gross margin",
+                        Points = new List<AnalysisPlanText> {
+                            Calculation("margin_percent", revenue, cost),
+                            marginChange } });
+                }
+            }
             var comparison = new AnalysisPlanSlide {
                 Id = "analysis-comparison", Layout = "two_pane",
                 TitleParts = new List<AnalysisPlanText> {
@@ -132,11 +165,13 @@ namespace Scribble.Office
                 if (groups.Length > 0 && groupMetrics.Length > 0)
                 {
                     var rankMetric = groupMetrics[0];
-                    groups = groups.OrderByDescending(group => decimal.Parse(
+                    var ranked = groups.OrderByDescending(group => decimal.Parse(
                         dimensioned.Single(fact => fact.Metric == rankMetric &&
                             fact.Dimensions[dimension] == group).Value,
                         NumberStyles.Float, CultureInfo.InvariantCulture))
                         .ThenBy(group => group, StringComparer.Ordinal)
+                        .ToArray();
+                    groups = ranked
                         .Take(20)
                         .ToArray();
                     var top = dimensioned.Single(fact =>
@@ -150,7 +185,9 @@ namespace Scribble.Office
                             new AnalysisPlanText { Text = " " +
                                 Label(rankMetric) } },
                         Subtitle = new List<AnalysisPlanText> {
-                            new AnalysisPlanText { Text = "Ranking for " },
+                            new AnalysisPlanText { Text = ranked.Length == 1
+                                ? "Only group in " : "Bottom: " +
+                                    ranked.Last() + " in " },
                             Period(top) },
                         TableHeaders = new[] { dimension }
                             .Concat(groupMetrics.Select(Label)).ToList(),
@@ -239,6 +276,13 @@ namespace Scribble.Office
             return new AnalysisPlanText { Calculation = "share_percent",
                 InputFactIds = new List<string> {
                     group.FactId, total.FactId } };
+        }
+
+        private static AnalysisPlanText Calculation(string operation,
+            params VerifiedFact[] inputs)
+        {
+            return new AnalysisPlanText { Calculation = operation,
+                InputFactIds = inputs.Select(fact => fact.FactId).ToList() };
         }
 
         private static List<AnalysisPlanText> Finding(
