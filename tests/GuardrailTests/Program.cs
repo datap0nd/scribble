@@ -10860,9 +10860,8 @@ namespace GuardrailTests
         public EmptyNativeShapes(EmptyNativeShape shape)
         { _shape = shape; }
         public int Count { get { return 1; } }
-        public EmptyNativeShape this[int index]
-        { get { if (index != 1) throw new IndexOutOfRangeException(); return _shape; } }
-        public EmptyNativeShape Item(int index) { return this[index]; }
+        public EmptyNativeShape Item(int index)
+        { if (index != 1) throw new IndexOutOfRangeException(); return _shape; }
     }
 
     public sealed class EmptyNativeSlide
