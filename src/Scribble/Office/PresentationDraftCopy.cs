@@ -62,6 +62,7 @@ namespace Scribble.Office
             public float Width;
             public float Height;
             public WorkbookMonthlyChartFacts.BoundSeries Facts;
+            public WorkbookMonthlyChartFacts.BoundSeries ContextFacts;
         }
 
         // Reading series names and category labels does not open the
@@ -135,6 +136,24 @@ namespace Scribble.Office
                             workbookPath, chosen, token);
                         cache.Add(key, facts);
                     }
+                    var contextFacts = facts;
+                    if (onlyPrimary &&
+                        !string.IsNullOrWhiteSpace(secondary))
+                    {
+                        var contextNames = chosen.Concat(new[] {
+                            secondary
+                        }).ToArray();
+                        var contextKey = string.Join("\0",
+                            contextNames);
+                        if (!cache.TryGetValue(contextKey,
+                                out contextFacts))
+                        {
+                            contextFacts = WorkbookMonthlyChartFacts
+                                .ReadBoundSeries(workbookPath,
+                                    contextNames, token);
+                            cache.Add(contextKey, contextFacts);
+                        }
+                    }
                     if (categories.Length != facts.Categories.Length)
                         throw new InvalidOperationException(
                             "REVISION_CHART_PERIOD_COVERAGE_INVALID");
@@ -145,7 +164,8 @@ namespace Scribble.Office
                         Top = (float)shape.Top,
                         Width = (float)shape.Width,
                         Height = (float)shape.Height,
-                        Facts = facts
+                        Facts = facts,
+                        ContextFacts = contextFacts
                     });
                 }
             }

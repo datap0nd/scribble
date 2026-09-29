@@ -50,7 +50,8 @@ namespace Scribble.Office
                 new PresentationDraftCopy.MonthlyChartBinding[0])
                 .ToArray();
             var observed = bound
-                .SelectMany(binding => binding.Facts?.Facts ??
+                .SelectMany(binding => binding.ContextFacts?.Facts ??
+                    binding.Facts?.Facts ??
                     new VerifiedFact[0]).GroupBy(fact => fact.FactId,
                     StringComparer.Ordinal).Select(group => group.First())
                 .ToList();
@@ -58,7 +59,8 @@ namespace Scribble.Office
             var displayNames = new Dictionary<string, string>(
                 StringComparer.Ordinal);
             foreach (var name in bound.SelectMany(binding =>
-                binding.Facts?.Names ?? new string[0]))
+                binding.ContextFacts?.Names ??
+                    binding.Facts?.Names ?? new string[0]))
             {
                 var matched = observed.Select(fact => fact.Metric)
                     .Distinct(StringComparer.Ordinal).Where(metric =>

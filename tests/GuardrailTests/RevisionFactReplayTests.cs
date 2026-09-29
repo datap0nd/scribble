@@ -10,6 +10,60 @@ namespace GuardrailTests
 {
     internal static class RevisionFactReplayTests
     {
+        internal static void SeparateTableMetricAvailableWithPrimaryOnlyChart()
+        {
+            var locator = new SourceLocator {
+                Kind = "excel_cell", SourceInstanceId = "replay-source",
+                WorksheetIdentity = "Ledger", Cell = "D7"
+            };
+            Func<string, string, string, VerifiedFact> make =
+                (metric, value, currency) =>
+                    AnalysisContract.CreateObservedFact(
+                        "snapshot-replay", metric,
+                        AnalysisContract.DecimalValue, value, value,
+                        currency == null ? string.Empty : "currency",
+                        currency, "2026-06",
+                        new Dictionary<string, string>(),
+                        new[] { locator }, AnalysisContract.Verified);
+            var primary = make("Items processed", "126", null);
+            var secondary = make("Asset value GBP", "8450", "GBP");
+            var bindingType = typeof(AnalysisContract).Assembly.GetType(
+                "Scribble.Office.PresentationDraftCopy+MonthlyChartBinding",
+                true);
+            var binding = Activator.CreateInstance(bindingType, true);
+            bindingType.GetField("Facts").SetValue(binding,
+                new WorkbookMonthlyChartFacts.BoundSeries {
+                    Names = new[] { "Items processed" },
+                    Facts = new[] { primary }
+                });
+            bindingType.GetField("ContextFacts").SetValue(binding,
+                new WorkbookMonthlyChartFacts.BoundSeries {
+                    Names = new[] { "Items processed",
+                        "Asset value GBP" },
+                    Facts = new[] { primary, secondary }
+                });
+            var bindings = Array.CreateInstance(bindingType, 1);
+            bindings.SetValue(binding, 0);
+            var catalogType = typeof(AnalysisContract).Assembly.GetType(
+                "Scribble.Office.RevisionFactCatalog", true);
+            var fromBindings = catalogType.GetMethod("FromBindings",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            var publicFacts = catalogType.GetMethod("PublicFacts",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            if (fromBindings == null || publicFacts == null)
+                throw new Exception("Workbook repair fact catalog is missing.");
+            var catalog = fromBindings.Invoke(null, new object[] {
+                bindings
+            });
+            var visible = new JavaScriptSerializer().Serialize(
+                publicFacts.Invoke(catalog, null));
+            if (!visible.Contains("Items processed") ||
+                !visible.Contains("Asset value GBP") ||
+                !visible.Contains(secondary.FactId))
+                throw new Exception("The separate table metric was omitted " +
+                    "when the chart requested only its primary series.");
+        }
+
         internal static void FactReferencesAndHistoricalResponses()
         {
             var locator = new SourceLocator {

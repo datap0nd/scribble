@@ -289,6 +289,8 @@ namespace GuardrailTests
                     PilotPatchReceiptSerializesSlideIds);
                 Run("Workbook FactIds safely replay all historical PP01 responses",
                     RevisionFactReplayTests.FactReferencesAndHistoricalResponses);
+                Run("Primary-only charts retain secondary table FactIds",
+                    RevisionFactReplayTests.SeparateTableMetricAvailableWithPrimaryOnlyChart);
                 Run("Measured pilot replacement keeps ordinary redesign consent",
                     MeasuredPilotReplacementKeepsOrdinaryConsent);
                 Run("Reordered source spans remain exact grounded evidence",
