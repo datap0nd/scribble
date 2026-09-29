@@ -120,7 +120,7 @@ namespace Scribble.Office
                 var groups = dimensioned.Where(fact =>
                     fact.Dimensions.ContainsKey(dimension)).Select(fact =>
                     fact.Dimensions[dimension]).Distinct(StringComparer.Ordinal)
-                    .Take(20).ToArray();
+                    .ToArray();
                 var groupMetrics = metrics.Where(metric => groups.All(group =>
                     dimensioned.Count(fact => fact.Metric == metric &&
                         fact.Dimensions[dimension] == group) == 1)).ToArray();
@@ -132,6 +132,7 @@ namespace Scribble.Office
                             fact.Dimensions[dimension] == group).Value,
                         NumberStyles.Float, CultureInfo.InvariantCulture))
                         .ThenBy(group => group, StringComparer.Ordinal)
+                        .Take(20)
                         .ToArray();
                     var top = dimensioned.Single(fact =>
                         fact.Metric == rankMetric &&
