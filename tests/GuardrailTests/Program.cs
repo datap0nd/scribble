@@ -7549,6 +7549,10 @@ namespace GuardrailTests
                     { "ScribblePresentationId", "" } };
                 source.Path = root;
                 source.FullName = sourcePath;
+                source.Saved = 0;
+                dynamic slides = new System.Dynamic.ExpandoObject();
+                slides.Count = 6;
+                source.Slides = slides;
                 dynamic app = new System.Dynamic.ExpandoObject();
                 app.ActivePresentation = source;
                 var objective = "Create a repaired draft of the source deck into exactly 6 output slides; preserve the original slides.";
@@ -7586,10 +7590,21 @@ namespace GuardrailTests
                         result.Content);
                     var corrected = MailboxCall("corrected",
                         PresentationToolCatalog.ReviseSlides,
-                        "{\"presentation_id\":\"corrected\",\"operations\":[]}");
+                        "{\"presentation_id\":\"" +
+                        PresentationInspection.IdentityFor((object)source) +
+                        "\",\"operations\":[]}");
                     task.BeforeTool(corrected, true);
                     Assert(task.State.Writes.Last().Status == "pending",
                         "A corrected proposal was quarantined after safe preflight rejection.");
+                    var retry = host.ExecuteAsync(corrected, permission,
+                        true, objective, client, settings,
+                        CancellationToken.None, null).GetAwaiter()
+                        .GetResult();
+                    Assert(retry.Outcome.ErrorCode ==
+                            "PILOT_COPY_WORKBOOK_MISSING" &&
+                        permission.RemainingCalls == 1,
+                        "A read-dirtied source with unchanged file bytes " +
+                        "must pass saved-source identity preflight.");
                 }
             }
             finally

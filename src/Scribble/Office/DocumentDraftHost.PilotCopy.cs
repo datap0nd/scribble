@@ -58,8 +58,7 @@ namespace Scribble.Office
                             .IdentityFor(sourceDeck) ||
                     (int)source.Slides.Count !=
                         _taskContext.State.RequiredPresentationSlides ||
-                    string.IsNullOrEmpty(Convert.ToString(source.Path)) ||
-                    (int)source.Saved == 0)
+                    string.IsNullOrEmpty(Convert.ToString(source.Path)))
                     throw new InvalidOperationException(
                         "PILOT_COPY_SOURCE_CHANGED: Inspect the saved source deck again.");
                 var operations = SamsungAuthoringPolicy.Array(args,

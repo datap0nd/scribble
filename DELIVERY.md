@@ -174,17 +174,21 @@ a ≤ 10-line owner note in §5.
 | S1 XA01 | old | 2.0.385 | 1/3 (22 Sep) |
 | S1 XA01–10 | new | 2.0.760.0 | 10/10 terminal native outputs, hard checks and request bar in one batch; Claude/owner D2 pending |
 | S1 XA01 consecutive | new | 2.0.724.0 | 3/3 (10, 10, 9 actual model requests); owner D2 pending |
-| S2 PP01–PP10 | new | 2.0.791.0 | First full real batch 0/10 on 2.0.785.0; targeted six-case rerun 0/6 on 2.0.791.0. Saved-source preflight fixed; model revision contract, copy fingerprint, and PP08 COM readback are next. |
+| S2 PP01–PP10 | new | 2.0.791.0 | First full real batch 0/10 on 2.0.785.0; targeted six-case rerun 0/6 on 2.0.791.0. Paid S2 runs frozen by issue #46 R5 pending offline contract, replay, and ten-deck native gates. |
 
 Current stage: **P1 workbook-backed deck repair**, with P0 accuracy work
-offline, under owner-authorized issue #46 R4. Green CI `36584192032` built
+offline, under owner-authorized issue #46 R5. No further paid S2 runs until
+the host-owned skeleton, full replay, ten-deck fake-endpoint route, and
+byte-only source identity pass offline. Green CI `36584192032` built
 installed pilot 2.0.791.0. Native source readback and the fake-endpoint
 production route passed with source bytes unchanged. The targeted real
 PP02/04/05/07/08/10 rerun cost $0.2905 and left $5.1685 of the no-reset key,
-above R4's $2.50 D1 reserve. The saved-source preflight error did not recur;
+above R5's $2.50 D1 reserve. The saved-source preflight error did not recur;
 the next P1 mechanism is the model's unsupported revision scope and FactId
 literal loops. PP08 lacked final native readback after a COM error, though its
-disposable source file hashes matched the sealed inputs.
+disposable source file hashes matched the sealed inputs. An isolated native
+PP08 source-read probe on 2.0.791.0 passed readback, slide inspection and
+replacement measurement without changing the saved state or file hash.
 P0 final installed build 2.0.760.0 (`773e20f`) passed green CI and an
 unassisted XA01–XA10 batch on 29 September. All ten produced four-slide
 native decks and workbooks through the new route, passed hard checks and
