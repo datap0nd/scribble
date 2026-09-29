@@ -72,7 +72,9 @@ namespace GuardrailTests
                 source.Windows.Item(1).Activate();
                 var prompt = "Repair and improve the layout of all six slides as a new editable draft using the attached workbook; preserve the original slides and keep the source deck unchanged. Retain the source content, notes and owner/due-date pairs.";
                 var documents = new[] { new ExternalContextDocument("WB01.xlsx",
-                    json.Serialize(WorkbookMonthlyChartFacts.ReadSalesLedger(workbookPath, CancellationToken.None)), workbookPath) };
+                    json.Serialize(WorkbookMonthlyChartFacts.ReadBoundSeries(
+                        workbookPath, new[] { "Revenue EUR", "Cost EUR" },
+                        CancellationToken.None)), workbookPath) };
                 var request = DocumentChatRequestFactory.Create("qwen/qwen3.8-27b", "powerpoint", "", new List<ChatTurn>(), prompt, true, documents);
                 Check(request.tools.Any(tool => tool.function.name == PresentationToolCatalog.ReviseSlides) &&
                     !request.tools.Any(tool => tool.function.name == PresentationToolCatalog.AddDraftSlides), "PILOT_TOOL_ROUTE_INCORRECT");

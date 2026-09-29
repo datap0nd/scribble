@@ -60,6 +60,14 @@ namespace GuardrailTests
                         "PP01_SOURCE_PAGE_COUNT_INVALID");
                 var chart = OnlyShape((object)source.Slides[2],
                     shape => (int)shape.HasChart != 0);
+                var boundCharts = (Array)InvokeStatic(CopyType,
+                    "BindMonthlyCharts", (object)source,
+                    workbookPath,
+                    "The primary measure is Revenue EUR; the secondary measure is Cost EUR.",
+                    System.Threading.CancellationToken.None);
+                if (boundCharts.Length != 1)
+                    throw new InvalidOperationException(
+                        "PP01_CHART_SOURCE_BINDING_FAILED");
                 var table = OnlyShape((object)source.Slides[3],
                     shape => (int)shape.HasTable != 0);
                 var commentary = OnlyShape((object)source.Slides[4],
@@ -152,7 +160,8 @@ namespace GuardrailTests
                 var bound = (object[])Invoke(copy, CopyType,
                     "BindOperations", (object)operations.ToArray());
                 var nativeStyle = (object[])Invoke(copy, CopyType,
-                    "Pp01NativeStyleOperations");
+                    "MeasuredNativeStyleOperations",
+                    (object)new[] { (int)source.Slides[4].SlideID });
                 if (nativeStyle.Length < 4)
                     throw new InvalidOperationException(
                         "PP01_NATIVE_STYLE_REPAIR_MISSING");
@@ -163,6 +172,31 @@ namespace GuardrailTests
                 stage = "stage_patch";
                 Invoke(revision, RevisionType, "Stage", (object)app,
                     combined);
+                var stagedItems = (System.Collections.IEnumerable)
+                    RevisionType.GetField("Items", BindingFlags.Instance |
+                        BindingFlags.NonPublic).GetValue(revision);
+                foreach (var stagedItem in stagedItems)
+                {
+                    var itemType = stagedItem.GetType();
+                    dynamic livePage = itemType.GetField("Original",
+                        BindingFlags.Instance | BindingFlags.NonPublic)
+                        .GetValue(stagedItem);
+                    dynamic reviewedPage = itemType.GetField("Staged",
+                        BindingFlags.Instance | BindingFlags.NonPublic)
+                        .GetValue(stagedItem);
+                    if (Convert.ToString(livePage.Design.Name) !=
+                        Convert.ToString(reviewedPage.Design.Name))
+                        throw new InvalidOperationException(
+                            "PP01_STAGING_DESIGN_CHANGED");
+                    // Production previews every staged page before commit.
+                    // Exercise the same Office rendering and clipboard path
+                    // before transferring reviewed shapes to the live draft.
+                    PresentationInspection.Capture((object)reviewedPage);
+                    if (string.IsNullOrEmpty(PresentationInspection.Preview(
+                            (object)reviewedPage)))
+                        throw new InvalidOperationException(
+                            "PP01_STAGED_PREVIEW_MISSING");
+                }
                 stage = "commit_patch";
                 Invoke(revision, RevisionType, "Commit",
                     (Action<string>)(status => { }));
@@ -180,12 +214,12 @@ namespace GuardrailTests
                 // copying a native chart can terminate chart.dll. Add the
                 // workbook-derived chart after the bounded patch commits.
                 stage = "recreate_chart";
-                var chartFacts = (WorkbookMonthlyChartFacts.Result)
-                    Invoke(copy, CopyType,
-                        "RecreateSalesChartFromWorkbook",
-                        (int)source.Slides[2].SlideID,
-                        (int)chart.Id, workbookPath,
-                        66f, 158.25f, 825f, 278.25f);
+                var chartBinding = boundCharts.GetValue(0);
+                var chartFacts = (WorkbookMonthlyChartFacts.BoundSeries)
+                    chartBinding.GetType().GetField("Facts")
+                        .GetValue(chartBinding);
+                Invoke(copy, CopyType, "RecreateBoundChart",
+                    chartBinding);
                 if (chartFacts.SourceSha256 != workbookHash ||
                     chartFacts.Categories.Length != 6)
                     throw new InvalidOperationException(

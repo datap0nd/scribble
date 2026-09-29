@@ -92,6 +92,7 @@ namespace GuardrailTests
                 Run("Typed analysis snapshots preserve identity and serialization", AnalysisContractTests.SnapshotIdentityInvalidationAndSerialization);
                 Run("Explicit typed table bindings issue only verified facts", AnalysisContractTests.ExplicitTableBindingsIssueOnlyVerifiedFacts);
                 Run("Grouped typed facts retain source-bound formulas", AnalysisContractTests.GroupedTypedFactsKeepSourceAndFormulaBinding);
+                Run("Repeated source identities are counted once", AnalysisContractTests.RepeatedSourceIdentityIsCountedOnce);
                 Run("Typed analysis calculations preserve source authority", AnalysisContractTests.DeterministicCalculationsPreserveAuthority);
                 Run("Native revision acceptance cannot expand its certified scope", PresentationAcceptanceTests.ScopedReceiptCannotCertifyCharts);
                 Run("Delivery transport budget persists across restart", PresentationAcceptanceTests.TransportBudgetSurvivesRestart);
@@ -274,6 +275,34 @@ namespace GuardrailTests
                 Run(
                     "Document factory authorizes at most one marked draft",
                     DocumentFactoryGatesDraftTools);
+                Run("Production repair route excludes corpus labels",
+                    RepairRouteExcludesCorpusLabels);
+                Run("Saved presentation identity survives COM rewrapping",
+                    SavedPresentationIdentityIsFileBound);
+                Run("Pilot copy preflight rejection permits a corrected write",
+                    PilotCopyPreflightRejectionPermitsRetry);
+                Run("Pilot copy pre-stage evidence is checked without old-slide review",
+                    PilotCopyTextEvidenceIsBounded);
+                Run("Measured pilot replacement keeps ordinary redesign consent",
+                    MeasuredPilotReplacementKeepsOrdinaryConsent);
+                Run("Reordered source spans remain exact grounded evidence",
+                    ReorderedSourceSpansRemainGrounded);
+                Run("Compound claim labels bind every cited component",
+                    CompoundClaimLabelsBindCitedComponents);
+                Run("Verified source locators are not numeric claims",
+                    VerifiedSourceLocatorsAreNotQuantities);
+                Run("Host summary operands bind one metric field and period",
+                    HostSummaryOperandsBindOneField);
+                Run("Native clipboard retry requires an unchanged target",
+                    NativeClipboardRetryRequiresUnchangedTarget);
+                Run("Native slide copy waits for the destination count to settle",
+                    NativeSlideCopyWaitsForCountSettlement);
+                Run("Pilot repair validates public edits while preserving host style",
+                    PilotRepairKeepsHostStyleOutsidePublicSchema);
+                Run("Pilot visual overflow must match the staged native bounds",
+                    PilotVisualOverflowRequiresMatchingNativeGeometry);
+                Run("Revision tool decodes only a complete nested operations array",
+                    RevisionToolDecodesCompleteOperationsArray);
                 Run(
                     "Browser context is bounded and tools are approved-only",
                     BrowserContextIsBoundedAndReadOnly);
@@ -487,6 +516,8 @@ namespace GuardrailTests
                 Run("Word source preservation survives draft reordering", OfficeBootstrapTests.WordSourcePreservationSurvivesDraftReordering);
                 Run("Word memo rejects universal budget claims", OfficeBootstrapTests.WordMemoRejectsUniversalBudgetClaim);
                 Run("PowerPoint bootstrap tracks reused and fresh native processes", OfficeBootstrapTests.PowerPointLaunchTracksReusedOrFreshProcess);
+                Run("Busy Excel ROT entry does not block private native window", OfficeBootstrapTests.BusyExcelRotEntryDoesNotBlockPrivateWindow);
+                Run("Busy PowerPoint ROT entry does not block private native window", OfficeBootstrapTests.BusyPowerPointRotEntryDoesNotBlockPrivateWindow);
                 Run("Office bootstrap rejects missing, foreign, stale and finished sibling bindings", OfficeBootstrapTests.UnverifiedSiblingCannotStartOffice);
                 Console.WriteLine("PASS: " + _passed + " guardrail tests");
                 if (_passed == 0) throw new InvalidOperationException("No tests matched the requested filter.");
@@ -7096,18 +7127,632 @@ namespace GuardrailTests
                 "The email draft tool must state that sending is impossible.");
         }
 
+        private static void SavedPresentationIdentityIsFileBound()
+        {
+            var path = Path.Combine(Path.GetTempPath(),
+                "scribble-identity-" + Guid.NewGuid().ToString("N") +
+                ".pptx");
+            try
+            {
+                File.WriteAllText(path, "first saved source");
+                dynamic first = new System.Dynamic.ExpandoObject();
+                first.Tags = new Dictionary<string, string> {
+                    { "ScribblePresentationId", "" } };
+                first.Path = Path.GetDirectoryName(path);
+                first.FullName = path;
+                dynamic second = new System.Dynamic.ExpandoObject();
+                second.Tags = new Dictionary<string, string> {
+                    { "ScribblePresentationId", "" } };
+                second.Path = Path.GetDirectoryName(path);
+                second.FullName = path;
+                var original = PresentationInspection.IdentityFor(
+                    (object)first);
+                Assert(original == PresentationInspection.IdentityFor(
+                        (object)second),
+                    "Saved source identity must survive a new COM wrapper.");
+                File.WriteAllText(path, "changed saved source");
+                Assert(original != PresentationInspection.IdentityFor(
+                        (object)first),
+                    "Saved source identity must change with file bytes.");
+                first.Tags["ScribblePresentationId"] = "owned-draft";
+                Assert(PresentationInspection.IdentityFor((object)first) ==
+                        "owned-draft",
+                    "Owned draft tags must take precedence over file identity.");
+            }
+            finally
+            {
+                if (File.Exists(path)) File.Delete(path);
+            }
+        }
+
+        private static void NativeClipboardRetryRequiresUnchangedTarget()
+        {
+            var revision = typeof(DocumentDraftHost).Assembly.GetType(
+                "Scribble.Office.PresentationRevision", true);
+            var transfer = revision.GetMethod(
+                "RetryUnchangedNativeTransfer",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert(transfer != null,
+                "The native replacement clipboard boundary is missing.");
+            var calls = 0;
+            Action transient = () =>
+            {
+                if (++calls == 1)
+                    throw new System.Runtime.InteropServices.COMException(
+                        "temporary native clipboard failure",
+                        unchecked((int)0x80004005));
+            };
+            transfer.Invoke(null, new object[] {
+                transient, (Func<bool>)(() => true), "REPLACEMENT" });
+            Assert(calls == 2,
+                "A transient native clipboard failure on an untouched target did not retry.");
+            calls = 0;
+            Action partial = () =>
+            {
+                calls++;
+                throw new System.Runtime.InteropServices.COMException(
+                    "paste may have changed target",
+                    unchecked((int)0x80004005));
+            };
+            try
+            {
+                transfer.Invoke(null, new object[] {
+                    partial, (Func<bool>)(() => false), "REPLACEMENT" });
+                throw new Exception("An uncertain native paste was retried.");
+            }
+            catch (TargetInvocationException error)
+            {
+                Assert(calls == 1 &&
+                    error.InnerException?.Message.StartsWith(
+                        "REPLACEMENT_UNCERTAIN") == true,
+                    "A native transfer retried after the destination changed.");
+            }
+        }
+
+        private static void NativeSlideCopyWaitsForCountSettlement()
+        {
+            var settle = typeof(PresentationInspection).GetMethod(
+                "SettledSlideCount", BindingFlags.Static | BindingFlags.NonPublic);
+            Assert(settle != null,
+                "The native slide-copy settlement boundary is missing.");
+            var deck = new SettlingPresentation();
+            var count = (int)settle.Invoke(null, new object[] { deck, 1 });
+            Assert(count == 2 && deck.Slides.Reads >= 3,
+                "A delayed native paste was treated as an unchanged destination.");
+        }
+
+        private static void PilotRepairKeepsHostStyleOutsidePublicSchema()
+        {
+            var policy = typeof(DocumentDraftHost).Assembly.GetType(
+                "Scribble.Office.SamsungRepairPolicy", true);
+            var publicRepair = policy.GetMethod("PublicRepairOperations",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert(publicRepair != null,
+                "Pilot repairs need a trusted host-style schema boundary.");
+            var edit = new Dictionary<string, object>
+            {
+                { "kind", "replace_text" }, { "slide_id", 259 },
+                { "fingerprint", "measured-slide" }, { "shape_id", 7 },
+                { "before", "Old text" }, { "text", "Clear text" }
+            };
+            var style = new Dictionary<string, object>
+            {
+                { "kind", "shape_font_size" }, { "slide_id", 260 },
+                { "fingerprint", "measured-style" }, { "shape_id", 8 },
+                { "before_size", 11.0 }, { "size", 14.0 }
+            };
+            var tableStyle = new Dictionary<string, object>
+            {
+                { "kind", "table_cell_fill" }, { "slide_id", 261 },
+                { "fingerprint", "measured-table" }, { "shape_id", 9 },
+                { "row", 1 }, { "column", 2 },
+                { "before_color", 16777215 }, { "color", 2057215 }
+            };
+            var requested = new object[] { edit, style, tableStyle };
+            var corrected = new object[]
+            {
+                new Dictionary<string, object>(edit),
+                new Dictionary<string, object>(style),
+                new Dictionary<string, object>(tableStyle)
+            };
+            var definition = PresentationToolCatalog.RevisionDefinitions()
+                .Single(t => t.function.name == PresentationToolCatalog.ReviseSlides);
+            Func<object[], IReadOnlyList<string>> schema = operations =>
+                ToolContractValidator.Validate(new ChatToolCall
+                {
+                    id = "pilot-repair",
+                    function = new ChatToolCallFunction
+                    {
+                        name = PresentationToolCatalog.ReviseSlides,
+                        arguments = new JavaScriptSerializer().Serialize(new
+                        {
+                            presentation_id = "draft", operations
+                        })
+                    }
+                }, definition);
+            Assert(schema(corrected).Count != 0,
+                "The public schema unexpectedly accepts host-only style edits.");
+            var projected = (object[])publicRepair.Invoke(null,
+                new object[] { requested, corrected, 2 });
+            Assert(projected.Length == 1 &&
+                schema(projected).Count == 0,
+                "A valid public edit was rejected with unchanged host style.");
+            ((Dictionary<string, object>)corrected[1])["size"] = 18.0;
+            try
+            {
+                publicRepair.Invoke(null,
+                    new object[] { requested, corrected, 2 });
+                throw new Exception("A model changed a host-measured style edit.");
+            }
+            catch (TargetInvocationException error)
+            {
+                Assert(error.InnerException is InvalidOperationException,
+                    "Changed host style must fail before schema projection.");
+            }
+        }
+
+        private static void PilotVisualOverflowRequiresMatchingNativeGeometry()
+        {
+            var filter = typeof(DocumentDraftHost).GetMethod(
+                "FilterRevisionGeometryReview",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert(filter != null,
+                "The pilot must verify visual overflow against staged geometry.");
+            var shape = new Dictionary<string, object>
+            {
+                { "id", 5 }, { "text", "A measured staged paragraph" },
+                { "width", 150f }, { "height", 63f },
+                { "text_bounds", new[] { 0f, 0f, 100f, 40f } }
+            };
+            var proposed = new Dictionary<string, object>
+            {
+                { "slide_id", 257 },
+                { "shapes", new List<object> { shape } }
+            };
+            var json = new JavaScriptSerializer();
+            Func<int, string, string> review = (slide, type) =>
+                json.Serialize(new
+                {
+                    approved = false,
+                    issues = "Measured visual finding",
+                    findings = new[] { new
+                    {
+                        slide_id = slide, object_id = "5", type,
+                        severity = "blocker",
+                        correction = "Fix the measured shape"
+                    } }
+                });
+            Func<string, bool> approved = verdict =>
+            {
+                var result = (string)filter.Invoke(null,
+                    new object[] { verdict, proposed });
+                return (bool)json.Deserialize<Dictionary<string, object>>(
+                    result)["approved"];
+            };
+            Assert(approved(review(259, "overflow")),
+                "A finding on another slide blocked this staged slide.");
+            Assert(approved(review(257, "overflow")),
+                "A native shape whose text fits was called overflowing.");
+            shape["text_bounds"] = new[] { 0f, 0f, 100f, 345f };
+            Assert(!approved(review(257, "overflow")),
+                "Measured native overflow must still block the revision.");
+            Assert(!approved(review(257, "contrast")),
+                "Non-geometry visual findings must still receive review.");
+        }
+
+        private static void RevisionToolDecodesCompleteOperationsArray()
+        {
+            var json = new JavaScriptSerializer();
+            var edit = new Dictionary<string, object>
+            {
+                { "kind", "replace_text" }, { "slide_id", 257 },
+                { "fingerprint", "live-slide" }, { "shape_id", 5 },
+                { "before", "Original" }, { "text", "Updated" }
+            };
+            var definition = PresentationToolCatalog.RevisionDefinitions()
+                .Single(t => t.function.name ==
+                    PresentationToolCatalog.ReviseSlides);
+            Func<string, ChatToolCall> callWith = operations =>
+                new ChatToolCall
+                {
+                    id = "nested-operations",
+                    function = new ChatToolCallFunction
+                    {
+                        name = PresentationToolCatalog.ReviseSlides,
+                        arguments = json.Serialize(new
+                        {
+                            presentation_id = "live-deck", operations
+                        })
+                    }
+                };
+            var call = callWith(json.Serialize(new[] { edit }));
+            Assert(ToolContractValidator.Validate(call, definition).Count == 0,
+                "A complete encoded revision array failed the public schema.");
+            var decoded = json.Deserialize<Dictionary<string, object>>(
+                call.function.arguments);
+            Assert(decoded["operations"] is System.Collections.IList &&
+                ((System.Collections.IList)decoded["operations"]).Count == 1,
+                "Validated revision operations were not forwarded as an array.");
+            var incomplete = callWith("[{\"kind\":\"replace_text\"");
+            Assert(ToolContractValidator.Validate(incomplete, definition)
+                    .Count != 0,
+                "An incomplete encoded revision array was accepted.");
+        }
+
+        private static void PilotCopyTextEvidenceIsBounded()
+        {
+            var policy = typeof(DocumentDraftHost).GetMethod(
+                "ValidatePilotCopyTextEvidence",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert(policy != null,
+                "The copy pilot must verify new text before skipping a review of the old deck.");
+            var edit = new Dictionary<string, object>
+            {
+                { "kind", "replace_text" },
+                { "before", "Quarter 1 revenue: 12,480 USD" },
+                { "text", "Quarter 1 Revenue: 12,480 USD" }
+            };
+            var note = new Dictionary<string, object>
+            {
+                { "kind", "notes_append" },
+                { "notes", "Source table, Quarter 1." }
+            };
+            var operations = new[] { edit, note };
+            Action validate = () => policy.Invoke(null,
+                new object[] { operations,
+                    "Source table, Quarter 1. Revenue 12,480 USD." });
+            validate();
+            edit["text"] = "Quarter 1 Revenue: 12,840 USD";
+            try { validate(); throw new Exception("Changed numeric claim passed."); }
+            catch (TargetInvocationException error)
+            {
+                Assert(error.InnerException?.Message.StartsWith(
+                        "PILOT_COPY_TEXT_NUMBER_CHANGED") == true,
+                    "An altered numeric claim must be rejected before native writing.");
+            }
+            edit["text"] = "Quarter 1 Revenue: 12,480 USD";
+            note["notes"] = "Unverified completion claim.";
+            try { validate(); throw new Exception("Uncited note passed."); }
+            catch (TargetInvocationException error)
+            {
+                Assert(error.InnerException?.Message.StartsWith(
+                        "PILOT_COPY_NOTES_UNVERIFIED") == true,
+                    "A new unsupported note must be rejected before native writing.");
+            }
+            var slidePolicy = typeof(DocumentDraftHost).GetMethod(
+                "ValidateRevisionSlideEvidence",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert(slidePolicy != null,
+                "The pilot must check cited replacement slide content before consuming permission.");
+            var citation = "Sales Q1 100 units.";
+            var slide = new Dictionary<string, object>
+            {
+                { "title", "Sales" },
+                { "subtitle", "Sales Q1 100 units" },
+                { "sources", "Supplied report" },
+                { "source_spans", new[] { "verified-span" } },
+                { "evidence", "unverified model text" }
+            };
+            var replacement = new Dictionary<string, object>
+            {
+                { "kind", "replace_slide" }, { "slide", slide }
+            };
+            var resolved = false;
+            Func<IEnumerable<string>, string> resolver = ids =>
+            {
+                Assert(ids.SequenceEqual(new[] { "verified-span" }),
+                    "The pilot changed source span identity.");
+                resolved = true;
+                return citation;
+            };
+            Action validateSlide = () => slidePolicy.Invoke(null,
+                new object[] { new[] { replacement }, citation, resolver,
+                    new System.Web.Script.Serialization.JavaScriptSerializer() });
+            validateSlide();
+            Assert(resolved && Convert.ToString(slide["evidence"]) == citation,
+                "The pilot did not replace model evidence with exact host-resolved text.");
+            slide["subtitle"] = "Sales Q1 101 units";
+            try { validateSlide(); throw new Exception("Unsupported replacement slide passed."); }
+            catch (TargetInvocationException error)
+            {
+                Assert(error.InnerException?.Message.StartsWith(
+                        "SLIDE_NUMBERS_UNVERIFIED") == true,
+                    "An unsupported replacement number must fail in pilot preflight.");
+            }
+        }
+
+        private static void PilotCopyPreflightRejectionPermitsRetry()
+        {
+            var root = Path.Combine(Path.GetTempPath(),
+                "scribble-pilot-preflight-" + Guid.NewGuid().ToString("N"));
+            var sourcePath = Path.Combine(root, "source.pptx");
+            var pilotWasEnabled = AnalysisDocumentPilot.Enabled;
+            try
+            {
+                Directory.CreateDirectory(root);
+                File.WriteAllText(sourcePath, "unchanged saved source");
+                AnalysisDocumentPilot.SetEnabled(true);
+                dynamic source = new System.Dynamic.ExpandoObject();
+                source.Tags = new Dictionary<string, string> {
+                    { "ScribblePresentationId", "" } };
+                source.Path = root;
+                source.FullName = sourcePath;
+                dynamic app = new System.Dynamic.ExpandoObject();
+                app.ActivePresentation = source;
+                var objective = "Create a repaired draft of the source deck into exactly 6 output slides; preserve the original slides.";
+                var request = MakeRequest(new List<ChatTurn>());
+                request.tools = new List<ChatToolDefinition> {
+                    PresentationToolCatalog.RevisionDefinitions().Single(tool =>
+                        tool.function.name == PresentationToolCatalog.ReviseSlides) };
+                var task = new TaskContextManager(request, "powerpoint",
+                    objective, new TaskCheckpointStore(root));
+                Assert(task.State.RequiredPresentationSlides == 6 &&
+                    AnalysisDocumentPilot.Enabled,
+                    "The regression must enter the workbook-backed pilot copy route.");
+                using (var client = new OpenAiCompatibleClient())
+                using (var host = new DocumentDraftHost("powerpoint", (object)app))
+                {
+                    host.BindTaskAsync(task, CancellationToken.None)
+                        .GetAwaiter().GetResult();
+                    var call = MailboxCall("stale",
+                        PresentationToolCatalog.ReviseSlides,
+                        "{\"presentation_id\":\"stale\",\"operations\":[]}");
+                    var permission = new OneShotDraftAuthorization(true);
+                    var settings = EndpointSettings("http://127.0.0.1:1");
+                    settings.Model = "qwen3-vl";
+                    task.BeforeTool(call, true);
+                    var result = host.ExecuteAsync(call, permission, true,
+                        objective, client, settings, CancellationToken.None,
+                        null).GetAwaiter().GetResult();
+                    task.AfterTool(call, result);
+                    Assert(result.Outcome.ErrorCode ==
+                            "PILOT_COPY_SOURCE_CHANGED" &&
+                        result.Outcome.PermissionConsumed == false &&
+                        !task.State.HostData.ContainsKey("pilot_copy_status") &&
+                        permission.RemainingCalls == 1,
+                        "A saved-source preflight rejection must report no native write or consumed permission: " +
+                        result.Content);
+                    var corrected = MailboxCall("corrected",
+                        PresentationToolCatalog.ReviseSlides,
+                        "{\"presentation_id\":\"corrected\",\"operations\":[]}");
+                    task.BeforeTool(corrected, true);
+                    Assert(task.State.Writes.Last().Status == "pending",
+                        "A corrected proposal was quarantined after safe preflight rejection.");
+                }
+            }
+            finally
+            {
+                AnalysisDocumentPilot.SetEnabled(pilotWasEnabled);
+                if (Directory.Exists(root)) Directory.Delete(root, true);
+            }
+        }
+
+        private static void MeasuredPilotReplacementKeepsOrdinaryConsent()
+        {
+            var repair = "Repair the deck and fix measured overflow while preserving the original slides.";
+            Assert(!DocumentDraftHost.AllowsSlideReplacement(repair, false),
+                "An ordinary repair request cannot authorize slide replacement without redesign consent.");
+            Assert(DocumentDraftHost.AllowsSlideReplacement(repair, true),
+                "The host-validated measured pilot replacement was rejected by ordinary redesign consent.");
+            Assert(DocumentDraftHost.AllowsSlideReplacement(
+                    "Redesign the slide layout", false),
+                "Explicit redesign consent must still authorize an ordinary slide replacement.");
+        }
+
+        private static void ReorderedSourceSpansRemainGrounded()
+        {
+            const string earlier = "March total: 82 EUR";
+            const string later = "April total: 85 EUR";
+            var source = earlier + "\nOther source rows\n" + later;
+            var resolved = later + "\n" + earlier;
+            var json = new JavaScriptSerializer();
+            var slide = new Dictionary<string, object>
+            {
+                { "layout", "cards" }, { "purpose", "explanatory" },
+                { "title", "April 85 EUR versus March 82 EUR" },
+                { "sources", "Workbook source" },
+                { "evidence", resolved }
+            };
+            var rejected = false;
+            try { SamsungPresentationReview.ValidateEvidence(
+                json.Serialize(slide), source); }
+            catch (InvalidOperationException error)
+            { rejected = error.Message.StartsWith("SLIDE_EVIDENCE_UNVERIFIED"); }
+            Assert(rejected,
+                "Untrusted reordered text must not bypass the exact source check.");
+            SamsungPresentationReview.ValidateEvidence(json.Serialize(slide),
+                source, resolved);
+            rejected = false;
+            try { SamsungPresentationReview.ValidateEvidence(
+                json.Serialize(slide), source, earlier); }
+            catch (InvalidOperationException error)
+            { rejected = error.Message.StartsWith("SLIDE_SOURCE_REF_INVALID"); }
+            Assert(rejected,
+                "The displayed evidence must match the host-resolved source spans.");
+            slide["title"] = "April 999 EUR versus March 82 EUR";
+            rejected = false;
+            try { SamsungPresentationReview.ValidateEvidence(
+                json.Serialize(slide), source, resolved); }
+            catch (InvalidOperationException error)
+            { rejected = error.Message.StartsWith("SLIDE_NUMBERS_UNVERIFIED"); }
+            Assert(rejected,
+                "Trusted source spans cannot authorize an invented displayed value.");
+        }
+
+        private static void CompoundClaimLabelsBindCitedComponents()
+        {
+            const string passage = "Period 2026-04; Group East; Rows 6; SalesUSD 19219 USD; ExpenseUSD 8082 USD";
+            var claim = new Dictionary<string, object>
+            {
+                { "text", "April sales 19,219 USD and expense 8,082 USD" },
+                { "label", "April Sales/Expense USD" },
+                { "unit", "USD" }, { "period", "2026-04" },
+                { "evidence", passage }
+            };
+            var slide = new Dictionary<string, object> {
+                { "claims", new object[] { claim } } };
+            SamsungEvidence.ValidateClaims(slide, passage);
+            foreach (var invalidLabel in new[] {
+                "March Sales/Expense USD", "April Sales/Profit USD" })
+            {
+                claim["label"] = invalidLabel;
+                var rejected = false;
+                try { SamsungEvidence.ValidateClaims(slide, passage); }
+                catch (InvalidOperationException error)
+                { rejected = error.Message.StartsWith("SLIDE_CLAIM_ASSOCIATION"); }
+                Assert(rejected,
+                    "A compound label introduced an uncited month or metric: " +
+                    invalidLabel);
+            }
+        }
+
+        private static void VerifiedSourceLocatorsAreNotQuantities()
+        {
+            var json = new JavaScriptSerializer();
+            const string source = "[Sheet 2]\nRevenue 82 EUR";
+            var slide = new Dictionary<string, object>
+            {
+                { "layout", "cards" }, { "purpose", "explanatory" },
+                { "title", "Revenue 82 EUR" },
+                { "sources", "Workbook" },
+                { "evidence", "Revenue 82 EUR" },
+                { "footnote", "Read from Sheet 2" }
+            };
+            SamsungPresentationReview.ValidateEvidence(
+                json.Serialize(slide), source);
+            foreach (var unsupported in new[] {
+                "Read from Sheet 3", "Read from Sheet 2; add 99 EUR" })
+            {
+                slide["footnote"] = unsupported;
+                var rejected = false;
+                try { SamsungPresentationReview.ValidateEvidence(
+                    json.Serialize(slide), source); }
+                catch (InvalidOperationException error)
+                { rejected = error.Message.StartsWith("SLIDE_NUMBERS_UNVERIFIED"); }
+                Assert(rejected,
+                    "An uncited locator or quantity escaped numeric review: " +
+                    unsupported);
+            }
+        }
+
+        private static void HostSummaryOperandsBindOneField()
+        {
+            const string source = "Period 2025-03; Group West; Rows 8; SalesUSD 120 USD; ExpenseUSD 30 USD";
+            var sales = new Dictionary<string, object>
+            {
+                { "value", 120m }, { "label", "West Sales USD, 2025-03" },
+                { "unit", "USD" }, { "period", "2025-03" },
+                { "evidence", source }
+            };
+            var expense = new Dictionary<string, object>
+            {
+                { "value", 30m }, { "label", "Expense USD, 2025-03" },
+                { "unit", "USD" }, { "period", "2025-03" },
+                { "evidence", source }
+            };
+            var slide = new Dictionary<string, object>
+            {
+                { "calculations", new object[] { new Dictionary<string, object>
+                    {
+                        { "label", "Gross margin" },
+                        { "operation", "margin_percent" },
+                        { "operands", new object[] { sales, expense } },
+                        { "result", 75m }, { "unit", "%" },
+                        { "decimals", 2 }
+                    } } }
+            };
+            Assert(SamsungEvidence.ValidateCalculations(slide, source)
+                    .Single() == "75",
+                "Host summary row did not bind an otherwise exact typed calculation.");
+            foreach (var change in new[] {
+                new { Key = "label", Value = (object)"Profit USD, 2025-03" },
+                new { Key = "label", Value = (object)"East Sales USD, 2025-03" },
+                new { Key = "period", Value = (object)"2025-04" },
+                new { Key = "unit", Value = (object)"EUR" },
+                new { Key = "value", Value = (object)30m } })
+            {
+                var original = sales[change.Key];
+                sales[change.Key] = change.Value;
+                var rejected = false;
+                try { SamsungEvidence.ValidateCalculations(slide, source)
+                    .ToArray(); }
+                catch (InvalidOperationException error)
+                { rejected = error.Message.StartsWith("SLIDE_OPERAND_ASSOCIATION"); }
+                Assert(rejected,
+                    "A mismatched operand field escaped the host row binding: " +
+                    change.Key);
+                sales[change.Key] = original;
+            }
+        }
+
+        private static void RepairRouteExcludesCorpusLabels()
+        {
+            var directory = new DirectoryInfo(
+                AppDomain.CurrentDomain.BaseDirectory);
+            while (directory != null &&
+                !File.Exists(Path.Combine(directory.FullName,
+                    "Scribble.sln")))
+                directory = directory.Parent;
+            Assert(directory != null,
+                "The source root is required for the repair-route scan.");
+            var files = new[] { "Office", "Chat" }.SelectMany(folder =>
+                Directory.GetFiles(Path.Combine(directory.FullName,
+                    "src", "Scribble", folder), "*.cs",
+                    SearchOption.AllDirectories));
+            foreach (var file in files)
+            {
+                var content = File.ReadAllText(file);
+                Assert(!System.Text.RegularExpressions.Regex.IsMatch(
+                        content,
+                        @"\b(?:PP|XA|WB|PPT)\d{2}\b|Atlas Components|Meridian Retail|Cedar Logistics|Orion Services",
+                        System.Text.RegularExpressions.RegexOptions
+                            .IgnoreCase),
+                    "A corpus identifier or company appears in production code: " +
+                    file);
+                if (!new[] { "PresentationDraftCopy.cs",
+                        "DocumentDraftHost.PilotCopy.cs",
+                        "WorkbookMonthlyChartFacts.cs",
+                        "DocumentChatRequestFactory.cs" }
+                    .Contains(Path.GetFileName(file),
+                        StringComparer.OrdinalIgnoreCase))
+                    continue;
+                Assert(!content.Contains(" | sales | ") &&
+                    !content.Contains("Revenue EUR / Cost EUR (EUR)") &&
+                    !content.Contains("Cost EUR"),
+                    "A fixed corpus label appears in the repair route: " +
+                    file);
+            }
+        }
+
         private static string PilotCopyPolicyError(
+            params Dictionary<string, object>[] operations)
+        {
+            return PilotCopyPolicyErrorFor(4, 2, 100, operations);
+        }
+
+        private static string PilotCopyPolicyErrorFor(
+            int replacementSlideId, int chartSlideId, int chartShapeId,
             params Dictionary<string, object>[] operations)
         {
             var policy = typeof(DocumentDraftHost).GetMethod(
                 "ValidatePilotCopyOperations",
                 BindingFlags.Static | BindingFlags.NonPublic);
             Assert(policy != null,
-                "The PP01 pilot operation policy is missing.");
+                "The workbook-backed copy operation policy is missing.");
+            var bindingType = typeof(DocumentDraftHost).Assembly.GetType(
+                "Scribble.Office.PresentationDraftCopy+MonthlyChartBinding",
+                true);
+            var chart = Activator.CreateInstance(bindingType, true);
+            bindingType.GetField("SourceSlideId").SetValue(chart,
+                chartSlideId);
+            bindingType.GetField("SourceShapeId").SetValue(chart,
+                chartShapeId);
+            var charts = Array.CreateInstance(bindingType, 1);
+            charts.SetValue(chart, 0);
             try
             {
                 policy.Invoke(null, new object[] { operations,
-                    4, 2, 100 });
+                    new[] { replacementSlideId }, charts });
                 return string.Empty;
             }
             catch (TargetInvocationException error)
@@ -7194,8 +7839,8 @@ namespace GuardrailTests
                     Convert.ToString(((ChatCompletionInputMessage)
                         repair.messages[0]).content).Contains(
                             PresentationRevisionAcceptance.Enabled
-                                ? "copies the source into an unsaved draft"
-                                : "lacks a current native acceptance receipt"),
+                                ? "opens a separate unsaved native copy"
+                                : "copy repair is unavailable"),
                     "The workbook-backed PP01 pilot must expose the copy-and-patch route.");
                 if (!repair.tools.Any(tool => tool.function.name ==
                         PresentationToolCatalog.ReviseSlides))
@@ -7212,6 +7857,23 @@ namespace GuardrailTests
                     "Create a repaired draft of the source deck into exactly 6 output slides; preserve the original slides.");
                 Assert(repairTask.State.RequiredPresentationSlides == 6,
                     "The PP01 copy route lost its six-slide task count.");
+                var seven = DocumentChatRequestFactory.Create(
+                    "test-model", "powerpoint", "Presentation: Deck2",
+                    new List<ChatTurn>(),
+                    "Create a repaired draft of the source deck into exactly 7 output slides; preserve the original slides.",
+                    true,
+                    new[] { new ExternalContextDocument("Book",
+                        "Attached workbook", "C:\\pilot\\book.xlsx") });
+                Assert(seven.tools.Any(tool =>
+                        tool.function.name ==
+                            PresentationToolCatalog.ReviseSlides) &&
+                    !seven.tools.Any(tool =>
+                        tool.function.name ==
+                            PresentationToolCatalog.AddDraftSlides) &&
+                    new TaskContextManager(seven, "powerpoint",
+                        "Create a repaired draft of the source deck into exactly 7 output slides; preserve the original slides.")
+                        .State.RequiredPresentationSlides == 7,
+                    "Workbook-backed repair must retain the requested source deck length.");
                 var replacement = new Dictionary<string, object>
                 {
                     { "kind", "replace_slide" },
@@ -7219,7 +7881,7 @@ namespace GuardrailTests
                 };
                 Assert(PilotCopyPolicyError(replacement,
                         replacement).StartsWith(
-                            "ANALYSIS_MULTI_PAGE_REPLACEMENT_UNSUPPORTED") &&
+                            "PILOT_COPY_REPLACEMENT_AMBIGUOUS") &&
                     PilotCopyPolicyError(new Dictionary<string, object>
                     {
                         { "kind", "chart_point" },
@@ -7232,6 +7894,23 @@ namespace GuardrailTests
                     }).StartsWith("ANALYSIS_GEOMETRY_UNSUPPORTED") &&
                     PilotCopyPolicyError(replacement) == string.Empty,
                     "The PP01 pilot must reject unsupported chart, geometry, and multi-page edits before copying.");
+                var laterReplacement =
+                    new Dictionary<string, object>
+                    {
+                        { "kind", "replace_slide" },
+                        { "slide_id", 7 }
+                    };
+                Assert(PilotCopyPolicyErrorFor(7, 5, 44,
+                        laterReplacement) == string.Empty &&
+                    PilotCopyPolicyErrorFor(7, 5, 44,
+                        new Dictionary<string, object>
+                        {
+                            { "kind", "replace_text" },
+                            { "slide_id", 5 },
+                            { "shape_id", 44 }
+                        }).StartsWith(
+                            "ANALYSIS_CHART_REFLOW_UNSUPPORTED"),
+                    "A measured replacement and chart target must bind to their inspected IDs on any slide.");
             }
             finally
             {
@@ -10013,5 +10692,22 @@ namespace GuardrailTests
             DisplayModal = modal;
             DisplayCount++;
         }
+    }
+
+    // Public types keep the cross-assembly dynamic COM shim accessible to
+    // PresentationInspection's runtime binder.
+    public sealed class SettlingSlideCollection
+    {
+        public int Reads { get; private set; }
+        public int Count
+        {
+            get { return ++Reads >= 3 ? 2 : 1; }
+        }
+    }
+
+    public sealed class SettlingPresentation
+    {
+        public SettlingSlideCollection Slides { get; } =
+            new SettlingSlideCollection();
     }
 }

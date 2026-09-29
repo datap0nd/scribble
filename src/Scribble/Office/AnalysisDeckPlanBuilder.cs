@@ -12,7 +12,8 @@ namespace Scribble.Office
     {
         public static AnalysisDocumentPlan Build(AnalysisArtifact artifact,
             IDictionary<string, object> choices, int requestedSlides,
-            string objective = null)
+            string objective = null,
+            IEnumerable<string> draftMetricOrder = null)
         {
             AnalysisContract.Serialize(artifact);
             if (artifact.Snapshots.Count != 1 ||
@@ -28,7 +29,7 @@ namespace Scribble.Office
                  fact.ValueType == AnalysisContract.IntegerValue))
                 .ToArray();
             var selection = AnalysisRequestPlan.Resolve(artifact,
-                objective, choices);
+                objective, choices, draftMetricOrder);
             var focus = selection.FocusPeriod;
             var compare = selection.ComparePeriod;
             var metrics = selection.ReportMetrics.Concat(
@@ -49,6 +50,10 @@ namespace Scribble.Office
                 150);
             var headlineFacts = metrics.Take(2).Select(metric => total(metric,
                 focus)).ToArray();
+            var chartFact = total(selection.ChartSeries[0], focus);
+            var chartUnit = !string.IsNullOrEmpty(selection.ChartUnit) ?
+                selection.ChartUnit : !string.IsNullOrEmpty(chartFact.Currency) ?
+                    chartFact.Currency : chartFact.Unit;
             if (headlineFacts.Length == 1)
                 headlineFacts = new[] { headlineFacts[0],
                     total(metrics[0], compare) };
@@ -59,7 +64,9 @@ namespace Scribble.Office
                     Heading = Label(fact.Metric),
                     Points = new List<AnalysisPlanText> {
                         Reference(fact), new AnalysisPlanText {
-                            Text = "Verified period total" } } }).ToList(),
+                            Text = IsKnownSubtotal(artifact, fact) ?
+                                "Known subtotal; source has blanks" :
+                                "Verified period total" } } }).ToList(),
                 Takeaway = Parts("Compare verified periods before drawing a trend conclusion.")
             };
             var comparison = new AnalysisPlanSlide {
@@ -75,11 +82,9 @@ namespace Scribble.Office
                         new AnalysisPlanCell { FactId = total(metric,
                             focus).FactId } } }).ToList(),
                 Chart = new AnalysisPlanChart { Type = "column",
-                    Title = "Verified values (" +
-                        (!string.IsNullOrEmpty(total(selection.ChartSeries[0],
-                            focus).Currency) ? total(selection.ChartSeries[0],
-                                focus).Currency : total(selection.ChartSeries[0],
-                                focus).Unit) + ")",
+                    Title = "Verified values" +
+                        (string.IsNullOrEmpty(chartUnit) ? string.Empty :
+                            " (" + chartUnit + ")"),
                     Categories = new List<string> { compare, focus },
                     Series = selection.ChartSeries.Select(metric =>
                         new AnalysisPlanSeries { Name = Label(metric),
@@ -132,7 +137,9 @@ namespace Scribble.Office
                 Title = "Data quality and limits",
                 Subtitle = Parts("Evidence boundary for this draft."),
                 Cards = new List<AnalysisPlanCard> {
-                    new AnalysisPlanCard { Heading = "Verified total",
+                    new AnalysisPlanCard { Heading =
+                        IsKnownSubtotal(artifact, total(metrics[0], focus)) ?
+                            "Known subtotal" : "Verified total",
                         Points = new List<AnalysisPlanText> {
                             Reference(total(metrics[0], focus)) } },
                     new AnalysisPlanCard { Heading = "Source limits",
@@ -189,6 +196,10 @@ namespace Scribble.Office
 
         private static string SourceLimitation(AnalysisArtifact artifact)
         {
+            if (artifact.UnresolvedConflicts.Any(item =>
+                item.StartsWith(AnalysisContract.KnownSubtotalPrefix,
+                    StringComparison.Ordinal)))
+                return "Blank source values were excluded, never set to zero; affected figures are known subtotals.";
             var table = artifact.Snapshots[0].Tables[0];
             var identifier = table.Cells.FirstOrDefault(cell =>
                 cell.Row == 0 && cell.Value != null &&
@@ -201,13 +212,20 @@ namespace Scribble.Office
                     .Select(cell => cell.Value).ToArray();
                 if (values.Length != values.Distinct(
                         StringComparer.Ordinal).Count())
-                    return "Repeated source identifiers remain in the captured rows; totals count each row.";
+                    return "Repeated identical source identifiers were counted once; conflicting repeats are rejected.";
             }
             if (table.Cells.Any(cell => cell.Row > 0 &&
                 cell.Status != AnalysisContract.Verified &&
                 string.IsNullOrEmpty(cell.Formula)))
                 return "Blank source cells remain unresolved and are not imputed.";
             return "Only the captured source range is covered; later edits require a new analysis.";
+        }
+
+        private static bool IsKnownSubtotal(AnalysisArtifact artifact,
+            VerifiedFact fact)
+        {
+            return AnalysisContract.IsKnownSubtotal(artifact, fact.Metric,
+                fact.Period);
         }
     }
 }

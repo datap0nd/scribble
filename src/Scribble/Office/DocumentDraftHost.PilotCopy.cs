@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Scribble.Chat;
@@ -20,8 +21,7 @@ namespace Scribble.Office
                 AnalysisDocumentPilot.Enabled &&
                 ShouldDraftRepairedDeck(_hostKind,
                     string.Join("\n", _taskContext.State.OriginalDecisions),
-                    _taskContext.State.RequiredPresentationSlides) &&
-                _taskContext.State.RequiredPresentationSlides == 6;
+                    _taskContext.State.RequiredPresentationSlides);
         }
 
         private async Task<MailboxToolResult> ExecutePilotCopyRevisionAsync(
@@ -33,6 +33,7 @@ namespace Scribble.Office
             PresentationDraftCopy copy = null;
             var stage = "preflight";
             var statusKey = "pilot_copy_status";
+            var permissionConsumed = false;
             try
             {
                 if (!PresentationRevisionAcceptance.Enabled || !exclusive ||
@@ -54,25 +55,16 @@ namespace Scribble.Office
                 if (SamsungAuthoringPolicy.Text(args,
                         "presentation_id") != PresentationInspection
                             .IdentityFor(sourceDeck) ||
-                    (int)source.Slides.Count != 6 ||
+                    (int)source.Slides.Count !=
+                        _taskContext.State.RequiredPresentationSlides ||
                     string.IsNullOrEmpty(Convert.ToString(source.Path)) ||
                     (int)source.Saved == 0)
                     throw new InvalidOperationException(
-                        "PILOT_COPY_SOURCE_CHANGED: Inspect the saved six-slide source again.");
+                        "PILOT_COPY_SOURCE_CHANGED: Inspect the saved source deck again.");
                 var operations = SamsungAuthoringPolicy.Array(args,
                     "operations");
                 var mapped = operations.Select(
                     SamsungAuthoringPolicy.ReadMap).ToArray();
-                dynamic chartSlide = source.Slides[2];
-                dynamic chartShape = chartSlide.Shapes[
-                    (int)chartSlide.Shapes.Count];
-                if ((int)chartShape.HasChart == 0)
-                    throw new InvalidOperationException(
-                        "PILOT_COPY_CHART_SOURCE_UNSUPPORTED");
-                var chartShapeId = (int)chartShape.Id;
-                ValidatePilotCopyOperations(mapped,
-                    (int)source.Slides[4].SlideID,
-                    (int)chartSlide.SlideID, chartShapeId);
                 var contract = PresentationToolCatalog
                     .RevisionDefinitions().Single(tool =>
                         tool.function.name ==
@@ -101,10 +93,25 @@ namespace Scribble.Office
                         StringComparison.OrdinalIgnoreCase))
                     throw new InvalidOperationException(
                         "PILOT_COPY_WORKBOOK_CHANGED: Reattach one saved workbook before repair.");
+                var trustedRequest = string.Join("\n",
+                    _taskContext.State.OriginalDecisions);
+                var chartBindings = PresentationDraftCopy
+                    .BindMonthlyCharts(sourceDeck,
+                        workbooks[0].SourcePath, trustedRequest, token);
+                var measuredReplacements = PresentationDraftCopy
+                    .MeasuredReplacementSlides(sourceDeck);
+                ValidatePilotCopyOperations(mapped,
+                    measuredReplacements, chartBindings);
+                var sourceEvidence = SamsungPresentationReview.SourceCorpus(
+                    _taskContext, trustedRequest);
+                ValidatePilotCopyTextEvidence(mapped, sourceEvidence);
+                ValidateRevisionSlideEvidence(mapped, sourceEvidence,
+                    ids => _taskContext.Sources.Resolve(ids), _serializer);
                 token.ThrowIfCancellationRequested();
                 if (!authorization.TryConsume())
                     throw new InvalidOperationException(
                         "PILOT_COPY_PERMISSION_UNAVAILABLE");
+                permissionConsumed = true;
                 _taskContext.State.HostData[statusKey] = "creating";
                 _taskContext.Checkpoint();
                 stage = "copy";
@@ -115,7 +122,8 @@ namespace Scribble.Office
                 _taskContext.State.HostData[statusKey] = "copied";
                 _taskContext.Checkpoint();
                 var bound = copy.BindOperations(operations);
-                var nativeStyle = copy.Pp01NativeStyleOperations();
+                var nativeStyle = copy.MeasuredNativeStyleOperations(
+                    measuredReplacements);
                 var combined = bound.Concat(nativeStyle).ToArray();
                 if (combined.Length > 24)
                     throw new InvalidOperationException(
@@ -141,10 +149,10 @@ namespace Scribble.Office
                 var internalAuthorization =
                     new OneShotDraftAuthorization(true, false);
                 var patchPrompt = prompt +
-                    "\nPilot patch stage: review content edits and the single fourth-page replacement. The host applies the bounded native font/table styling and recreates the workbook-backed chart after this stage. Do not require model-authored style or chart operations in this batch.";
+                    "\nCopy repair stage: review the requested content edits and measured overflow replacements. The host applies bounded native font/table styling and recreates workbook-backed monthly charts after this stage. Do not require model-authored style or chart operations in this batch.";
                 var patch = await ExecuteRevisionAsync(draftCall,
                     internalAuthorization, true, patchPrompt, client, settings,
-                    token, progress, true);
+                    token, progress, true, nativeStyle.Length);
                 var patchResult = _serializer.Deserialize<
                     Dictionary<string, object>>(patch.Content);
                 object ok;
@@ -170,22 +178,22 @@ namespace Scribble.Office
                 stage = "chart";
                 _taskContext.State.HostData[statusKey] = "charting";
                 _taskContext.Checkpoint();
-                var chartFacts = copy.RecreateSalesChartFromWorkbook(
-                    (int)chartSlide.SlideID, chartShapeId,
-                    workbooks[0].SourcePath, 66f, 158.25f, 825f,
-                    278.25f);
-                if (chartFacts.Categories.Length != 6 ||
-                    !string.Equals(chartFacts.SourceSha256,
-                        workbooks[0].SourceFingerprint,
-                        StringComparison.OrdinalIgnoreCase))
-                    throw new InvalidOperationException(
-                        "PILOT_COPY_CHART_FACTS_INVALID");
+                foreach (var binding in chartBindings)
+                {
+                    if (!string.Equals(binding.Facts.SourceSha256,
+                            workbooks[0].SourceFingerprint,
+                            StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidOperationException(
+                            "PILOT_COPY_CHART_FACTS_INVALID");
+                    copy.RecreateBoundChart(binding);
+                }
                 copy.VerifySource();
                 copy.VerifyDraft();
                 _taskContext.State.HostData["pilot_copy_snapshot"] =
                     copy.Snapshot();
                 _taskContext.State.HostData[statusKey] = "complete";
-                for (var index = 1; index <= 6; index++)
+                for (var index = 1; index <=
+                    (int)source.Slides.Count; index++)
                 {
                     var pageId = "ppt:" + index;
                     if (!_taskContext.State.ExpectedSourceIds
@@ -206,10 +214,10 @@ namespace Scribble.Office
                 _taskContext.State.PresentationReviewReceipt =
                     SamsungAuthoringPolicy.CacheKey(settings.Model,
                         settings.BaseUrl, patchReviewReceipt,
-                        chartFacts.SourceSha256);
+                        workbooks[0].SourceFingerprint);
                 _taskContext.State.HostData[
                     "pilot_copy_review_scope"] =
-                    "model-reviewed chartless content; host-verified workbook chart; human visual approval pending";
+                        "model-reviewed chartless content; host-verified workbook chart; human visual approval pending";
                 _taskContext.Checkpoint();
                 Scribble.Testing.TestLab.RegisterOutput(copy.Draft,
                     "pptx");
@@ -217,19 +225,22 @@ namespace Scribble.Office
                 return new MailboxToolResult(call.id,
                     _serializer.Serialize(new
                     {
-                        ok = true, saved = false, copied_slides = 6,
+                        ok = true, saved = false,
+                        copied_slides = (int)source.Slides.Count,
                         revised_slides = revision.Items.Count,
                         native_style_changes = nativeStyle.Length,
-                        chart_recreated = true,
+                        charts_recreated = chartBindings.Length,
                         visual_approval_required = true,
                         revert_available = false
-                    }), "Opened a six-slide unsaved repair draft. The source and workbook were preserved; visual approval is still required.");
+                    }), "Opened an unsaved native repair draft. The source and workbook were preserved; visual approval is still required.");
             }
             catch (OperationCanceledException)
             { throw; }
             catch (Exception error)
             {
                 var code = error.Message.Split(':')[0];
+                var needsInspection = permissionConsumed ||
+                    _taskContext.State.HostData.ContainsKey(statusKey);
                 return new MailboxToolResult(call.id,
                     _serializer.Serialize(new
                     {
@@ -239,24 +250,35 @@ namespace Scribble.Office
                         message = error.Message,
                         stage,
                         saved = false,
-                        needs_inspection = _taskContext.State.HostData
-                            .ContainsKey(statusKey)
+                        needs_inspection = needsInspection,
+                        permission_consumed = needsInspection
                     }), error.Message);
             }
         }
 
         private static void ValidatePilotCopyOperations(
-            Dictionary<string, object>[] mapped, int replacementSlideId,
-            int chartSlideId, int chartShapeId)
+            Dictionary<string, object>[] mapped,
+            int[] measuredReplacementIds,
+            PresentationDraftCopy.MonthlyChartBinding[] charts)
         {
             if (mapped == null || mapped.Length == 0 ||
-                mapped.Length > 15)
+                mapped.Length > 24 ||
+                measuredReplacementIds == null || charts == null ||
+                charts.Length == 0)
                 throw new InvalidOperationException(
                     "PILOT_COPY_OPERATIONS_INVALID");
-            if (mapped.Count(operation => SamsungAuthoringPolicy.Text(
-                    operation, "kind") == "replace_slide") > 1)
+            var replacements = mapped.Where(operation =>
+                SamsungAuthoringPolicy.Text(operation,
+                    "kind") == "replace_slide").Select(operation =>
+                Convert.ToInt32(operation["slide_id"])).ToArray();
+            if (replacements.Distinct().Count() !=
+                    replacements.Length)
                 throw new InvalidOperationException(
-                    "ANALYSIS_MULTI_PAGE_REPLACEMENT_UNSUPPORTED");
+                    "PILOT_COPY_REPLACEMENT_AMBIGUOUS");
+            if (replacements.Any(id => charts.Any(chart =>
+                    chart.SourceSlideId == id)))
+                throw new InvalidOperationException(
+                    "PILOT_COPY_CHART_SLIDE_REPLACEMENT_UNSUPPORTED");
             foreach (var operation in mapped)
             {
                 var kind = SamsungAuthoringPolicy.Text(operation,
@@ -275,18 +297,81 @@ namespace Scribble.Office
                         "PILOT_COPY_OPERATION_UNSUPPORTED");
                 object target;
                 if (operation.TryGetValue("shape_id", out target) &&
-                    Convert.ToInt32(target) == chartShapeId &&
-                    Convert.ToInt32(operation["slide_id"]) ==
-                        chartSlideId)
+                    charts.Any(chart =>
+                        Convert.ToInt32(operation["slide_id"]) ==
+                            chart.SourceSlideId &&
+                        Convert.ToInt32(target) ==
+                            chart.SourceShapeId))
                     throw new InvalidOperationException(
-                        "ANALYSIS_CHART_REFLOW_UNSUPPORTED: The pilot recreates the chart from the bound workbook after patching.");
+                        "ANALYSIS_CHART_REFLOW_UNSUPPORTED: The host recreates monthly charts from the bound workbook after patching.");
             }
-            if (mapped.Count(operation => SamsungAuthoringPolicy.Text(
-                    operation, "kind") == "replace_slide" &&
-                Convert.ToInt32(operation["slide_id"]) ==
-                    replacementSlideId) != 1)
+            if (!replacements.OrderBy(id => id).SequenceEqual(
+                    measuredReplacementIds.OrderBy(id => id)))
                 throw new InvalidOperationException(
-                    "PILOT_COPY_LAYOUT_SCOPE_REQUIRED: Recompose the overflowing fourth page once.");
+                    "PILOT_COPY_LAYOUT_SCOPE_REQUIRED: Replace exactly the source slides with measured overflow: " +
+                    string.Join(", ", measuredReplacementIds));
+        }
+
+        internal static void ValidatePilotCopyTextEvidence(
+            Dictionary<string, object>[] operations, string source)
+        {
+            if (operations == null)
+                throw new InvalidOperationException("PILOT_COPY_OPERATIONS_INVALID");
+            foreach (var operation in operations)
+            {
+                var kind = SamsungAuthoringPolicy.Text(operation, "kind");
+                if (kind == "replace_text")
+                {
+                    var before = SamsungAuthoringPolicy.Text(operation,
+                        "before");
+                    var after = SamsungAuthoringPolicy.Text(operation,
+                        "text");
+                    var oldNumbers = Regex.Matches(before,
+                        @"\d[\d,.]*%?")
+                        .Cast<Match>().Select(match => match.Value);
+                    var newNumbers = Regex.Matches(after,
+                        @"\d[\d,.]*%?")
+                        .Cast<Match>().Select(match => match.Value);
+                    if (!oldNumbers.SequenceEqual(newNumbers))
+                        throw new InvalidOperationException(
+                            "PILOT_COPY_TEXT_NUMBER_CHANGED: Use a cited replacement slide for changed numeric claims.");
+                }
+                else if (kind == "notes_append")
+                {
+                    var notes = SamsungAuthoringPolicy.Text(operation,
+                        "notes").Trim();
+                    if (notes.Length > 0 &&
+                        (source ?? "").IndexOf(notes,
+                            StringComparison.OrdinalIgnoreCase) < 0)
+                        throw new InvalidOperationException(
+                            "PILOT_COPY_NOTES_UNVERIFIED");
+                }
+            }
+        }
+
+        internal static void ValidateRevisionSlideEvidence(
+            Dictionary<string, object>[] operations, string source,
+            Func<IEnumerable<string>, string> resolve,
+            System.Web.Script.Serialization.JavaScriptSerializer serializer)
+        {
+            if (operations == null || resolve == null || serializer == null)
+                throw new InvalidOperationException("PILOT_COPY_OPERATIONS_INVALID");
+            foreach (var operation in operations)
+            {
+                object supplied;
+                if (!operation.TryGetValue("slide", out supplied)) continue;
+                var content = SamsungAuthoringPolicy.ReadMap(supplied);
+                var spans = SamsungAuthoringPolicy.Array(content,
+                    "source_spans");
+                string resolvedEvidence = null;
+                if (spans.Length > 0)
+                {
+                    resolvedEvidence = resolve(spans.Select(Convert.ToString));
+                    content["evidence"] = resolvedEvidence;
+                }
+                SamsungPresentationReview.ValidateEvidence(
+                    serializer.Serialize(content), source, resolvedEvidence);
+            }
         }
     }
 }

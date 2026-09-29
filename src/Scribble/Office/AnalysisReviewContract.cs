@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Web.Script.Serialization;
 using Scribble.Chat;
 
@@ -9,7 +10,8 @@ namespace Scribble.Office
 {
     // This contract is deliberately separate from the workflow-2 reviewer.
     // It is enabled only for the development analysis/document-plan path.
-    // A model may challenge a binding, never author a replacement fact.
+    // The host owns factual and geometric blockers; model observations are
+    // retained in the trace but cannot turn into a production repair route.
     public sealed class AnalysisReviewPage
     {
         public string LogicalSlideId { get; set; }
@@ -225,21 +227,7 @@ namespace Scribble.Office
         public static AnalysisReviewDecision Parse(string json,
             AnalysisReviewContext context)
         {
-            if (context == null) throw new ArgumentNullException(nameof(context));
-            Dictionary<string, object> map;
-            try { map = new JavaScriptSerializer { MaxJsonLength = 1000000 }
-                .Deserialize<Dictionary<string, object>>(json); }
-            catch (Exception error) when (error is ArgumentException ||
-                error is InvalidOperationException)
-            { throw new InvalidOperationException("REVIEW_JSON_INVALID", error); }
-            if (map == null || !Keys(map, "contract_version", "context_id", "approved", "findings") ||
-                !(map["contract_version"] is int) || (int)map["contract_version"] != Version ||
-                !(map["context_id"] is string) ||
-                !(map["approved"] is bool) ||
-                !(map["findings"] is IEnumerable) || map["findings"] is string)
-                throw new InvalidOperationException("REVIEW_SCHEMA_INVALID");
-            if ((string)map["context_id"] != context.ContextId)
-                throw new InvalidOperationException("REVIEW_CONTEXT_CHANGED");
+            var map = ReadEnvelope(json, context);
             var decision = new AnalysisReviewDecision { ContractVersion = Version,
                 ContextId = context.ContextId, Approved = (bool)map["approved"] };
             foreach (var raw in (IEnumerable)map["findings"])
@@ -299,6 +287,71 @@ namespace Scribble.Office
                 finding.Severity == "blocker"))
                 throw new InvalidOperationException("REVIEW_VERDICT_CONTRADICTORY");
             return decision;
+        }
+
+        // Completion trusts the host's measurements, not the model's factual
+        // guesses or proposed repair route. The envelope still binds the
+        // response to the exact rendered/native state in the review request.
+        public static AnalysisReviewDecision ParseMeasuredCompletion(string json,
+            AnalysisReviewContext context)
+        {
+            ReadEnvelope(json, context);
+            var decision = new AnalysisReviewDecision
+            {
+                ContractVersion = Version, ContextId = context.ContextId,
+                Approved = context.Measurements.Count == 0
+            };
+            foreach (var measurement in context.Measurements)
+            {
+                string[] route;
+                if (!Routes.TryGetValue(measurement.Code, out route) ||
+                    route[0] != "renderer")
+                    throw new InvalidOperationException("REVIEW_MEASUREMENT_INVALID");
+                decision.Findings.Add(new AnalysisReviewFinding
+                {
+                    Code = measurement.Code, Owner = "renderer",
+                    LogicalSlideId = measurement.LogicalSlideId,
+                    NativeSlideId = measurement.NativeSlideId,
+                    TargetId = measurement.TargetId, FactId = string.Empty,
+                    MeasurementId = measurement.MeasurementId,
+                    Severity = "blocker", Action = route[1],
+                    Evidence = measurement.Observed + "; expected " +
+                        measurement.Expected
+                });
+            }
+            return decision;
+        }
+
+        private static Dictionary<string, object> ReadEnvelope(string json,
+            AnalysisReviewContext context)
+        {
+            if (context == null) throw new ArgumentNullException(nameof(context));
+            Dictionary<string, object> map;
+            var payload = (json ?? string.Empty).Trim();
+            // Some providers explain their inspection before returning the
+            // one machine-readable verdict. Ignore that prose only when it
+            // encloses exactly one fenced JSON block; the strict envelope,
+            // context fingerprint and finding routes still validate below.
+            var fences = Regex.Matches(payload,
+                @"```(?:json)?\r?\n(?<body>[\s\S]*?)\r?\n```",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (fences.Count == 1 &&
+                Regex.Matches(payload, @"```").Count == 2)
+                payload = fences[0].Groups["body"].Value;
+            try { map = new JavaScriptSerializer { MaxJsonLength = 1000000 }
+                .Deserialize<Dictionary<string, object>>(payload); }
+            catch (Exception error) when (error is ArgumentException ||
+                error is InvalidOperationException)
+            { throw new InvalidOperationException("REVIEW_JSON_INVALID", error); }
+            if (map == null || !Keys(map, "contract_version", "context_id", "approved", "findings") ||
+                !(map["contract_version"] is int) || (int)map["contract_version"] != Version ||
+                !(map["context_id"] is string) ||
+                !(map["approved"] is bool) ||
+                !(map["findings"] is IEnumerable) || map["findings"] is string)
+                throw new InvalidOperationException("REVIEW_SCHEMA_INVALID");
+            if ((string)map["context_id"] != context.ContextId)
+                throw new InvalidOperationException("REVIEW_CONTEXT_CHANGED");
+            return map;
         }
 
         private static void Validate(AnalysisReviewFinding finding,

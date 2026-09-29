@@ -75,6 +75,16 @@ namespace Scribble.Office
             var groupIndexes = groupBy.Select(name => HeaderIndex(headers, name)).ToArray();
             var sumIndexes = sumColumns.Select(name => HeaderIndex(headers, name)).ToArray();
             var filterIndex = string.IsNullOrWhiteSpace(filterColumn) ? -1 : HeaderIndex(headers, filterColumn);
+            var identityColumns = Enumerable.Range(0, headers.Length).Where(
+                index => string.Equals(headers[index], "RowID",
+                    StringComparison.Ordinal)).ToArray();
+            if (identityColumns.Length > 1)
+                throw new InvalidOperationException(
+                    "More than one RowID header exists.");
+            var identityColumn = identityColumns.Length == 1 ?
+                identityColumns[0] : -1;
+            var firstRows = new Dictionary<string, IReadOnlyList<string>>(
+                StringComparer.Ordinal);
             var wanted = (filterEquals ?? "").Trim();
 
             var order = new List<string>();
@@ -88,6 +98,23 @@ namespace Scribble.Office
             {
                 var cells = table[row];
                 if (cells == null || cells.All(string.IsNullOrWhiteSpace)) continue;
+                if (identityColumn >= 0)
+                {
+                    var identity = Cell(cells, identityColumn);
+                    if (identity.Length == 0)
+                        throw new InvalidOperationException(
+                            "A source RowID is blank; grouped totals cannot establish row identity.");
+                    IReadOnlyList<string> original;
+                    if (firstRows.TryGetValue(identity, out original))
+                    {
+                        if (Enumerable.Range(0, headers.Length).Any(index =>
+                            Cell(original, index) != Cell(cells, index)))
+                            throw new InvalidOperationException(
+                                "A source RowID repeats with conflicting values.");
+                        continue;
+                    }
+                    firstRows.Add(identity, cells);
+                }
                 if (filterIndex >= 0 && !string.Equals(Cell(cells, filterIndex), wanted, StringComparison.OrdinalIgnoreCase)) continue;
                 matched++;
                 if (filterIndex >= 0 && filterText == null) filterText = Cell(cells, filterIndex);
@@ -133,6 +160,34 @@ namespace Scribble.Office
 
         private static string Format(decimal value) { return value.ToString("0.############", CultureInfo.InvariantCulture); }
         private static string Cell(IReadOnlyList<string> cells, int index) { return index < cells.Count ? (cells[index] ?? "").Trim() : ""; }
+
+        // An unsaved draft often becomes the active worksheet after a write.
+        // Bind an omitted sheet only when the requested headers identify one
+        // source table unambiguously; never silently pick a different table.
+        public static string ResolveSheet(
+            IReadOnlyDictionary<string, IReadOnlyList<string>> sheetHeaders,
+            IReadOnlyList<string> groupBy,
+            IReadOnlyList<string> sumColumns, string filterColumn)
+        {
+            if (sheetHeaders == null || groupBy == null || sumColumns == null ||
+                groupBy.Count == 0 || sumColumns.Count == 0)
+                throw new InvalidOperationException("Grouped source headers are required.");
+            var required = groupBy.Concat(sumColumns)
+                .Concat(string.IsNullOrWhiteSpace(filterColumn)
+                    ? new string[0] : new[] { filterColumn }).ToArray();
+            var matches = sheetHeaders.Where(sheet => {
+                var headers = (sheet.Value ?? new string[0])
+                    .Select(value => (value ?? "").Trim()).ToArray();
+                return required.All(name => {
+                    try { HeaderIndex(headers, name); return true; }
+                    catch (InvalidOperationException) { return false; }
+                });
+            }).Select(sheet => sheet.Key).ToArray();
+            if (matches.Length == 1) return matches[0];
+            throw new InvalidOperationException(matches.Length == 0
+                ? "No worksheet has every requested grouped-total header. Name a source worksheet explicitly."
+                : "Several worksheets have every requested grouped-total header. Name a source worksheet explicitly.");
+        }
 
         private static int HeaderIndex(string[] headers, string name)
         {

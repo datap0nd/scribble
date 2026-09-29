@@ -319,7 +319,7 @@ namespace Scribble.Testing
                 // or native document-window identity is verified below.
                 try { if (host == "Excel") candidate = Marshal.GetActiveObject("Excel.Application"); }
                 catch (COMException) { }
-                if (candidate != null && ApplicationPid(candidate) == pid && (startup == null || FindDocument(candidate, host, startup, false)) && ProcessAlive(pid, started))
+                if (candidate != null && ExcelRotCandidateMatches(candidate, pid, started, startup))
                 { var result = candidate; candidate = null; return result; }
             }
             finally { Release(candidate); }
@@ -334,8 +334,7 @@ namespace Scribble.Testing
                 {
                     try { candidate = Marshal.GetActiveObject("PowerPoint.Application"); }
                     catch (COMException) { }
-                    if (candidate != null && (startup == null || FindDocument(candidate, host, startup, false)) &&
-                        PowerPointSingleton(pid, started, executable))
+                    if (candidate != null && PowerPointRotCandidateMatches(candidate, pid, started, executable, startup))
                     { var result = candidate; candidate = null; return result; }
                 }
                 finally { Release(candidate); }
@@ -356,6 +355,37 @@ namespace Scribble.Testing
                 finally { Release(candidate); Release(native); }
             }
             return null;
+        }
+
+        private static bool ExcelRotCandidateMatches(object application, int pid, long started, string startup)
+        {
+            try
+            {
+                return ApplicationPid(application) == pid &&
+                    (startup == null || FindDocument(application, "Excel", startup, false)) &&
+                    ProcessAlive(pid, started);
+            }
+            catch (COMException)
+            {
+                // GetActiveObject can return another, busy Excel instance.
+                // Its refusal must not prevent the exact private window probe.
+                return false;
+            }
+        }
+
+        private static bool PowerPointRotCandidateMatches(object application, int pid, long started, string executable, string startup)
+        {
+            try
+            {
+                return (startup == null || FindDocument(application, "PowerPoint", startup, false)) &&
+                    PowerPointSingleton(pid, started, executable);
+            }
+            catch (COMException)
+            {
+                // A temporarily busy singleton can reject its ROT document
+                // lookup. Keep probing its exact native document window.
+                return false;
+            }
         }
 
         private static bool PowerPointSingleton(int pid, long started, string executable)

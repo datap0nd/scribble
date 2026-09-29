@@ -28,8 +28,8 @@ namespace Scribble.Office
             return true;
         }
 
-        // Models often write the citation line into footnote ("Source: WB01
-        // Ledger") and leave sources empty. Both render in the same visible
+        // Models often write a source citation into footnote and leave
+        // sources empty. Both render in the same visible
         // footer and reach the notes, so a footnote that is plainly a source
         // line is the citation; nothing is invented.
         public static void AdoptFootnoteCitation(IDictionary<string, object> slide)
@@ -45,10 +45,30 @@ namespace Scribble.Office
 
         public static void ValidateEvidence(string slideJson, string actualSource)
         {
+            ValidateEvidence(slideJson, actualSource, null);
+        }
+
+        // A revision may cite multiple immutable source spans in an order
+        // different from the complete source corpus. Only host-resolved span
+        // text may extend that corpus; uncited model evidence remains subject
+        // to the original exact-passage check.
+        public static void ValidateEvidence(string slideJson,
+            string actualSource, string hostResolvedEvidence)
+        {
             var json = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
             var data = json.Deserialize<Dictionary<string, object>>(slideJson);
             object raw;
             var evidence = data.TryGetValue("evidence", out raw) ? Convert.ToString(raw) : "";
+            if (hostResolvedEvidence != null)
+            {
+                if (!string.Equals(NormalizeSource(evidence),
+                        NormalizeSource(hostResolvedEvidence),
+                        StringComparison.Ordinal))
+                    throw new InvalidOperationException(
+                        "SLIDE_SOURCE_REF_INVALID: Cited evidence differs from the resolved source spans.");
+                actualSource = (actualSource ?? "") + "\n" +
+                    hostResolvedEvidence;
+            }
             var layout = data.TryGetValue("layout", out raw) ? Convert.ToString(raw) : "";
             var special = new[] { "cover", "divider", "closing", "agenda" }.Contains(layout);
             if (!special && string.IsNullOrWhiteSpace(evidence)) throw new InvalidOperationException("SLIDE_EVIDENCE_REQUIRED: Cite source_spans returned by read_task_sources, or supply a verbatim supporting passage.");
@@ -77,6 +97,8 @@ namespace Scribble.Office
             // A period label (2026-05, June 2026) names a column rather than a
             // quantity; it must occur in the sources this task has read.
             var quantities = SamsungEvidence.RemoveVerifiedPeriodLabels(content, actualSource, evidence);
+            quantities = SamsungEvidence.RemoveVerifiedSourceLocators(
+                quantities, actualSource);
             var missing = Numbers(quantities).Where(n => !allowed.Contains(n)).Distinct().ToArray();
             if (missing.Length > 0) throw new InvalidOperationException("SLIDE_NUMBERS_UNVERIFIED: Values absent from cited evidence: " + string.Join(", ", missing));
             if (special) return;
@@ -84,7 +106,7 @@ namespace Scribble.Office
             if (!explanatory && (!data.TryGetValue("subtitle", out raw) || string.IsNullOrWhiteSpace(Convert.ToString(raw))))
                 throw new InvalidOperationException("SLIDE_ACTION_TITLE_REQUIRED: An analytical slide needs a nonempty subtitle stating its evidence-backed finding. Add subtitle, or set purpose to explanatory for a definitions or setup slide.");
             if (!data.TryGetValue("sources", out raw) || string.IsNullOrWhiteSpace(Convert.ToString(raw)))
-                throw new InvalidOperationException("SLIDE_CITATION_REQUIRED: Every factual slide needs a nonempty sources string, the visible citation line such as 'Source: WB01 Ledger; Scribble Draft audit'. A footnote is a separate qualifying note and does not replace sources. Add sources to this slide and to every other factual slide in the batch.");
+                throw new InvalidOperationException("SLIDE_CITATION_REQUIRED: Every factual slide needs a nonempty sources string, a visible citation line naming the source workbook or document. A footnote is a separate qualifying note and does not replace sources. Add sources to this slide and to every other factual slide in the batch.");
         }
         private static string NormalizeSource(string value) { return Regex.Replace(value ?? "", @"\s+", " ").Trim(); }
 

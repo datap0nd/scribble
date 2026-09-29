@@ -29,7 +29,7 @@ namespace Scribble.Chat
                 function = new ChatToolFunctionDefinition
                 {
                     name = SendToPowerPoint,
-                    description = "Create a new unsaved, marked PowerPoint deck from the retained verified analysis. The host builds the supported layouts, native chart, group table, fact references and citations. Read complete period and group totals first, then provide an analysis ID, optional concise narrative choices, and optional comparison periods from the user's request. The host selects chart metrics from the request and validates them against the bound source.",
+                    description = "Create a new unsaved, marked PowerPoint deck from the retained verified analysis. The host builds the supported layouts, native chart, group table, fact references and citations. One complete grouped source read by Period and the requested dimension supplies both period and group totals; provide its analysis ID, optional concise narrative choices, and optional comparison periods from the user's request. The host selects chart metrics from the request and validates them against the bound source.",
                     parameters = ToolSchema.Build(new Dictionary<string, object>
                     {
                         { "AnalysisId", ToolSchema.String("Host-issued analysis_id from a grouped source read.") },

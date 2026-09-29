@@ -1386,38 +1386,9 @@ namespace Scribble.Office
                 dynamic slideChart = shape.Chart;
                 step = "ChartData.Activate";
                 TraceNativeChartStage("before-chart-activate");
-                try
-                {
-                    slideChart.ChartData.Activate();
-                }
-                catch (Exception activation)
-                    when (activation is System.Runtime.InteropServices.COMException ||
-                          activation is InvalidOperationException)
-                {
-                    // The windowless data grid does not need a foreground
-                    // Excel window, which is unavailable from some hosts.
-                    step = "ChartData.ActivateChartDataWindow";
-                    slideChart.ChartData.ActivateChartDataWindow();
-                }
-
                 step = "ChartData.Workbook";
                 TraceNativeChartStage("before-chart-workbook");
-                Exception workbookFailure = null;
-                for (var attempt = 0; attempt < 3 && dataWorkbook == null; attempt++)
-                {
-                    try { dataWorkbook = slideChart.ChartData.Workbook; }
-                    catch (Exception exception) when (
-                        exception is System.Runtime.InteropServices.COMException ||
-                        exception is OutOfMemoryException)
-                    {
-                        workbookFailure = exception;
-                        if (attempt == 2) break;
-                        System.Threading.Thread.Sleep(350);
-                        try { slideChart.ChartData.Activate(); } catch { }
-                    }
-                }
-                if (dataWorkbook == null)
-                    throw new InvalidOperationException("Embedded chart workbook did not become available after three attempts.", workbookFailure);
+                dataWorkbook = OpenChartDataWorkbook((object)slideChart.ChartData);
                 dynamic dataSheet =
                     dataWorkbook.Worksheets[1];
                 step = "write chart data";
@@ -1597,6 +1568,42 @@ namespace Scribble.Office
                 Scribble.Utilities.Log.Error("PresentationChart." + step, exception);
                 return false;
             }
+        }
+
+        internal static object OpenChartDataWorkbook(object chartData)
+        {
+            dynamic data = chartData;
+            try { data.Activate(); }
+            catch (Exception error) when (error is System.Runtime.InteropServices.COMException ||
+                error is InvalidOperationException)
+            {
+                // A full Excel window is sometimes unavailable. The in-place
+                // grid can still expose the chart's embedded workbook.
+                data.ActivateChartDataWindow();
+            }
+            Exception last = null;
+            for (var attempt = 0; attempt < 3; attempt++)
+            {
+                try
+                {
+                    object workbook = data.Workbook;
+                    if (workbook != null) return workbook;
+                }
+                catch (Exception error) when (error is System.Runtime.InteropServices.COMException ||
+                    error is OutOfMemoryException) { last = error; }
+                if (attempt == 2) break;
+                System.Threading.Thread.Sleep(350);
+                try { data.ActivateChartDataWindow(); }
+                catch (Exception error) when (error is System.Runtime.InteropServices.COMException ||
+                    error is InvalidOperationException)
+                {
+                    try { data.Activate(); }
+                    catch (Exception retryError) when (retryError is System.Runtime.InteropServices.COMException ||
+                        retryError is InvalidOperationException) { }
+                }
+            }
+            throw new InvalidOperationException(
+                "Embedded chart workbook did not become available after three attempts.", last);
         }
 
         // Corporate chart formatting. Every step is cosmetic and

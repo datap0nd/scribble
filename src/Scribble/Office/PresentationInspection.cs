@@ -18,7 +18,26 @@ namespace Scribble.Office
         private static readonly ConditionalWeakTable<object, Identity> Identities = new ConditionalWeakTable<object, Identity>();
         public static string IdentityFor(object presentation)
         {
-            try { dynamic deck = presentation; string saved = deck.Tags["ScribblePresentationId"]; if (!string.IsNullOrEmpty(saved)) return saved; }
+            try
+            {
+                dynamic deck = presentation;
+                string saved = deck.Tags["ScribblePresentationId"];
+                if (!string.IsNullOrEmpty(saved)) return saved;
+                // Office can hand different managed wrappers to consecutive
+                // inspections of one saved presentation. The weak-table ID
+                // then changes even though the same source remains open.
+                // Bind saved decks to their path and current file bytes;
+                // slide fingerprints still guard each requested operation.
+                string path = Convert.ToString(deck.FullName);
+                string folder = Convert.ToString(deck.Path);
+                if (!string.IsNullOrWhiteSpace(folder) &&
+                    !string.IsNullOrWhiteSpace(path) &&
+                    File.Exists(path))
+                    return TaskCheckpointStore.Fingerprint(
+                        Path.GetFullPath(path).ToUpperInvariant() + "|" +
+                        ExternalContextDocument.FingerprintFile(path))
+                        .Substring(0, 32);
+            }
             catch (Exception e) when (e is System.Runtime.InteropServices.COMException || e is Microsoft.CSharp.RuntimeBinder.RuntimeBinderException) { }
             return Identities.GetValue(presentation, p => new Identity()).Id;
         }
@@ -132,26 +151,48 @@ namespace Scribble.Office
                 }
                 catch (System.Runtime.InteropServices.COMException error)
                 {
-                    // 0x80048240 is PowerPoint's transient empty clipboard.
+                    // PowerPoint may report an empty clipboard or E_FAIL
+                    // while a previous native paste is still settling.
                     // Retry only after confirming that Paste added no slide.
-                    if (unchecked((uint)error.ErrorCode) != 0x80048240)
+                    var code = unchecked((uint)error.ErrorCode);
+                    if (code != 0x80048240 && code != 0x80004005)
                         throw;
-                    if ((int)deck.Slides.Count != before)
+                    if (SettledSlideCount(destinationPresentation, before) != before)
                         throw new InvalidOperationException(
                             "REVISION_COPY_UNCERTAIN: Paste reported an error after changing the destination.",
                             error);
                     if (attempt == 2) throw;
-                    System.Threading.Thread.Sleep(150 * (attempt + 1));
                     continue;
                 }
-                if ((int)deck.Slides.Count != before + 1)
+                var after = SettledSlideCount(destinationPresentation, before);
+                if (after == before)
+                {
+                    // Retry only after a bounded settle showed no mutation.
+                    if (attempt == 2)
+                        throw new InvalidOperationException(
+                            "REVISION_COPY_NO_SLIDE: Native paste returned without a slide after three attempts.");
+                    continue;
+                }
+                if (after != before + 1)
                     throw new InvalidOperationException(
-                        "REVISION_COPY_INCOMPLETE: Native paste added an unexpected number of slides.");
+                        "REVISION_COPY_INCOMPLETE: Native paste changed the staging slide count from " +
+                        before + " to " + after + "; exactly one slide was required.");
                 object copy = deck.Slides[before + 1];
                 RestoreCopiedBackground(originalSlide, copy);
                 return copy;
             }
             throw new InvalidOperationException("REVISION_COPY_INCOMPLETE");
+        }
+        private static int SettledSlideCount(object presentation, int before)
+        {
+            dynamic deck = presentation;
+            var count = (int)deck.Slides.Count;
+            for (var check = 0; check < 4 && count == before; check++)
+            {
+                System.Threading.Thread.Sleep(100 * (check + 1));
+                count = (int)deck.Slides.Count;
+            }
+            return count;
         }
         internal static object[] Hyperlinks(object slide)
         {

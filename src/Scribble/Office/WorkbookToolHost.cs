@@ -149,6 +149,37 @@ namespace Scribble.Office
                         " (used range " +
                         TextBoundary.SingleLine(used, 60) +
                         ")");
+                    if (AnalysisDocumentPilot.Enabled && count < 3)
+                    {
+                        try
+                        {
+                            dynamic source = sheet.UsedRange;
+                            if ((int)source.Row == 1)
+                            {
+                                var labels = new List<string>();
+                                var columns = Math.Min((int)source.Columns.Count,
+                                    24);
+                                for (var column = 1; column <= columns;
+                                    column++)
+                                {
+                                    var label = TextBoundary.SingleLine(
+                                        CellText(source.Cells[1, column].Value2),
+                                        60);
+                                    if (label.Length != 0)
+                                        labels.Add(ExcelSelectionOutputPolicy
+                                            .ColumnNumberToName(
+                                                (int)source.Column + column - 1) +
+                                            "=" + label);
+                                }
+                                if (labels.Count != 0)
+                                    lines.Add("Header labels for " +
+                                        TextBoundary.SingleLine(
+                                            Convert.ToString(sheet.Name), 120) +
+                                        ": " + string.Join(", ", labels));
+                            }
+                        }
+                        catch { /* Header inventory is optional context. */ }
+                    }
                     count++;
                 }
 
@@ -758,10 +789,10 @@ namespace Scribble.Office
             if (bindAnalysis)
             {
                 if (rowOffset != 0 || columnOffset != 0 || !complete ||
-                    (long)totalRows * totalColumns > 500 ||
+                    (long)totalRows * totalColumns > MaxTypedMetadataCells ||
                     !typed.Complete || !typed.NumberFormatsComplete)
                     return Error(callId, "ANALYSIS_RANGE_INCOMPLETE",
-                        "Bind a complete single-page range of at most 500 cells with full typed metadata and formats.");
+                        "Bind a complete single-page range within the typed capture limit with full metadata and formats.");
                 try
                 {
                     var source = OfficeTaskBinding.Capture("excel",
@@ -1100,7 +1131,39 @@ namespace Scribble.Office
             }
             else
             {
-                sheet = workbook.ActiveSheet;
+                // Draft creation can change ActiveSheet. Resolve the requested
+                // table by its exact headers, refusing ambiguous matches.
+                var headers = new Dictionary<string, IReadOnlyList<string>>(
+                    StringComparer.OrdinalIgnoreCase);
+                foreach (dynamic candidate in workbook.Worksheets)
+                {
+                    dynamic used = candidate.UsedRange;
+                    var width = (int)used.Columns.Count;
+                    if (width < 1 || width > MaxReadColumns) continue;
+                    object headerValues = used.Rows[1].Value2;
+                    var headerGrid = headerValues as object[,];
+                    var labels = new string[width];
+                    for (var column = 0; column < width; column++)
+                        labels[column] = CellText(headerGrid == null
+                            ? headerValues : headerGrid[headerGrid.GetLowerBound(0),
+                                headerGrid.GetLowerBound(1) + column]);
+                    headers.Add(Convert.ToString(candidate.Name), labels);
+                }
+                string resolved;
+                try
+                {
+                    resolved = WorkbookGroupedTotals.ResolveSheet(headers,
+                        StringList(arguments, "group_by"),
+                        StringList(arguments, "sum_columns"),
+                        ToolArguments.GetString(arguments,
+                            "filter_column", string.Empty));
+                }
+                catch (InvalidOperationException exception)
+                {
+                    return Error(callId, "WORKBOOK_GROUPED_SOURCE_AMBIGUOUS",
+                        exception.Message);
+                }
+                sheet = workbook.Worksheets[resolved];
             }
 
             var rangeText = TextBoundary.SingleLine(
@@ -1200,10 +1263,9 @@ namespace Scribble.Office
                  ToolArguments.GetString(arguments, "filter_column",
                      string.Empty) == "Period"))
             {
-                if ((long)totalRows * totalColumns > 5000 ||
-                    result.SkippedCells != 0)
+                if ((long)totalRows * totalColumns > 5000)
                     return Error(callId, "ANALYSIS_GROUP_SOURCE_INCOMPLETE",
-                        "The complete grouped source must fit the typed capture and have no missing metric values.");
+                        "The complete grouped source must fit the typed capture.");
                 try
                 {
                     var typed = CaptureTypedPage((object)range,

@@ -12,9 +12,18 @@ namespace Scribble.Office
 {
     public sealed partial class DocumentDraftHost
     {
+        public static bool AllowsSlideReplacement(string prompt,
+            bool hostValidatedMeasuredReplacement)
+        {
+            return hostValidatedMeasuredReplacement ||
+                Regex.IsMatch(prompt ?? "",
+                    @"\b(redesign|reformat|restructure|recompose|layout|improve)\b",
+                    RegexOptions.IgnoreCase);
+        }
+
         private async Task<MailboxToolResult> ExecuteRevisionAsync(ChatToolCall call, OneShotDraftAuthorization authorization,
             bool exclusive, string prompt, OpenAiCompatibleClient client, AppSettings settings, CancellationToken token, Action<int, int> progress,
-            bool pilotInternal = false)
+            bool pilotInternal = false, int hostStyleCount = 0)
         {
             if (!pilotInternal && PilotCopyRequested(call))
                 return await ExecutePilotCopyRevisionAsync(call,
@@ -100,23 +109,25 @@ namespace Scribble.Office
                     var operation = SamsungAuthoringPolicy.ReadMap(raw); var kind = SamsungAuthoringPolicy.Text(operation, "kind");
                     if (kind == "delete" && !Regex.IsMatch(prompt ?? "", @"\b(delete|remove)\b", RegexOptions.IgnoreCase)) throw new InvalidOperationException("SLIDE_DELETE_NOT_REQUESTED");
                     if (kind == "insert" && !Regex.IsMatch(prompt ?? "", @"\b(add|insert|create|expand)\b", RegexOptions.IgnoreCase)) throw new InvalidOperationException("SLIDE_INSERT_NOT_REQUESTED");
-                    if (kind == "replace_slide" && !Regex.IsMatch(prompt ?? "", @"\b(redesign|reformat|restructure|recompose|layout|improve)\b", RegexOptions.IgnoreCase)) throw new InvalidOperationException("SLIDE_REDESIGN_NOT_REQUESTED");
+                    // The pilot has already measured and checked its exact
+                    // replacement slide IDs before entering this internal path.
+                    if (kind == "replace_slide" && !AllowsSlideReplacement(
+                            prompt, pilotInternal))
+                        throw new InvalidOperationException(
+                            "SLIDE_REDESIGN_NOT_REQUESTED");
                     if (kind == "move" && !Regex.IsMatch(prompt ?? "", @"\b(move|reorder|reorganize|sort)\b", RegexOptions.IgnoreCase)) throw new InvalidOperationException("SLIDE_REORDER_NOT_REQUESTED");
                 }
                 var source = SamsungPresentationReview.SourceCorpus(_taskContext, prompt);
-                foreach (var raw in operations.Select(SamsungAuthoringPolicy.ReadMap))
-                {
-                    object supplied;
-                    if (!raw.TryGetValue("slide", out supplied)) continue;
-                    var content = SamsungAuthoringPolicy.ReadMap(supplied);
-                    var spans = SamsungAuthoringPolicy.Array(content, "source_spans");
-                    if (spans.Length > 0)
+                ValidateRevisionSlideEvidence(
+                    operations.Select(SamsungAuthoringPolicy.ReadMap).ToArray(),
+                    source,
+                    ids =>
                     {
-                        if (_taskContext == null) throw new InvalidOperationException("SLIDE_SOURCE_REF_INVALID");
-                        content["evidence"] = _taskContext.Sources.Resolve(spans.Select(Convert.ToString));
-                    }
-                    SamsungPresentationReview.ValidateEvidence(_serializer.Serialize(content), source);
-                }
+                        if (_taskContext == null)
+                            throw new InvalidOperationException(
+                                "SLIDE_SOURCE_REF_INVALID");
+                        return _taskContext.Sources.Resolve(ids);
+                    }, _serializer);
                 var original = operations.Select(SamsungAuthoringPolicy.ReadMap).Select(o => Convert.ToInt32(o["slide_id"])).Distinct()
                     .Select(id => PresentationInspection.Capture(PresentationInspection.FindSlide(deck, id))).ToArray();
                 var requestedOperations = operations;
@@ -126,10 +137,18 @@ namespace Scribble.Office
                 {
                     try
                     {
-                        var factReview = await ReviewSamsungAsync(client, settings,
-                            SamsungAuthoringPolicy.FactReview + " Check the exact requested scope: reject changes to unrelated slides or objects. Existing deck content is reference data, not independently established fact. Require supplied evidence for new claims; requested stylistic edits need no invented external source." + SamsungAuthoringPolicy.ReviewContract,
-                            _serializer.Serialize(new { instruction = prompt, source, original, requestedOperations, operations }), null, token);
-                        if (!ReviewApproved(factReview)) throw new InvalidOperationException("REVISION_SOURCE_REVIEW: " + factReview);
+                        // The copy pilot validates its source, chart bindings,
+                        // operation scope and new text before this call. A
+                        // pre-stage model review sees the old overflowing
+                        // slide and the old chart, not the proposed native
+                        // output. Review the staged output below instead.
+                        if (!pilotInternal)
+                        {
+                            var factReview = await ReviewSamsungAsync(client, settings,
+                                SamsungAuthoringPolicy.FactReview + " Check the exact requested scope: reject changes to unrelated slides or objects. Existing deck content is reference data, not independently established fact. Require supplied evidence for new claims; requested stylistic edits need no invented external source." + SamsungAuthoringPolicy.ReviewContract,
+                                _serializer.Serialize(new { instruction = prompt, source, original, requestedOperations, operations }), null, token);
+                            if (!ReviewApproved(factReview)) throw new InvalidOperationException("REVISION_SOURCE_REVIEW: " + factReview);
+                        }
                         revision = new PresentationRevision(deck);
                         revision.Stage(_hostApplication, operations);
                         for (var i = 0; i < revision.Items.Count; i++)
@@ -138,10 +157,21 @@ namespace Scribble.Office
                             var item = revision.Items[i];
                             foreach (var previewSlide in new[] { item.Staged }.Concat(item.StagedInserts))
                             {
+                            var proposed = PresentationInspection.Capture(
+                                previewSlide);
                             var verdict = await ReviewSamsungAsync(client, settings,
                                 "Review the proposed Samsung slide revision. Check requested edits, preservation of unrelated content, readable dense evidence, chart/table labels, collisions, clipping and emphasis." + SamsungAuthoringPolicy.ReviewContract,
-                                _serializer.Serialize(new { instruction = prompt, source, expected = item.Operations, original = PresentationInspection.Capture(item.Original), proposed = PresentationInspection.Capture(previewSlide) }),
+                                _serializer.Serialize(new { instruction = prompt, source, expected = item.Operations, original = PresentationInspection.Capture(item.Original), proposed }),
                                 PresentationInspection.Preview(previewSlide), token);
+                            if (pilotInternal && !ReviewApproved(verdict))
+                            {
+                                // A visual claim of clipping must agree with
+                                // the exact staged slide and its native bounds.
+                                PresentationRevision.ValidateNativeGeometry(
+                                    previewSlide);
+                                verdict = FilterRevisionGeometryReview(
+                                    verdict, proposed);
+                            }
                             if (!ReviewApproved(verdict)) throw new InvalidOperationException("REVISION_VISUAL_REVIEW: " + verdict);
                             }
                         }
@@ -159,8 +189,15 @@ namespace Scribble.Office
                             return capture;
                         }).ToArray();
                         deckContent = _serializer.Serialize(new { instruction = prompt, proposed_slides = all, operations });
-                        var deckReview = await ReviewSamsungAsync(client, settings, SamsungAuthoringPolicy.DeckReview + SamsungAuthoringPolicy.ReviewContract, deckContent, null, token);
-                        if (!ReviewApproved(deckReview)) throw new InvalidOperationException("REVISION_DECK_REVIEW: " + deckReview);
+                        // The pilot has removed the old source chart and
+                        // recreates it from workbook facts only after this
+                        // patch. Reviewing the whole deck here would judge
+                        // an intentionally incomplete intermediate copy.
+                        if (!pilotInternal)
+                        {
+                            var deckReview = await ReviewSamsungAsync(client, settings, SamsungAuthoringPolicy.DeckReview + SamsungAuthoringPolicy.ReviewContract, deckContent, null, token);
+                            if (!ReviewApproved(deckReview)) throw new InvalidOperationException("REVISION_DECK_REVIEW: " + deckReview);
+                        }
                         break;
                     }
                     catch (InvalidOperationException failure) when (failure.Message.StartsWith("REVISION_VISUAL_REVIEW:") ||
@@ -176,11 +213,13 @@ namespace Scribble.Office
                             "If the defect requires broader scope, return the unchanged operations so the host can explain the conflict.",
                             _serializer.Serialize(new { instruction = prompt, source, original, requestedOperations, operations, findings = failure.Message }), null, token, 16384);
                         var corrected = SamsungAuthoringPolicy.Array(_serializer.Deserialize<Dictionary<string, object>>(repaired), "operations");
-                        SamsungRepairPolicy.ValidateScope(requestedOperations, corrected);
+                        var publicRepair = SamsungRepairPolicy
+                            .PublicRepairOperations(requestedOperations,
+                                corrected, hostStyleCount);
                         if (SamsungRepairPolicy.Serialize(operations) == SamsungRepairPolicy.Serialize(corrected))
                             throw new InvalidOperationException("REVISION_REPAIR_SCOPE_CONFLICT: Resolving these findings requires a different edit scope: " + failure.Message);
                         var repairCall = new ChatToolCall { id = call.id, function = new ChatToolCallFunction { name = call.function.name,
-                            arguments = _serializer.Serialize(new { presentation_id = SamsungAuthoringPolicy.Text(args, "presentation_id"), operations = corrected }) } };
+                            arguments = _serializer.Serialize(new { presentation_id = SamsungAuthoringPolicy.Text(args, "presentation_id"), operations = publicRepair }) } };
                         var definition = PresentationToolCatalog.RevisionDefinitions().Single(t => t.function.name == PresentationToolCatalog.ReviseSlides);
                         var errors = ToolContractValidator.Validate(repairCall, definition);
                         if (errors.Count != 0) throw new InvalidOperationException("REVISION_REPAIR_SCHEMA: " + string.Join("; ", errors));
@@ -223,6 +262,40 @@ namespace Scribble.Office
             {
                 if (revision != null) revision.CloseStaging(written || revision.Status == "applied" || revision.Status == "recovery_required");
             }
+        }
+        internal static string FilterRevisionGeometryReview(string review,
+            Dictionary<string, object> proposed)
+        {
+            var slideId = Convert.ToString(proposed["slide_id"]);
+            var shapes = ((IEnumerable<object>)proposed["shapes"])
+                .Select(SamsungAuthoringPolicy.ReadMap).ToArray();
+            return FilterReviewFindings(review, finding =>
+            {
+                var type = SamsungAuthoringPolicy.Text(finding, "type");
+                if (!string.Equals(type, "overflow",
+                        StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(type, "clipping",
+                        StringComparison.OrdinalIgnoreCase)) return false;
+                var reportedSlide = SamsungAuthoringPolicy.Text(finding,
+                    "slide_id");
+                if (!string.IsNullOrWhiteSpace(reportedSlide) &&
+                    reportedSlide != slideId) return true;
+                int objectId;
+                if (!int.TryParse(SamsungAuthoringPolicy.Text(finding,
+                        "object_id"), out objectId)) return false;
+                var shape = shapes.FirstOrDefault(candidate =>
+                    Convert.ToInt32(candidate["id"]) == objectId);
+                if (shape == null) return true;
+                object rawBounds;
+                if (!shape.TryGetValue("text_bounds", out rawBounds))
+                    return false;
+                var bounds = rawBounds as float[];
+                if (bounds == null || bounds.Length != 4) return false;
+                return !PresentationRevision.NativeTextOverflows(
+                    SamsungAuthoringPolicy.Text(shape, "text"), bounds[3],
+                    bounds[2], Convert.ToSingle(shape["height"]),
+                    Convert.ToSingle(shape["width"]));
+            });
         }
         private void CheckpointRevision(ChatToolCall call, PresentationRevision revision, string status)
         {

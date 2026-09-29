@@ -86,6 +86,24 @@ namespace Scribble.Office
             {
                 item.Staged = CopySlide(item.Original, Working);
                 item.Backup = CopySlide(item.Original, Recovery);
+                // Pasting a slide into an empty presentation selects its
+                // default Office theme. Match the source design before
+                // applying edits: inherited run fonts and their native
+                // text bounds are part of the reviewed content receipt.
+                ((dynamic)item.Staged).Design =
+                    ((dynamic)item.Original).Design;
+                ((dynamic)item.Backup).Design =
+                    ((dynamic)item.Original).Design;
+                if (PresentationInspection.ContentFingerprint(
+                        item.Original) !=
+                    PresentationInspection.ContentFingerprint(
+                        item.Staged) ||
+                    PresentationInspection.ContentFingerprint(
+                        item.Original) !=
+                    PresentationInspection.ContentFingerprint(
+                        item.Backup))
+                    throw new InvalidOperationException(
+                        "REVISION_COPY_DESIGN_MISMATCH");
                 foreach (var operation in item.Operations)
                 {
                     if (SamsungAuthoringPolicy.Text(operation, "kind") == "insert")
@@ -328,7 +346,18 @@ namespace Scribble.Office
             // Assign names to generated shapes so the reviewed slide has the
             // same native identity when it is applied to the live deck.
             for (var i = 1; i <= (int)page.Shapes.Count; i++)
-                page.Shapes[i].Name = "Scribble Revision Shape " + i;
+            {
+                dynamic shape = page.Shapes[i];
+                shape.Name = "Scribble Revision Shape " + i;
+                if ((int)shape.HasTextFrame == 0) continue;
+                dynamic range = shape.TextFrame.TextRange;
+                // PowerPoint otherwise substitutes the parent deck's theme
+                // font on empty shapes and for East Asian runs. A staging
+                // deck and an owned draft can have different themes, which
+                // changes native text bounds after a reviewed replacement.
+                if (string.IsNullOrEmpty(Convert.ToString(range.Text)))
+                    range.Font.Name = MetoTheme.LabelFont;
+            }
             return output;
         }
         private static void Apply(object original, object target, Dictionary<string, object> operation)
@@ -408,6 +437,89 @@ namespace Scribble.Office
                     Convert.ToDouble(operation["before_value"]), Convert.ToDouble(operation["value"]));
             }
         }
+        private static void ApplyReviewedReplacement(object reviewed,
+            object live)
+        {
+            if (PresentationInspection.ContainsNativeChart(reviewed))
+                throw new InvalidOperationException(
+                    "REVISION_REPLACEMENT_CHART_UNSUPPORTED");
+            dynamic source = reviewed;
+            dynamic target = live;
+            var stage = "delete_shapes";
+            try
+            {
+                for (var index = (int)target.Shapes.Count; index >= 1;
+                    index--)
+                    target.Shapes[index].Delete();
+                if ((int)source.Shapes.Count > 0)
+                {
+                    stage = "copy_shapes";
+                    RetryUnchangedNativeTransfer(
+                        () => { source.Shapes.Range().Copy(); target.Shapes.Paste(); },
+                        () => (int)target.Shapes.Count == 0,
+                        "REVISION_REPLACEMENT_SHAPE_COPY");
+                    if ((int)target.Shapes.Count !=
+                            (int)source.Shapes.Count)
+                        throw new InvalidOperationException(
+                            "REVISION_REPLACEMENT_COPY_INCOMPLETE");
+                    stage = "name_shapes";
+                    for (var index = 1; index <=
+                        (int)source.Shapes.Count; index++)
+                        target.Shapes[index].Name =
+                            "Scribble Replacement " + Guid.NewGuid().ToString("N");
+                    for (var index = 1; index <=
+                        (int)source.Shapes.Count; index++)
+                        target.Shapes[index].Name =
+                            source.Shapes[index].Name;
+                }
+                stage = "background";
+                target.FollowMasterBackground = 0;
+                target.Background.Fill.Solid();
+                target.Background.Fill.ForeColor.RGB =
+                    source.Background.Fill.ForeColor.RGB;
+                target.Background.Fill.Transparency =
+                    source.Background.Fill.Transparency;
+                target.FollowMasterBackground =
+                    source.FollowMasterBackground;
+                stage = "notes";
+                source.NotesPage.Shapes.Placeholders[2]
+                    .TextFrame.TextRange.Copy();
+                target.NotesPage.Shapes.Placeholders[2]
+                    .TextFrame.TextRange.PasteSpecial(9);
+            }
+            catch (System.Runtime.InteropServices.COMException error)
+            {
+                throw new InvalidOperationException(
+                    "REVISION_REPLACEMENT_COM_" + stage + ": " +
+                    error.Message, error);
+            }
+        }
+        internal static void RetryUnchangedNativeTransfer(Action transfer,
+            Func<bool> unchanged, string stage)
+        {
+            if (transfer == null || unchanged == null ||
+                string.IsNullOrWhiteSpace(stage))
+                throw new ArgumentException("Native transfer needs a verified destination.");
+            for (var attempt = 0; attempt < 3; attempt++)
+            {
+                try { transfer(); return; }
+                catch (System.Runtime.InteropServices.COMException error)
+                {
+                    var code = unchecked((uint)error.ErrorCode);
+                    if (code != 0x80004005 && code != 0x80048240)
+                        throw new InvalidOperationException(stage + "_FAILED", error);
+                    bool safe;
+                    try { safe = unchanged(); }
+                    catch (System.Runtime.InteropServices.COMException check)
+                    { throw new InvalidOperationException(stage + "_UNCERTAIN", check); }
+                    if (!safe)
+                        throw new InvalidOperationException(stage + "_UNCERTAIN", error);
+                    if (attempt == 2)
+                        throw new InvalidOperationException(stage + "_RETRY_EXHAUSTED", error);
+                    System.Threading.Thread.Sleep(150 * (attempt + 1));
+                }
+            }
+        }
         internal static void ValidateNativeGeometry(object slide)
         {
             dynamic page = slide; dynamic deck = page.Parent;
@@ -479,7 +591,10 @@ namespace Scribble.Office
                     for (var i = (int)original.Shapes.Count; i >= 1; i--) original.Shapes[i].Delete();
                     if ((int)backup.Shapes.Count > 0)
                     {
-                        backup.Shapes.Range().Copy(); original.Shapes.Paste();
+                        RetryUnchangedNativeTransfer(
+                            () => { backup.Shapes.Range().Copy(); original.Shapes.Paste(); },
+                            () => (int)original.Shapes.Count == 0,
+                            "REVISION_ROLLBACK_SHAPE_COPY");
                         // Paste allocates new automatic names. Restore the
                         // source names as well as its shape content.
                         for (var i = 1; i <= (int)backup.Shapes.Count; i++)
@@ -558,17 +673,45 @@ namespace Scribble.Office
                     {
                         dynamic live = item.Original;
                         var oldCount = (int)live.Shapes.Count;
-                        Apply(item.Original, item.Original, operation);
-                        item.LastKnownContent = PresentationInspection.ContentFingerprint(item.Original);
+                        if (SamsungAuthoringPolicy.Text(operation,
+                                "kind") == "replace_slide")
+                            ApplyReviewedReplacement(item.Staged,
+                                item.Original);
+                        else Apply(item.Original, item.Original,
+                            operation);
+                        try
+                        {
+                            item.LastKnownContent = PresentationInspection
+                                .ContentFingerprint(item.Original);
+                        }
+                        catch (System.Runtime.InteropServices.COMException error)
+                        {
+                            throw new InvalidOperationException(
+                                "REVISION_POST_APPLY_FINGERPRINT_COM", error);
+                        }
                         if (SamsungAuthoringPolicy.Text(operation, "kind") == "annotate")
                             for (var n = oldCount + 1; n <= (int)live.Shapes.Count; n++) item.AddedShapeIds.Add((int)live.Shapes[n].Id);
                         journal("operation_applied:" + item.SlideId);
                     }
                     ValidateNativeGeometry(item.Original);
-                    if (PresentationInspection.ContentFingerprint(item.Original) != PresentationInspection.ContentFingerprint(item.Staged))
+                    // PowerPoint can finish text layout on a copied staging
+                    // slide after the live operation returns. Require exact
+                    // equality, allowing only a bounded layout settle.
+                    var matched = false;
+                    for (var check = 0; check < 6; check++)
                     {
-                        throw new InvalidOperationException("REVISION_LIVE_MISMATCH: The live result differs from the reviewed staging slide.");
+                        if (PresentationInspection.ContentFingerprint(
+                                item.Original) ==
+                            PresentationInspection.ContentFingerprint(
+                                item.Staged))
+                        { matched = true; break; }
+                        if (check < 5)
+                            System.Threading.Thread.Sleep(200);
                     }
+                    if (!matched)
+                        throw new InvalidOperationException(
+                            "REVISION_LIVE_MISMATCH: Slide " +
+                            item.Index + " differs from its reviewed staging copy.");
                     item.After = PresentationInspection.Fingerprint(item.Original); item.Applied = true;
                     journal("applied:" + item.SlideId);
                 }

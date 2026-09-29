@@ -172,21 +172,244 @@ a ≤ 10-line owner note in §5.
 | Scenario | Route | Build | Result |
 | --- | --- | --- | --- |
 | S1 XA01 | old | 2.0.385 | 1/3 (22 Sep) |
-| S1 XA02–10 | — | — | not run |
-| S2 PP01 | old | 2.0.395 | 0/3 (no terminal event after 23 min) |
-| S2 PP02–10 | — | — | not run (the pilot code rejects every one) |
-| New route, real model | new | 2.0.706.0 | 10 runs, 1 eligible XA01 pass after native gates and agent visual review; owner review remains for D2 |
+| S1 XA01–10 | new | 2.0.724.0 | 9/10 deterministic and request bar in one batch; owner D2 pending |
+| S1 XA01 consecutive | new | 2.0.724.0 | 3/3 (10, 10, 9 actual model requests); owner D2 pending |
+| S2 PP01 | new | 2.0.750.0 | Native repair passed; real run stopped on a complete operations array encoded as a JSON string |
+| S2 PP02–10 | — | — | not yet run |
 
-Current stage: **B4** after PR #44 merge. A1–A5 and B1–B2 are done. Installed
-2.0.706.0 came from green CI `36421402714` and hashes to `e079743a` (DLL
-SHA256 prefix). The tenth real XA01 run used the new route and completed
-unassisted with native XLSX/PPTX, terminal events, source preservation and all
-deterministic hard gates passing. Its B4:C5 formulas and single Revenue chart
-match the request. All four rendered slides passed agent visual inspection for
-legibility and overlap; owner visual approval remains Stage D2. The run cost
-$0.038, leaving $12.6231 at 12:39 UTC on 28 Sep; total paid spend today is
-about $0.301. Next: merge #44 after green CI, then run XA02–XA10 as one batch
-on this installed build, within the $4/day cap.
+Current stage: **C3**, real PP01 repair on PR #45. PR #44 merged into
+`codex/development`. The required single XA02–XA10 batch ran on installed
+2.0.706.0 (`e079743a` DLL SHA256 prefix), with the new route confirmed and all
+nine results recorded in the scoreboard. None is eligible for S1: six blocked
+before terminal output, XA06 selected the wrong chart metric, and XA07/XA09
+passed native checks and agent visual review but exceeded the 12-request cap.
+XA01 on this build also exceeded that cap despite correct native outputs. The
+batch cost $1.343. PR #45 fixes the generalized binding, review JSON and draft
+metric-order mechanisms with regression tests. Its green CI build 2.0.713.0
+was installed, and a real XA01 rerun passed every deterministic and agent
+visual check in 3.1 minutes, but used 13 requests (cap 12). The first failing
+stage is completion. The trace shows three sequential Ledger reads before the
+host aggregation; PR #45 now uses complete typed aggregates with source-cell
+inspection as needed. A targeted 2.0.713.0 XA02/XA04/XA08 batch cost $0.455:
+XA02 reached a typed draft but an unmeasured model finding blocked review;
+XA04 took the generic draft route before binding; XA08 computed correct known
+subtotals but preflight rejected their disclosure. PR #45 now limits production
+review blockers to host measurements, exposes the typed writer from the first
+pilot turn, and allows disclosed known subtotals in workbook plans. Installed
+2.0.715.0 passed XA01 in 11 requests with all native hard checks and agent
+visual review passing. Two consecutive repeats passed in 12 and 11 requests
+with all native hard checks and agent visual review passing. The XA01
+repeatability bar is met. The required XA02–XA10 single batch on 2.0.715.0
+cost $0.498; XA07 and XA09 are eligible, while seven fail the request cap,
+duplicate RowID aggregation or chart-title units. The first actionable stage
+was source aggregation: exact duplicate RowIDs were counted twice by grouped
+facts and SUMIF workbook formulas. PR #45 now deduplicates source identities,
+binds requested chart units, and trims redundant typed reads, with regression
+tests. Installed 2.0.717.0 could not attach to a private Excel window because
+a busy global COM entry stopped the native window probe; 2.0.718.0 repaired
+that boundary. XA02 then produced the correct native workbook but no deck.
+Installed 2.0.719.0 isolated the first deck failure to the PowerPoint chart's
+embedded `ChartData.Workbook`; the test-owned PowerPoint process exited after
+that failure. PR #45 now tries the in-place chart data grid and a bounded
+clean-chart retry. Its green installed build 2.0.720.0 passed targeted XA02
+in 10 requests. A full XA01–XA10 batch on the same build yielded six
+deterministically eligible cases after auditing actual `inference_request`
+events: XA02/XA10 exceeded 12, and XA05/XA06 passed workbook/chart gates but
+their scorecards used colors outside the supplied Samsung theme. The original
+scoreboard rows overcounted two budget checks per case; a correction is in the
+scoreboard summary. The first
+repeatable mechanisms are an omitted grouped-total sheet resolving to the
+new active draft, full-range binding rejected at 500 cells despite the 5,000
+cell typed limit, and structured cards using colors absent from the theme.
+PR #45 fixed those mechanisms with regression tests. Installed 2.0.724.0
+then produced 9/10 deterministically eligible XA01–XA10 cases in one batch:
+all nine reached terminal events within 20 minutes, used at most 12 actual
+`inference_request` calls, passed native oracles, preserved sources and passed
+agent visual review. XA05 first failed at review because fenced JSON with
+surrounding prose was rejected; retries hit slide recovery and exceeded the
+request cap. A strict single-fence parser fix has green CI and is installed
+in 2.0.726.0, pending a targeted real rerun.
+XA01 passed three consecutive runs on 2.0.724.0 (10, 10, 9 requests), each
+with terminal native outputs, all hard checks, source preservation and agent
+visual review. S1 deterministic and repeatability bars are met on this build;
+owner D2 visual acceptance is pending. Stage C1's native experiment passed on
+PPT01–PPT06: opening a separate disposable byte copy as read-only and untitled
+preserved 6–11 slides, notes, shapes and 1–3 charts without changing source
+bytes or terminating PowerPoint. Opening the already-open source path returned
+the saved source instead, so the production path uses a distinct temporary
+copy and deletes it after the untitled deck opens. Installed 2.0.726.0
+then reached the existing native PP01 repair harness: the source and workbook
+stayed unchanged, but the copied monthly chart still overflowed during patch
+staging. The first failing stage is native execution. PR #45 now verifies the
+full native copy, removes only its monthly chart shapes from the owned draft
+before staging, binds their series to typed workbook aggregates, and rebuilds
+them after the content patch. C2 also removes fixed slide indices, measures
+overflow and style defects, and tests for corpus labels in product code.
+Build and native verification are next, followed by real PP01.
+The targeted XA05 rerun on installed 2.0.726.0 passed all native hard
+checks and source preservation in 10 actual requests; all four slide renders
+were legible in agent visual review. Owner D2 acceptance remains pending.
+The 2.0.728.0 native PP01 repair twice passed copy preservation and patch
+staging but stopped at `REVISION_LIVE_MISMATCH` during commit. Build 2.0.729.0
+confirmed a persistent mismatch on replacement slide 4 after allowing native
+layout to settle. Source and workbook bytes stayed unchanged. The mechanism
+hypothesis is that independently drawing the reviewed replacement into the
+staging deck and again into the live draft yields different native content.
+Copying the reviewed content into the owned draft still failed. A disposable
+native capture showed the actual difference: the source theme supplied
+Calibri in the live deck while the staging deck supplied Aptos or `+mn-ea`
+for empty-shape/default East Asian fonts, changing measured text bounds.
+PR #45 now explicitly assigns those replacement-shape fonts before review
+and still requires exact native equality. Build 2.0.731.0 reduced the
+remaining mismatch to 12 individual text runs' East Asian fonts; PR #45 now
+pins those run fonts too. Native verification is next.
+Build 2.0.732.0 showed PowerPoint ignored that assignment. A native probe
+confirmed the staging slide retained the default Office Theme while the live
+slide used the source ChatGPT design; assigning the source design to staging
+resolved `+mn-ea` to Calibri. PR #45 now sets the source design on staging
+and recovery copies before applying edits, then verifies full content
+equality. Native verification is next.
+The 2.0.733.0 PP01 native repair harness passed: the reviewed replacement
+committed, the workbook-derived native chart was recreated, recovery and PDF
+export package equivalence passed, and source/workbook hashes were unchanged.
+No test-owned Office process remained. Green CI, installation and the first
+real PP01 run are next; independent grading and owner D2 review remain open.
+Installed 2.0.733.0 passed green CI and the native harness. The first real
+PP01 run used 9 model requests and $0.0977, but inspection returned several
+different `presentation_id` values for one unchanged saved deck. The first
+`revise_slides` was rejected at preflight; a later write was quarantined as
+uncertain, with no final deck. Source and workbook bytes stayed unchanged.
+This first failing stage is capture/binding. PR #45 now derives saved-deck
+identity from its path and current file hash, while marked drafts retain
+their tag identity. A regression test covers distinct wrappers and changed
+source bytes. Rebuild, install and real PP01 rerun are next.
+Installed 2.0.737.0 passed green CI and the saved-source identity fix. Real
+PP01 used 10 model requests and $0.1034. Two chart-slide replacement attempts
+and one extra replacement were safely rejected at preflight; the model then
+submitted exactly the measured overflow slide. Its native copy reached the
+patch stage, but the ordinary `SLIDE_REDESIGN_NOT_REQUESTED` check rejected
+that host-validated replacement. No final deck was produced. Source and
+workbook bytes stayed unchanged. PR #45 now exempts only the internal,
+prevalidated measured replacement from ordinary redesign consent, with a
+regression that retains the ordinary gate. Rebuild, install and rerun PP01.
+Installed 2.0.738.0 passed green CI. Real PP01 used 8 model requests and
+$0.0719; safe preflight rejected unsupported chart-slide replacements, then
+the measured overflow replacement reached patch review. The first failing
+stage is review: two valid cited source spans were joined in model order,
+while the source corpus holds them in canonical order, so the exact-passage
+check rejected the combined text. No final deck was produced; source and
+workbook bytes stayed unchanged. PR #45 now validates the exact host-resolved
+span combination as a cited unit while retaining the strict check for uncited
+evidence and all numeric checks. Rebuild, install and rerun PP01.
+Installed 2.0.739.0 passed green CI. Real PP01 used 8 model requests and
+$0.1103; cited spans passed review, but patch review rejected a compound
+claim label that named two source columns and the current month in display
+form. This is the second review-stage failure. The mechanism hypothesis is
+that exact contiguous label matching treats a display label as one source
+field, though a claim can name multiple verified fields in one cited passage.
+PR #45 changes the approach: split compound labels into components and verify
+every component against that same exact passage, with month matched to its
+period; uncited metrics/months still fail. No final deck was produced and
+source/workbook bytes stayed unchanged. Rebuild, install and rerun PP01.
+Installed 2.0.740.0 passed green CI. Real PP01 used 9 model requests and
+$0.0757; the compound claim passed, then patch review counted the `2` in a
+footnote's `Sheet 2` source locator as an uncited quantity. This review stage
+has recurred after two fixes. The mechanism hypothesis is that review flattens
+all visible text before extracting numbers, losing the distinction between a
+source location and a measured value. PR #45 changes approach by recognizing
+only exact sheet/page/slide/table/figure locators already present in the read
+source, leaving all other numerals under the original evidence check. No final
+deck was produced; source and workbook bytes stayed unchanged. Rebuild,
+install and rerun PP01; if review still fails, stop local review patches and
+escalate the mechanism.
+Installed 2.0.741.0 passed green CI. Its first real PP01 run stopped before
+writing when the provider returned empty content twice at HTTP 200. Five
+inference responses cost $0.0479. Source and workbook bytes were unchanged.
+The source-locator change remains untested in a real patch; rerun the same
+installed build after a fresh balance check.
+The second 2.0.741.0 PP01 run used 7 model requests and $0.0753. It passed
+source-locator review, then patch review rejected a calculation operand whose
+display label combines `Revenue EUR` and `2026-06`; the exact cited host row
+stores `RevenueEUR`, `82992 EUR` and `Period 2026-06` as separate fields.
+No final deck was produced; source and workbook bytes stayed unchanged.
+The mechanism hypothesis is that prose substring association is unsuitable
+for host-typed rows: the label, period, unit and value must bind as fields of
+one exact row. Stop local label patches; parse such rows and verify that full
+operand tuple against one metric field, falling back to the existing strict
+passage check for other source formats. Rebuild, install and rerun PP01.
+Installed 2.0.742.0 passed green CI and an offline replay of the prior
+operand failure. Its real PP01 run used 15 requests and $0.1962. The first
+chart-bearing slide replacement was safely rejected; the corrected proposal
+excluded that chart. Before native staging, a model reviewer then rejected
+the unchanged old chart and the original overflowing slide, which the host
+would rebuild. No final deck appeared; both sources stayed unchanged. This
+is a review-stage recurrence after the structured evidence approach. The
+mechanism is review of pre-repair content as if it were proposed output.
+PR #45 changes approach: the pilot checks changed numeric text and notes
+against bound source data before writing, then reviews staged native output
+under the existing geometry and visual checks. Rebuild, install and rerun.
+Installed 2.0.744.0 passed green CI. Real PP01 used 6 model requests and
+$0.0379. A chart-slide replacement and a wrong replacement scope were safely
+rejected before writing. The third proposal contained unsupported 55.8% and
+144-row claims; the existing evidence check correctly rejected them, but it
+ran after copy permission was consumed, so the corrected retry was
+quarantined. No final deck appeared; source and workbook remained unchanged.
+The first failing stage is evidence preflight ordering. PR #45 now runs the
+same exact-span and numeric validation before consuming permission or making
+a copy, with a regression for unsupported replacement numbers. Rebuild,
+install and rerun PP01.
+Installed 2.0.745.0 passed green CI. The first real PP01 attempt used 8
+requests and $0.0478 but stopped on two empty HTTP 200 provider responses;
+both sources stayed unchanged. After a fresh balance check, the same build
+used 12 requests and $0.0458. Safe preflight retries reached a valid single
+measured replacement. All six staged visual reviews approved, then PowerPoint
+returned COM E_FAIL during the first replacement commit. The durable receipt
+says `recovery_required`, first item started but no operation applied; source
+and workbook stayed unchanged and no final deck appeared. First failing stage
+is native execution. Hypothesis: the staged visual preview sequence leaves
+the native shape/notes clipboard transfer transiently unavailable. Add a
+native preview-before-commit regression and retry clipboard transfer only
+when the target is provably unchanged; rebuild, install and rerun.
+Installed 2.0.746.0 passed CI and the native preview-before-commit repair
+harness (0 paid requests, source/workbook preserved). Real PP01 used 6
+requests and $0.0260; the measured replacement entered native staging, but
+`CopySlideTo` reported a paste that did not add exactly one slide. No final
+deck appeared; sources were unchanged. First failing stage is native
+execution again. The first clipboard hypothesis was too narrow: repeated
+staging slide copies also rely on a volatile Office clipboard. PR #45 now
+waits for native slide-count settlement and retries only when the destination
+remains at its exact pre-paste count; any extra or uncertain slide aborts.
+Rebuild, run native harness, install and rerun real PP01.
+Installed 2.0.748.0 passed green CI and the native repair harness. Real
+PP01 used 13 model requests and $0.0943. Visual repair returned unchanged
+host-measured font and table operations alongside the corrected public edit.
+The public `revise_slides` schema rejected the host-only operation kinds;
+the subsequent write was quarantined, so no final deck appeared. Source
+and workbook hashes stayed unchanged. First failing stage is patch repair
+schema validation. The model may revise public edits, while the host must
+keep its own measured style operations exact. PR #45 now validates only
+the public projection under the public schema and separately checks that
+the host-generated tail is unchanged. Rebuild, run the regression and native
+harness, install, and rerun real PP01.
+Installed 2.0.749.0 passed green CI and native repair. Real PP01 used
+10 requests and $0.0629. The internal repair schema passed. The staged
+slide 257 passed native geometry, but its individual visual review
+reported an overflow on shape 5 of slide 259; the repair round returned
+unchanged operations and no final deck. Source/workbook bytes stayed
+unchanged. First failing stage is review: a finding from another slide
+blocked this one without a matching native measurement. PR #45 now
+checks the review target and captured text bounds; only a measured
+overflow on that staged shape can block. Other visual findings still
+receive review. Rebuild, native-test, install and rerun PP01.
+Installed 2.0.750.0 passed green CI and native repair. Real PP01 used
+17 requests and $0.0837, but did not reach visual review: after a safe
+layout-scope rejection, the provider twice quoted the full
+`revise_slides.operations` array as a JSON string. The public validator
+rejected that type, and the task stopped without a final deck. Source
+and workbook bytes stayed unchanged. First failing stage is planning/
+schema. PR #45 now decodes only a complete nested array for this tool,
+then applies the unchanged public schema and host preflight. A malformed
+array remains rejected. Rebuild, test, install and rerun PP01.
 
 ## 6. Rules for autonomous sessions
 

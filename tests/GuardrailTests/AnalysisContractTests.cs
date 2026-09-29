@@ -148,6 +148,85 @@ namespace GuardrailTests
             throw new Exception("Expected table binding failure " + code);
         }
 
+        public static void RepeatedSourceIdentityIsCountedOnce()
+        {
+            var table = new TableDataset {
+                TableId = "ledger-with-ids", Name = "Ledger", Rows = 4,
+                Columns = 4, Cells = new List<DatasetCell> {
+                    Cell(0, 0, "A1", AnalysisContract.TextValue, "RowID"),
+                    Cell(0, 1, "B1", AnalysisContract.TextValue, "Period"),
+                    Cell(0, 2, "C1", AnalysisContract.TextValue, "HoursWorked"),
+                    Cell(0, 3, "D1", AnalysisContract.TextValue, "HoursAvailable"),
+                    Cell(1, 0, "A2", AnalysisContract.TextValue, "record-one"),
+                    Cell(1, 1, "B2", AnalysisContract.TextValue, "2026-05"),
+                    Cell(1, 2, "C2", AnalysisContract.DecimalValue, "10"),
+                    Cell(1, 3, "D2", AnalysisContract.DecimalValue, "12"),
+                    Cell(2, 0, "A3", AnalysisContract.TextValue, "record-two"),
+                    Cell(2, 1, "B3", AnalysisContract.TextValue, "2026-06"),
+                    Cell(2, 2, "C3", AnalysisContract.DecimalValue, "20"),
+                    Cell(2, 3, "D3", AnalysisContract.DecimalValue, "25"),
+                    Cell(3, 0, "A4", AnalysisContract.TextValue, "record-two"),
+                    Cell(3, 1, "B4", AnalysisContract.TextValue, "2026-06"),
+                    Cell(3, 2, "C4", AnalysisContract.DecimalValue, "20"),
+                    Cell(3, 3, "D4", AnalysisContract.DecimalValue, "25") } };
+            Func<TableDataset, SourceSnapshot> snapshot = source =>
+                AnalysisContract.CreateSnapshot("workbook-with-ids",
+                    "excel_workbook", "revision-1", "complete_range",
+                    "literal_values", new[] { Locator("workbook-with-ids",
+                        "Ledger", "A1:D4", "") }, new[] { source });
+            var binding = new AnalysisTableBinding {
+                TableId = table.TableId, PeriodHeader = "Period",
+                Metrics = new List<AnalysisMetricColumnBinding> {
+                    new AnalysisMetricColumnBinding { Header = "HoursWorked",
+                        Metric = "HoursWorked" },
+                    new AnalysisMetricColumnBinding { Header = "HoursAvailable",
+                        Metric = "HoursAvailable" } } };
+            var artifact = AnalysisTableArtifactBuilder.BuildGrouped(
+                snapshot(table), binding);
+            var june = artifact.Facts.Single(fact =>
+                fact.Metric == "HoursWorked" && fact.Period == "2026-06");
+            var rows = AnalysisWorkbookPlanBuilder.Build(artifact);
+            var receipt = WorkbookGroupedTotals.Compute(new[] {
+                (IReadOnlyList<string>)new[] { "RowID", "Period",
+                    "HoursWorked", "HoursAvailable" },
+                new[] { "record-one", "2026-05", "10", "12" },
+                new[] { "record-two", "2026-06", "20", "25" },
+                new[] { "record-two", "2026-06", "20", "25" }
+            }, new[] { "Period" }, new[] { "HoursWorked" },
+                null, null);
+            Check(june.Value == "20" && june.Locators.Count == 1 &&
+                june.Locators.Single().Cell == "C3" &&
+                receipt.Table.Contains("2026-06\t1\t20") &&
+                rows[1].Cells[2].Formula ==
+                    "=SUMIF('Ledger'!$B$2:$B$4,C$3,'Ledger'!$C$2:$C$4)-SUM('Ledger'!$C$4)" &&
+                rows[2].Cells[2].ExpectedFactId == artifact.Facts.Single(
+                    fact => fact.Metric == "HoursAvailable" &&
+                    fact.Period == "2026-06").FactId,
+                "A repeated RowID was counted twice in facts or live formulas.");
+            var deck = AnalysisDeckPlanBuilder.Build(artifact,
+                new Dictionary<string, object> {
+                    { "AnalysisId", artifact.AnalysisId } }, 3,
+                "Compare May vs June with a primary chart and hours in the title.");
+            Check(deck.Slides.Single(slide => slide.Chart != null)
+                .Chart.Title.Contains("hours"),
+                "A requested noncurrency chart unit was lost.");
+            Check(deck.Slides.SelectMany(slide => slide.Cards)
+                .SelectMany(card => card.Points)
+                .Any(point => point.Text != null &&
+                    point.Text.Contains("identifiers were counted once")) &&
+                !deck.Slides.SelectMany(slide => slide.Cards)
+                    .SelectMany(card => card.Points)
+                    .Any(point => point.Text != null &&
+                        point.Text.Contains("totals count each row")),
+                "The source-limit narrative must describe deduplicated totals accurately.");
+            RejectTableBinding(() => AnalysisRequestPlan.Resolve(artifact,
+                "Compare May vs June with a primary chart and EUR in the title."),
+                "ANALYSIS_REQUEST_CHART_UNIT_UNBOUND");
+            table.Cells.Single(cell => cell.Reference == "D4").Value = "26";
+            RejectTableBinding(() => AnalysisTableArtifactBuilder.BuildGrouped(
+                snapshot(table), binding), "ANALYSIS_TABLE_ROW_ID_CONFLICT");
+        }
+
         public static void GroupedTypedFactsKeepSourceAndFormulaBinding()
         {
             var table = MappedTable();
@@ -237,9 +316,22 @@ namespace GuardrailTests
                     "test-model", "excel", "Ledger", new List<ChatTurn>(),
                     "Create a new draft worksheet from the verified Ledger and preserve its source.",
                     true);
-                Check(draftRequest.tools.Any(tool => tool.function.name ==
-                    WorkbookToolCatalog.WriteCells),
-                    "The generic request fixture did not expose guarded cell edits.");
+                var draftBoundary = Convert.ToString(draftRequest.messages
+                    .OfType<ChatCompletionInputMessage>()
+                    .First(message => message.role == "system").content);
+                Check(draftBoundary.Contains("read_grouped_totals") &&
+                    draftBoundary.Contains("complete bound source") &&
+                    !draftBoundary.Contains("read it to the END"),
+                    "Typed aggregate reads should cover the bound source without requiring row-by-row enumeration.");
+                Check(!draftRequest.tools.Any(tool => tool.function.name ==
+                    WorkbookToolCatalog.WriteCells) &&
+                    draftRequest.tools.Any(tool =>
+                        tool.function.name == WorkbookToolCatalog.WriteDraftSheet &&
+                        ((Dictionary<string, object>)tool.function.parameters)[
+                            "required"] is string[] &&
+                        ((string[])((Dictionary<string, object>)tool.function.parameters)[
+                            "required"]).Contains("analysis_id")),
+                    "The pilot exposed a generic writer before source binding.");
                 DocumentChatRequestFactory.ApplyAnalysisPilot(draftRequest,
                     historicalArtifact, "excel");
                 Check(!draftRequest.tools.Any(tool => tool.function.name ==
@@ -367,19 +459,64 @@ namespace GuardrailTests
                         fact.Metric == "RevenueEUR" &&
                         fact.Period == "2026-05").FactId,
                 "The primary chart series followed source-column order instead of the typed binding.");
+            var reorderedDraft = AnalysisDeckPlanBuilder.Build(
+                extraMetricArtifact, new Dictionary<string, object> {
+                    { "AnalysisId", extraMetricArtifact.AnalysisId } }, 3,
+                "Create a May vs June chart using only primary values.",
+                new[] { "Cost EUR", "Revenue EUR" });
+            Check(reorderedDraft.ReportMetrics.SequenceEqual(new[] {
+                    "CostEUR", "RevenueEUR" }) &&
+                reorderedDraft.ChartSeries.SequenceEqual(new[] {
+                    "CostEUR" }) &&
+                reorderedDraft.Slides.Single(slide => slide.Chart != null)
+                    .Chart.Series[0].FactIds[0] ==
+                    extraMetricArtifact.Facts.Single(fact =>
+                        fact.Metric == "CostEUR" &&
+                        fact.Period == "2026-05").FactId,
+                "The primary chart ignored the verified draft metric order.");
+            RejectTableBinding(() => AnalysisRequestPlan.Resolve(
+                extraMetricArtifact, "Compare May vs June with a chart.",
+                null, new[] { "Unknown metric" }),
+                "ANALYSIS_REQUEST_REPORT_METRIC_UNBOUND");
             binding.DimensionHeaders.Add("Group");
             var dimensioned = AnalysisTableArtifactBuilder.BuildGrouped(
                 snapshot, binding, "Period", "2026-05");
-            Check(dimensioned.Facts.Count == 4 &&
+            Check(dimensioned.Facts.Count == 6 &&
                 dimensioned.Facts.Any(fact => fact.Metric == "CostEUR" &&
+                    fact.Dimensions.ContainsKey("Group") &&
                     fact.Dimensions["Group"] == "South" &&
-                    fact.Value == "2"),
-                "Filtered group facts lost their dimension or value.");
+                    fact.Value == "2") &&
+                dimensioned.Facts.Any(fact => fact.Metric == "CostEUR" &&
+                    fact.Dimensions.Count == 0 && fact.Value == "36704"),
+                "Grouped facts lost a dimension or verified period total.");
+            var allGroups = AnalysisTableArtifactBuilder.BuildGrouped(
+                snapshot, binding);
+            var groupRequest = AnalysisRequestPlan.Resolve(allGroups,
+                "Compare May vs June with a primary chart.");
+            Check(allGroups.Facts.Count == 10 &&
+                groupRequest.ComparePeriod == "2026-05" &&
+                groupRequest.FocusPeriod == "2026-06" &&
+                allGroups.Facts.Any(fact => fact.Metric == "RevenueEUR" &&
+                    fact.Dimensions.Count == 0 &&
+                    fact.Period == "2026-05" && fact.Value == "85520"),
+                "A dimensional read did not retain complete period totals for planning.");
+            var subsetBinding = new AnalysisTableBinding {
+                TableId = binding.TableId, PeriodHeader = "Period",
+                Metrics = new List<AnalysisMetricColumnBinding> {
+                    binding.Metrics[1] } };
+            var subset = AnalysisTableArtifactBuilder.BuildGrouped(snapshot,
+                subsetBinding, "Group", "South");
+            Check(subset.Facts.Count == 1 &&
+                subset.Facts.Single().Dimensions["Group"] == "South" &&
+                subset.Facts.Single().Value == "2",
+                "A filtered subtotal was mislabeled as a complete period total.");
             var latestGroups = AnalysisTableArtifactBuilder.BuildGrouped(
                 snapshot, binding, "Period", "2026-06");
             var combined = AnalysisContract.CreateArtifact(
                 new[] { snapshot }, artifact.Facts.Concat(
-                    latestGroups.Facts), new AnalysisCalculation[0],
+                    latestGroups.Facts).GroupBy(fact => fact.FactId,
+                        StringComparer.Ordinal).Select(group => group.First()),
+                    new AnalysisCalculation[0],
                 new string[0], new string[0]);
             var deck = AnalysisDeckPlanBuilder.Build(combined,
                 new Dictionary<string, object> {
@@ -415,6 +552,47 @@ namespace GuardrailTests
             RejectTableBinding(() =>
                 AnalysisTableArtifactBuilder.BuildGrouped(missingSnapshot,
                     binding), "ANALYSIS_TABLE_VALUE_UNVERIFIED");
+
+            var partial = MappedTable();
+            partial.Rows = 4;
+            partial.Cells.Add(Cell(3, 0, "A4",
+                AnalysisContract.TextValue, "2026-05"));
+            partial.Cells.Add(Cell(3, 1, "B4",
+                AnalysisContract.TextValue, "South"));
+            partial.Cells.Add(Cell(3, 2, "C4",
+                AnalysisContract.DecimalValue, "1"));
+            var blankCost = Cell(3, 3, "D4",
+                AnalysisContract.MissingValue, string.Empty);
+            blankCost.Status = AnalysisContract.Unresolved;
+            partial.Cells.Add(blankCost);
+            var partialSnapshot = AnalysisContract.CreateSnapshot(
+                "workbook-a", "excel_workbook", "partial-revision",
+                "complete_range", "literal_values", new[] {
+                    Locator("workbook-a", "Ledger", "A1:D4", "") },
+                new[] { partial });
+            var known = AnalysisTableArtifactBuilder.BuildGrouped(
+                partialSnapshot, binding);
+            Check(known.Facts.Single(fact => fact.Metric == "CostEUR" &&
+                    fact.Period == "2026-05" &&
+                    fact.Dimensions.Count == 0).Value == "36702" &&
+                known.UnresolvedConflicts.Any(item => item.Contains(
+                    "Ledger!D4")),
+                "A blank source value was imputed or the known subtotal was not disclosed.");
+            var knownRows = AnalysisWorkbookPlanBuilder.Build(known);
+            var knownPlan = new AnalysisDocumentPlan {
+                AnalysisId = known.AnalysisId, WorkbookTitle = "Known subtotals",
+                WorkbookRows = knownRows };
+            Check(knownRows.Last().Cells[0].Text == "Data quality" &&
+                knownRows.Last().Cells[1].Text.Contains("CostEUR: known subtotal") &&
+                AnalysisDocumentCompiler.Compile(known, knownPlan, false)
+                    .ExpectedFormulaFacts.Count == 4,
+                "A verified known subtotal could not produce a disclosed live-formula draft.");
+            var blocking = AnalysisContract.CreateArtifact(
+                known.Snapshots, known.Facts,
+                new AnalysisCalculation[0], new string[0],
+                new[] { "Unverified source value remains." });
+            RejectTableBinding(() => AnalysisWorkbookPlanBuilder.Build(blocking),
+                "ANALYSIS_WORKBOOK_SOURCE_UNSUPPORTED");
 
             var formulaTable = new TableDataset { TableId = "formula-ledger",
                 Name = "Ledger", Rows = 2, Columns = 4,
@@ -455,6 +633,115 @@ namespace GuardrailTests
             RejectTableBinding(() => AnalysisTableArtifactBuilder.BuildGrouped(
                 captureFormula(), formulaBinding),
                 "ANALYSIS_TABLE_VALUE_UNVERIFIED");
+
+            var balanceTable = new TableDataset { TableId = "balance-ledger",
+                Name = "Ledger", Rows = 2, Columns = 7,
+                Cells = new List<DatasetCell> {
+                    Cell(0, 0, "A1", AnalysisContract.TextValue, "Period"),
+                    Cell(0, 1, "B1", AnalysisContract.TextValue, "Opening"),
+                    Cell(0, 2, "C1", AnalysisContract.TextValue, "Received"),
+                    Cell(0, 3, "D1", AnalysisContract.TextValue, "Shipped"),
+                    Cell(0, 4, "E1", AnalysisContract.TextValue, "Closing"),
+                    Cell(0, 5, "F1", AnalysisContract.TextValue, "PriceEUR"),
+                    Cell(0, 6, "G1", AnalysisContract.TextValue, "ValueEUR"),
+                    Cell(1, 0, "A2", AnalysisContract.TextValue, "2026-06"),
+                    Cell(1, 1, "B2", AnalysisContract.DecimalValue, "10"),
+                    Cell(1, 2, "C2", AnalysisContract.DecimalValue, "4"),
+                    Cell(1, 3, "D2", AnalysisContract.DecimalValue, "2"),
+                    Cell(1, 4, "E2", AnalysisContract.DecimalValue, "12"),
+                    Cell(1, 5, "F2", AnalysisContract.DecimalValue, "4"),
+                    Cell(1, 6, "G2", AnalysisContract.DecimalValue, "48") } };
+            var closingCell = balanceTable.Cells.Single(cell =>
+                cell.Reference == "E2");
+            closingCell.Formula = "=IF(C2=\"\",\"\",B2+C2-D2)";
+            closingCell.Status = AnalysisContract.Unresolved;
+            var valueCell = balanceTable.Cells.Single(cell =>
+                cell.Reference == "G2");
+            valueCell.Formula = "=IF(E2=\"\",\"\",E2*F2)";
+            valueCell.Status = AnalysisContract.Unresolved;
+            var balanceBinding = new AnalysisTableBinding {
+                TableId = balanceTable.TableId, PeriodHeader = "Period",
+                Metrics = new List<AnalysisMetricColumnBinding> {
+                    new AnalysisMetricColumnBinding { Header = "Closing",
+                        Metric = "Closing" },
+                    new AnalysisMetricColumnBinding { Header = "ValueEUR",
+                        Metric = "ValueEUR", Currency = "EUR",
+                        Unit = "currency" } } };
+            Func<SourceSnapshot> captureBalance = () =>
+                AnalysisContract.CreateSnapshot("workbook-a",
+                    "excel_workbook", "balance-revision", "complete_range",
+                    "cached_formula_values_unverified", new[] {
+                        Locator("workbook-a", "Ledger", "A1:G" +
+                            balanceTable.Rows.ToString(
+                                CultureInfo.InvariantCulture), "") },
+                    new[] { balanceTable });
+            var balanced = AnalysisTableArtifactBuilder.BuildGrouped(
+                captureBalance(), balanceBinding);
+            Check(balanced.Facts.Single(fact => fact.Metric == "Closing")
+                    .Value == "12" && balanced.Facts.Single(fact =>
+                    fact.Metric == "ValueEUR").Value == "48",
+                "Chained same-row formulas were not verified against literal inputs.");
+            closingCell.Value = "13";
+            RejectTableBinding(() => AnalysisTableArtifactBuilder.BuildGrouped(
+                captureBalance(), balanceBinding),
+                "ANALYSIS_TABLE_VALUE_UNVERIFIED");
+            closingCell.Value = "12";
+            closingCell.Formula = "=IF(C3=\"\",\"\",B2+C2-D2)";
+            RejectTableBinding(() => AnalysisTableArtifactBuilder.BuildGrouped(
+                captureBalance(), balanceBinding),
+                "ANALYSIS_TABLE_VALUE_UNVERIFIED");
+            closingCell.Formula = "=IF(B2=\"\",\"\",B2-D2)";
+            closingCell.Value = "8";
+            valueCell.Value = "32";
+            Check(AnalysisTableArtifactBuilder.BuildGrouped(captureBalance(),
+                balanceBinding).Facts.Single(fact => fact.Metric ==
+                    "Closing").Value == "8",
+                "A verified same-row difference was rejected.");
+            closingCell.Formula =
+                "=IF(B2=\"\",\"\",IF(D2=0,\"\",B2/D2))";
+            closingCell.Value = "5";
+            valueCell.Value = "20";
+            Check(AnalysisTableArtifactBuilder.BuildGrouped(captureBalance(),
+                balanceBinding).Facts.Single(fact => fact.Metric ==
+                    "Closing").Value == "5",
+                "A guarded same-row ratio was rejected.");
+            closingCell.Value = "6";
+            RejectTableBinding(() => AnalysisTableArtifactBuilder.BuildGrouped(
+                captureBalance(), balanceBinding),
+                "ANALYSIS_TABLE_VALUE_UNVERIFIED");
+            closingCell.Formula = "=IF(C2=\"\",\"\",B2+C2-D2)";
+            closingCell.Value = "12";
+            valueCell.Value = "48";
+            balanceTable.Rows = 3;
+            balanceTable.Cells.Add(Cell(2, 0, "A3",
+                AnalysisContract.TextValue, "2026-06"));
+            balanceTable.Cells.Add(Cell(2, 1, "B3",
+                AnalysisContract.DecimalValue, "10"));
+            balanceTable.Cells.Add(Cell(2, 2, "C3",
+                AnalysisContract.MissingValue, string.Empty));
+            balanceTable.Cells.Add(Cell(2, 3, "D3",
+                AnalysisContract.DecimalValue, "2"));
+            var missingClosing = Cell(2, 4, "E3",
+                AnalysisContract.TextValue, string.Empty);
+            missingClosing.Formula =
+                "=IF(C3=\"\",\"\",B3+C3-D3)";
+            missingClosing.Status = AnalysisContract.Unresolved;
+            balanceTable.Cells.Add(missingClosing);
+            balanceTable.Cells.Add(Cell(2, 5, "F3",
+                AnalysisContract.DecimalValue, "4"));
+            var missingValue = Cell(2, 6, "G3",
+                AnalysisContract.TextValue, string.Empty);
+            missingValue.Formula = "=IF(E3=\"\",\"\",E3*F3)";
+            missingValue.Status = AnalysisContract.Unresolved;
+            balanceTable.Cells.Add(missingValue);
+            var knownBalance = AnalysisTableArtifactBuilder.BuildGrouped(
+                captureBalance(), balanceBinding);
+            Check(knownBalance.Facts.Single(fact => fact.Metric ==
+                    "Closing").Value == "12" &&
+                knownBalance.Facts.Single(fact => fact.Metric ==
+                    "ValueEUR").Value == "48" &&
+                knownBalance.UnresolvedConflicts.Count == 2,
+                "A guarded blank formula was imputed or its known subtotal was not disclosed.");
 
             var many = new TableDataset { TableId = "many-rows",
                 Name = "Ledger", Rows = 49, Columns = 4,

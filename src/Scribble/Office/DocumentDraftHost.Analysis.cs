@@ -29,6 +29,14 @@ namespace Scribble.Office
             try
             {
                 artifact = _taskContext.LoadAnalysis();
+                OfficeTaskBinding.Validate(_taskContext.State, "excel",
+                    _hostApplication);
+                sourceWorkbook = (object)((dynamic)_hostApplication)
+                    .ActiveWorkbook;
+                AnalysisWorkbookSourceGuard.Validate(_hostApplication,
+                    artifact, sourceWorkbook);
+                var draftMetricOrder = ReadAnalysisDraftMetricOrder(
+                    sourceWorkbook);
                 if (_taskContext.State.HostData.ContainsKey(
                         "analysis_deck_complete") &&
                     !_taskContext.State.HostData.ContainsKey(
@@ -46,7 +54,8 @@ namespace Scribble.Office
                             "ANALYSIS_PLAN_BINDING_INVALID");
                     plan = AnalysisDeckPlanBuilder.Build(artifact, choices,
                         _taskContext.State.RequiredPresentationSlides,
-                        _taskContext.State.Objective);
+                        _taskContext.State.Objective,
+                        draftMetricOrder);
                 }
                 else
                     plan = AnalysisSlidePlanContract.Parse(artifact,
@@ -84,12 +93,6 @@ namespace Scribble.Office
                     !ModelCatalog.IsVisionCapable(settings.Model))
                     throw new InvalidOperationException(
                         "ANALYSIS_DECK_VISION_REQUIRED");
-                OfficeTaskBinding.Validate(_taskContext.State, "excel",
-                    _hostApplication);
-                sourceWorkbook = (object)((dynamic)_hostApplication)
-                    .ActiveWorkbook;
-                AnalysisWorkbookSourceGuard.Validate(_hostApplication,
-                    artifact, sourceWorkbook);
                 token.ThrowIfCancellationRequested();
             }
             catch (Exception exception) when (!(exception is
@@ -374,7 +377,6 @@ namespace Scribble.Office
                         ok = true, saved = false,
                         analysis_id = artifact.AnalysisId,
                         native_pages = review.Context.Pages.Count,
-                        review_context_id = review.Context.ContextId,
                         status
                     }), status);
             }
@@ -444,6 +446,77 @@ namespace Scribble.Office
                         retained))
                     System.Runtime.InteropServices.Marshal.ReleaseComObject(
                         retained);
+            }
+        }
+
+        private static IReadOnlyList<string> ReadAnalysisDraftMetricOrder(
+            object workbook)
+        {
+            if (workbook == null) return null;
+            dynamic native = workbook;
+            object draft = null;
+            for (var index = (int)native.Worksheets.Count; index >= 1;
+                index--)
+            {
+                object candidate = (object)native.Worksheets[index];
+                var name = Convert.ToString((object)((dynamic)candidate).Name);
+                if (name != null && name.StartsWith(
+                    WorkbookDraftWriter.DraftSheetName,
+                    StringComparison.OrdinalIgnoreCase))
+                {
+                    draft = candidate;
+                    break;
+                }
+                if (Marshal.IsComObject(candidate))
+                    Marshal.ReleaseComObject(candidate);
+            }
+            if (draft == null) return null;
+            try
+            {
+                dynamic sheet = draft;
+                var headerRow = 0;
+                for (var row = 1; row <= 32; row++)
+                    if (string.Equals(ReadDraftColumnA(sheet, row),
+                        "Metric", StringComparison.OrdinalIgnoreCase))
+                    {
+                        headerRow = row;
+                        break;
+                    }
+                if (headerRow == 0)
+                    throw new InvalidOperationException(
+                        "ANALYSIS_DRAFT_METRIC_ORDER_UNBOUND");
+                var labels = new List<string>();
+                for (var row = headerRow + 1; row <= Math.Min(40,
+                    headerRow + 12); row++)
+                {
+                    var label = ReadDraftColumnA(sheet, row);
+                    if (string.IsNullOrWhiteSpace(label)) break;
+                    labels.Add(label);
+                }
+                if (labels.Count == 0)
+                    throw new InvalidOperationException(
+                        "ANALYSIS_DRAFT_METRIC_ORDER_UNBOUND");
+                return labels;
+            }
+            finally
+            {
+                if (Marshal.IsComObject(draft))
+                    Marshal.ReleaseComObject(draft);
+            }
+        }
+
+        private static string ReadDraftColumnA(dynamic sheet, int row)
+        {
+            object cell = (object)sheet.Cells[row, 1];
+            try
+            {
+                return (Convert.ToString((object)((dynamic)cell).Value2) ??
+                    string.Empty).Trim();
+            }
+            finally
+            {
+                if (Marshal.IsComObject(cell))
+                    Marshal.ReleaseComObject(cell);
             }
         }
 

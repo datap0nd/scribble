@@ -95,15 +95,18 @@ namespace Scribble.Chat
                 allowDraftCreate &&
                 AnalysisDocumentPilot.Enabled &&
                 Regex.IsMatch(userPrompt ?? "",
-                    @"\b(?:6|six)\b.{0,24}\bslides?\b", RegexOptions.IgnoreCase) &&
+                    @"\b(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b.{0,48}\bslides?\b",
+                    RegexOptions.IgnoreCase) &&
                 DocumentDraftHost.ShouldDraftRepairedDeck(hostKind,
-                    userPrompt, 6) &&
+                    userPrompt, 1) &&
                 externalContext != null && externalContext.Any(document =>
                     new[] { ".xlsx", ".xlsm" }.Contains(
                         Path.GetExtension(document.SourcePath ?? ""),
                         StringComparer.OrdinalIgnoreCase));
-            var typedDeck = hostKind == "excel" && allowDraftCreate &&
-                AnalysisDocumentPilot.Enabled && Regex.IsMatch(
+            var typedWorkbook = hostKind == "excel" && allowDraftCreate &&
+                AnalysisDocumentPilot.Enabled && !hasExcelSelection &&
+                !hasKoreanWorkbook;
+            var typedDeck = typedWorkbook && Regex.IsMatch(
                     userPrompt ?? string.Empty,
                     @"\b(powerpoint|presentation|deck|slides?)\b",
                     RegexOptions.IgnoreCase);
@@ -133,11 +136,11 @@ namespace Scribble.Chat
                 if (hostKind == "excel")
                 {
                     tools.Add(
-                        typedDeck
+                        typedWorkbook
                             ? WorkbookToolCatalog.AnalysisDraftDefinition()
                             : WorkbookToolCatalog.DraftDefinition());
-                    tools.Add(
-                        WorkbookToolCatalog.CellsDefinition());
+                    if (!typedWorkbook)
+                        tools.Add(WorkbookToolCatalog.CellsDefinition());
                     if (hasExcelSelection)
                     {
                         tools.Add(
@@ -344,10 +347,10 @@ namespace Scribble.Chat
                 }
                 if (pilotRepair && !PresentationRevisionAcceptance.Enabled)
                     return boundary +
-                        " The six-slide copy repair is unavailable because this PowerPoint build lacks a current native acceptance receipt. Explain this local gate; do not claim an output was produced.";
+                        " The workbook-backed copy repair is unavailable on this PowerPoint build. Do not claim an output was produced.";
                 if (pilotRepair)
                     return boundary +
-                        " For this six-slide workbook-backed repair, inspect all six saved source slides and the attached workbook completely. Make one exclusive revise_slides call on the inspected presentation ID. The host copies the source into an unsaved draft, applies your bounded content patches and one fourth-page replacement there, repairs known table/font styling from native Office state, and recreates its one native chart from the attached workbook. Do not request chart reflow, multiple full-slide replacements, slide insertion, deletion, or reordering. The source deck and workbook remain unchanged. The draft needs human visual review before sharing. Never claim it was saved.";
+                        " For this workbook-backed repair, inspect every saved source slide and the attached workbook completely. Make one exclusive revise_slides call on the inspected presentation ID. The host opens a separate unsaved native copy, applies bounded content repairs there, fixes measured table and text defects, and binds monthly charts to verified workbook series. Name the source slide IDs that need replacement based on measured overflow. Do not request chart mutation, slide insertion, deletion, or reordering. The source deck and workbook remain unchanged. The draft needs human visual review before sharing. Never claim it was saved.";
                 var selectionInstruction = hasExcelSelection
                     ? " For a one-to-one transformation of the attached " +
                       "Excel selection, including translation, use " +
@@ -412,8 +415,11 @@ namespace Scribble.Chat
                       "never saved."
                     : string.Empty;
                 var excelHandoffInstruction = hostKind == "excel"
-                    ? " In Excel, list_worksheets is an inventory with no required arguments; use {} for it. " +
-                      "Use read_cells with a worksheet name and range to read actual values. A Scribble Draft sheet " +
+                    ? (AnalysisDocumentPilot.Enabled && !hasExcelSelection &&
+                        !hasKoreanWorkbook
+                        ? " The active workbook summary includes bounded sheet names, ranges and header labels. Use these to bind a complete read_grouped_totals call for the requested additive metrics; when a group analysis is requested, include Period and the requested dimension in one grouping because the host also returns verified period totals. Inspect source cells when the schema or data quality needs clarification. For a PowerPoint handoff, use the verified grouped facts and the in-memory draft audit with send_to_powerpoint. "
+                        : " In Excel, list_worksheets is an inventory with no required arguments; use {} for it. Use read_cells with a worksheet name and range to read actual values. ") +
+                      "A Scribble Draft sheet " +
                       "listed in the active workbook is available in memory even when the workbook is unsaved. " +
                       "For a draft audit table, put live formulas only in cells the user asked to calculate; " +
                       "write optional data-quality observations as sourced text unless the user explicitly " +
@@ -421,18 +427,28 @@ namespace Scribble.Chat
                       "syntax; do not add speculative array formulas or duplicate a metric in extra sections. " +
                       "For an authorized PowerPoint request, send_to_powerpoint is the live cross-app handoff. " +
                       "Do not claim that handoff is unavailable or ask the user to repeat values already readable " +
-                      "from the active workbook; read the sheet and continue the requested deck."
+                      "from the active workbook; continue the requested deck."
                     : string.Empty;
+                var sourceReadInstruction = hostKind == "excel" &&
+                    AnalysisDocumentPilot.Enabled && !hasExcelSelection &&
+                    !hasKoreanWorkbook
+                    ? "FIRST identify the source sheets, headers and requested scope. " +
+                      "For aggregate workbook facts, use read_grouped_totals to " +
+                      "calculate over the complete bound source; inspect source " +
+                      "cells as needed for schema and data-quality exceptions. " +
+                      "The host verifies those totals and their source spans " +
+                      "before any typed draft write."
+                    : "FIRST gather everything you need: when the source is a " +
+                      "document, workbook, or presentation, read it to the END by " +
+                      "repeating the read tool with an increasing start offset until " +
+                      "you have the whole text. Never draft from a partial read.";
                 return boundary + selectionInstruction +
                     koreanWorkbookInstruction + excelHandoffInstruction +
                     " The local host recognized an explicit draft request in the " +
                     "user's latest prompt and authorized ONE deliverable for this " +
                     "request, which you may build over several bounded draft calls " +
                     "- each one the only tool call in its response. " +
-                    "FIRST gather everything you need: when the source is a " +
-                    "document, workbook, or presentation, read it to the END by " +
-                    "repeating the read tool with an increasing start offset until " +
-                    "you have the whole text. Never draft from a partial read. " +
+                    sourceReadInstruction + " " +
                     "THEN write the deliverable in batches (two or three slides, or " +
                     "one table, per call) and keep calling until it is complete. " +
                     "Make it DENSE and specific - carry the real numbers, names, " +

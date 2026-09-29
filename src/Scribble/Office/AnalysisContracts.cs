@@ -23,6 +23,21 @@ namespace Scribble.Office
         public const string ErrorValue = "error";
         public const string Verified = "verified";
         public const string Unresolved = "unresolved";
+        public const string KnownSubtotalPrefix = "Known subtotal for ";
+
+        public static bool HasBlockingConflicts(AnalysisArtifact artifact)
+        {
+            return artifact.UnresolvedConflicts.Any(item =>
+                !item.StartsWith(KnownSubtotalPrefix, StringComparison.Ordinal));
+        }
+
+        public static bool IsKnownSubtotal(AnalysisArtifact artifact,
+            string metric, string period)
+        {
+            return artifact.UnresolvedConflicts.Any(item =>
+                item.StartsWith(KnownSubtotalPrefix + metric + " " + period +
+                    " ", StringComparison.Ordinal));
+        }
 
         public static SourceSnapshot CreateSnapshot(
             string sourceInstanceId,
