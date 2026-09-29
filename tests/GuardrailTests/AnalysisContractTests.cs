@@ -847,6 +847,11 @@ namespace GuardrailTests
                 titlesA[0].Contains("down") &&
                 titlesB[0].Contains("up"),
                 "Different workbooks produced the same headline findings.");
+            var chartTitle = a.Slides.Single(slide =>
+                slide.Chart != null).Chart.Title;
+            Check(chartTitle.Contains("Revenue EUR") &&
+                !chartTitle.Contains("EUR (EUR)"),
+                "The chart title duplicated its metric unit.");
             var pages = ((System.Collections.IEnumerable)json.DeserializeObject(
                 json.Serialize(SamsungPresentationReview.InspectPlan(
                     json.Serialize(compiledA.Slides)))))

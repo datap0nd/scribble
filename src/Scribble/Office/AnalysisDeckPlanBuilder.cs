@@ -51,6 +51,13 @@ namespace Scribble.Office
             var chartUnit = !string.IsNullOrEmpty(selection.ChartUnit) ?
                 selection.ChartUnit : !string.IsNullOrEmpty(chartFact.Currency) ?
                     chartFact.Currency : chartFact.Unit;
+            var chartMetrics = string.Join(" + ",
+                selection.ChartSeries.Select(Label));
+            var chartTitle = chartMetrics +
+                (string.IsNullOrEmpty(chartUnit) ||
+                 chartMetrics.EndsWith(chartUnit,
+                     StringComparison.OrdinalIgnoreCase)
+                    ? string.Empty : " (" + chartUnit + ")");
             if (headlineFacts.Length == 1)
                 headlineFacts = new[] { headlineFacts[0],
                     total(metrics[0], compare) };
@@ -94,9 +101,7 @@ namespace Scribble.Office
                         new AnalysisPlanCell { FactId = total(metric,
                             focus).FactId } } }).ToList(),
                 Chart = new AnalysisPlanChart { Type = "column",
-                    Title = string.Join(" + ", selection.ChartSeries.Select(Label)) +
-                        (string.IsNullOrEmpty(chartUnit) ? string.Empty :
-                            " (" + chartUnit + ")"),
+                    Title = chartTitle,
                     Categories = new List<string> { compare, focus },
                     Series = selection.ChartSeries.Select(metric =>
                         new AnalysisPlanSeries { Name = Label(metric),
@@ -139,8 +144,11 @@ namespace Scribble.Office
                         fact.Dimensions[dimension] == groups[0]);
                     slides.Add(new AnalysisPlanSlide {
                         Id = "analysis-groups", Layout = "table",
-                        Title = groups[0] + " leads " +
-                            Label(rankMetric) + " by " + dimension,
+                        TitleParts = new List<AnalysisPlanText> {
+                            new AnalysisPlanText { Text = groups[0] +
+                                " leads " }, Period(top),
+                            new AnalysisPlanText { Text = " " +
+                                Label(rankMetric) } },
                         Subtitle = new List<AnalysisPlanText> {
                             new AnalysisPlanText { Text = "Ranking for " },
                             Period(top) },
