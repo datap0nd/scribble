@@ -108,8 +108,6 @@ namespace Scribble.Office
                     .MeasuredReplacementSlides(sourceDeck);
                 ValidatePilotCopyOperations(mapped,
                     measuredReplacements, chartBindings);
-                var sourceEvidence = SamsungPresentationReview.SourceCorpus(
-                    _taskContext, trustedRequest);
                 ValidatePilotSourceSpanIds(mapped,
                     ids => _taskContext.Sources.Resolve(ids));
                 var factBound = factCatalog.BindOperations(operations);
@@ -143,7 +141,9 @@ namespace Scribble.Office
                 copy.AcceptDirectRevision(changed, combined);
                 var patchReviewReceipt = SamsungAuthoringPolicy.CacheKey(
                     settings.Model, settings.BaseUrl,
-                    _serializer.Serialize(changed), sourceEvidence);
+                    _serializer.Serialize(changed),
+                    copy.Snapshot() + "|" +
+                    workbooks[0].SourceFingerprint);
                 _taskContext.State.HostData["pilot_copy_snapshot"] =
                     copy.Snapshot();
                 _taskContext.State.HostData[statusKey] = "patched";
