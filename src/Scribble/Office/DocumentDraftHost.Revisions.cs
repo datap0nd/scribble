@@ -124,12 +124,17 @@ namespace Scribble.Office
                     if (!raw.TryGetValue("slide", out supplied)) continue;
                     var content = SamsungAuthoringPolicy.ReadMap(supplied);
                     var spans = SamsungAuthoringPolicy.Array(content, "source_spans");
+                    string resolvedEvidence = null;
                     if (spans.Length > 0)
                     {
                         if (_taskContext == null) throw new InvalidOperationException("SLIDE_SOURCE_REF_INVALID");
-                        content["evidence"] = _taskContext.Sources.Resolve(spans.Select(Convert.ToString));
+                        resolvedEvidence = _taskContext.Sources.Resolve(
+                            spans.Select(Convert.ToString));
+                        content["evidence"] = resolvedEvidence;
                     }
-                    SamsungPresentationReview.ValidateEvidence(_serializer.Serialize(content), source);
+                    SamsungPresentationReview.ValidateEvidence(
+                        _serializer.Serialize(content), source,
+                        resolvedEvidence);
                 }
                 var original = operations.Select(SamsungAuthoringPolicy.ReadMap).Select(o => Convert.ToInt32(o["slide_id"])).Distinct()
                     .Select(id => PresentationInspection.Capture(PresentationInspection.FindSlide(deck, id))).ToArray();

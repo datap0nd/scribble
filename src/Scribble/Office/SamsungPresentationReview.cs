@@ -45,10 +45,30 @@ namespace Scribble.Office
 
         public static void ValidateEvidence(string slideJson, string actualSource)
         {
+            ValidateEvidence(slideJson, actualSource, null);
+        }
+
+        // A revision may cite multiple immutable source spans in an order
+        // different from the complete source corpus. Only host-resolved span
+        // text may extend that corpus; uncited model evidence remains subject
+        // to the original exact-passage check.
+        public static void ValidateEvidence(string slideJson,
+            string actualSource, string hostResolvedEvidence)
+        {
             var json = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
             var data = json.Deserialize<Dictionary<string, object>>(slideJson);
             object raw;
             var evidence = data.TryGetValue("evidence", out raw) ? Convert.ToString(raw) : "";
+            if (hostResolvedEvidence != null)
+            {
+                if (!string.Equals(NormalizeSource(evidence),
+                        NormalizeSource(hostResolvedEvidence),
+                        StringComparison.Ordinal))
+                    throw new InvalidOperationException(
+                        "SLIDE_SOURCE_REF_INVALID: Cited evidence differs from the resolved source spans.");
+                actualSource = (actualSource ?? "") + "\n" +
+                    hostResolvedEvidence;
+            }
             var layout = data.TryGetValue("layout", out raw) ? Convert.ToString(raw) : "";
             var special = new[] { "cover", "divider", "closing", "agenda" }.Contains(layout);
             if (!special && string.IsNullOrWhiteSpace(evidence)) throw new InvalidOperationException("SLIDE_EVIDENCE_REQUIRED: Cite source_spans returned by read_task_sources, or supply a verbatim supporting passage.");

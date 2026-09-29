@@ -283,6 +283,8 @@ namespace GuardrailTests
                     PilotCopyPreflightRejectionPermitsRetry);
                 Run("Measured pilot replacement keeps ordinary redesign consent",
                     MeasuredPilotReplacementKeepsOrdinaryConsent);
+                Run("Reordered source spans remain exact grounded evidence",
+                    ReorderedSourceSpansRemainGrounded);
                 Run(
                     "Browser context is bounded and tools are approved-only",
                     BrowserContextIsBoundedAndReadOnly);
@@ -7221,6 +7223,46 @@ namespace GuardrailTests
             Assert(DocumentDraftHost.AllowsSlideReplacement(
                     "Redesign the slide layout", false),
                 "Explicit redesign consent must still authorize an ordinary slide replacement.");
+        }
+
+        private static void ReorderedSourceSpansRemainGrounded()
+        {
+            const string earlier = "March total: 82 EUR";
+            const string later = "April total: 85 EUR";
+            var source = earlier + "\nOther source rows\n" + later;
+            var resolved = later + "\n" + earlier;
+            var json = new JavaScriptSerializer();
+            var slide = new Dictionary<string, object>
+            {
+                { "layout", "cards" }, { "purpose", "explanatory" },
+                { "title", "April 85 EUR versus March 82 EUR" },
+                { "sources", "Workbook source" },
+                { "evidence", resolved }
+            };
+            var rejected = false;
+            try { SamsungPresentationReview.ValidateEvidence(
+                json.Serialize(slide), source); }
+            catch (InvalidOperationException error)
+            { rejected = error.Message.StartsWith("SLIDE_EVIDENCE_UNVERIFIED"); }
+            Assert(rejected,
+                "Untrusted reordered text must not bypass the exact source check.");
+            SamsungPresentationReview.ValidateEvidence(json.Serialize(slide),
+                source, resolved);
+            rejected = false;
+            try { SamsungPresentationReview.ValidateEvidence(
+                json.Serialize(slide), source, earlier); }
+            catch (InvalidOperationException error)
+            { rejected = error.Message.StartsWith("SLIDE_SOURCE_REF_INVALID"); }
+            Assert(rejected,
+                "The displayed evidence must match the host-resolved source spans.");
+            slide["title"] = "April 999 EUR versus March 82 EUR";
+            rejected = false;
+            try { SamsungPresentationReview.ValidateEvidence(
+                json.Serialize(slide), source, resolved); }
+            catch (InvalidOperationException error)
+            { rejected = error.Message.StartsWith("SLIDE_NUMBERS_UNVERIFIED"); }
+            Assert(rejected,
+                "Trusted source spans cannot authorize an invented displayed value.");
         }
 
         private static void RepairRouteExcludesCorpusLabels()

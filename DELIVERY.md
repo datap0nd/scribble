@@ -174,7 +174,7 @@ a ≤ 10-line owner note in §5.
 | S1 XA01 | old | 2.0.385 | 1/3 (22 Sep) |
 | S1 XA01–10 | new | 2.0.724.0 | 9/10 deterministic and request bar in one batch; owner D2 pending |
 | S1 XA01 consecutive | new | 2.0.724.0 | 3/3 (10, 10, 9 actual model requests); owner D2 pending |
-| S2 PP01 | new | 2.0.737.0 | C2 native repair passed; real C3 run reached the measured replacement patch but its internal redesign-consent check rejected it; fix in PR #45 |
+| S2 PP01 | new | 2.0.738.0 | C2 native repair passed; real C3 run reached patch review but combined valid source spans were rejected as one noncontiguous excerpt; fix in PR #45 |
 | S2 PP02–10 | — | — | not yet run |
 
 Current stage: **C3**, real PP01 repair on PR #45. PR #44 merged into
@@ -292,6 +292,15 @@ that host-validated replacement. No final deck was produced. Source and
 workbook bytes stayed unchanged. PR #45 now exempts only the internal,
 prevalidated measured replacement from ordinary redesign consent, with a
 regression that retains the ordinary gate. Rebuild, install and rerun PP01.
+Installed 2.0.738.0 passed green CI. Real PP01 used 8 model requests and
+$0.0719; safe preflight rejected unsupported chart-slide replacements, then
+the measured overflow replacement reached patch review. The first failing
+stage is review: two valid cited source spans were joined in model order,
+while the source corpus holds them in canonical order, so the exact-passage
+check rejected the combined text. No final deck was produced; source and
+workbook bytes stayed unchanged. PR #45 now validates the exact host-resolved
+span combination as a cited unit while retaining the strict check for uncited
+evidence and all numeric checks. Rebuild, install and rerun PP01.
 
 ## 6. Rules for autonomous sessions
 
