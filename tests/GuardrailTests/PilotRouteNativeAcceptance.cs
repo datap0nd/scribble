@@ -211,19 +211,16 @@ namespace GuardrailTests
                 out margin);
             Func<VerifiedFact, string, string> token = (fact, field) =>
                 "[[fact:" + fact.FactId + ":" + field + "]]";
-            var labels = new[] { "Current performance",
+            var labels = new[] { token(revenue, "metric"),
                 token(cost, "metric"), token(margin, "metric"),
                 "Interpretation" };
             var points = new[] {
-                token(revenue, "metric") + " " +
-                    token(revenue, "value") + " " +
-                    token(revenue, "unit") + " in " +
+                token(revenue, "value") + " in " +
                     token(revenue, "period"),
-                token(cost, "metric") + " " +
-                    token(cost, "value") + " " +
-                    token(cost, "unit"),
-                token(margin, "metric") + " " +
-                    token(margin, "percent"),
+                token(cost, "value") + " in " +
+                    token(cost, "period"),
+                token(margin, "percent") + " in " +
+                    token(margin, "period"),
                 "A period change does not establish a cause."
             };
             return new ChatToolCall { id = "repair", type = "function", function = new ChatToolCallFunction {

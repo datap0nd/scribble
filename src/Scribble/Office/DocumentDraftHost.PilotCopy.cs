@@ -259,7 +259,7 @@ namespace Scribble.Office
                         stage,
                         saved = false,
                         needs_inspection = needsInspection,
-                        permission_consumed = needsInspection
+                        permission_consumed = permissionConsumed
                     }), error.Message);
             }
         }
