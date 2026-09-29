@@ -18,7 +18,26 @@ namespace Scribble.Office
         private static readonly ConditionalWeakTable<object, Identity> Identities = new ConditionalWeakTable<object, Identity>();
         public static string IdentityFor(object presentation)
         {
-            try { dynamic deck = presentation; string saved = deck.Tags["ScribblePresentationId"]; if (!string.IsNullOrEmpty(saved)) return saved; }
+            try
+            {
+                dynamic deck = presentation;
+                string saved = deck.Tags["ScribblePresentationId"];
+                if (!string.IsNullOrEmpty(saved)) return saved;
+                // Office can hand different managed wrappers to consecutive
+                // inspections of one saved presentation. The weak-table ID
+                // then changes even though the same source remains open.
+                // Bind saved decks to their path and current file bytes;
+                // slide fingerprints still guard each requested operation.
+                string path = Convert.ToString(deck.FullName);
+                string folder = Convert.ToString(deck.Path);
+                if (!string.IsNullOrWhiteSpace(folder) &&
+                    !string.IsNullOrWhiteSpace(path) &&
+                    File.Exists(path))
+                    return TaskCheckpointStore.Fingerprint(
+                        Path.GetFullPath(path).ToUpperInvariant() + "|" +
+                        ExternalContextDocument.FingerprintFile(path))
+                        .Substring(0, 32);
+            }
             catch (Exception e) when (e is System.Runtime.InteropServices.COMException || e is Microsoft.CSharp.RuntimeBinder.RuntimeBinderException) { }
             return Identities.GetValue(presentation, p => new Identity()).Id;
         }

@@ -277,6 +277,8 @@ namespace GuardrailTests
                     DocumentFactoryGatesDraftTools);
                 Run("Production repair route excludes corpus labels",
                     RepairRouteExcludesCorpusLabels);
+                Run("Saved presentation identity survives COM rewrapping",
+                    SavedPresentationIdentityIsFileBound);
                 Run(
                     "Browser context is bounded and tools are approved-only",
                     BrowserContextIsBoundedAndReadOnly);
@@ -7099,6 +7101,44 @@ namespace GuardrailTests
                 emailTool.function.description.Contains(
                     "sending is impossible"),
                 "The email draft tool must state that sending is impossible.");
+        }
+
+        private static void SavedPresentationIdentityIsFileBound()
+        {
+            var path = Path.Combine(Path.GetTempPath(),
+                "scribble-identity-" + Guid.NewGuid().ToString("N") +
+                ".pptx");
+            try
+            {
+                File.WriteAllText(path, "first saved source");
+                dynamic first = new System.Dynamic.ExpandoObject();
+                first.Tags = new Dictionary<string, string> {
+                    { "ScribblePresentationId", "" } };
+                first.Path = Path.GetDirectoryName(path);
+                first.FullName = path;
+                dynamic second = new System.Dynamic.ExpandoObject();
+                second.Tags = new Dictionary<string, string> {
+                    { "ScribblePresentationId", "" } };
+                second.Path = Path.GetDirectoryName(path);
+                second.FullName = path;
+                var original = PresentationInspection.IdentityFor(
+                    (object)first);
+                Assert(original == PresentationInspection.IdentityFor(
+                        (object)second),
+                    "Saved source identity must survive a new COM wrapper.");
+                File.WriteAllText(path, "changed saved source");
+                Assert(original != PresentationInspection.IdentityFor(
+                        (object)first),
+                    "Saved source identity must change with file bytes.");
+                first.Tags["ScribblePresentationId"] = "owned-draft";
+                Assert(PresentationInspection.IdentityFor((object)first) ==
+                        "owned-draft",
+                    "Owned draft tags must take precedence over file identity.");
+            }
+            finally
+            {
+                if (File.Exists(path)) File.Delete(path);
+            }
         }
 
         private static void RepairRouteExcludesCorpusLabels()

@@ -174,10 +174,10 @@ a ≤ 10-line owner note in §5.
 | S1 XA01 | old | 2.0.385 | 1/3 (22 Sep) |
 | S1 XA01–10 | new | 2.0.724.0 | 9/10 deterministic and request bar in one batch; owner D2 pending |
 | S1 XA01 consecutive | new | 2.0.724.0 | 3/3 (10, 10, 9 actual model requests); owner D2 pending |
-| S2 PP01 | new | 2.0.726.0 | C1 native repair failed in patch staging on the copied source chart's overflow; generic repair fix in PR #45 |
+| S2 PP01 | new | 2.0.733.0 | C2 native repair passed; first real C3 run stopped before writing because the saved presentation ID changed across COM wrappers; stable file-backed ID fix in PR #45 |
 | S2 PP02–10 | — | — | not yet run |
 
-Current stage: **C2**, generic repair on PR #45. PR #44 merged into
+Current stage: **C3**, real PP01 repair on PR #45. PR #44 merged into
 `codex/development`. The required single XA02–XA10 batch ran on installed
 2.0.706.0 (`e079743a` DLL SHA256 prefix), with the new route confirmed and all
 nine results recorded in the scoreboard. None is eligible for S1: six blocked
@@ -274,6 +274,15 @@ committed, the workbook-derived native chart was recreated, recovery and PDF
 export package equivalence passed, and source/workbook hashes were unchanged.
 No test-owned Office process remained. Green CI, installation and the first
 real PP01 run are next; independent grading and owner D2 review remain open.
+Installed 2.0.733.0 passed green CI and the native harness. The first real
+PP01 run used 9 model requests and $0.0977, but inspection returned several
+different `presentation_id` values for one unchanged saved deck. The first
+`revise_slides` was rejected at preflight; a later write was quarantined as
+uncertain, with no final deck. Source and workbook bytes stayed unchanged.
+This first failing stage is capture/binding. PR #45 now derives saved-deck
+identity from its path and current file hash, while marked drafts retain
+their tag identity. A regression test covers distinct wrappers and changed
+source bytes. Rebuild, install and real PP01 rerun are next.
 
 ## 6. Rules for autonomous sessions
 
