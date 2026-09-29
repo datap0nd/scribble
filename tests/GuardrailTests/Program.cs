@@ -289,6 +289,8 @@ namespace GuardrailTests
                     CompoundClaimLabelsBindCitedComponents);
                 Run("Verified source locators are not numeric claims",
                     VerifiedSourceLocatorsAreNotQuantities);
+                Run("Host summary operands bind one metric field and period",
+                    HostSummaryOperandsBindOneField);
                 Run(
                     "Browser context is bounded and tools are approved-only",
                     BrowserContextIsBoundedAndReadOnly);
@@ -7322,6 +7324,56 @@ namespace GuardrailTests
                 Assert(rejected,
                     "An uncited locator or quantity escaped numeric review: " +
                     unsupported);
+            }
+        }
+
+        private static void HostSummaryOperandsBindOneField()
+        {
+            const string source = "Period 2025-03; Group West; Rows 8; SalesUSD 120 USD; ExpenseUSD 30 USD";
+            var sales = new Dictionary<string, object>
+            {
+                { "value", 120m }, { "label", "West Sales USD, 2025-03" },
+                { "unit", "USD" }, { "period", "2025-03" },
+                { "evidence", source }
+            };
+            var expense = new Dictionary<string, object>
+            {
+                { "value", 30m }, { "label", "Expense USD, 2025-03" },
+                { "unit", "USD" }, { "period", "2025-03" },
+                { "evidence", source }
+            };
+            var slide = new Dictionary<string, object>
+            {
+                { "calculations", new object[] { new Dictionary<string, object>
+                    {
+                        { "label", "Gross margin" },
+                        { "operation", "margin_percent" },
+                        { "operands", new object[] { sales, expense } },
+                        { "result", 75m }, { "unit", "%" },
+                        { "decimals", 2 }
+                    } } }
+            };
+            Assert(SamsungEvidence.ValidateCalculations(slide, source)
+                    .Single() == "75",
+                "Host summary row did not bind an otherwise exact typed calculation.");
+            foreach (var change in new[] {
+                new { Key = "label", Value = (object)"Profit USD, 2025-03" },
+                new { Key = "label", Value = (object)"East Sales USD, 2025-03" },
+                new { Key = "period", Value = (object)"2025-04" },
+                new { Key = "unit", Value = (object)"EUR" },
+                new { Key = "value", Value = (object)30m } })
+            {
+                var original = sales[change.Key];
+                sales[change.Key] = change.Value;
+                var rejected = false;
+                try { SamsungEvidence.ValidateCalculations(slide, source)
+                    .ToArray(); }
+                catch (InvalidOperationException error)
+                { rejected = error.Message.StartsWith("SLIDE_OPERAND_ASSOCIATION"); }
+                Assert(rejected,
+                    "A mismatched operand field escaped the host row binding: " +
+                    change.Key);
+                sales[change.Key] = original;
             }
         }
 

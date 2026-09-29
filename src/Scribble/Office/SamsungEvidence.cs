@@ -282,6 +282,108 @@ namespace Scribble.Office
                 throw new InvalidOperationException("SLIDE_CALCULATION_INVALID: " + key + " must be a finite numeric value.");
             return value;
         }
+
+        // Host grouped-fact receipts separate period, metric, value and unit
+        // into fields. Bind all four to one cited row instead of comparing a
+        // readable operand label to one contiguous phrase. Other document
+        // passages continue through the original strict association checks.
+        private static bool? BindHostSummaryOperand(string passage,
+            IDictionary<string, object> operand)
+        {
+            var requestedPeriod = CanonicalPeriods(
+                SamsungAuthoringPolicy.Text(operand, "period"));
+            var requestedValue = Number(operand, "value");
+            var requestedUnit = SamsungAuthoringPolicy.Text(operand, "unit");
+            var label = SamsungAuthoringPolicy.Text(operand, "label");
+            var recognized = false;
+            var matches = 0;
+            foreach (var line in Regex.Split(passage ?? "", @"\r\n|\n|\r"))
+            {
+                var fields = line.Split(';').Select(item => item.Trim())
+                    .ToArray();
+                var periodField = fields.FirstOrDefault(item =>
+                    item.StartsWith("Period ",
+                        StringComparison.OrdinalIgnoreCase));
+                if (periodField == null) continue;
+                var metricFields = fields.Select(item => Regex.Match(item,
+                        @"^(?<name>[A-Za-z][A-Za-z0-9 _/-]*?)\s+(?<value>[-+]?\d+(?:[,.]\d+)?)\s+(?<unit>[A-Za-z%]+)$"))
+                    .Where(match => match.Success).ToArray();
+                if (metricFields.Length == 0) continue;
+                recognized = true;
+                var sourcePeriod = CanonicalPeriods(periodField);
+                if (requestedPeriod.Count != 1 ||
+                    sourcePeriod.Count != 1 ||
+                    !requestedPeriod.SetEquals(sourcePeriod)) continue;
+                var groupField = fields.FirstOrDefault(item =>
+                    item.StartsWith("Group ",
+                        StringComparison.OrdinalIgnoreCase));
+                var group = groupField == null ? "" :
+                    groupField.Substring("Group ".Length);
+                foreach (var metric in metricFields)
+                {
+                    decimal sourceValue;
+                    if (!decimal.TryParse(metric.Groups["value"].Value
+                            .Replace(",", ""), NumberStyles.Float,
+                            CultureInfo.InvariantCulture,
+                            out sourceValue) ||
+                        sourceValue != requestedValue ||
+                        !string.Equals(metric.Groups["unit"].Value,
+                            requestedUnit,
+                            StringComparison.OrdinalIgnoreCase) ||
+                        !HostFieldMatchesLabel(label,
+                            metric.Groups["name"].Value,
+                            requestedUnit, sourcePeriod.Single(), group))
+                        continue;
+                    matches++;
+                }
+            }
+            return recognized ? matches == 1 : (bool?)null;
+        }
+
+        private static bool HostFieldMatchesLabel(string label,
+            string field, string unit, string period, string group)
+        {
+            var namedPeriods = CanonicalPeriods(label);
+            if (namedPeriods.Count > 0 &&
+                (namedPeriods.Count != 1 || !namedPeriods.Contains(period)))
+                return false;
+            var rest = PeriodPattern.Replace(label ?? "", " ");
+            var month = int.Parse(period.Substring(5, 2),
+                CultureInfo.InvariantCulture) - 1;
+            for (var index = 0; index < MonthNames.Length; index++)
+            {
+                var monthPattern = @"\b(?:" + MonthNames[index] + "|" +
+                    MonthNames[index].Substring(0, 3) + @")\b";
+                if (!Regex.IsMatch(rest, monthPattern,
+                        RegexOptions.IgnoreCase)) continue;
+                if (index != month) return false;
+                rest = Regex.Replace(rest, monthPattern, " ",
+                    RegexOptions.IgnoreCase);
+            }
+            if (!string.IsNullOrWhiteSpace(group))
+                rest = Regex.Replace(rest, @"\b" +
+                    Regex.Escape(group).Replace(@"\ ", @"\s+") + @"\b",
+                    " ", RegexOptions.IgnoreCase);
+            var compactLabel = Regex.Replace(rest, @"[^A-Za-z0-9]", "");
+            var compactField = Regex.Replace(field ?? "",
+                @"[^A-Za-z0-9]", "");
+            var compactUnit = Regex.Replace(unit ?? "",
+                @"[^A-Za-z0-9]", "");
+            if (compactLabel.Length == 0 || compactField.Length == 0 ||
+                compactUnit.Length == 0) return false;
+            if (compactLabel.EndsWith(compactUnit,
+                    StringComparison.OrdinalIgnoreCase))
+                compactLabel = compactLabel.Substring(0,
+                    compactLabel.Length - compactUnit.Length);
+            if (compactField.EndsWith(compactUnit,
+                    StringComparison.OrdinalIgnoreCase))
+                compactField = compactField.Substring(0,
+                    compactField.Length - compactUnit.Length);
+            return compactLabel.Length > 0 && string.Equals(
+                compactLabel, compactField,
+                StringComparison.OrdinalIgnoreCase);
+        }
+
         public static IEnumerable<string> ValidateCalculations(IDictionary<string, object> slide, string evidence)
         {
             var calculations = SamsungAuthoringPolicy.Array(slide, "calculations");
@@ -298,10 +400,16 @@ namespace Scribble.Office
                     // Like a claim, an exact data row may omit its adjacent header.
                     passage = ExpandClaimPassage(evidence, passage, operand);
                     operand["evidence"] = passage;
+                    var hostBinding = BindHostSummaryOperand(passage,
+                        operand);
+                    if (hostBinding == false)
+                        throw new InvalidOperationException(
+                            "SLIDE_OPERAND_ASSOCIATION: The operand's metric, period, unit and value do not bind to one field in its exact cited host row.");
                     foreach (var key in new[] { "label", "unit", "period" })
-                        if (string.IsNullOrWhiteSpace(SamsungAuthoringPolicy.Text(operand, key)) ||
+                        if (hostBinding != true &&
+                            (string.IsNullOrWhiteSpace(SamsungAuthoringPolicy.Text(operand, key)) ||
                             !AssociationOccurs(passage,
-                                SamsungAuthoringPolicy.Text(operand, key), key))
+                                SamsungAuthoringPolicy.Text(operand, key), key)))
                         {
                             var cited = Normalize(passage);
                             if (cited.Length > 160) cited = cited.Substring(0, 160) + "...";

@@ -174,7 +174,7 @@ a ≤ 10-line owner note in §5.
 | S1 XA01 | old | 2.0.385 | 1/3 (22 Sep) |
 | S1 XA01–10 | new | 2.0.724.0 | 9/10 deterministic and request bar in one batch; owner D2 pending |
 | S1 XA01 consecutive | new | 2.0.724.0 | 3/3 (10, 10, 9 actual model requests); owner D2 pending |
-| S2 PP01 | new | 2.0.740.0 | C2 native repair passed; real C3 run passed claim association but patch review counted a verified sheet locator as a quantity; source-locator approach in PR #45 |
+| S2 PP01 | new | 2.0.741.0 | C2 native repair passed; real rerun passed source-locator review but exposed a structured calculation-operand binding failure; approach change in PR #45 |
 | S2 PP02–10 | — | — | not yet run |
 
 Current stage: **C3**, real PP01 repair on PR #45. PR #44 merged into
@@ -322,6 +322,21 @@ source, leaving all other numerals under the original evidence check. No final
 deck was produced; source and workbook bytes stayed unchanged. Rebuild,
 install and rerun PP01; if review still fails, stop local review patches and
 escalate the mechanism.
+Installed 2.0.741.0 passed green CI. Its first real PP01 run stopped before
+writing when the provider returned empty content twice at HTTP 200. Five
+inference responses cost $0.0479. Source and workbook bytes were unchanged.
+The source-locator change remains untested in a real patch; rerun the same
+installed build after a fresh balance check.
+The second 2.0.741.0 PP01 run used 7 model requests and $0.0753. It passed
+source-locator review, then patch review rejected a calculation operand whose
+display label combines `Revenue EUR` and `2026-06`; the exact cited host row
+stores `RevenueEUR`, `82992 EUR` and `Period 2026-06` as separate fields.
+No final deck was produced; source and workbook bytes stayed unchanged.
+The mechanism hypothesis is that prose substring association is unsuitable
+for host-typed rows: the label, period, unit and value must bind as fields of
+one exact row. Stop local label patches; parse such rows and verify that full
+operand tuple against one metric field, falling back to the existing strict
+passage check for other source formats. Rebuild, install and rerun PP01.
 
 ## 6. Rules for autonomous sessions
 
