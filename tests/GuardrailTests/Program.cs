@@ -299,6 +299,8 @@ namespace GuardrailTests
                     NativeSlideCopyWaitsForCountSettlement);
                 Run("Pilot repair validates public edits while preserving host style",
                     PilotRepairKeepsHostStyleOutsidePublicSchema);
+                Run("Pilot visual overflow must match the staged native bounds",
+                    PilotVisualOverflowRequiresMatchingNativeGeometry);
                 Run(
                     "Browser context is bounded and tools are approved-only",
                     BrowserContextIsBoundedAndReadOnly);
@@ -7285,6 +7287,55 @@ namespace GuardrailTests
                 Assert(error.InnerException is InvalidOperationException,
                     "Changed host style must fail before schema projection.");
             }
+        }
+
+        private static void PilotVisualOverflowRequiresMatchingNativeGeometry()
+        {
+            var filter = typeof(DocumentDraftHost).GetMethod(
+                "FilterRevisionGeometryReview",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert(filter != null,
+                "The pilot must verify visual overflow against staged geometry.");
+            var shape = new Dictionary<string, object>
+            {
+                { "id", 5 }, { "text", "A measured staged paragraph" },
+                { "width", 150f }, { "height", 63f },
+                { "text_bounds", new[] { 0f, 0f, 100f, 40f } }
+            };
+            var proposed = new Dictionary<string, object>
+            {
+                { "slide_id", 257 },
+                { "shapes", new List<object> { shape } }
+            };
+            var json = new JavaScriptSerializer();
+            Func<int, string, string> review = (slide, type) =>
+                json.Serialize(new
+                {
+                    approved = false,
+                    issues = "Measured visual finding",
+                    findings = new[] { new
+                    {
+                        slide_id = slide, object_id = "5", type,
+                        severity = "blocker",
+                        correction = "Fix the measured shape"
+                    } }
+                });
+            Func<string, bool> approved = verdict =>
+            {
+                var result = (string)filter.Invoke(null,
+                    new object[] { verdict, proposed });
+                return (bool)json.Deserialize<Dictionary<string, object>>(
+                    result)["approved"];
+            };
+            Assert(approved(review(259, "overflow")),
+                "A finding on another slide blocked this staged slide.");
+            Assert(approved(review(257, "overflow")),
+                "A native shape whose text fits was called overflowing.");
+            shape["text_bounds"] = new[] { 0f, 0f, 100f, 345f };
+            Assert(!approved(review(257, "overflow")),
+                "Measured native overflow must still block the revision.");
+            Assert(!approved(review(257, "contrast")),
+                "Non-geometry visual findings must still receive review.");
         }
 
         private static void PilotCopyTextEvidenceIsBounded()

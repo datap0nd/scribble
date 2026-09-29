@@ -157,10 +157,21 @@ namespace Scribble.Office
                             var item = revision.Items[i];
                             foreach (var previewSlide in new[] { item.Staged }.Concat(item.StagedInserts))
                             {
+                            var proposed = PresentationInspection.Capture(
+                                previewSlide);
                             var verdict = await ReviewSamsungAsync(client, settings,
                                 "Review the proposed Samsung slide revision. Check requested edits, preservation of unrelated content, readable dense evidence, chart/table labels, collisions, clipping and emphasis." + SamsungAuthoringPolicy.ReviewContract,
-                                _serializer.Serialize(new { instruction = prompt, source, expected = item.Operations, original = PresentationInspection.Capture(item.Original), proposed = PresentationInspection.Capture(previewSlide) }),
+                                _serializer.Serialize(new { instruction = prompt, source, expected = item.Operations, original = PresentationInspection.Capture(item.Original), proposed }),
                                 PresentationInspection.Preview(previewSlide), token);
+                            if (pilotInternal && !ReviewApproved(verdict))
+                            {
+                                // A visual claim of clipping must agree with
+                                // the exact staged slide and its native bounds.
+                                PresentationRevision.ValidateNativeGeometry(
+                                    previewSlide);
+                                verdict = FilterRevisionGeometryReview(
+                                    verdict, proposed);
+                            }
                             if (!ReviewApproved(verdict)) throw new InvalidOperationException("REVISION_VISUAL_REVIEW: " + verdict);
                             }
                         }
@@ -251,6 +262,40 @@ namespace Scribble.Office
             {
                 if (revision != null) revision.CloseStaging(written || revision.Status == "applied" || revision.Status == "recovery_required");
             }
+        }
+        internal static string FilterRevisionGeometryReview(string review,
+            Dictionary<string, object> proposed)
+        {
+            var slideId = Convert.ToString(proposed["slide_id"]);
+            var shapes = ((IEnumerable<object>)proposed["shapes"])
+                .Select(SamsungAuthoringPolicy.ReadMap).ToArray();
+            return FilterReviewFindings(review, finding =>
+            {
+                var type = SamsungAuthoringPolicy.Text(finding, "type");
+                if (!string.Equals(type, "overflow",
+                        StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(type, "clipping",
+                        StringComparison.OrdinalIgnoreCase)) return false;
+                var reportedSlide = SamsungAuthoringPolicy.Text(finding,
+                    "slide_id");
+                if (!string.IsNullOrWhiteSpace(reportedSlide) &&
+                    reportedSlide != slideId) return true;
+                int objectId;
+                if (!int.TryParse(SamsungAuthoringPolicy.Text(finding,
+                        "object_id"), out objectId)) return false;
+                var shape = shapes.FirstOrDefault(candidate =>
+                    Convert.ToInt32(candidate["id"]) == objectId);
+                if (shape == null) return true;
+                object rawBounds;
+                if (!shape.TryGetValue("text_bounds", out rawBounds))
+                    return false;
+                var bounds = rawBounds as float[];
+                if (bounds == null || bounds.Length != 4) return false;
+                return !PresentationRevision.NativeTextOverflows(
+                    SamsungAuthoringPolicy.Text(shape, "text"), bounds[3],
+                    bounds[2], Convert.ToSingle(shape["height"]),
+                    Convert.ToSingle(shape["width"]));
+            });
         }
         private void CheckpointRevision(ChatToolCall call, PresentationRevision revision, string status)
         {
