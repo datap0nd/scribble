@@ -131,8 +131,9 @@ namespace Scribble.Office
                     "REVISION_FACT_PRESENTATION_MISSING");
             var trustedRequest = string.Join("\n",
                 _taskContext.State.OriginalDecisions);
-            var bindings = PresentationDraftCopy.BindMonthlyCharts(
-                deck, workbooks[0].SourcePath, trustedRequest,
+            PresentationDraftCopy.MonthlyChartBinding[] bindings =
+                PresentationDraftCopy.BindMonthlyCharts(
+                (object)deck, workbooks[0].SourcePath, trustedRequest,
                 CancellationToken.None);
             var catalog = RevisionFactCatalog.FromBindings(bindings);
             var replacements = PresentationDraftCopy
