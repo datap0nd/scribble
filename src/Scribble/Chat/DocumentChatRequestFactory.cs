@@ -89,7 +89,8 @@ namespace Scribble.Chat
             Scribble.Configuration.TopicConfig activeTopic = null,
             bool hasExcelSelection = false,
             bool hasKoreanWorkbook = false,
-            string workbookTranslationTarget = null)
+            string workbookTranslationTarget = null,
+            IEnumerable<int> pilotReplacementIds = null)
         {
             var pilotRepair = hostKind == "powerpoint" &&
                 allowDraftCreate &&
@@ -170,7 +171,8 @@ namespace Scribble.Chat
                     if (pilotRepair &&
                         PresentationRevisionAcceptance.Enabled)
                         tools.Add(PresentationToolCatalog
-                            .PilotRevisionDefinition());
+                            .PilotRevisionDefinition(pilotReplacementIds ??
+                                new int[0]));
                     else
                         tools.AddRange(PresentationToolCatalog
                             .RevisionDefinitions());
@@ -284,6 +286,22 @@ namespace Scribble.Chat
                     ? (int?)DraftResponseTokens
                     : null
             };
+        }
+
+        // The revision facts receipt contains host-measured overflow scope.
+        // Replace the exposed tool contract before the next model turn so a
+        // chart or otherwise sound slide cannot be offered for replacement.
+        public static void ApplyPilotRevisionScope(
+            ChatCompletionRequest request,
+            IEnumerable<int> measuredReplacementIds)
+        {
+            if (request?.tools == null || measuredReplacementIds == null)
+                return;
+            var index = request.tools.FindIndex(tool =>
+                tool?.function?.name == PresentationToolCatalog.ReviseSlides);
+            if (index >= 0)
+                request.tools[index] = PresentationToolCatalog
+                    .PilotRevisionDefinition(measuredReplacementIds);
         }
 
         private const string EnglishToKoreanWorkbookInstruction =

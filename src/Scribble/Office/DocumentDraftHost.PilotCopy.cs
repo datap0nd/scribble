@@ -66,14 +66,6 @@ namespace Scribble.Office
                     "operations");
                 var mapped = operations.Select(
                     SamsungAuthoringPolicy.ReadMap).ToArray();
-                var contract = PresentationToolCatalog
-                    .PilotRevisionDefinition();
-                var contractErrors = ToolContractValidator.Validate(
-                    call, contract);
-                if (contractErrors.Count != 0)
-                    throw new InvalidOperationException(
-                        "PILOT_COPY_SCHEMA: " +
-                        string.Join("; ", contractErrors));
                 if (PresentationRevisionAcceptance
                     .ContainsChartOperation(operations))
                     throw new InvalidOperationException(
@@ -105,6 +97,14 @@ namespace Scribble.Office
                     chartBindings);
                 var measuredReplacements = PresentationDraftCopy
                     .MeasuredReplacementSlides(sourceDeck);
+                var contract = PresentationToolCatalog
+                    .PilotRevisionDefinition(measuredReplacements);
+                var contractErrors = ToolContractValidator.Validate(
+                    call, contract);
+                if (contractErrors.Count != 0)
+                    throw new InvalidOperationException(
+                        "PILOT_COPY_SCHEMA: " +
+                        string.Join("; ", contractErrors));
                 ValidatePilotCopyOperations(mapped,
                     measuredReplacements, chartBindings);
                 ValidatePilotSourceSpanIds(mapped,

@@ -2345,6 +2345,29 @@ namespace Scribble.UI
                             toolCall);
                     }
 
+                    if (name == PresentationToolCatalog.ReadRevisionFacts &&
+                        !string.IsNullOrWhiteSpace(result.Content))
+                    {
+                        try
+                        {
+                            var receipt = _serializer.DeserializeObject(
+                                result.Content) as Dictionary<string, object>;
+                            object rawScope;
+                            if (receipt != null && receipt.TryGetValue(
+                                    "measured_replacement_slide_ids",
+                                    out rawScope) && rawScope is object[])
+                                DocumentChatRequestFactory
+                                    .ApplyPilotRevisionScope(request,
+                                        ((object[])rawScope).Select(
+                                            Convert.ToInt32));
+                        }
+                        catch (ArgumentException)
+                        {
+                            // An invalid receipt cannot broaden the initial
+                            // text/table-only revision contract.
+                        }
+                    }
+
                     taskContext.AfterTool(toolCall, result);
                     results.Add(result);
                     if (ToolResultMadeProgress(

@@ -514,8 +514,12 @@ namespace Scribble.Chat
         // The workbook-backed copy route exposes only operations its host can
         // apply. Chart data, footer/page style and source evidence are supplied
         // by the host from the inspected deck and verified workbook.
-        public static ChatToolDefinition PilotRevisionDefinition()
+        public static ChatToolDefinition PilotRevisionDefinition(
+            IEnumerable<int> measuredReplacementSlideIds = null)
         {
+            var measured = measuredReplacementSlideIds == null
+                ? null : measuredReplacementSlideIds.Distinct().ToArray();
+            var allowReplacement = measured == null || measured.Length > 0;
             var slideProperties = (Dictionary<string, object>)
                 SlideSchema()["properties"];
             var visible = new[] { "title", "subtitle", "layout", "bullets",
@@ -524,10 +528,12 @@ namespace Scribble.Chat
                 .Where(pair => visible.Contains(pair.Key))
                 .ToDictionary(pair => pair.Key, pair => pair.Value),
                 "title");
-            var operation = ToolSchema.Build(new Dictionary<string, object> {
-                { "kind", new { type = "string", @enum = new[] {
-                    "replace_text", "table_cell", "replace_slide",
-                    "notes_append" } } },
+            var operationFields = new Dictionary<string, object> {
+                { "kind", new { type = "string", @enum = allowReplacement
+                    ? new[] { "replace_text", "table_cell",
+                        "replace_slide", "notes_append" }
+                    : new[] { "replace_text", "table_cell",
+                        "notes_append" } } },
                 { "slide_id", ToolSchema.Integer(
                     "Stable source slide ID from inspect_slide.", 1, int.MaxValue) },
                 { "fingerprint", ToolSchema.String(
@@ -539,14 +545,22 @@ namespace Scribble.Chat
                     "New text with FactId references for every data value, metric, period and unit.") },
                 { "row", ToolSchema.Integer("1-based table row.", 1, 1000) },
                 { "column", ToolSchema.Integer("1-based table column.", 1, 100) },
-                { "slide", pilotSlide },
                 { "notes", ToolSchema.String(
                     "Source note with FactId references for data claims.") }
-            }, "kind", "slide_id", "fingerprint");
+            };
+            if (allowReplacement)
+                operationFields.Add("slide", pilotSlide);
+            var operation = ToolSchema.Build(operationFields,
+                "kind", "slide_id", "fingerprint");
+            var scope = measured == null ? string.Empty :
+                measured.Length == 0
+                    ? " No source slides measured overflow; use text or table edits."
+                    : " Replacement scope is exactly slide IDs " +
+                        string.Join(", ", measured) + ".";
             return new ChatToolDefinition { type = "function",
                 function = new ChatToolFunctionDefinition {
                     name = ReviseSlides,
-                    description = "Repair the inspected source through an owned unsaved copy. Read read_revision_facts for the exact measured replacement scope and FactIds. Supply only the measured replacement slides and necessary text/table corrections. The host recreates charts and inherits footer and page style. Every new number, period, metric label and unit must be a [[fact:ID:field]] reference. The source remains unchanged.",
+                    description = "Repair the inspected source through an owned unsaved copy. Read read_revision_facts for the exact measured replacement scope and FactIds. Supply only the measured replacement slides and necessary text/table corrections." + scope + " The host recreates charts and inherits footer and page style. Every new number, period, metric label and unit must be a [[fact:ID:field]] reference. The source remains unchanged.",
                     parameters = ToolSchema.Build(new Dictionary<string, object> {
                         { "presentation_id", ToolSchema.String(
                             "Exact live presentation ID from inspect_slide.") },

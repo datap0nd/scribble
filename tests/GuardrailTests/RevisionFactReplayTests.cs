@@ -225,6 +225,72 @@ namespace GuardrailTests
                     "incomplete or skipped its unsafe proposals: " +
                     runs.Count + "/" + responses + "/" + revisions +
                     "/" + empty + "/" + safelyRejected);
+            var currentPath = Path.Combine(
+                AppDomain.CurrentDomain.BaseDirectory,
+                "Fixtures", "p1-model-replay.jsonl");
+            var currentRuns = new HashSet<string>(StringComparer.Ordinal);
+            var currentResponses = 0;
+            var currentRevisions = 0;
+            var currentRejected = 0;
+            foreach (var line in File.ReadLines(currentPath))
+            {
+                if (string.IsNullOrWhiteSpace(line)) continue;
+                var record = serializer.DeserializeObject(line) as
+                    Dictionary<string, object>;
+                if (record == null ||
+                    Convert.ToInt32(record["http_status"]) != 200 ||
+                    Convert.ToString(record["response_sha256"]).Length !=
+                        64 ||
+                    Convert.ToString(record["run"]).Length < 8)
+                    throw new Exception("A real P1 response is invalid.");
+                currentResponses++;
+                currentRuns.Add(Convert.ToString(record["run"]));
+                foreach (var raw in (object[])record["tool_calls"])
+                {
+                    var tool = (Dictionary<string, object>)raw;
+                    if (Convert.ToString(tool["name"]) !=
+                        "revise_slides") continue;
+                    currentRevisions++;
+                    Dictionary<string, object> args;
+                    try
+                    {
+                        args = serializer.DeserializeObject(
+                            Convert.ToString(tool["arguments"])) as
+                            Dictionary<string, object>;
+                    }
+                    catch (ArgumentException)
+                    {
+                        currentRejected++;
+                        continue;
+                    }
+                    object operations;
+                    if (args == null ||
+                        !args.TryGetValue("operations", out operations) ||
+                        !(operations is object[]))
+                    {
+                        currentRejected++;
+                        continue;
+                    }
+                    try { bind.Invoke(catalog, new[] { operations }); }
+                    catch (TargetInvocationException error)
+                    {
+                        var failure = error.InnerException as
+                            InvalidOperationException;
+                        if (failure == null ||
+                            !failure.Message.StartsWith("REVISION_FACT_",
+                                StringComparison.Ordinal))
+                            throw new Exception("A real P1 response escaped " +
+                                "typed FactId preflight.", error);
+                        currentRejected++;
+                    }
+                }
+            }
+            if (currentRuns.Count < 16 || currentResponses < 249 ||
+                currentRevisions < 100 || currentRejected < 1)
+                throw new Exception("The recent real P1 response replay " +
+                    "is incomplete: " + currentRuns.Count + "/" +
+                    currentResponses + "/" + currentRevisions + "/" +
+                    currentRejected);
         }
 
         internal static void NarrowPilotRevisionSchema()
@@ -256,6 +322,34 @@ namespace GuardrailTests
                 !slideFields.ContainsKey("table"))
                 throw new Exception("Pilot revision exposes unsupported " +
                     "model-owned chart, layout or source metadata.");
+            var restricted = Scribble.Chat.PresentationToolCatalog
+                .PilotRevisionDefinition(new int[0]);
+            var restrictedProperties = (Dictionary<string, object>)
+                ((Dictionary<string, object>)restricted.function.parameters)
+                    ["properties"];
+            var restrictedOperations = (Dictionary<string, object>)
+                restrictedProperties["operations"];
+            var restrictedFields = (Dictionary<string, object>)
+                ((Dictionary<string, object>)restrictedOperations["items"])
+                    ["properties"];
+            var json = new JavaScriptSerializer();
+            if (restrictedFields.ContainsKey("slide") ||
+                json.Serialize(restricted.function.parameters)
+                    .Contains("replace_slide"))
+                throw new Exception("A sound source slide was offered " +
+                    "for replacement before measured scope was known.");
+            var request = new Scribble.Chat.ChatCompletionRequest {
+                tools = new List<Scribble.Chat.ChatToolDefinition> {
+                    restricted }
+            };
+            Scribble.Chat.DocumentChatRequestFactory
+                .ApplyPilotRevisionScope(request, new[] { 17 });
+            var scoped = request.tools.Single();
+            if (!json.Serialize(scoped.function.parameters)
+                    .Contains("replace_slide") ||
+                !scoped.function.description.Contains("slide IDs 17"))
+                throw new Exception("The host-measured overflow scope " +
+                    "was not exposed to the next model turn.");
         }
 
         private static void Reject(MethodInfo render, object catalog,
