@@ -291,6 +291,8 @@ namespace GuardrailTests
                     RevisionFactReplayTests.FactReferencesAndHistoricalResponses);
                 Run("Primary-only charts retain secondary table FactIds",
                     RevisionFactReplayTests.SeparateTableMetricAvailableWithPrimaryOnlyChart);
+                Run("Pilot revision exposes only host-supported edits",
+                    RevisionFactReplayTests.NarrowPilotRevisionSchema);
                 Run("Measured pilot replacement keeps ordinary redesign consent",
                     MeasuredPilotReplacementKeepsOrdinaryConsent);
                 Run("Reordered source spans remain exact grounded evidence",

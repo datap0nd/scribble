@@ -132,14 +132,22 @@ namespace GuardrailTests
                         { "slide", new Dictionary<string, object> {
                             { "sources", "Revenue EUR 82,992" }
                         } }
+                    },
+                    new Dictionary<string, object> {
+                        { "kind", "replace_text" },
+                        { "text", "June revenue" }
                     }
                 } });
                 throw new Exception("Visible citation text bypassed FactId binding.");
             }
             catch (TargetInvocationException error)
             {
-                if (error.InnerException?.Message !=
-                    "REVISION_FACT_LITERAL_UNBOUND") throw;
+                var message = error.InnerException?.Message ?? string.Empty;
+                if (!message.StartsWith(
+                        "REVISION_FACT_LITERAL_UNBOUND:",
+                        StringComparison.Ordinal) ||
+                    !message.Contains("operations[0].slide.sources") ||
+                    !message.Contains("operations[1].text")) throw;
             }
 
             var path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
@@ -217,6 +225,37 @@ namespace GuardrailTests
                     "incomplete or skipped its unsafe proposals: " +
                     runs.Count + "/" + responses + "/" + revisions +
                     "/" + empty + "/" + safelyRejected);
+        }
+
+        internal static void NarrowPilotRevisionSchema()
+        {
+            var definition = Scribble.Chat.PresentationToolCatalog
+                .PilotRevisionDefinition();
+            var root = (Dictionary<string, object>)
+                definition.function.parameters;
+            var rootProperties = (Dictionary<string, object>)
+                root["properties"];
+            var operations = (Dictionary<string, object>)
+                rootProperties["operations"];
+            var operation = (Dictionary<string, object>)
+                operations["items"];
+            var fields = (Dictionary<string, object>)
+                operation["properties"];
+            var slide = (Dictionary<string, object>)fields["slide"];
+            var slideFields = (Dictionary<string, object>)
+                slide["properties"];
+            if (fields.ContainsKey("series") ||
+                fields.ContainsKey("category") ||
+                fields.ContainsKey("new_index") ||
+                slideFields.ContainsKey("chart") ||
+                slideFields.ContainsKey("secondary_chart") ||
+                slideFields.ContainsKey("footnote") ||
+                slideFields.ContainsKey("sources") ||
+                slideFields.ContainsKey("evidence") ||
+                !slideFields.ContainsKey("cards") ||
+                !slideFields.ContainsKey("table"))
+                throw new Exception("Pilot revision exposes unsupported " +
+                    "model-owned chart, layout or source metadata.");
         }
 
         private static void Reject(MethodInfo render, object catalog,

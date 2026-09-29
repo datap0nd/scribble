@@ -191,9 +191,6 @@ namespace GuardrailTests
         {
             dynamic source = sourceDeck;
             dynamic page = source.Slides[4];
-            string text = Enumerable.Range(1, (int)page.Shapes.Count).Select(index => (object)page.Shapes[index])
-                .Where(shape => (int)((dynamic)shape).HasTextFrame != 0).Select(shape => (string)((dynamic)shape).TextFrame.TextRange.Text)
-                .Single(value => value.Contains("The monthly comparison covers"));
             var series = WorkbookMonthlyChartFacts.ReadBoundSeries(
                 workbookPath, new[] { "Revenue EUR", "Cost EUR" },
                 CancellationToken.None);
@@ -228,8 +225,7 @@ namespace GuardrailTests
                     presentation_id = PresentationInspection.IdentityFor(sourceDeck), operations = new[] { new {
                         kind = "replace_slide", slide_id = (int)page.SlideID, fingerprint = PresentationInspection.Fingerprint((object)page),
                         slide = new { title = "Operating review and evidence boundaries", subtitle = "Source-backed measures and interpretation limits",
-                            layout = "cards", cards = points.Select((point, index) => new { heading = labels[index], points = new[] { point } }).ToArray(),
-                            sources = "Workbook source", footnote = token(revenue, "locator"), evidence = text }
+                            layout = "cards", cards = points.Select((point, index) => new { heading = labels[index], points = new[] { point } }).ToArray() }
                     } } }) } };
         }
 

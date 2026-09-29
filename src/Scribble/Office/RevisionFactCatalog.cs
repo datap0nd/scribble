@@ -151,6 +151,37 @@ namespace Scribble.Office
             if (copy == null)
                 throw new InvalidOperationException(
                     "REVISION_FACT_OPERATIONS_INVALID");
+            var unbound = new List<string>();
+            for (var index = 0; index < copy.Length; index++)
+            {
+                var operation = copy[index] as Dictionary<string, object>;
+                if (operation == null) continue;
+                object kindValue;
+                var kind = operation.TryGetValue("kind", out kindValue)
+                    ? Convert.ToString(kindValue) : string.Empty;
+                object supplied;
+                if (kind == "replace_text" || kind == "table_cell")
+                {
+                    if (operation.TryGetValue("text", out supplied))
+                        CollectUnbound(supplied as string,
+                            "operations[" + index + "].text", unbound);
+                }
+                else if (kind == "notes_append")
+                {
+                    if (operation.TryGetValue("notes", out supplied))
+                        CollectUnbound(supplied as string,
+                            "operations[" + index + "].notes", unbound);
+                }
+                else if (kind == "replace_slide" &&
+                    operation.TryGetValue("slide", out supplied))
+                    CollectSlideUnbound(supplied,
+                        "operations[" + index + "].slide", unbound);
+            }
+            if (unbound.Count > 0)
+                throw new InvalidOperationException(
+                    "REVISION_FACT_LITERAL_UNBOUND: fields " +
+                    string.Join(", ", unbound.Distinct().Take(16)) +
+                    ". Replace data literals with FactId references.");
             foreach (var raw in copy)
             {
                 var operation = raw as Dictionary<string, object>;
@@ -187,6 +218,55 @@ namespace Scribble.Office
                 }
             }
             return copy;
+        }
+
+        private void CollectSlideUnbound(object value, string path,
+            List<string> unbound)
+        {
+            var map = value as Dictionary<string, object>;
+            if (map == null) return;
+            foreach (var pair in map)
+            {
+                if (new[] { "id", "layout", "purpose", "content_kind",
+                    "source_spans", "evidence", "image_names" }
+                    .Contains(pair.Key)) continue;
+                var field = path + "." + pair.Key;
+                if (pair.Value is string)
+                    CollectUnbound((string)pair.Value, field, unbound);
+                else if (pair.Value is Dictionary<string, object>)
+                    CollectSlideUnbound(pair.Value, field, unbound);
+                else if (pair.Value is IEnumerable)
+                {
+                    var index = 0;
+                    foreach (var item in (IEnumerable)pair.Value)
+                    {
+                        if (item is string)
+                            CollectUnbound((string)item,
+                                field + "[" + index + "]", unbound);
+                        else if (item is Dictionary<string, object>)
+                            CollectSlideUnbound(item,
+                                field + "[" + index + "]", unbound);
+                        index++;
+                    }
+                }
+            }
+        }
+
+        private void CollectUnbound(string value, string path,
+            List<string> unbound)
+        {
+            if (value == null) return;
+            var offset = 0;
+            foreach (Match match in Reference.Matches(value))
+            {
+                try { RejectLiteral(value.Substring(offset,
+                    match.Index - offset)); }
+                catch (InvalidOperationException)
+                { unbound.Add(path); return; }
+                offset = match.Index + match.Length;
+            }
+            try { RejectLiteral(value.Substring(offset)); }
+            catch (InvalidOperationException) { unbound.Add(path); }
         }
 
         private void BindSlide(object value)

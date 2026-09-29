@@ -135,11 +135,17 @@ namespace Scribble.Office
                 deck, workbooks[0].SourcePath, trustedRequest,
                 CancellationToken.None);
             var catalog = RevisionFactCatalog.FromBindings(bindings);
+            var replacements = PresentationDraftCopy
+                .MeasuredReplacementSlides(deck);
             return new MailboxToolResult(callId,
                 _serializer.Serialize(new {
                     source_workbook = Path.GetFileName(
                         workbooks[0].SourcePath),
-                    facts = catalog.PublicFacts()
+                    facts = catalog.PublicFacts(),
+                    measured_replacement_slide_ids = replacements,
+                    host_recreated_chart_slide_ids = bindings.Select(
+                        binding => binding.SourceSlideId)
+                        .Distinct().ToArray()
                 }), "Read host-verified workbook FactIds for slide repair.");
         }
 

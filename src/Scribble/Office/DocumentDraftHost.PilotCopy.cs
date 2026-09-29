@@ -67,9 +67,7 @@ namespace Scribble.Office
                 var mapped = operations.Select(
                     SamsungAuthoringPolicy.ReadMap).ToArray();
                 var contract = PresentationToolCatalog
-                    .RevisionDefinitions().Single(tool =>
-                        tool.function.name ==
-                        PresentationToolCatalog.ReviseSlides);
+                    .PilotRevisionDefinition();
                 var contractErrors = ToolContractValidator.Validate(
                     call, contract);
                 if (contractErrors.Count != 0)
@@ -111,7 +109,29 @@ namespace Scribble.Office
                     measuredReplacements, chartBindings);
                 ValidatePilotSourceSpanIds(mapped,
                     ids => _taskContext.Sources.Resolve(ids));
-                var factBound = factCatalog.BindOperations(operations);
+                var sourceFact = chartBindings.SelectMany(binding =>
+                        binding.Facts.Facts).Where(fact =>
+                        fact.Dimensions.Count == 0)
+                    .OrderByDescending(fact => fact.Period,
+                        StringComparer.Ordinal).First();
+                var sourceReference = "[[fact:" + sourceFact.FactId +
+                    ":locator]]";
+                foreach (var operation in mapped.Where(item =>
+                    SamsungAuthoringPolicy.Text(item, "kind") ==
+                        "replace_slide"))
+                {
+                    var slide = SamsungAuthoringPolicy.ReadMap(
+                        operation["slide"]);
+                    var sourceSlide = PresentationInspection.FindSlide(
+                        sourceDeck, Convert.ToInt32(operation["slide_id"]));
+                    slide["sources"] = sourceReference;
+                    slide["footnote"] = sourceReference;
+                    slide["evidence"] =
+                        PresentationInspection.CitationTextFromCaptured(
+                            PresentationInspection.Capture(sourceSlide));
+                }
+                var factBound = factCatalog.BindOperations(
+                    mapped.Cast<object>().ToArray());
                 token.ThrowIfCancellationRequested();
                 if (!authorization.TryConsume())
                     throw new InvalidOperationException(

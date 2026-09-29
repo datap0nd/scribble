@@ -166,14 +166,12 @@ namespace Scribble.Chat
                     if (pilotRepair)
                         tools.Add(PresentationToolCatalog
                             .RevisionFactsDefinition());
-                    tools.AddRange(PresentationToolCatalog.RevisionDefinitions()
-                        .Where(tool => !pilotRepair || tool.function.name ==
-                            PresentationToolCatalog.ReviseSlides));
                     if (pilotRepair)
-                        tools.Last(tool => tool.function.name ==
-                            PresentationToolCatalog.ReviseSlides)
-                            .function.description =
-                                "Repair the saved source deck by opening an owned unsaved copy. First call read_revision_facts. In every new text field reference host FactIds with [[fact:FACT_ID:value]], :metric, :period, :unit, :percent, :locator or :dimension:KEY. Literal digits, month names, metric labels and units are rejected. The host applies verified edits directly to its untitled copy and discards it on failure; chart values come only from the workbook. Do not edit the source, request a chart operation, or save the result.";
+                        tools.Add(PresentationToolCatalog
+                            .PilotRevisionDefinition());
+                    else
+                        tools.AddRange(PresentationToolCatalog
+                            .RevisionDefinitions());
                 }
 
                 if (!pilotRepair)
