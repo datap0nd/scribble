@@ -200,10 +200,14 @@ namespace GuardrailTests
                 june.Locators.Single().Cell == "C3" &&
                 receipt.Table.Contains("2026-06\t1\t20") &&
                 rows[1].Cells[2].Formula ==
-                    "=SUMIF('Ledger'!$B$2:$B$4,C$3,'Ledger'!$C$2:$C$4)-SUM('Ledger'!$C$4)" &&
+                    "=SUMPRODUCT(('Ledger'!$B$2:$B$4=C$3)*(MATCH('Ledger'!$A$2:$A$4,'Ledger'!$A$2:$A$4,0)=ROW('Ledger'!$A$2:$A$4)-ROW('Ledger'!$A$2)+1)*IFERROR(1*'Ledger'!$C$2:$C$4,0))" &&
                 rows[2].Cells[2].ExpectedFactId == artifact.Facts.Single(
                     fact => fact.Metric == "HoursAvailable" &&
-                    fact.Period == "2026-06").FactId,
+                    fact.Period == "2026-06").FactId &&
+                rows.Last().Cells[0].Text == "Data quality" &&
+                rows.Last().Cells[2].Text.Contains(
+                    "1 repeated RowID(s) counted once") &&
+                !rows[1].Cells[2].Formula.Contains("-SUM("),
                 "A repeated RowID was counted twice in facts or live formulas.");
             var deck = AnalysisDeckPlanBuilder.Build(artifact,
                 new Dictionary<string, object> {
