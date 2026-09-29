@@ -9502,12 +9502,17 @@ namespace GuardrailTests
             var sources = new List<string>();
             var truncated = "{\"SourceSha256\":\"" +
                 new string('a', 48000);
-            SamsungPresentationReview.AppendSourceReceipt(
-                truncated, sources);
+            var append = typeof(SamsungPresentationReview).GetMethod(
+                "AppendSourceReceipt", BindingFlags.NonPublic |
+                BindingFlags.Static);
+            Assert(append != null,
+                "The bounded source receipt decoder is unavailable.");
+            append.Invoke(null, new object[] { truncated, sources });
             Assert(sources.Count == 1 && sources[0] == truncated,
                 "A cut JSON read receipt must remain raw evidence without crashing preflight.");
-            SamsungPresentationReview.AppendSourceReceipt(
-                "{\"label\":\"verified display\"}", sources);
+            append.Invoke(null, new object[] {
+                "{\"label\":\"verified display\"}", sources
+            });
             Assert(sources.Contains("verified display"),
                 "A complete JSON receipt should still expose decoded text.");
         }

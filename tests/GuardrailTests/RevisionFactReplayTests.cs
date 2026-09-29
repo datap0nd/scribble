@@ -54,6 +54,10 @@ namespace GuardrailTests
                     "from its FactId.");
             Reject(render, catalog, "Revenue EUR 82,992 in June 2026",
                 "REVISION_FACT_LITERAL_UNBOUND");
+            Reject(render, catalog, "Revenue improved",
+                "REVISION_FACT_LITERAL_UNBOUND");
+            Reject(render, catalog, "Results in EUR",
+                "REVISION_FACT_LITERAL_UNBOUND");
             Reject(render, catalog, "[[fact:fact_000000000000000000000000:value]]",
                 "REVISION_FACT_ID_UNKNOWN");
 
