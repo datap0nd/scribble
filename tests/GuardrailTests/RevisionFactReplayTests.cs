@@ -25,6 +25,12 @@ namespace GuardrailTests
                 "currency", "EUR", "2026-06",
                 new Dictionary<string, string>(),
                 new[] { locator }, AnalysisContract.Verified);
+            var change = AnalysisContract.CreateObservedFact(
+                "snapshot-replay", "Revenue EUR change",
+                AnalysisContract.DecimalValue, "-0.03", "-0.03",
+                "ratio", null, "2026-06",
+                new Dictionary<string, string>(),
+                new[] { locator }, AnalysisContract.Verified);
             var catalogType = typeof(AnalysisContract).Assembly.GetType(
                 "Scribble.Office.RevisionFactCatalog", true);
             var constructor = catalogType.GetConstructor(
@@ -33,7 +39,7 @@ namespace GuardrailTests
             if (constructor == null)
                 throw new Exception("Revision FactId catalog is missing.");
             var catalog = constructor.Invoke(new object[] {
-                new[] { fact }
+                new[] { fact, change }
             });
             var render = catalogType.GetMethod("Render",
                 BindingFlags.Instance | BindingFlags.NonPublic |
@@ -58,6 +64,10 @@ namespace GuardrailTests
                 "REVISION_FACT_LITERAL_UNBOUND");
             Reject(render, catalog, "Results in EUR",
                 "REVISION_FACT_LITERAL_UNBOUND");
+            if ((string)render.Invoke(catalog,
+                new object[] { "A period change does not establish a cause." }) !=
+                "A period change does not establish a cause.")
+                throw new Exception("Ordinary prose was rejected as a metric label.");
             Reject(render, catalog, "[[fact:fact_000000000000000000000000:value]]",
                 "REVISION_FACT_ID_UNKNOWN");
             try

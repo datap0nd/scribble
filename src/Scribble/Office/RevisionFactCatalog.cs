@@ -260,6 +260,8 @@ namespace Scribble.Office
                     .SelectMany(metric => Regex.Matches(metric,
                         @"[A-Za-z]{4,}").Cast<Match>()
                         .Select(match => match.Value))
+                    .Where(label => !string.Equals(label,
+                        "change", StringComparison.OrdinalIgnoreCase))
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .Any(label => Regex.IsMatch(literal,
                         @"\b" + Regex.Escape(label) + @"\b",
