@@ -12,6 +12,15 @@ namespace Scribble.Office
 {
     public sealed partial class DocumentDraftHost
     {
+        public static bool AllowsSlideReplacement(string prompt,
+            bool hostValidatedMeasuredReplacement)
+        {
+            return hostValidatedMeasuredReplacement ||
+                Regex.IsMatch(prompt ?? "",
+                    @"\b(redesign|reformat|restructure|recompose|layout|improve)\b",
+                    RegexOptions.IgnoreCase);
+        }
+
         private async Task<MailboxToolResult> ExecuteRevisionAsync(ChatToolCall call, OneShotDraftAuthorization authorization,
             bool exclusive, string prompt, OpenAiCompatibleClient client, AppSettings settings, CancellationToken token, Action<int, int> progress,
             bool pilotInternal = false)
@@ -100,7 +109,12 @@ namespace Scribble.Office
                     var operation = SamsungAuthoringPolicy.ReadMap(raw); var kind = SamsungAuthoringPolicy.Text(operation, "kind");
                     if (kind == "delete" && !Regex.IsMatch(prompt ?? "", @"\b(delete|remove)\b", RegexOptions.IgnoreCase)) throw new InvalidOperationException("SLIDE_DELETE_NOT_REQUESTED");
                     if (kind == "insert" && !Regex.IsMatch(prompt ?? "", @"\b(add|insert|create|expand)\b", RegexOptions.IgnoreCase)) throw new InvalidOperationException("SLIDE_INSERT_NOT_REQUESTED");
-                    if (kind == "replace_slide" && !Regex.IsMatch(prompt ?? "", @"\b(redesign|reformat|restructure|recompose|layout|improve)\b", RegexOptions.IgnoreCase)) throw new InvalidOperationException("SLIDE_REDESIGN_NOT_REQUESTED");
+                    // The pilot has already measured and checked its exact
+                    // replacement slide IDs before entering this internal path.
+                    if (kind == "replace_slide" && !AllowsSlideReplacement(
+                            prompt, pilotInternal))
+                        throw new InvalidOperationException(
+                            "SLIDE_REDESIGN_NOT_REQUESTED");
                     if (kind == "move" && !Regex.IsMatch(prompt ?? "", @"\b(move|reorder|reorganize|sort)\b", RegexOptions.IgnoreCase)) throw new InvalidOperationException("SLIDE_REORDER_NOT_REQUESTED");
                 }
                 var source = SamsungPresentationReview.SourceCorpus(_taskContext, prompt);

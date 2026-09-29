@@ -281,6 +281,8 @@ namespace GuardrailTests
                     SavedPresentationIdentityIsFileBound);
                 Run("Pilot copy preflight rejection permits a corrected write",
                     PilotCopyPreflightRejectionPermitsRetry);
+                Run("Measured pilot replacement keeps ordinary redesign consent",
+                    MeasuredPilotReplacementKeepsOrdinaryConsent);
                 Run(
                     "Browser context is bounded and tools are approved-only",
                     BrowserContextIsBoundedAndReadOnly);
@@ -7207,6 +7209,18 @@ namespace GuardrailTests
                 AnalysisDocumentPilot.SetEnabled(pilotWasEnabled);
                 if (Directory.Exists(root)) Directory.Delete(root, true);
             }
+        }
+
+        private static void MeasuredPilotReplacementKeepsOrdinaryConsent()
+        {
+            var repair = "Repair the deck and fix measured overflow while preserving the original slides.";
+            Assert(!DocumentDraftHost.AllowsSlideReplacement(repair, false),
+                "An ordinary repair request cannot authorize slide replacement without redesign consent.");
+            Assert(DocumentDraftHost.AllowsSlideReplacement(repair, true),
+                "The host-validated measured pilot replacement was rejected by ordinary redesign consent.");
+            Assert(DocumentDraftHost.AllowsSlideReplacement(
+                    "Redesign the slide layout", false),
+                "Explicit redesign consent must still authorize an ordinary slide replacement.");
         }
 
         private static void RepairRouteExcludesCorpusLabels()

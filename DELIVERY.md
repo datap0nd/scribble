@@ -174,7 +174,7 @@ a ≤ 10-line owner note in §5.
 | S1 XA01 | old | 2.0.385 | 1/3 (22 Sep) |
 | S1 XA01–10 | new | 2.0.724.0 | 9/10 deterministic and request bar in one batch; owner D2 pending |
 | S1 XA01 consecutive | new | 2.0.724.0 | 3/3 (10, 10, 9 actual model requests); owner D2 pending |
-| S2 PP01 | new | 2.0.733.0 | C2 native repair passed; first real C3 run stopped before writing because the saved presentation ID changed across COM wrappers; stable file-backed ID fix in PR #45 |
+| S2 PP01 | new | 2.0.737.0 | C2 native repair passed; real C3 run reached the measured replacement patch but its internal redesign-consent check rejected it; fix in PR #45 |
 | S2 PP02–10 | — | — | not yet run |
 
 Current stage: **C3**, real PP01 repair on PR #45. PR #44 merged into
@@ -283,6 +283,15 @@ This first failing stage is capture/binding. PR #45 now derives saved-deck
 identity from its path and current file hash, while marked drafts retain
 their tag identity. A regression test covers distinct wrappers and changed
 source bytes. Rebuild, install and real PP01 rerun are next.
+Installed 2.0.737.0 passed green CI and the saved-source identity fix. Real
+PP01 used 10 model requests and $0.1034. Two chart-slide replacement attempts
+and one extra replacement were safely rejected at preflight; the model then
+submitted exactly the measured overflow slide. Its native copy reached the
+patch stage, but the ordinary `SLIDE_REDESIGN_NOT_REQUESTED` check rejected
+that host-validated replacement. No final deck was produced. Source and
+workbook bytes stayed unchanged. PR #45 now exempts only the internal,
+prevalidated measured replacement from ordinary redesign consent, with a
+regression that retains the ordinary gate. Rebuild, install and rerun PP01.
 
 ## 6. Rules for autonomous sessions
 
