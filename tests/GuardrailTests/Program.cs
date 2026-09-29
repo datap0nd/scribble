@@ -10860,6 +10860,9 @@ namespace GuardrailTests
         public EmptyNativeShapes(EmptyNativeShape shape)
         { _shape = shape; }
         public int Count { get { return 1; } }
+        [System.Runtime.CompilerServices.IndexerName("At")]
+        public EmptyNativeShape this[int index]
+        { get { return Item(index); } }
         public EmptyNativeShape Item(int index)
         { if (index != 1) throw new IndexOutOfRangeException(); return _shape; }
     }
