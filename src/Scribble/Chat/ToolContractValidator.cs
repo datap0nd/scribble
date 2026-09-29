@@ -69,6 +69,21 @@ namespace Scribble.Chat
                             }
                         }
                     }
+                // Compatible gateways can also quote the complete revisions
+                // array. Decode only a valid array; every operation still
+                // passes the public schema and the native host preflight.
+                if (map != null && call.function.name ==
+                    PresentationToolCatalog.ReviseSlides)
+                {
+                    object raw;
+                    if (map.TryGetValue("operations", out raw) &&
+                        raw is string &&
+                        ((string)raw).TrimStart().StartsWith("["))
+                    {
+                        var decoded = json.DeserializeObject((string)raw);
+                        if (decoded is IList) map["operations"] = decoded;
+                    }
+                }
                 Visit(args, schema, "$", errors);
                 if (errors.Count == 0) call.function.arguments = json.Serialize(args);
             }

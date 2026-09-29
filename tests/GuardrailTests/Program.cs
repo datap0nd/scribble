@@ -301,6 +301,8 @@ namespace GuardrailTests
                     PilotRepairKeepsHostStyleOutsidePublicSchema);
                 Run("Pilot visual overflow must match the staged native bounds",
                     PilotVisualOverflowRequiresMatchingNativeGeometry);
+                Run("Revision tool decodes only a complete nested operations array",
+                    RevisionToolDecodesCompleteOperationsArray);
                 Run(
                     "Browser context is bounded and tools are approved-only",
                     BrowserContextIsBoundedAndReadOnly);
@@ -7336,6 +7338,45 @@ namespace GuardrailTests
                 "Measured native overflow must still block the revision.");
             Assert(!approved(review(257, "contrast")),
                 "Non-geometry visual findings must still receive review.");
+        }
+
+        private static void RevisionToolDecodesCompleteOperationsArray()
+        {
+            var json = new JavaScriptSerializer();
+            var edit = new Dictionary<string, object>
+            {
+                { "kind", "replace_text" }, { "slide_id", 257 },
+                { "fingerprint", "live-slide" }, { "shape_id", 5 },
+                { "before", "Original" }, { "text", "Updated" }
+            };
+            var definition = PresentationToolCatalog.RevisionDefinitions()
+                .Single(t => t.function.name ==
+                    PresentationToolCatalog.ReviseSlides);
+            Func<string, ChatToolCall> callWith = operations =>
+                new ChatToolCall
+                {
+                    id = "nested-operations",
+                    function = new ChatToolCallFunction
+                    {
+                        name = PresentationToolCatalog.ReviseSlides,
+                        arguments = json.Serialize(new
+                        {
+                            presentation_id = "live-deck", operations
+                        })
+                    }
+                };
+            var call = callWith(json.Serialize(new[] { edit }));
+            Assert(ToolContractValidator.Validate(call, definition).Count == 0,
+                "A complete encoded revision array failed the public schema.");
+            var decoded = json.Deserialize<Dictionary<string, object>>(
+                call.function.arguments);
+            Assert(decoded["operations"] is System.Collections.IList &&
+                ((System.Collections.IList)decoded["operations"]).Count == 1,
+                "Validated revision operations were not forwarded as an array.");
+            var incomplete = callWith("[{\"kind\":\"replace_text\"");
+            Assert(ToolContractValidator.Validate(incomplete, definition)
+                    .Count != 0,
+                "An incomplete encoded revision array was accepted.");
         }
 
         private static void PilotCopyTextEvidenceIsBounded()
