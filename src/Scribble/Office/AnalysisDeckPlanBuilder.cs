@@ -215,12 +215,23 @@ namespace Scribble.Office
                 Subtitle = Parts("Scope and exclusions"),
                 Cards = new List<AnalysisPlanCard> {
                     new AnalysisPlanCard { Heading = "Scope",
-                        Points = Parts("Selected periods and listed metrics from the workbook.") },
+                        Points = new List<AnalysisPlanText> {
+                            new AnalysisPlanText { Text =
+                                "Totals use the selected workbook rows." },
+                            new AnalysisPlanText { Text =
+                                "Changes compare the same metric across periods." } } },
                     new AnalysisPlanCard { Heading = "Exclusions",
-                        Points = Parts(limitation) },
+                        Points = new List<AnalysisPlanText> {
+                            new AnalysisPlanText { Text = limitation },
+                            new AnalysisPlanText { Text =
+                                "Later workbook edits are outside these figures." } } },
                     new AnalysisPlanCard { Heading = "Reading the totals",
-                        Points = Parts("Compare each metric across the same source range.") } },
-                Takeaway = Parts("Totals reflect the selected workbook range.")
+                        Points = new List<AnalysisPlanText> {
+                            new AnalysisPlanText { Text =
+                                "Differences describe changes, not their causes." },
+                            new AnalysisPlanText { Text =
+                                "Compare groups within the same period." } } } },
+                Takeaway = Parts("The comparison shows what changed, not why.")
             });
             if (slides.Count < requestedSlides)
                 throw new InvalidOperationException(
@@ -300,7 +311,7 @@ namespace Scribble.Office
             if (artifact.UnresolvedConflicts.Any(item =>
                 item.StartsWith(AnalysisContract.KnownSubtotalPrefix,
                     StringComparison.Ordinal)))
-                return "Where source values are blank, shown totals include known values only.";
+                return "Blank cells contribute no value; totals cover known amounts only.";
             var table = artifact.Snapshots[0].Tables[0];
             var identifier = table.Cells.FirstOrDefault(cell =>
                 cell.Row == 0 && cell.Value != null &&
@@ -313,13 +324,13 @@ namespace Scribble.Office
                     .Select(cell => cell.Value).ToArray();
                 if (values.Length != values.Distinct(
                         StringComparer.Ordinal).Count())
-                    return "Repeated records with identical IDs count once.";
+                    return "Identical repeated IDs count once.";
             }
             if (table.Cells.Any(cell => cell.Row > 0 &&
                 cell.Status != AnalysisContract.Verified &&
                 string.IsNullOrEmpty(cell.Formula)))
-                return "Blank source cells remain unresolved and are not imputed.";
-            return "Figures cover the selected workbook range; later changes are outside this analysis.";
+                return "Missing entries are omitted; they are not zero.";
+            return "Figures cover the selected workbook rows.";
         }
 
         private static bool IsKnownSubtotal(AnalysisArtifact artifact,

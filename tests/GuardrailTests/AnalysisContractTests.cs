@@ -215,7 +215,7 @@ namespace GuardrailTests
             Check(deck.Slides.SelectMany(slide => slide.Cards)
                 .SelectMany(card => card.Points)
                 .Any(point => point.Text != null &&
-                    point.Text.Contains("identical IDs count once")) &&
+                    point.Text.Contains("Identical repeated IDs count once")) &&
                 !deck.Slides.SelectMany(slide => slide.Cards)
                     .SelectMany(card => card.Points)
                     .Any(point => point.Text != null &&
@@ -866,6 +866,13 @@ namespace GuardrailTests
                 json.Serialize(SamsungPresentationReview.InspectPlan(
                     json.Serialize(compiledA.Slides)))))
                 .Cast<Dictionary<string, object>>().ToArray();
+            var limitElements = ((System.Collections.IEnumerable)pages[3]["elements"])
+                .Cast<Dictionary<string, object>>().ToArray();
+            Check(limitElements.Any(element =>
+                Convert.ToString(element["fill"]) ==
+                    SamsungSlideDesign.Navy &&
+                Convert.ToDouble(element["height"]) > 150),
+                "Short scope notes fell back to large empty card panels.");
             var visible = pages.SelectMany(page =>
                 ((System.Collections.IEnumerable)page["elements"])
                     .Cast<Dictionary<string, object>>())
