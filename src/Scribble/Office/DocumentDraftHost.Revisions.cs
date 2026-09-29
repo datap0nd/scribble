@@ -23,7 +23,7 @@ namespace Scribble.Office
 
         private async Task<MailboxToolResult> ExecuteRevisionAsync(ChatToolCall call, OneShotDraftAuthorization authorization,
             bool exclusive, string prompt, OpenAiCompatibleClient client, AppSettings settings, CancellationToken token, Action<int, int> progress,
-            bool pilotInternal = false)
+            bool pilotInternal = false, int hostStyleCount = 0)
         {
             if (!pilotInternal && PilotCopyRequested(call))
                 return await ExecutePilotCopyRevisionAsync(call,
@@ -202,11 +202,13 @@ namespace Scribble.Office
                             "If the defect requires broader scope, return the unchanged operations so the host can explain the conflict.",
                             _serializer.Serialize(new { instruction = prompt, source, original, requestedOperations, operations, findings = failure.Message }), null, token, 16384);
                         var corrected = SamsungAuthoringPolicy.Array(_serializer.Deserialize<Dictionary<string, object>>(repaired), "operations");
-                        SamsungRepairPolicy.ValidateScope(requestedOperations, corrected);
+                        var publicRepair = SamsungRepairPolicy
+                            .PublicRepairOperations(requestedOperations,
+                                corrected, hostStyleCount);
                         if (SamsungRepairPolicy.Serialize(operations) == SamsungRepairPolicy.Serialize(corrected))
                             throw new InvalidOperationException("REVISION_REPAIR_SCOPE_CONFLICT: Resolving these findings requires a different edit scope: " + failure.Message);
                         var repairCall = new ChatToolCall { id = call.id, function = new ChatToolCallFunction { name = call.function.name,
-                            arguments = _serializer.Serialize(new { presentation_id = SamsungAuthoringPolicy.Text(args, "presentation_id"), operations = corrected }) } };
+                            arguments = _serializer.Serialize(new { presentation_id = SamsungAuthoringPolicy.Text(args, "presentation_id"), operations = publicRepair }) } };
                         var definition = PresentationToolCatalog.RevisionDefinitions().Single(t => t.function.name == PresentationToolCatalog.ReviseSlides);
                         var errors = ToolContractValidator.Validate(repairCall, definition);
                         if (errors.Count != 0) throw new InvalidOperationException("REVISION_REPAIR_SCHEMA: " + string.Join("; ", errors));

@@ -297,6 +297,8 @@ namespace GuardrailTests
                     NativeClipboardRetryRequiresUnchangedTarget);
                 Run("Native slide copy waits for the destination count to settle",
                     NativeSlideCopyWaitsForCountSettlement);
+                Run("Pilot repair validates public edits while preserving host style",
+                    PilotRepairKeepsHostStyleOutsidePublicSchema);
                 Run(
                     "Browser context is bounded and tools are approved-only",
                     BrowserContextIsBoundedAndReadOnly);
@@ -7213,6 +7215,76 @@ namespace GuardrailTests
             var count = (int)settle.Invoke(null, new object[] { deck, 1 });
             Assert(count == 2 && deck.Slides.Reads >= 3,
                 "A delayed native paste was treated as an unchanged destination.");
+        }
+
+        private static void PilotRepairKeepsHostStyleOutsidePublicSchema()
+        {
+            var policy = typeof(DocumentDraftHost).Assembly.GetType(
+                "Scribble.Office.SamsungRepairPolicy", true);
+            var publicRepair = policy.GetMethod("PublicRepairOperations",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert(publicRepair != null,
+                "Pilot repairs need a trusted host-style schema boundary.");
+            var edit = new Dictionary<string, object>
+            {
+                { "kind", "replace_text" }, { "slide_id", 259 },
+                { "fingerprint", "measured-slide" }, { "shape_id", 7 },
+                { "before", "Old text" }, { "text", "Clear text" }
+            };
+            var style = new Dictionary<string, object>
+            {
+                { "kind", "shape_font_size" }, { "slide_id", 260 },
+                { "fingerprint", "measured-style" }, { "shape_id", 8 },
+                { "before_size", 11.0 }, { "size", 14.0 }
+            };
+            var tableStyle = new Dictionary<string, object>
+            {
+                { "kind", "table_cell_fill" }, { "slide_id", 261 },
+                { "fingerprint", "measured-table" }, { "shape_id", 9 },
+                { "row", 1 }, { "column", 2 },
+                { "before_color", 16777215 }, { "color", 2057215 }
+            };
+            var requested = new object[] { edit, style, tableStyle };
+            var corrected = new object[]
+            {
+                new Dictionary<string, object>(edit),
+                new Dictionary<string, object>(style),
+                new Dictionary<string, object>(tableStyle)
+            };
+            var definition = PresentationToolCatalog.RevisionDefinitions()
+                .Single(t => t.function.name == PresentationToolCatalog.ReviseSlides);
+            Func<object[], IReadOnlyList<string>> schema = operations =>
+                ToolContractValidator.Validate(new ChatToolCall
+                {
+                    id = "pilot-repair",
+                    function = new ChatToolCallFunction
+                    {
+                        name = PresentationToolCatalog.ReviseSlides,
+                        arguments = new JavaScriptSerializer().Serialize(new
+                        {
+                            presentation_id = "draft", operations
+                        })
+                    }
+                }, definition);
+            Assert(schema(corrected).Count != 0,
+                "The public schema unexpectedly accepts host-only style edits.");
+            var projected = (object[])publicRepair.Invoke(null,
+                new object[] { requested, corrected, 2 });
+            Assert(projected.Length == 1 &&
+                schema(projected).Count == 0,
+                "A valid public edit was rejected with unchanged host style.");
+            ((Dictionary<string, object>)corrected[1])["size"] = 18.0;
+            try
+            {
+                publicRepair.Invoke(null,
+                    new object[] { requested, corrected, 2 });
+                throw new Exception("A model changed a host-measured style edit.");
+            }
+            catch (TargetInvocationException error)
+            {
+                Assert(error.InnerException is InvalidOperationException,
+                    "Changed host style must fail before schema projection.");
+            }
         }
 
         private static void PilotCopyTextEvidenceIsBounded()

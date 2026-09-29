@@ -174,7 +174,7 @@ a ≤ 10-line owner note in §5.
 | S1 XA01 | old | 2.0.385 | 1/3 (22 Sep) |
 | S1 XA01–10 | new | 2.0.724.0 | 9/10 deterministic and request bar in one batch; owner D2 pending |
 | S1 XA01 consecutive | new | 2.0.724.0 | 3/3 (10, 10, 9 actual model requests); owner D2 pending |
-| S2 PP01 | new | 2.0.746.0 | Native preview-before-commit repair passed; real run failed earlier when a staging paste returned without exactly one slide |
+| S2 PP01 | new | 2.0.748.0 | Native repair passed; real run reached visual repair but rejected unchanged host-measured style operations against the public edit schema |
 | S2 PP02–10 | — | — | not yet run |
 
 Current stage: **C3**, real PP01 repair on PR #45. PR #44 merged into
@@ -380,6 +380,17 @@ staging slide copies also rely on a volatile Office clipboard. PR #45 now
 waits for native slide-count settlement and retries only when the destination
 remains at its exact pre-paste count; any extra or uncertain slide aborts.
 Rebuild, run native harness, install and rerun real PP01.
+Installed 2.0.748.0 passed green CI and the native repair harness. Real
+PP01 used 13 model requests and $0.0943. Visual repair returned unchanged
+host-measured font and table operations alongside the corrected public edit.
+The public `revise_slides` schema rejected the host-only operation kinds;
+the subsequent write was quarantined, so no final deck appeared. Source
+and workbook hashes stayed unchanged. First failing stage is patch repair
+schema validation. The model may revise public edits, while the host must
+keep its own measured style operations exact. PR #45 now validates only
+the public projection under the public schema and separately checks that
+the host-generated tail is unchanged. Rebuild, run the regression and native
+harness, install, and rerun real PP01.
 
 ## 6. Rules for autonomous sessions
 

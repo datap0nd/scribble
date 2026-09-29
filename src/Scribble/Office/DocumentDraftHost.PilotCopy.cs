@@ -152,7 +152,7 @@ namespace Scribble.Office
                     "\nCopy repair stage: review the requested content edits and measured overflow replacements. The host applies bounded native font/table styling and recreates workbook-backed monthly charts after this stage. Do not require model-authored style or chart operations in this batch.";
                 var patch = await ExecuteRevisionAsync(draftCall,
                     internalAuthorization, true, patchPrompt, client, settings,
-                    token, progress, true);
+                    token, progress, true, nativeStyle.Length);
                 var patchResult = _serializer.Deserialize<
                     Dictionary<string, object>>(patch.Content);
                 object ok;

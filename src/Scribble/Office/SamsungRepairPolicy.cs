@@ -16,6 +16,26 @@ namespace Scribble.Office
             return value;
         }
         internal static string Serialize(object value) { return new JavaScriptSerializer { MaxJsonLength = 16000000 }.Serialize(Canonical(value)); }
+        internal static object[] PublicRepairOperations(object[] original,
+            object[] corrected, int hostStyleCount)
+        {
+            if (hostStyleCount < 0 || hostStyleCount > original.Length)
+                throw new InvalidOperationException("REVISION_REPAIR_HOST_STYLE_COUNT");
+            ValidateScope(original, corrected);
+            var publicCount = original.Length - hostStyleCount;
+            for (var i = publicCount; i < original.Length; i++)
+            {
+                var kind = SamsungAuthoringPolicy.Text(
+                    SamsungAuthoringPolicy.ReadMap(original[i]), "kind");
+                if (kind != "shape_font_size" && kind != "table_cell_fill")
+                    throw new InvalidOperationException(
+                        "REVISION_REPAIR_HOST_STYLE_KIND");
+                if (Serialize(original[i]) != Serialize(corrected[i]))
+                    throw new InvalidOperationException(
+                        "REVISION_REPAIR_HOST_STYLE_CHANGED");
+            }
+            return corrected.Take(publicCount).ToArray();
+        }
         internal static void ValidateScope(object[] original, object[] corrected)
         {
             if (corrected.Length != original.Length) throw new InvalidOperationException("REVISION_REPAIR_SCOPE: Preserve the exact operation count.");
