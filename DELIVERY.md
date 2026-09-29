@@ -177,7 +177,11 @@ a ≤ 10-line owner note in §5.
 | S2 PP01 | new | 2.0.750.0 | Native repair passed; real run stopped on a complete operations array encoded as a JSON string |
 | S2 PP02–10 | — | — | not yet run |
 
-Current stage: **C3**, real PP01 repair on PR #45. PR #44 merged into
+Current stage: **P0 slide quality** under owner-authorized issue #46 R1.
+PR #45 merged into `codex/development` on 29 September with green CI.
+The 2.0.751.0 PP01 run stopped on direction; paid PP01 is paused until the
+P1 FactId and draft-only repair changes pass offline replay. Earlier C3 work:
+PR #44 merged into
 `codex/development`. The required single XA02–XA10 batch ran on installed
 2.0.706.0 (`e079743a` DLL SHA256 prefix), with the new route confirmed and all
 nine results recorded in the scoreboard. None is eligible for S1: six blocked

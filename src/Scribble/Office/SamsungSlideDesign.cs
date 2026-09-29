@@ -41,8 +41,17 @@ namespace Scribble.Office
         public static RectangleF Action { get { return Percent(3.8f, 16.1f, 92.3f, 4.5f); } }
         public static RectangleF Footer { get { return Percent(3.8f, 93.5f, 87f, 3f); } }
         public static RectangleF Page { get { return Percent(94f, 96.8f, 6f, 3.2f); } }
-        public static RectangleF Takeaway { get { return Percent(11.5f, 85.1f, 77f, 7.6f); } }
-        public static RectangleF ScorecardTakeaway { get { return Percent(11.5f, 79.5f, 77f, 7.6f); } }
+        public static RectangleF Takeaway { get { return Percent(3.8f, 85.1f, 92.4f, 7.6f); } }
+        public static RectangleF ScorecardTakeaway { get { return Percent(5.2f, 79.5f, 89.6f, 7.6f); } }
+        public static RectangleF TakeawayFor(string layout)
+        {
+            if (layout == "scorecard") return ScorecardTakeaway;
+            if (layout == "table" || layout == "matrix")
+                return Percent(8.5f, 85.1f, 83f, 7.6f);
+            if (layout == "two_pane")
+                return Percent(4.8f, 85.1f, 90.4f, 7.6f);
+            return Takeaway;
+        }
         public static RectangleF[] Regions(string layout)
         {
             switch (layout)

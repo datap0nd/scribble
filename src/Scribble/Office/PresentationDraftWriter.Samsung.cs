@@ -278,7 +278,7 @@ namespace Scribble.Office
                 if (audienceUnit.Length > 0) { var unit = TextElement(audienceUnit, SamsungSlideDesign.Percent(80, 21.5f, 16.2f, 3.1f), 11, 11, "Calibri"); unit.Alignment = 3; elements.Add(unit); }
                 var audienceTakeaway = SamsungAuthoringPolicy.AudienceTakeaway(draft.Takeaway);
                 if (audienceTakeaway.Length > 0) elements.Add(TextElement(audienceTakeaway,
-                    draft.Layout == "scorecard" ? SamsungSlideDesign.ScorecardTakeaway : SamsungSlideDesign.Takeaway,
+                    SamsungSlideDesign.TakeawayFor(draft.Layout),
                     14, 14, "Arial Narrow", true, SamsungSlideDesign.Blue, "#FFFFFF"));
                 AddSamsungAnnotations(elements, draft, table, secondaryTable, part, perPage);
                 // Semantic row references, never model-supplied coordinates.
@@ -349,22 +349,37 @@ namespace Scribble.Office
             if (string.IsNullOrWhiteSpace(exactSources)) return string.Empty;
             var references = exactSources.Split(';').Select(value =>
                 value.Trim()).Where(value => value.Length > 0).ToArray();
-            var parsed = references.Select(value => Regex.Match(value,
-                @"^(?<id>excel:[0-9a-f]{32}) / (?<location>.+)$",
-                RegexOptions.IgnoreCase)).ToArray();
-            if (parsed.Length == 0 || parsed.Any(match => !match.Success))
+            var first = Regex.Match(references[0],
+                @"^(?<id>.+?) / (?<location>.+)$");
+            if (!first.Success)
+            {
+                if (Regex.IsMatch(exactSources, @"[A-Za-z]:[\\/]|[/\\]Users[/\\]",
+                        RegexOptions.IgnoreCase))
+                    return "Source: " + exactSources.Replace('\\', '/')
+                        .Split('/').Last();
                 return exactSources;
-            var workbooks = parsed.Select(match => match.Groups["id"].Value)
-                .Distinct(StringComparer.OrdinalIgnoreCase).Count();
-            if (workbooks > 1)
-                return "Sources: " + workbooks +
-                    " workbooks (exact references in notes)";
-            if (parsed.Length > 3)
-                return "Source: " + parsed[0].Groups["location"].Value
-                    .Split('!')[0] + " (" + parsed.Length +
-                    " references; details in notes)";
-            return "Source: " + string.Join("; ", parsed.Select(match =>
-                match.Groups["location"].Value));
+            }
+            var identity = first.Groups["id"].Value;
+            var location = first.Groups["location"].Value;
+            if (identity.StartsWith("excel:",
+                    StringComparison.OrdinalIgnoreCase))
+                identity = identity.Substring("excel:".Length);
+            // Source identities may contain the local workbook path. Keep
+            // exact citations in notes but never show a user profile or
+            // absolute directory on the slide canvas.
+            identity = identity.Replace('\\', '/').Split('/').Last();
+            if (Regex.IsMatch(identity, @"^[0-9a-f]{32}$",
+                    RegexOptions.IgnoreCase))
+                identity = "Workbook";
+            if (identity.Length == 0) identity = "Workbook";
+            var sheet = location.Split('!')[0];
+            var range = location.Contains("!")
+                ? location.Substring(location.IndexOf('!') + 1)
+                : string.Empty;
+            return "Source: " + identity + " / " + sheet +
+                (range.Length == 0 ? string.Empty : "!" + range) +
+                (references.Length > 1 ? " (" + references.Length +
+                    " references)" : string.Empty);
         }
 
         private static void AddStructuredCards(List<SamsungElement> elements, DraftSlide draft, RectangleF region)
