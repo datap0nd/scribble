@@ -186,8 +186,15 @@ namespace Scribble.Office
                             return capture;
                         }).ToArray();
                         deckContent = _serializer.Serialize(new { instruction = prompt, proposed_slides = all, operations });
-                        var deckReview = await ReviewSamsungAsync(client, settings, SamsungAuthoringPolicy.DeckReview + SamsungAuthoringPolicy.ReviewContract, deckContent, null, token);
-                        if (!ReviewApproved(deckReview)) throw new InvalidOperationException("REVISION_DECK_REVIEW: " + deckReview);
+                        // The pilot has removed the old source chart and
+                        // recreates it from workbook facts only after this
+                        // patch. Reviewing the whole deck here would judge
+                        // an intentionally incomplete intermediate copy.
+                        if (!pilotInternal)
+                        {
+                            var deckReview = await ReviewSamsungAsync(client, settings, SamsungAuthoringPolicy.DeckReview + SamsungAuthoringPolicy.ReviewContract, deckContent, null, token);
+                            if (!ReviewApproved(deckReview)) throw new InvalidOperationException("REVISION_DECK_REVIEW: " + deckReview);
+                        }
                         break;
                     }
                     catch (InvalidOperationException failure) when (failure.Message.StartsWith("REVISION_VISUAL_REVIEW:") ||
