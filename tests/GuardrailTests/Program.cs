@@ -7203,21 +7203,6 @@ namespace GuardrailTests
             }
         }
 
-        private sealed class SettlingSlideCollection
-        {
-            public int Reads { get; private set; }
-            public int Count
-            {
-                get { return ++Reads >= 3 ? 2 : 1; }
-            }
-        }
-
-        private sealed class SettlingPresentation
-        {
-            public SettlingSlideCollection Slides { get; } =
-                new SettlingSlideCollection();
-        }
-
         private static void NativeSlideCopyWaitsForCountSettlement()
         {
             var settle = typeof(PresentationInspection).GetMethod(
@@ -10543,5 +10528,22 @@ namespace GuardrailTests
             DisplayModal = modal;
             DisplayCount++;
         }
+    }
+
+    // Public types keep the cross-assembly dynamic COM shim accessible to
+    // PresentationInspection's runtime binder.
+    public sealed class SettlingSlideCollection
+    {
+        public int Reads { get; private set; }
+        public int Count
+        {
+            get { return ++Reads >= 3 ? 2 : 1; }
+        }
+    }
+
+    public sealed class SettlingPresentation
+    {
+        public SettlingSlideCollection Slides { get; } =
+            new SettlingSlideCollection();
     }
 }
