@@ -284,6 +284,8 @@ namespace GuardrailTests
                     PilotCopyPreflightRejectionPermitsRetry);
                 Run("Pilot copy pre-stage evidence is checked without old-slide review",
                     PilotCopyTextEvidenceIsBounded);
+                Run("Workbook FactIds safely replay all historical PP01 responses",
+                    RevisionFactReplayTests.FactReferencesAndHistoricalResponses);
                 Run("Measured pilot replacement keeps ordinary redesign consent",
                     MeasuredPilotReplacementKeepsOrdinaryConsent);
                 Run("Reordered source spans remain exact grounded evidence",
@@ -6924,6 +6926,7 @@ namespace GuardrailTests
                 {
                     "inspect_slide",
                     "list_slides",
+                    "read_revision_facts",
                     "read_slide"
                 }),
                 "The presentation read catalog gained an unexpected capability.");

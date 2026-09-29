@@ -35,13 +35,15 @@ namespace GuardrailTests
                 var inspected = client.CompleteAsync(settings, request, CancellationToken.None).GetAwaiter().GetResult();
                 Check(inspected.tool_calls.Count == 6, "FAKE_INSPECTION_RESPONSE_INVALID");
                 var revised = client.CompleteAsync(settings, request, CancellationToken.None).GetAwaiter().GetResult();
-                Check(revised.tool_calls.Single().function.name == PresentationToolCatalog.ReviseSlides, "FAKE_REVISION_RESPONSE_INVALID");
+                Check(revised.tool_calls.Single().function.name == PresentationToolCatalog.ReadRevisionFacts, "FAKE_FACT_READ_RESPONSE_INVALID");
+                var proposal = client.CompleteAsync(settings, request, CancellationToken.None).GetAwaiter().GetResult();
+                Check(proposal.tool_calls.Single().function.name == PresentationToolCatalog.ReviseSlides, "FAKE_REVISION_RESPONSE_INVALID");
                 request.tools = null;
                 var review = client.CompleteAsync(settings, request, CancellationToken.None).GetAwaiter().GetResult();
                 Check((review.RawContent ?? review.content).Contains("\"approved\":true"), "FAKE_REVIEW_RESPONSE_INVALID");
                 request.tools = PresentationToolCatalog.CreateDefinitions().ToList();
                 var final = client.CompleteAsync(settings, request, CancellationToken.None).GetAwaiter().GetResult();
-                Check(final.content.Contains("nothing was saved") && endpoint.Count == 4, "FAKE_TERMINAL_RESPONSE_INVALID");
+                Check(final.content.Contains("nothing was saved") && endpoint.Count == 5, "FAKE_TERMINAL_RESPONSE_INVALID");
             }
         }
 
@@ -89,7 +91,8 @@ namespace GuardrailTests
                     Name = document.Name, Content = document.Content, SourcePath = document.SourcePath,
                     SourceFingerprint = document.SourceFingerprint }).ToList() }.PersistTo(task.State);
                 task.Checkpoint();
-                var proposed = Replacement((object)source, json);
+                var proposed = Replacement((object)source, workbookPath,
+                    json);
                 using (endpoint = new Endpoint(proposed))
                 using (var client = new OpenAiCompatibleClient())
                 using (var host = new DocumentDraftHost("powerpoint", (object)app))
@@ -97,6 +100,7 @@ namespace GuardrailTests
                     var settings = new AppSettings { BaseUrl = endpoint.BaseUrl, ApiKey = "offline-test", Model = request.model };
                     host.BindTaskAsync(task, CancellationToken.None).GetAwaiter().GetResult();
                     var reads = new PresentationToolHost((object)app);
+                    reads.BindTask(task);
                     var authorization = new OneShotDraftAuthorization(true);
                     for (var round = 0; round < 4; round++)
                     {
@@ -129,7 +133,9 @@ namespace GuardrailTests
                             else
                             {
                                 result = reads.Execute(call);
-                                inspected++;
+                                if (call.function.name ==
+                                    PresentationToolCatalog.InspectSlide)
+                                    inspected++;
                             }
                             Check(!result.Outcome.Failed, "PRODUCTION_TOOL_FAILED: " + result.Content);
                             task.AfterTool(call, result);
@@ -180,23 +186,52 @@ namespace GuardrailTests
             return passed && sourcePreserved && workbookPreserved ? 0 : 1;
         }
 
-        private static ChatToolCall Replacement(object sourceDeck, JavaScriptSerializer json)
+        private static ChatToolCall Replacement(object sourceDeck,
+            string workbookPath, JavaScriptSerializer json)
         {
             dynamic source = sourceDeck;
             dynamic page = source.Slides[4];
             string text = Enumerable.Range(1, (int)page.Shapes.Count).Select(index => (object)page.Shapes[index])
                 .Where(shape => (int)((dynamic)shape).HasTextFrame != 0).Select(shape => (string)((dynamic)shape).TextFrame.TextRange.Text)
                 .Single(value => value.Contains("The monthly comparison covers"));
-            string[] paragraphs = Regex.Split(text, @"(?:\r\n|\r|\n){2,}").Where(value => !string.IsNullOrWhiteSpace(value)).ToArray();
-            Check(paragraphs.Length == 4, "FIXTURE_PARAGRAPHS_INVALID");
-            var labels = new[] { "June measure", "Cost and margin", "Comparison scope", "Interpretation" };
+            var series = WorkbookMonthlyChartFacts.ReadBoundSeries(
+                workbookPath, new[] { "Revenue EUR", "Cost EUR" },
+                CancellationToken.None);
+            var revenue = series.Facts.Single(fact =>
+                fact.Metric == "Revenue EUR" &&
+                fact.Period == "2026-06" &&
+                fact.Dimensions.Count == 0);
+            var cost = series.Facts.Single(fact =>
+                fact.Metric == "Cost EUR" &&
+                fact.Period == "2026-06" &&
+                fact.Dimensions.Count == 0);
+            VerifiedFact margin;
+            AnalysisCalculator.Calculate(AnalysisCalculator.Margin,
+                new[] { revenue, cost }, "Gross margin", "2026-06",
+                out margin);
+            Func<VerifiedFact, string, string> token = (fact, field) =>
+                "[[fact:" + fact.FactId + ":" + field + "]]";
+            var labels = new[] { "Current performance", "Cost",
+                "Margin", "Interpretation" };
+            var points = new[] {
+                token(revenue, "metric") + " " +
+                    token(revenue, "value") + " " +
+                    token(revenue, "unit") + " in " +
+                    token(revenue, "period"),
+                token(cost, "metric") + " " +
+                    token(cost, "value") + " " +
+                    token(cost, "unit"),
+                token(margin, "metric") + " " +
+                    token(margin, "percent"),
+                "A period change does not establish a cause."
+            };
             return new ChatToolCall { id = "repair", type = "function", function = new ChatToolCallFunction {
                 name = PresentationToolCatalog.ReviseSlides, arguments = json.Serialize(new {
                     presentation_id = PresentationInspection.IdentityFor(sourceDeck), operations = new[] { new {
                         kind = "replace_slide", slide_id = (int)page.SlideID, fingerprint = PresentationInspection.Fingerprint((object)page),
                         slide = new { title = "Operating review and evidence boundaries", subtitle = "Source-backed measures and interpretation limits",
-                            layout = "cards", cards = paragraphs.Select((paragraph, index) => new { heading = labels[index], points = new[] { paragraph } }).ToArray(),
-                            sources = "WB01 Ledger and History", footnote = "Fictional operational source", evidence = text }
+                            layout = "cards", cards = points.Select((point, index) => new { heading = labels[index], points = new[] { point } }).ToArray(),
+                            sources = "Workbook source", footnote = token(revenue, "locator"), evidence = text }
                     } } }) } };
         }
 
@@ -251,10 +286,15 @@ namespace GuardrailTests
                         toolValue is System.Collections.IList &&
                         ((System.Collections.IList)toolValue).Count > 0)
                     {
-                        if (_chatRound++ == 0) message = new { role = "assistant", tool_calls = Enumerable.Range(1, 6).Select(index => new ChatToolCall {
+                        var round = _chatRound++;
+                        if (round == 0) message = new { role = "assistant", tool_calls = Enumerable.Range(1, 6).Select(index => new ChatToolCall {
                             id = "inspect-" + index, type = "function", function = new ChatToolCallFunction { name = PresentationToolCatalog.InspectSlide,
                                 arguments = json.Serialize(new { index, preview = false }) } }).ToArray() };
-                        else if (_chatRound == 2) message = new { role = "assistant", tool_calls = new[] { _repair } };
+                        else if (round == 1) message = new { role = "assistant", tool_calls = new[] { new ChatToolCall {
+                            id = "facts", type = "function", function = new ChatToolCallFunction {
+                                name = PresentationToolCatalog.ReadRevisionFacts,
+                                arguments = "{}" } } } };
+                        else if (round == 2) message = new { role = "assistant", tool_calls = new[] { _repair } };
                         else message = new { role = "assistant", content = "The six-slide draft is ready for visual review. Sources remain unchanged; nothing was saved." };
                     }
                     else message = new { role = "assistant", content = "{\"approved\":true,\"issues\":\"\",\"findings\":[]}" };
