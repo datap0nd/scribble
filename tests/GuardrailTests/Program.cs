@@ -10862,6 +10862,42 @@ namespace GuardrailTests
         public int Count { get { return 1; } }
         public EmptyNativeShape this[int index]
         { get { if (index != 1) throw new IndexOutOfRangeException(); return _shape; } }
+        public EmptyNativeShape Item(int index) { return this[index]; }
+    }
+
+    public sealed class EmptyNativeSlide
+    {
+        public EmptyNativeSlide(EmptyNativeTextFrame frame)
+        {
+            Shapes = new EmptyNativeShapes(new EmptyNativeShape(frame));
+            NotesPage = new EmptyNativeNotePage(frame);
+        }
+        public EmptyNativeShapes Shapes { get; }
+        public EmptyNativeNotePage NotesPage { get; }
+    }
+
+    public sealed class EmptyNativeNotePage
+    {
+        public EmptyNativeNotePage(EmptyNativeTextFrame frame)
+        { Shapes = new EmptyNativeShapes(new EmptyNativeShape(frame)); }
+        public EmptyNativeShapes Shapes { get; }
+    }
+
+    public sealed class EmptyNativeSlides
+    {
+        private readonly EmptyNativeSlide _slide;
+        public EmptyNativeSlides(EmptyNativeTextFrame frame)
+        { _slide = new EmptyNativeSlide(frame); }
+        public int Count { get { return 1; } }
+        public EmptyNativeSlide Item(int index)
+        { if (index != 1) throw new IndexOutOfRangeException(); return _slide; }
+    }
+
+    public sealed class EmptyNativePresentation
+    {
+        public EmptyNativePresentation(EmptyNativeTextFrame frame)
+        { Slides = new EmptyNativeSlides(frame); }
+        public EmptyNativeSlides Slides { get; }
     }
 
     public sealed class SettlingSlideCollection

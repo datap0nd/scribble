@@ -174,10 +174,14 @@ a ≤ 10-line owner note in §5.
 | S1 XA01 | old | 2.0.385 | 1/3 (22 Sep) |
 | S1 XA01–10 | new | 2.0.760.0 | 10/10 terminal native outputs, hard checks and request bar in one batch; Claude/owner D2 pending |
 | S1 XA01 consecutive | new | 2.0.724.0 | 3/3 (10, 10, 9 actual model requests); owner D2 pending |
-| S2 PP01 | new | 2.0.750.0 | Native repair passed; real run stopped on a complete operations array encoded as a JSON string |
-| S2 PP02–10 | — | — | not yet run |
+| S2 PP01–PP10 | new | 2.0.785.0 | First full real batch: 0/10 terminal PPTX, all source-preservation checks passed; six saved-source preflight failures and four FactId/schema loops; mechanism repair in PR #48 |
 
-Current stage: **P1 workbook-backed deck repair** under owner-authorized issue #46 R1.
+Current stage: **P1 workbook-backed deck repair** under owner-authorized issue #46 R2.
+The installed 2.0.785.0 PP01–PP10 batch on 29 September cost $0.7993 and
+left $5.4590 of the no-reset key, above R2's $2.50 stage-D1 reserve. A native
+probe reproduced PowerPoint's saved-source flag changing during the stress
+harness source readback despite unchanged source bytes. The readback now skips
+empty text ranges; targeted native verification and a green build are next.
 P0 final installed build 2.0.760.0 (`773e20f`) passed green CI and an
 unassisted XA01–XA10 batch on 29 September. All ten produced four-slide
 native decks and workbooks through the new route, passed hard checks and
