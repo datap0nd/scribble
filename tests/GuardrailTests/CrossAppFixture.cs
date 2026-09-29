@@ -41,7 +41,7 @@ namespace GuardrailTests
                 case "Width": case "Height": case "Top": case "Left": case "BoundLeft": case "BoundTop": case "Transparency": case "Size": result = 0f; return true;
                 case "ColumnWidth": result = 8.43d; return true;
                 case "Text": case "Name": case "Path": case "FullName": result = ""; return true;
-                case "HasTextFrame": result = -1; return true;
+                case "HasTextFrame": case "HasText": result = -1; return true;
                 case "Worksheets":
                     var sheets = Child(binder.Name);
                     if (sheets._items.Count == 0) sheets._items.Add(new CrossAppFixture(sheets._path + "[1]", _events));
