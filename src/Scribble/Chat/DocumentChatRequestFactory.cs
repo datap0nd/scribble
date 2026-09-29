@@ -163,10 +163,12 @@ namespace Scribble.Chat
                 {
                     if (!pilotRepair)
                         tools.Add(PresentationToolCatalog.DraftDefinition());
-                    if (pilotRepair)
+                    if (pilotRepair &&
+                        PresentationRevisionAcceptance.Enabled)
                         tools.Add(PresentationToolCatalog
                             .RevisionFactsDefinition());
-                    if (pilotRepair)
+                    if (pilotRepair &&
+                        PresentationRevisionAcceptance.Enabled)
                         tools.Add(PresentationToolCatalog
                             .PilotRevisionDefinition());
                     else
