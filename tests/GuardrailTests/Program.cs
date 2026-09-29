@@ -10854,17 +10854,23 @@ namespace GuardrailTests
         public int HasChart { get { return 0; } }
     }
 
-    public sealed class EmptyNativeShapes
+    public sealed class EmptyNativeShapes : System.Dynamic.DynamicObject
     {
         private readonly EmptyNativeShape _shape;
         public EmptyNativeShapes(EmptyNativeShape shape)
         { _shape = shape; }
         public int Count { get { return 1; } }
-        [System.Runtime.CompilerServices.IndexerName("At")]
-        public EmptyNativeShape this[int index]
-        { get { return Item(index); } }
         public EmptyNativeShape Item(int index)
         { if (index != 1) throw new IndexOutOfRangeException(); return _shape; }
+        public override bool TryGetIndex(
+            System.Dynamic.GetIndexBinder binder, object[] indexes,
+            out object result)
+        {
+            result = null;
+            if (indexes.Length != 1 || !(indexes[0] is int)) return false;
+            result = Item((int)indexes[0]);
+            return true;
+        }
     }
 
     public sealed class EmptyNativeSlide
