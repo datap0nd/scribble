@@ -565,10 +565,24 @@ namespace Scribble.Office
                         journal("operation_applied:" + item.SlideId);
                     }
                     ValidateNativeGeometry(item.Original);
-                    if (PresentationInspection.ContentFingerprint(item.Original) != PresentationInspection.ContentFingerprint(item.Staged))
+                    // PowerPoint can finish text layout on a copied staging
+                    // slide after the live operation returns. Require exact
+                    // equality, allowing only a bounded layout settle.
+                    var matched = false;
+                    for (var check = 0; check < 6; check++)
                     {
-                        throw new InvalidOperationException("REVISION_LIVE_MISMATCH: The live result differs from the reviewed staging slide.");
+                        if (PresentationInspection.ContentFingerprint(
+                                item.Original) ==
+                            PresentationInspection.ContentFingerprint(
+                                item.Staged))
+                        { matched = true; break; }
+                        if (check < 5)
+                            System.Threading.Thread.Sleep(200);
                     }
+                    if (!matched)
+                        throw new InvalidOperationException(
+                            "REVISION_LIVE_MISMATCH: Slide " +
+                            item.Index + " differs from its reviewed staging copy.");
                     item.After = PresentationInspection.Fingerprint(item.Original); item.Applied = true;
                     journal("applied:" + item.SlideId);
                 }
