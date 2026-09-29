@@ -188,6 +188,14 @@ namespace GuardrailTests
                         Convert.ToString(reviewedPage.Design.Name))
                         throw new InvalidOperationException(
                             "PP01_STAGING_DESIGN_CHANGED");
+                    // Production previews every staged page before commit.
+                    // Exercise the same Office rendering and clipboard path
+                    // before transferring reviewed shapes to the live draft.
+                    PresentationInspection.Capture((object)reviewedPage);
+                    if (string.IsNullOrEmpty(PresentationInspection.Preview(
+                            (object)reviewedPage)))
+                        throw new InvalidOperationException(
+                            "PP01_STAGED_PREVIEW_MISSING");
                 }
                 stage = "commit_patch";
                 Invoke(revision, RevisionType, "Commit",

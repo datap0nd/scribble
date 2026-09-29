@@ -293,6 +293,8 @@ namespace GuardrailTests
                     VerifiedSourceLocatorsAreNotQuantities);
                 Run("Host summary operands bind one metric field and period",
                     HostSummaryOperandsBindOneField);
+                Run("Native clipboard retry requires an unchanged target",
+                    NativeClipboardRetryRequiresUnchangedTarget);
                 Run(
                     "Browser context is bounded and tools are approved-only",
                     BrowserContextIsBoundedAndReadOnly);
@@ -7152,6 +7154,50 @@ namespace GuardrailTests
             finally
             {
                 if (File.Exists(path)) File.Delete(path);
+            }
+        }
+
+        private static void NativeClipboardRetryRequiresUnchangedTarget()
+        {
+            var revision = typeof(DocumentDraftHost).Assembly.GetType(
+                "Scribble.Office.PresentationRevision", true);
+            var transfer = revision.GetMethod(
+                "RetryUnchangedNativeTransfer",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert(transfer != null,
+                "The native replacement clipboard boundary is missing.");
+            var calls = 0;
+            Action transient = () =>
+            {
+                if (++calls == 1)
+                    throw new System.Runtime.InteropServices.COMException(
+                        "temporary native clipboard failure",
+                        unchecked((int)0x80004005));
+            };
+            transfer.Invoke(null, new object[] {
+                transient, (Func<bool>)(() => true), "REPLACEMENT" });
+            Assert(calls == 2,
+                "A transient native clipboard failure on an untouched target did not retry.");
+            calls = 0;
+            Action partial = () =>
+            {
+                calls++;
+                throw new System.Runtime.InteropServices.COMException(
+                    "paste may have changed target",
+                    unchecked((int)0x80004005));
+            };
+            try
+            {
+                transfer.Invoke(null, new object[] {
+                    partial, (Func<bool>)(() => false), "REPLACEMENT" });
+                throw new Exception("An uncertain native paste was retried.");
+            }
+            catch (TargetInvocationException error)
+            {
+                Assert(calls == 1 &&
+                    error.InnerException?.Message.StartsWith(
+                        "REPLACEMENT_UNCERTAIN") == true,
+                    "A native transfer retried after the destination changed.");
             }
         }
 

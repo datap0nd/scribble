@@ -445,38 +445,80 @@ namespace Scribble.Office
                     "REVISION_REPLACEMENT_CHART_UNSUPPORTED");
             dynamic source = reviewed;
             dynamic target = live;
-            for (var index = (int)target.Shapes.Count; index >= 1;
-                index--)
-                target.Shapes[index].Delete();
-            if ((int)source.Shapes.Count > 0)
+            var stage = "delete_shapes";
+            try
             {
-                source.Shapes.Range().Copy();
-                target.Shapes.Paste();
-                if ((int)target.Shapes.Count !=
-                        (int)source.Shapes.Count)
-                    throw new InvalidOperationException(
-                        "REVISION_REPLACEMENT_COPY_INCOMPLETE");
-                for (var index = 1; index <=
-                    (int)source.Shapes.Count; index++)
-                    target.Shapes[index].Name =
-                        "Scribble Replacement " + Guid.NewGuid().ToString("N");
-                for (var index = 1; index <=
-                    (int)source.Shapes.Count; index++)
-                    target.Shapes[index].Name =
-                        source.Shapes[index].Name;
+                for (var index = (int)target.Shapes.Count; index >= 1;
+                    index--)
+                    target.Shapes[index].Delete();
+                if ((int)source.Shapes.Count > 0)
+                {
+                    stage = "copy_shapes";
+                    RetryUnchangedNativeTransfer(
+                        () => { source.Shapes.Range().Copy(); target.Shapes.Paste(); },
+                        () => (int)target.Shapes.Count == 0,
+                        "REVISION_REPLACEMENT_SHAPE_COPY");
+                    if ((int)target.Shapes.Count !=
+                            (int)source.Shapes.Count)
+                        throw new InvalidOperationException(
+                            "REVISION_REPLACEMENT_COPY_INCOMPLETE");
+                    stage = "name_shapes";
+                    for (var index = 1; index <=
+                        (int)source.Shapes.Count; index++)
+                        target.Shapes[index].Name =
+                            "Scribble Replacement " + Guid.NewGuid().ToString("N");
+                    for (var index = 1; index <=
+                        (int)source.Shapes.Count; index++)
+                        target.Shapes[index].Name =
+                            source.Shapes[index].Name;
+                }
+                stage = "background";
+                target.FollowMasterBackground = 0;
+                target.Background.Fill.Solid();
+                target.Background.Fill.ForeColor.RGB =
+                    source.Background.Fill.ForeColor.RGB;
+                target.Background.Fill.Transparency =
+                    source.Background.Fill.Transparency;
+                target.FollowMasterBackground =
+                    source.FollowMasterBackground;
+                stage = "notes";
+                source.NotesPage.Shapes.Placeholders[2]
+                    .TextFrame.TextRange.Copy();
+                target.NotesPage.Shapes.Placeholders[2]
+                    .TextFrame.TextRange.PasteSpecial(9);
             }
-            target.FollowMasterBackground = 0;
-            target.Background.Fill.Solid();
-            target.Background.Fill.ForeColor.RGB =
-                source.Background.Fill.ForeColor.RGB;
-            target.Background.Fill.Transparency =
-                source.Background.Fill.Transparency;
-            target.FollowMasterBackground =
-                source.FollowMasterBackground;
-            source.NotesPage.Shapes.Placeholders[2]
-                .TextFrame.TextRange.Copy();
-            target.NotesPage.Shapes.Placeholders[2]
-                .TextFrame.TextRange.PasteSpecial(9);
+            catch (System.Runtime.InteropServices.COMException error)
+            {
+                throw new InvalidOperationException(
+                    "REVISION_REPLACEMENT_COM_" + stage + ": " +
+                    error.Message, error);
+            }
+        }
+        internal static void RetryUnchangedNativeTransfer(Action transfer,
+            Func<bool> unchanged, string stage)
+        {
+            if (transfer == null || unchanged == null ||
+                string.IsNullOrWhiteSpace(stage))
+                throw new ArgumentException("Native transfer needs a verified destination.");
+            for (var attempt = 0; attempt < 3; attempt++)
+            {
+                try { transfer(); return; }
+                catch (System.Runtime.InteropServices.COMException error)
+                {
+                    var code = unchecked((uint)error.ErrorCode);
+                    if (code != 0x80004005 && code != 0x80048240)
+                        throw new InvalidOperationException(stage + "_FAILED", error);
+                    bool safe;
+                    try { safe = unchanged(); }
+                    catch (System.Runtime.InteropServices.COMException check)
+                    { throw new InvalidOperationException(stage + "_UNCERTAIN", check); }
+                    if (!safe)
+                        throw new InvalidOperationException(stage + "_UNCERTAIN", error);
+                    if (attempt == 2)
+                        throw new InvalidOperationException(stage + "_RETRY_EXHAUSTED", error);
+                    System.Threading.Thread.Sleep(150 * (attempt + 1));
+                }
+            }
         }
         internal static void ValidateNativeGeometry(object slide)
         {
@@ -549,7 +591,10 @@ namespace Scribble.Office
                     for (var i = (int)original.Shapes.Count; i >= 1; i--) original.Shapes[i].Delete();
                     if ((int)backup.Shapes.Count > 0)
                     {
-                        backup.Shapes.Range().Copy(); original.Shapes.Paste();
+                        RetryUnchangedNativeTransfer(
+                            () => { backup.Shapes.Range().Copy(); original.Shapes.Paste(); },
+                            () => (int)original.Shapes.Count == 0,
+                            "REVISION_ROLLBACK_SHAPE_COPY");
                         // Paste allocates new automatic names. Restore the
                         // source names as well as its shape content.
                         for (var i = 1; i <= (int)backup.Shapes.Count; i++)
@@ -634,7 +679,16 @@ namespace Scribble.Office
                                 item.Original);
                         else Apply(item.Original, item.Original,
                             operation);
-                        item.LastKnownContent = PresentationInspection.ContentFingerprint(item.Original);
+                        try
+                        {
+                            item.LastKnownContent = PresentationInspection
+                                .ContentFingerprint(item.Original);
+                        }
+                        catch (System.Runtime.InteropServices.COMException error)
+                        {
+                            throw new InvalidOperationException(
+                                "REVISION_POST_APPLY_FINGERPRINT_COM", error);
+                        }
                         if (SamsungAuthoringPolicy.Text(operation, "kind") == "annotate")
                             for (var n = oldCount + 1; n <= (int)live.Shapes.Count; n++) item.AddedShapeIds.Add((int)live.Shapes[n].Id);
                         journal("operation_applied:" + item.SlideId);

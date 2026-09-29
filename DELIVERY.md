@@ -174,7 +174,7 @@ a ≤ 10-line owner note in §5.
 | S1 XA01 | old | 2.0.385 | 1/3 (22 Sep) |
 | S1 XA01–10 | new | 2.0.724.0 | 9/10 deterministic and request bar in one batch; owner D2 pending |
 | S1 XA01 consecutive | new | 2.0.724.0 | 3/3 (10, 10, 9 actual model requests); owner D2 pending |
-| S2 PP01 | new | 2.0.744.0 | C2 native repair passed; real run rejected unsupported numeric claims correctly but quarantined the corrected retry because evidence validation followed permission consumption |
+| S2 PP01 | new | 2.0.745.0 | C2 native repair passed; real run reached reviewed native patch, then PowerPoint COM E_FAIL at first replacement commit |
 | S2 PP02–10 | — | — | not yet run |
 
 Current stage: **C3**, real PP01 repair on PR #45. PR #44 merged into
@@ -358,6 +358,18 @@ The first failing stage is evidence preflight ordering. PR #45 now runs the
 same exact-span and numeric validation before consuming permission or making
 a copy, with a regression for unsupported replacement numbers. Rebuild,
 install and rerun PP01.
+Installed 2.0.745.0 passed green CI. The first real PP01 attempt used 8
+requests and $0.0478 but stopped on two empty HTTP 200 provider responses;
+both sources stayed unchanged. After a fresh balance check, the same build
+used 12 requests and $0.0458. Safe preflight retries reached a valid single
+measured replacement. All six staged visual reviews approved, then PowerPoint
+returned COM E_FAIL during the first replacement commit. The durable receipt
+says `recovery_required`, first item started but no operation applied; source
+and workbook stayed unchanged and no final deck appeared. First failing stage
+is native execution. Hypothesis: the staged visual preview sequence leaves
+the native shape/notes clipboard transfer transiently unavailable. Add a
+native preview-before-commit regression and retry clipboard transfer only
+when the target is provably unchanged; rebuild, install and rerun.
 
 ## 6. Rules for autonomous sessions
 
