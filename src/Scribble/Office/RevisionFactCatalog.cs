@@ -20,8 +20,13 @@ namespace Scribble.Office
             @"\b(January|February|March|April|May|June|July|August|September|October|November|December)\b",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private readonly Dictionary<string, VerifiedFact> _facts;
+        private readonly Dictionary<string, string> _displayNames;
 
         private RevisionFactCatalog(IEnumerable<VerifiedFact> facts)
+            : this(facts, null) { }
+
+        private RevisionFactCatalog(IEnumerable<VerifiedFact> facts,
+            IDictionary<string, string> displayNames)
         {
             _facts = facts.GroupBy(fact => fact.FactId,
                 StringComparer.Ordinal).ToDictionary(group => group.Key,
@@ -32,18 +37,37 @@ namespace Scribble.Office
                     fact.FactId != AnalysisContract.ExpectedFactId(fact)))
                 throw new InvalidOperationException(
                     "REVISION_FACT_CATALOG_INVALID");
+            _displayNames = displayNames == null
+                ? new Dictionary<string, string>(StringComparer.Ordinal)
+                : new Dictionary<string, string>(displayNames,
+                    StringComparer.Ordinal);
         }
 
         internal static RevisionFactCatalog FromBindings(
             IEnumerable<PresentationDraftCopy.MonthlyChartBinding> bindings)
         {
-            var observed = (bindings ??
+            var bound = (bindings ??
                 new PresentationDraftCopy.MonthlyChartBinding[0])
+                .ToArray();
+            var observed = bound
                 .SelectMany(binding => binding.Facts?.Facts ??
                     new VerifiedFact[0]).GroupBy(fact => fact.FactId,
                     StringComparer.Ordinal).Select(group => group.First())
                 .ToList();
             var derived = new List<VerifiedFact>();
+            var displayNames = new Dictionary<string, string>(
+                StringComparer.Ordinal);
+            foreach (var name in bound.SelectMany(binding =>
+                binding.Facts?.Names ?? new string[0]))
+            {
+                var matched = observed.Select(fact => fact.Metric)
+                    .Distinct(StringComparer.Ordinal).Where(metric =>
+                        Normalize(metric) == Normalize(name)).ToArray();
+                if (matched.Length != 1)
+                    throw new InvalidOperationException(
+                        "REVISION_FACT_METRIC_AMBIGUOUS");
+                displayNames[matched[0]] = name;
+            }
             var totals = observed.Where(fact =>
                 fact.Dimensions.Count == 0).ToArray();
             foreach (var series in totals.GroupBy(fact => fact.Metric,
@@ -62,6 +86,11 @@ namespace Scribble.Office
                             series.Key + " change", periods[index].Period,
                             out growth);
                         derived.Add(growth);
+                        string display;
+                        if (displayNames.TryGetValue(series.Key,
+                                out display))
+                            displayNames[series.Key + " change"] =
+                                display + " change";
                     }
                     catch (InvalidOperationException) { }
                 }
@@ -70,11 +99,9 @@ namespace Scribble.Office
                 StringComparer.Ordinal))
             {
                 var revenue = period.SingleOrDefault(fact =>
-                    Regex.IsMatch(fact.Metric, @"\brevenue\b",
-                        RegexOptions.IgnoreCase));
+                    Normalize(fact.Metric).Contains("revenue"));
                 var cost = period.SingleOrDefault(fact =>
-                    Regex.IsMatch(fact.Metric, @"\bcost\b",
-                        RegexOptions.IgnoreCase));
+                    Normalize(fact.Metric).Contains("cost"));
                 if (revenue == null || cost == null) continue;
                 VerifiedFact margin;
                 try
@@ -87,7 +114,8 @@ namespace Scribble.Office
                 }
                 catch (InvalidOperationException) { }
             }
-            return new RevisionFactCatalog(observed.Concat(derived));
+            return new RevisionFactCatalog(observed.Concat(derived),
+                displayNames);
         }
 
         internal object[] PublicFacts()
@@ -99,7 +127,7 @@ namespace Scribble.Office
                     pair.Key).Select(pair => pair.Value)))
                 .Select(fact => (object)new {
                     fact_id = fact.FactId,
-                    metric = fact.Metric,
+                    metric = DisplayMetric(fact),
                     period = fact.Period,
                     dimensions = fact.Dimensions,
                     value = DisplayValue(fact),
@@ -127,15 +155,34 @@ namespace Scribble.Office
                 if (operation == null)
                     throw new InvalidOperationException(
                         "REVISION_FACT_OPERATIONS_INVALID");
-                var kind = Convert.ToString(operation["kind"]);
+                object supplied;
+                if (!operation.TryGetValue("kind", out supplied))
+                    throw new InvalidOperationException(
+                        "REVISION_FACT_OPERATION_KIND_MISSING");
+                var kind = Convert.ToString(supplied);
                 if (kind == "replace_text" || kind == "table_cell")
-                    operation["text"] = Render(Convert.ToString(
-                        operation["text"]));
+                {
+                    if (!operation.TryGetValue("text", out supplied) ||
+                        !(supplied is string))
+                        throw new InvalidOperationException(
+                            "REVISION_FACT_TEXT_REQUIRED");
+                    operation["text"] = Render((string)supplied);
+                }
                 else if (kind == "notes_append")
-                    operation["notes"] = Render(Convert.ToString(
-                        operation["notes"]));
+                {
+                    if (!operation.TryGetValue("notes", out supplied) ||
+                        !(supplied is string))
+                        throw new InvalidOperationException(
+                            "REVISION_FACT_TEXT_REQUIRED");
+                    operation["notes"] = Render((string)supplied);
+                }
                 else if (kind == "replace_slide")
-                    BindSlide(operation["slide"]);
+                {
+                    if (!operation.TryGetValue("slide", out supplied))
+                        throw new InvalidOperationException(
+                            "REVISION_FACT_SLIDE_INVALID");
+                    BindSlide(supplied);
+                }
             }
             return copy;
         }
@@ -202,7 +249,8 @@ namespace Scribble.Office
                     StringComparison.OrdinalIgnoreCase) >= 0 ||
                 Regex.IsMatch(literal, @"\d") ||
                 PeriodName.IsMatch(literal) ||
-                _facts.Values.Select(fact => fact.Metric)
+                _facts.Values.Select(DisplayMetric).Concat(
+                    _facts.Values.Select(fact => fact.Metric))
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .Any(metric => metric.Length > 2 &&
                         Regex.IsMatch(literal,
@@ -218,7 +266,7 @@ namespace Scribble.Office
                     "REVISION_FACT_LITERAL_UNBOUND");
         }
 
-        private static string Resolve(VerifiedFact fact, string field)
+        private string Resolve(VerifiedFact fact, string field)
         {
             if (field == "value") return DisplayValue(fact);
             if (field == "percent")
@@ -229,7 +277,7 @@ namespace Scribble.Office
                 return AnalysisContract.Decimal(fact).ToString("0.##%",
                     CultureInfo.InvariantCulture);
             }
-            if (field == "metric") return fact.Metric;
+            if (field == "metric") return DisplayMetric(fact);
             if (field == "unit") return DisplayUnit(fact);
             if (field == "locator") return SafeLocator(fact);
             if (field == "period")
@@ -259,6 +307,20 @@ namespace Scribble.Office
             var value = AnalysisContract.Decimal(fact);
             return value.ToString(value == decimal.Truncate(value)
                 ? "#,##0" : "#,##0.##", CultureInfo.InvariantCulture);
+        }
+
+        private string DisplayMetric(VerifiedFact fact)
+        {
+            string name;
+            return _displayNames.TryGetValue(fact.Metric, out name)
+                ? name : fact.Metric;
+        }
+
+        private static string Normalize(string value)
+        {
+            return Regex.Replace(value ?? string.Empty,
+                @"[^a-z0-9]", string.Empty,
+                RegexOptions.IgnoreCase).ToLowerInvariant();
         }
 
         private static string DisplayUnit(VerifiedFact fact)

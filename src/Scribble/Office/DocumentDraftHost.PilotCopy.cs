@@ -75,6 +75,10 @@ namespace Scribble.Office
                     throw new InvalidOperationException(
                         "PILOT_COPY_SCHEMA: " +
                         string.Join("; ", contractErrors));
+                if (PresentationRevisionAcceptance
+                    .ContainsChartOperation(operations))
+                    throw new InvalidOperationException(
+                        "PILOT_COPY_MODEL_CHART_UNSUPPORTED");
                 if (!_taskContext.State.HostData.ContainsKey(
                         "recovery_input"))
                     throw new InvalidOperationException(
@@ -204,7 +208,24 @@ namespace Scribble.Office
                     }), "Opened an unsaved native repair draft. The source and workbook were preserved; visual approval is still required.");
             }
             catch (OperationCanceledException)
-            { throw; }
+            {
+                if (copy != null)
+                {
+                    try
+                    {
+                        copy.DiscardOwnedDraft();
+                        _taskContext.State.HostData.Remove(statusKey);
+                        _taskContext.State.HostData.Remove(
+                            "pilot_copy_snapshot");
+                        _taskContext.Checkpoint();
+                    }
+                    catch
+                    {
+                        // Retain an uncertain draft for inspection.
+                    }
+                }
+                throw;
+            }
             catch (Exception error)
             {
                 var code = error.Message.Split(':')[0];

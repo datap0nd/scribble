@@ -198,11 +198,11 @@ namespace GuardrailTests
                 workbookPath, new[] { "Revenue EUR", "Cost EUR" },
                 CancellationToken.None);
             var revenue = series.Facts.Single(fact =>
-                fact.Metric == "Revenue EUR" &&
+                fact.Metric == "RevenueEUR" &&
                 fact.Period == "2026-06" &&
                 fact.Dimensions.Count == 0);
             var cost = series.Facts.Single(fact =>
-                fact.Metric == "Cost EUR" &&
+                fact.Metric == "CostEUR" &&
                 fact.Period == "2026-06" &&
                 fact.Dimensions.Count == 0);
             VerifiedFact margin;

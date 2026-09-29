@@ -864,6 +864,7 @@ namespace Scribble.Office
                 !string.IsNullOrEmpty(Convert.ToString(draft.Path)))
                 throw new InvalidOperationException(
                     "REVISION_COPY_DISCARD_UNSAFE");
+            draft.Saved = -1;
             draft.Close();
             VerifySource();
         }
