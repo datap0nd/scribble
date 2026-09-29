@@ -60,6 +60,23 @@ namespace GuardrailTests
                 "REVISION_FACT_LITERAL_UNBOUND");
             Reject(render, catalog, "[[fact:fact_000000000000000000000000:value]]",
                 "REVISION_FACT_ID_UNKNOWN");
+            try
+            {
+                bind.Invoke(catalog, new object[] { new object[] {
+                    new Dictionary<string, object> {
+                        { "kind", "replace_slide" },
+                        { "slide", new Dictionary<string, object> {
+                            { "sources", "Revenue EUR 82,992" }
+                        } }
+                    }
+                } });
+                throw new Exception("Visible citation text bypassed FactId binding.");
+            }
+            catch (TargetInvocationException error)
+            {
+                if (error.InnerException?.Message !=
+                    "REVISION_FACT_LITERAL_UNBOUND") throw;
+            }
 
             var path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
                 "Fixtures", "pp01-model-replay.jsonl");

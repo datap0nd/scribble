@@ -196,7 +196,7 @@ namespace Scribble.Office
             foreach (var key in map.Keys.ToArray())
             {
                 if (new[] { "id", "layout", "purpose", "content_kind",
-                    "source_spans", "sources", "evidence", "image_names" }
+                    "source_spans", "evidence", "image_names" }
                     .Contains(key)) continue;
                 var text = map[key] as string;
                 if (text != null) map[key] = Render(text);
