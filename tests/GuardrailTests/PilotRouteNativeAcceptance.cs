@@ -211,8 +211,9 @@ namespace GuardrailTests
                 out margin);
             Func<VerifiedFact, string, string> token = (fact, field) =>
                 "[[fact:" + fact.FactId + ":" + field + "]]";
-            var labels = new[] { "Current performance", "Cost",
-                "Margin", "Interpretation" };
+            var labels = new[] { "Current performance",
+                token(cost, "metric"), token(margin, "metric"),
+                "Interpretation" };
             var points = new[] {
                 token(revenue, "metric") + " " +
                     token(revenue, "value") + " " +

@@ -256,6 +256,14 @@ namespace Scribble.Office
                         Regex.IsMatch(literal,
                             @"\b" + Regex.Escape(metric) + @"\b",
                             RegexOptions.IgnoreCase)) ||
+                _facts.Values.Select(DisplayMetric)
+                    .SelectMany(metric => Regex.Matches(metric,
+                        @"[A-Za-z]{4,}").Cast<Match>()
+                        .Select(match => match.Value))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Any(label => Regex.IsMatch(literal,
+                        @"\b" + Regex.Escape(label) + @"\b",
+                        RegexOptions.IgnoreCase)) ||
                 _facts.Values.Select(DisplayUnit)
                     .Where(unit => unit.Length > 1)
                     .Distinct(StringComparer.OrdinalIgnoreCase)
