@@ -174,7 +174,7 @@ a ≤ 10-line owner note in §5.
 | S1 XA01 | old | 2.0.385 | 1/3 (22 Sep) |
 | S1 XA01–10 | new | 2.0.724.0 | 9/10 deterministic and request bar in one batch; owner D2 pending |
 | S1 XA01 consecutive | new | 2.0.724.0 | 3/3 (10, 10, 9 actual model requests); owner D2 pending |
-| S2 PP01 | new | 2.0.739.0 | C2 native repair passed; real C3 run reached claim association in patch review; compound display label needs source-component binding in PR #45 |
+| S2 PP01 | new | 2.0.740.0 | C2 native repair passed; real C3 run passed claim association but patch review counted a verified sheet locator as a quantity; source-locator approach in PR #45 |
 | S2 PP02–10 | — | — | not yet run |
 
 Current stage: **C3**, real PP01 repair on PR #45. PR #44 merged into
@@ -311,6 +311,17 @@ PR #45 changes the approach: split compound labels into components and verify
 every component against that same exact passage, with month matched to its
 period; uncited metrics/months still fail. No final deck was produced and
 source/workbook bytes stayed unchanged. Rebuild, install and rerun PP01.
+Installed 2.0.740.0 passed green CI. Real PP01 used 9 model requests and
+$0.0757; the compound claim passed, then patch review counted the `2` in a
+footnote's `Sheet 2` source locator as an uncited quantity. This review stage
+has recurred after two fixes. The mechanism hypothesis is that review flattens
+all visible text before extracting numbers, losing the distinction between a
+source location and a measured value. PR #45 changes approach by recognizing
+only exact sheet/page/slide/table/figure locators already present in the read
+source, leaving all other numerals under the original evidence check. No final
+deck was produced; source and workbook bytes stayed unchanged. Rebuild,
+install and rerun PP01; if review still fails, stop local review patches and
+escalate the mechanism.
 
 ## 6. Rules for autonomous sessions
 

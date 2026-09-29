@@ -287,6 +287,8 @@ namespace GuardrailTests
                     ReorderedSourceSpansRemainGrounded);
                 Run("Compound claim labels bind every cited component",
                     CompoundClaimLabelsBindCitedComponents);
+                Run("Verified source locators are not numeric claims",
+                    VerifiedSourceLocatorsAreNotQuantities);
                 Run(
                     "Browser context is bounded and tools are approved-only",
                     BrowserContextIsBoundedAndReadOnly);
@@ -7291,6 +7293,35 @@ namespace GuardrailTests
                 Assert(rejected,
                     "A compound label introduced an uncited month or metric: " +
                     invalidLabel);
+            }
+        }
+
+        private static void VerifiedSourceLocatorsAreNotQuantities()
+        {
+            var json = new JavaScriptSerializer();
+            const string source = "[Sheet 2]\nRevenue 82 EUR";
+            var slide = new Dictionary<string, object>
+            {
+                { "layout", "cards" }, { "purpose", "explanatory" },
+                { "title", "Revenue 82 EUR" },
+                { "sources", "Workbook" },
+                { "evidence", "Revenue 82 EUR" },
+                { "footnote", "Read from Sheet 2" }
+            };
+            SamsungPresentationReview.ValidateEvidence(
+                json.Serialize(slide), source);
+            foreach (var unsupported in new[] {
+                "Read from Sheet 3", "Read from Sheet 2; add 99 EUR" })
+            {
+                slide["footnote"] = unsupported;
+                var rejected = false;
+                try { SamsungPresentationReview.ValidateEvidence(
+                    json.Serialize(slide), source); }
+                catch (InvalidOperationException error)
+                { rejected = error.Message.StartsWith("SLIDE_NUMBERS_UNVERIFIED"); }
+                Assert(rejected,
+                    "An uncited locator or quantity escaped numeric review: " +
+                    unsupported);
             }
         }
 

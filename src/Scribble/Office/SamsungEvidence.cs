@@ -115,6 +115,24 @@ namespace Scribble.Office
             });
         }
 
+        // Source locators are identifiers, not measured quantities. Strip a
+        // locator only when that exact kind and number occur in the task's
+        // read source; other numbers in the same sentence remain checkable.
+        public static string RemoveVerifiedSourceLocators(string displayed,
+            string taskSources)
+        {
+            return Regex.Replace(displayed ?? "",
+                @"\b(?<kind>sheet|worksheet|tab|page|slide|table|figure|appendix)\s*#?\s*(?<number>\d+)\b",
+                match =>
+                {
+                    var pattern = @"\b" + Regex.Escape(match.Groups["kind"].Value) +
+                        @"\s*#?\s*" + Regex.Escape(
+                            match.Groups["number"].Value) + @"\b";
+                    return Regex.IsMatch(taskSources ?? "", pattern,
+                        RegexOptions.IgnoreCase) ? " " : match.Value;
+                }, RegexOptions.IgnoreCase);
+        }
+
         // Models sometimes quote the exact data row but omit an adjacent period
         // header. Expand only inside the already resolved, host-verified source
         // evidence, and only to the shortest contiguous line window that contains

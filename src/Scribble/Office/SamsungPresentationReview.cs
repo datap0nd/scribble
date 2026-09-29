@@ -97,6 +97,8 @@ namespace Scribble.Office
             // A period label (2026-05, June 2026) names a column rather than a
             // quantity; it must occur in the sources this task has read.
             var quantities = SamsungEvidence.RemoveVerifiedPeriodLabels(content, actualSource, evidence);
+            quantities = SamsungEvidence.RemoveVerifiedSourceLocators(
+                quantities, actualSource);
             var missing = Numbers(quantities).Where(n => !allowed.Contains(n)).Distinct().ToArray();
             if (missing.Length > 0) throw new InvalidOperationException("SLIDE_NUMBERS_UNVERIFIED: Values absent from cited evidence: " + string.Join(", ", missing));
             if (special) return;
