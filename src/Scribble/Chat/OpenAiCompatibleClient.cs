@@ -1138,15 +1138,21 @@ namespace Scribble.Chat
                 var hasNativePresentationDraftTool = isDraftRequest &&
                     requestModel.tools != null &&
                     requestModel.tools.Any(tool => tool?.function != null &&
-                        string.Equals(tool.function.name,
-                            PresentationToolCatalog.AddDraftSlides,
-                            StringComparison.Ordinal));
+                        (string.Equals(tool.function.name,
+                             PresentationToolCatalog.AddDraftSlides,
+                             StringComparison.Ordinal) ||
+                         string.Equals(tool.function.name,
+                             PresentationToolCatalog.ReviseSlides,
+                             StringComparison.Ordinal)));
                 if (isDraftRequest)
                 {
                     var hasPresentationDraftTool = requestModel.tools != null &&
                         requestModel.tools.Any(tool => tool?.function != null &&
                             (string.Equals(tool.function.name,
                                  PresentationToolCatalog.AddDraftSlides,
+                                 StringComparison.Ordinal) ||
+                             string.Equals(tool.function.name,
+                                 PresentationToolCatalog.ReviseSlides,
                                  StringComparison.Ordinal) ||
                              string.Equals(tool.function.name,
                                  CrossAppToolCatalog.SendToPowerPoint,
