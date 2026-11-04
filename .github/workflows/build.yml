@@ -293,10 +293,13 @@ jobs:
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" `
             "/DAppVersion=$env:SCRIBBLE_VERSION" `
             "installer\Scribble.iss"
-          $actual = [System.Diagnostics.FileVersionInfo]::GetVersionInfo(
-            (Resolve-Path "artifacts\ScribbleSetup.exe")).FileVersion
-          if ($actual -ne "$env:SCRIBBLE_VERSION.0" -and
-              $actual -ne $env:SCRIBBLE_VERSION) {
+          # Inno Setup pads the FileVersion string, so compare the
+          # numeric parts rather than the raw text.
+          $info = [System.Diagnostics.FileVersionInfo]::GetVersionInfo(
+            (Resolve-Path "artifacts\ScribbleSetup.exe"))
+          $actual = "" + $info.FileMajorPart + "." +
+            $info.FileMinorPart + "." + $info.FileBuildPart
+          if ($actual -ne $env:SCRIBBLE_VERSION) {
             throw "ScribbleSetup.exe version is $actual, expected $env:SCRIBBLE_VERSION."
           }
 
