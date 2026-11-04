@@ -315,9 +315,12 @@ Any process running as the same Windows user can potentially invoke DPAPI and
 recover current-user secrets. This protects the key at rest from casual file
 inspection, not from a compromised user session.
 
-Direct Gemini is disabled in the standard build. Dormant Gemini tokens are not
-decrypted during settings load and are removed from the settings file on the
-next successful save.
+Direct Gemini (Google browser sign-in) is available in the standard build. The
+Gemini refresh token is DPAPI-encrypted for the current Windows user like the
+API key. When the `DisableGemini` policy is set, or a build omits the
+`SCRIBBLE_DIRECT_GEMINI` gate, stored Gemini tokens are not decrypted during
+settings load and are removed from the settings file on the next successful
+save.
 
 The key is sent in the Authorization header of the configured endpoint. HTTPS
 protects that header and submitted mailbox context in transit. HTTP is accepted
@@ -327,7 +330,7 @@ the API key, prompts, and retrieved email context are then sent without
 transport encryption. Use HTTPS for every endpoint outside a trusted local
 development setup.
 
-The browser extension never receives the API key, dormant Gemini credentials, or MCP
+The browser extension never receives the API key, Gemini credentials, or MCP
 headers. The native bridge loads them under the same current-user process and
 sends them only through the existing configured provider/MCP clients.
 

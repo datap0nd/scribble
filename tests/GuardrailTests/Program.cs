@@ -250,10 +250,10 @@ namespace GuardrailTests
                     "Gemini translation preserves the tool contract",
                     GeminiTranslationPreservesToolContract);
                 Run(
-                    "Direct Gemini is unavailable to end users",
-                    GeminiIsUnavailableToEndUsers);
+                    "Direct Gemini is available to end users",
+                    GeminiIsAvailableToEndUsers);
                 Run(
-                    "Gemini gateway fails closed before network access",
+                    "Gemini fails closed before network access when gated",
                     GeminiGatewayFailsClosed);
                 Run(
                     "Context budgets scale only in large-context mode",
@@ -5226,22 +5226,49 @@ namespace GuardrailTests
                 "thinking budget.");
         }
 
-        private static void GeminiIsUnavailableToEndUsers()
+        // Direct Gemini ships enabled: with sign-in on, a Gemini model
+        // is selectable and configured without an endpoint or API
+        // key. A machine with the DisableGemini registry policy must
+        // still get the fail-closed behavior instead.
+        private static void GeminiIsAvailableToEndUsers()
         {
+            Assert(
+                AdminPolicy.GeminiEnabledForEndUsers,
+                "Direct Gemini must be enabled in this build.");
+
             var settings = new AppSettings
             {
                 UseGeminiSignIn = true,
                 Model = "gemini-2.5-flash"
             };
-            Assert(
-                AdminPolicy.GeminiDisabled &&
-                !AdminPolicy.GeminiEnabledForEndUsers &&
-                !settings.IsConfigured &&
-                !settings.HasConnectionSettings &&
-                !ModelSelectionPolicy.IsGenerativeModel(
-                    settings.Model),
-                "Direct Gemini must remain unavailable even when " +
-                "legacy settings try to enable it.");
+            if (AdminPolicy.GeminiDisabled)
+            {
+                Assert(
+                    !settings.IsConfigured &&
+                    !settings.HasConnectionSettings &&
+                    !ModelSelectionPolicy.IsGenerativeModel(
+                        settings.Model),
+                    "The DisableGemini policy must still remove " +
+                    "Gemini when the build enables it.");
+            }
+            else
+            {
+                Assert(
+                    settings.IsConfigured &&
+                    settings.HasConnectionSettings &&
+                    ModelSelectionPolicy.IsGenerativeModel(
+                        settings.Model),
+                    "A Gemini model with sign-in on must be " +
+                    "selectable and configured.");
+                foreach (var known in
+                    GeminiCodeAssistGateway.KnownModels)
+                {
+                    Assert(
+                        ModelSelectionPolicy.IsGenerativeModel(known),
+                        "A known Gemini model was hidden from the " +
+                        "model picker: " + known);
+                }
+            }
 
             var classic = new AppSettings
             {
@@ -5254,39 +5281,84 @@ namespace GuardrailTests
                 "key.");
         }
 
+        // A Gemini request runs only when the build/policy gate is
+        // open AND the user turned on Gemini sign-in. Either gate
+        // closed must stop it before any network access.
         private static void GeminiGatewayFailsClosed()
         {
-            var gateway = new GeminiCodeAssistGateway();
-            AssertGeminiBlocked(() => gateway.VerifySignInAsync(
-                null,
-                null,
-                CancellationToken.None));
-            AssertGeminiBlocked(() => gateway.GenerateAsync(
-                null,
-                null,
-                null,
-                CancellationToken.None));
-            AssertGeminiBlocked(() => gateway.GenerateStreamAsync(
-                null,
-                null,
-                null,
-                null,
-                CancellationToken.None));
+            if (AdminPolicy.GeminiDisabled)
+            {
+                var gateway = new GeminiCodeAssistGateway();
+                AssertGeminiRefused(
+                    () => gateway.VerifySignInAsync(
+                        null,
+                        null,
+                        CancellationToken.None),
+                    "GEMINI_DISABLED_BY_POLICY");
+                AssertGeminiRefused(
+                    () => gateway.GenerateAsync(
+                        null,
+                        null,
+                        null,
+                        CancellationToken.None),
+                    "GEMINI_DISABLED_BY_POLICY");
+                AssertGeminiRefused(
+                    () => gateway.GenerateStreamAsync(
+                        null,
+                        null,
+                        null,
+                        null,
+                        CancellationToken.None),
+                    "GEMINI_DISABLED_BY_POLICY");
+                return;
+            }
+
+            // Sign-in off: a Gemini model must neither reach Google
+            // nor be posted to the OpenAI-compatible endpoint. The
+            // endpoint is a closed loopback port, so any request
+            // that slipped through would fail with a different code.
+            var settings = new AppSettings
+            {
+                BaseUrl = "http://127.0.0.1:9/v1",
+                ApiKey = "test-key",
+                Model = "gemini-2.5-flash",
+                UseGeminiSignIn = false
+            };
+            using (var client = new OpenAiCompatibleClient())
+            {
+                var request = MakeRequest(new List<ChatTurn>());
+                request.model = settings.Model;
+                AssertGeminiRefused(
+                    () => client.CompleteAsync(
+                        settings,
+                        request,
+                        CancellationToken.None),
+                    "GEMINI_MODEL_NOT_ENABLED");
+                AssertGeminiRefused(
+                    () => client.CompleteStreamingAsync(
+                        settings,
+                        request,
+                        delta => { },
+                        CancellationToken.None),
+                    "GEMINI_MODEL_NOT_ENABLED");
+            }
         }
 
-        private static void AssertGeminiBlocked(Func<Task> operation)
+        private static void AssertGeminiRefused(
+            Func<Task> operation,
+            string expectedCode)
         {
             try
             {
                 operation().GetAwaiter().GetResult();
                 throw new InvalidOperationException(
-                    "A disabled Gemini entry point reached its network path.");
+                    "A gated Gemini entry point reached its network path.");
             }
             catch (AiEndpointException exception)
             {
                 Assert(
-                    exception.Code == "GEMINI_DISABLED_BY_POLICY",
-                    "Disabled Gemini returned the wrong diagnostic: " +
+                    exception.Code == expectedCode,
+                    "Gated Gemini returned the wrong diagnostic: " +
                     exception.Code);
             }
         }
@@ -5984,20 +6056,23 @@ namespace GuardrailTests
                 mixed.HasEndpointCredentials,
                 "A local model must stay usable with Gemini enabled.");
 
-            // Gemini classification remains available for the
-            // retained translation implementation, but selection is
-            // disabled in the shipped product.
+            // With sign-in on, a Gemini model is configured on its
+            // own - no endpoint or API key needed - unless the
+            // DisableGemini registry policy removes it.
             var google = new AppSettings
             {
                 Model = "gemini-2.5-flash",
                 UseGeminiSignIn = true
             };
             Assert(
-                !google.IsConfigured &&
-                !google.HasConnectionSettings &&
-                !ModelSelectionPolicy.IsGenerativeModel(
-                    google.Model),
-                "A Gemini model must not be selectable or configured.");
+                AdminPolicy.GeminiDisabled
+                    ? !google.IsConfigured &&
+                      !google.HasConnectionSettings
+                    : google.IsConfigured &&
+                      google.HasConnectionSettings &&
+                      !google.HasEndpointCredentials,
+                "A Gemini model with sign-in on must be configured " +
+                "without an endpoint.");
 
             // A Gemini model with the tick off is not configured -
             // the pane must say so instead of posting a gemini id to
@@ -6303,8 +6378,7 @@ namespace GuardrailTests
             Assert(
                 AdminPolicy.PolicyKeyPath ==
                 "Software\\Policies\\Scribble" &&
-                !AdminPolicy.GeminiEnabledForEndUsers &&
-                AdminPolicy.GeminiDisabled,
+                AdminPolicy.GeminiEnabledForEndUsers,
                 "The policy key path changed unexpectedly.");
             // Reading the switch must never throw, whether or not
             // the key exists on this machine.
