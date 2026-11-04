@@ -734,9 +734,23 @@ if (([regex]::Matches(
     throw "Settings storage must round-trip the browser MCP allowlist and approval."
 }
 
-# Direct Gemini is default-deny for end users. Settings load avoids
-# decrypting dormant Google credentials, the UI omits the tab, and
-# every gateway entry point refuses to run before credential access.
+# Direct Gemini (Google sign-in and Gemini models in the picker) is
+# enabled for end users by the SCRIBBLE_DIRECT_GEMINI build define,
+# which both configurations must set so Debug and Release agree. The
+# build gate and the DisableGemini registry policy stay in code: when
+# either is closed, settings load avoids decrypting dormant Google
+# credentials, the UI omits the tab, and every gateway entry point
+# refuses to run before credential access.
+$projectSource = Get-Content (
+    Join-Path $sourceRoot "Scribble.csproj") -Raw
+if (([regex]::Matches(
+        $projectSource,
+        "<DefineConstants>[^<]*\bSCRIBBLE_DIRECT_GEMINI\b[^<]*</DefineConstants>")).Count -ne
+    ([regex]::Matches(
+        $projectSource,
+        "<DefineConstants>")).Count) {
+    throw "Every build configuration must define SCRIBBLE_DIRECT_GEMINI."
+}
 $settingsStoreSource = Get-Content (
     Join-Path $sourceRoot "Configuration\SettingsStore.cs") -Raw
 if (-not $settingsStoreSource.Contains(

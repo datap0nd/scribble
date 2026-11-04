@@ -15,10 +15,12 @@ namespace Scribble.Configuration
         private static readonly string LegacyPolicyKeyPath =
             "Software\\Policies\\" + "AI" + "365";
 
-        // Direct Gemini is retained for a possible future managed
-        // release, but is not an end-user capability in this build.
-        // The registry policy remains a one-way, defense-in-depth
-        // kill switch if the build gate is ever opened.
+        // Direct Gemini (Google browser sign-in and the Gemini
+        // models in the picker) is an end-user capability when the
+        // build defines SCRIBBLE_DIRECT_GEMINI, which Scribble.csproj
+        // does for both configurations. Removing that define turns
+        // the whole capability off again. The registry policy below
+        // stays a one-way kill switch on top of the build gate.
         public static bool GeminiEnabledForEndUsers
         {
             get
