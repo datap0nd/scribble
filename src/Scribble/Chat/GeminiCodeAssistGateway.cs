@@ -52,14 +52,15 @@ namespace Scribble.Chat
         private const long RefreshMarginMilliseconds = 120000;
 
         // The model set the current Gemini CLI ships (the Code
-        // Assist API has no listing endpoint). Quota buckets are
-        // per model, so a model at capacity does not block the
-        // others. Preview models are tier-gated: if the account
-        // lacks access, the request fails with a permission error
-        // and another model can be picked.
+        // Assist API has no listing endpoint), plus Gemini 3.8 Flash
+        // (GA 2026-09-02). Quota buckets are per model, so a model
+        // at capacity does not block the others. Preview models are
+        // tier-gated: if the account lacks access, the request fails
+        // with a permission error and another model can be picked.
         public static readonly IReadOnlyList<string> KnownModels =
             new[]
             {
+                "gemini-3.8-flash",
                 "gemini-3.5-flash",
                 "gemini-3-flash",
                 "gemini-2.5-flash",
@@ -147,6 +148,7 @@ namespace Scribble.Chat
             CapacityFallbackChain =
                 new[]
                 {
+                    "gemini-3.8-flash",
                     "gemini-3.5-flash",
                     "gemini-3-flash",
                     "gemini-2.5-flash",

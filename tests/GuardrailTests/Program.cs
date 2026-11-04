@@ -144,6 +144,9 @@ namespace GuardrailTests
                     "Gemini fails closed before network access when gated",
                     GeminiGatewayFailsClosed);
                 Run(
+                    "Gemini 3.8 Flash is offered first",
+                    Gemini38FlashIsOffered);
+                Run(
                     "Context budgets scale only in large-context mode",
                     ContextBudgetsScaleOnlyInLargeContextMode);
                 Run(
@@ -4753,6 +4756,8 @@ namespace GuardrailTests
                 GeminiCodeAssistGateway.ThinkingBudgetFor(
                     "gemini-3-flash") == -1 &&
                 GeminiCodeAssistGateway.ThinkingBudgetFor(
+                    "gemini-3.8-flash") == -1 &&
+                GeminiCodeAssistGateway.ThinkingBudgetFor(
                     "gemini-3.1-pro-preview") == -1 &&
                 GeminiCodeAssistGateway.ThinkingBudgetFor(
                     "qwen3-vl-30b") == -1,
@@ -4895,13 +4900,16 @@ namespace GuardrailTests
                 StringComparer.OrdinalIgnoreCase);
             Assert(
                 GeminiCodeAssistGateway.CapacityFallbackChain
-                    .Count == 8 &&
+                    .Count == 9 &&
+                GeminiCodeAssistGateway.NextFallbackModel(
+                    "gemini-3.8-flash", tried) ==
+                "gemini-3.5-flash" &&
                 GeminiCodeAssistGateway.NextFallbackModel(
                     "gemini-3.5-flash", tried) ==
-                "gemini-3-flash" &&
+                "gemini-3.8-flash" &&
                 GeminiCodeAssistGateway.NextFallbackModel(
                     "gemini-2.5-flash", tried) ==
-                "gemini-3.5-flash" &&
+                "gemini-3.8-flash" &&
                 GeminiCodeAssistGateway.NextFallbackModel(
                     "qwen3-vl-30b", tried) == null,
                 "The capacity chain must hop to the next unused " +
@@ -5024,6 +5032,36 @@ namespace GuardrailTests
                 !classic.IsConfigured,
                 "Endpoint mode must still require endpoint and " +
                 "key.");
+        }
+
+        // Gemini 3.8 Flash (GA 2026-09-02) is offered first, leads
+        // the capacity chain, has its own guide entry, and gets no
+        // 2.5-only thinking budget (it rejects "minimal" thinking).
+        private static void Gemini38FlashIsOffered()
+        {
+            Assert(
+                GeminiCodeAssistGateway.KnownModels.Count > 0 &&
+                GeminiCodeAssistGateway.KnownModels[0] ==
+                    "gemini-3.8-flash" &&
+                GeminiCodeAssistGateway.CapacityFallbackChain[0] ==
+                    "gemini-3.8-flash" &&
+                GeminiCodeAssistGateway.IsGeminiModel(
+                    "gemini-3.8-flash") &&
+                GeminiCodeAssistGateway.ThinkingBudgetFor(
+                    "gemini-3.8-flash") == -1,
+                "Gemini 3.8 Flash must lead the offered models " +
+                "without a 2.5-only thinking budget.");
+
+            var guide = ModelCatalog.Resolve("gemini-3.8-flash");
+            var previous = ModelCatalog.Resolve("gemini-3.5-flash");
+            Assert(
+                guide != null &&
+                guide.ExampleId == "gemini-3.8-flash" &&
+                guide.ReadsEmailImages &&
+                previous != null &&
+                previous.ExampleId == "gemini-3.5-flash",
+                "Gemini 3.8 Flash must resolve to its own guide " +
+                "entry without capturing 3.5 Flash.");
         }
 
         // A Gemini request runs only when the build/policy gate is

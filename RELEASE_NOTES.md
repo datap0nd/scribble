@@ -1,5 +1,15 @@
 # Release notes
 
+## 2.0.93: Gemini 3.8 Flash
+
+Gemini 3.8 Flash (`gemini-3.8-flash`) is now in the Gemini model list, at the
+top, and is the first model Scribble tries when another Gemini model is at
+capacity. It runs at the model's default thinking level, and the model guide
+describes it as the newest fast cloud Gemini. Turning on Gemini sign-in still
+pre-selects `gemini-2.5-flash`; pick 3.8 Flash in the model picker to use it.
+If your organization's Google tier does not offer it, pick another Gemini
+model. Nothing else changed from 2.0.92.
+
 ## 2.0.92: Gemini sign-in is back
 
 2.0.92 is the 2.0.91 stable release with direct Google Gemini turned back on.

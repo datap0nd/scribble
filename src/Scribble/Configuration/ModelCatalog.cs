@@ -66,14 +66,25 @@ namespace Scribble.Configuration
 
         private static readonly ModelGuideEntry[] MasterList =
         {
+            // Listed before 3.5 Flash: both entries match
+            // "gemini-3.8-flash" fully and Resolve keeps the first
+            // entry on a tie.
             new ModelGuideEntry(
-                "gemini-3.5-flash",
-                new[] { "gemini", "flash", "3" },
+                "gemini-3.8-flash",
+                new[] { "gemini", "flash", "3.8" },
                 "Newest fast cloud Gemini",
                 "Fast",
                 "Excellent",
                 true,
-                "Latest flash generation over Google sign-in with its own quota bucket, separate from the 2.5 models. Availability depends on your organization's tier - if a request is rejected, pick another model."),
+                "Newest flash generation (Gemini 3.8) over Google sign-in, with a 1M-token context and its own quota bucket. Runs at the model's default thinking level. Availability depends on your organization's tier - if a request is rejected, pick another model."),
+            new ModelGuideEntry(
+                "gemini-3.5-flash",
+                new[] { "gemini", "flash", "3" },
+                "Fast cloud Gemini 3.5",
+                "Fast",
+                "Excellent",
+                true,
+                "Previous flash generation over Google sign-in with its own quota bucket, separate from the 2.5 models. Availability depends on your organization's tier - if a request is rejected, pick another model."),
             new ModelGuideEntry(
                 "gemini-2.5-flash",
                 new[] { "gemini", "flash" },
