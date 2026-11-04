@@ -10,7 +10,7 @@ A Windows-only AI assistant suite for classic Microsoft Office
 (Professional Plus 2021) and Google Chrome: one installer adds
 an **Scribble** sidebar to **Outlook, Excel, PowerPoint, Word, and the web**. Every
 pane shares the same chat stack -
-an OpenAI-compatible endpoint, the same
+an OpenAI-compatible endpoint or Google Gemini via browser sign-in, the same
 settings and writing soul, rich markdown output with tables, and the same hard
 guardrails: the model can read bounded
 context but can never send email, save a file, or delete anything.
@@ -173,11 +173,15 @@ inert text nodes - model output is still never parsed as HTML.
 
 ## Model choice
 
-Direct Google Gemini access is unavailable to end users. The retained Gemini
-implementation is protected by a default-off product gate and request-level
-checks; Gemini model IDs are removed from saved and discovered model lists.
-Every selectable model is sent only to the configured OpenAI-compatible
-endpoint.
+**The model picker decides where every request goes.** A `gemini-*` model
+is sent to Google; every other model is sent to your OpenAI-compatible
+endpoint. The **Gemini sign-in** tick (Settings, **Gemini** tab) only controls
+whether Gemini models are *offered* in the list - with it on, the picker shows
+Gemini models and your endpoint's own models together, so switching to a local
+model is just a picker change, and the endpoint and API key stay editable.
+Turning the tick off removes the Gemini models from the list. Picking a Gemini
+model while sign-in is off fails with a clear message instead of sending that
+model name to your local server.
 
 After you enter an endpoint and API key, use **Connect & load models** in
 Settings to populate the dropdown from `GET /v1/models`. Scribble prefers a
@@ -200,7 +204,7 @@ vision model while keeping your everyday text model saved. Save after
 **Connect & load models** so automatic routing knows which vision models are
 available. This behavior is always enabled and does not require a setting.
 
-Embedding-only and Gemini models are excluded from discovery. **Test selected model** verifies
+Embedding-only models are excluded from discovery. **Test selected model** verifies
 authentication with a lightweight `search_mailbox` tool-call probe. It does not
 read mailbox data during the check. Model discovery allows up to 15 seconds;
 the tool-call probe allows up to 90 seconds.
@@ -301,7 +305,9 @@ email working set but retains external files. **Clear** removes all context, and
 **New** starts a new conversation with no retained context.
 
 Settings includes **Connection** (endpoint, API key,
-model discovery, compatibility test, updates), **Topics**, **Skills**, **Writing soul**, and
+model discovery, compatibility test, updates), **Gemini** (Google sign-in with
+a responsible-use notice - cloud processing under your account; follow your
+organization's confidential-data policies), **Topics**, **Skills**, **Writing soul**, and
 **Support** (describe a
 problem and Scribble opens a pre-filled, unsent report email to the creator
 with the recent diagnostic log — timestamps, operations, and error codes
@@ -613,10 +619,11 @@ drafting, which tools were exposed to the model, every tool call with its
 status, and how the request ended. It contains no API keys, settings, or
 message bodies - paste it into a bug report to show exactly what happened.
 
-Direct Google Gemini is disabled for end users in this build. The registry
-value `DisableGemini` = `1` (DWORD) under
-`HKLM\Software\Policies\Scribble` or `HKCU\Software\Policies\Scribble` remains
-a defense-in-depth kill switch for a possible future managed build. Policies
+To disable Google Gemini across a whole machine (for example on a work
+computer), set the registry value `DisableGemini` = `1` (DWORD) under
+`HKLM\Software\Policies\Scribble` or `HKCU\Software\Policies\Scribble`. Gemini
+sign-in is then forced off at load, the Gemini tab is hidden, Gemini models
+are removed from the picker, and the request gateway refuses them. Policies
 can only remove capabilities, never add any.
 
 ## Hard security boundary
@@ -761,10 +768,33 @@ chat-completions tool calling. The final response must provide
 available, **Connect & load models** or **Test selected model** populates the editable model
 list in Settings.
 
-Direct Gemini model IDs and Google browser sign-in are unavailable in this
-build. The dormant translation code remains for a possible future managed
-release, but its OAuth, discovery, streaming, and non-streaming entry points
-all fail closed while the product gate is off.
+**Gemini with Google sign-in (no API key):** enable *Use Google Gemini with
+browser sign-in* on the **Gemini** tab in Settings and click **Sign in with
+Google**. A browser window opens on Google's own sign-in pages (standard OAuth
+installed-app flow with PKCE and a loopback redirect - the same flow, OAuth
+client, and scopes the open-source Gemini CLI uses, so a Google Workspace org
+that allows Gemini CLI allows this identically). Scribble never sees the
+password; it receives tokens on 127.0.0.1, stores the refresh token encrypted
+for the current Windows user (DPAPI), and calls Google's Code Assist
+`generateContent` API, where enterprise Gemini licensing resolves from the
+account alone. Requests are translated to Gemini's native format and back, so
+tool calling, vision, and every hard guardrail (read-only mailbox, one-shot
+unsent drafts, no send capability) apply unchanged. An existing Gemini CLI
+sign-in on the machine is honored automatically as a fallback. If your
+organization's Gemini license designates a Google Cloud project, enter that
+project id in the **Google Cloud project** field (the same value for everyone
+in the organization; the `GOOGLE_CLOUD_PROJECT` environment variable also
+works as a fallback). After sign-in, pick a `gemini-*` model from the model
+list; `gemini-2.5-flash` is the recommended default. If a model is at
+capacity, Scribble moves to the next available Gemini model and says so in the
+status line. With any cloud provider, email content leaves your machine - the
+local-endpoint setup keeps everything on-device.
+
+Context budgets are provider-aware: with a Gemini model selected, every text
+reading budget is multiplied by four because Gemini models have ~1M-token
+context windows. Local endpoints keep the standard budgets, and capability
+caps (working-set size, attachment and document counts, tool rounds, the
+intake size limit) never scale.
 
 If a request fails, the sidebar shows diagnostic identifiers such as:
 
