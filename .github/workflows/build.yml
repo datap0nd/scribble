@@ -37,19 +37,44 @@ jobs:
       # Every build gets a unique, user-checkable file version
       # (2.0.<run number>): Settings shows it as "Installed
       # version", so "do I have the latest build" is answerable.
+      # A release tag (v<major>.<minor>.<patch>, e.g. v2.0.92)
+      # stamps exactly that version instead.
       # AssemblyVersion stays 1.1.0.0 - the COM registration in the
       # installer pins it, so only the file version may move.
+      - name: Resolve build version
+        shell: pwsh
+        run: |
+          $version = "2.0.${{ github.run_number }}"
+          $ref = "${{ github.ref }}"
+          if ($ref.StartsWith("refs/tags/v")) {
+            if ($ref -notmatch '^refs/tags/v(\d+\.\d+\.\d+)$') {
+              throw "Release tags must look like v2.0.92, not $ref."
+            }
+            $version = $Matches[1]
+          }
+          "SCRIBBLE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Build version: $version"
+
       - name: Stamp build version
         shell: pwsh
         run: |
           $file = "src/Scribble/Properties/AssemblyInfo.cs"
-          (Get-Content $file) -replace 'AssemblyFileVersion\("[^"]+"\)', 'AssemblyFileVersion("2.0.${{ github.run_number }}.0")' | Set-Content $file
+          (Get-Content $file) -replace 'AssemblyFileVersion\("[^"]+"\)', ('AssemblyFileVersion("' + $env:SCRIBBLE_VERSION + '.0")') | Set-Content $file
 
       - name: Restore NuGet packages
         run: msbuild Scribble.sln /t:Restore /p:Configuration=Release
 
       - name: Build solution
         run: msbuild Scribble.sln /m /p:Configuration=Release
+
+      - name: Verify stamped add-in version
+        shell: pwsh
+        run: |
+          $dll = Resolve-Path "src/Scribble/bin/Release/Scribble.dll"
+          $actual = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($dll).FileVersion
+          if ($actual -ne "$env:SCRIBBLE_VERSION.0") {
+            throw "Scribble.dll file version is $actual, expected $env:SCRIBBLE_VERSION.0."
+          }
 
       - name: Verify WebView2 payload in build output
         shell: pwsh
@@ -266,8 +291,14 @@ jobs:
         shell: pwsh
         run: |
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" `
-            "/DAppVersion=2.0.${{ github.run_number }}" `
+            "/DAppVersion=$env:SCRIBBLE_VERSION" `
             "installer\Scribble.iss"
+          $actual = [System.Diagnostics.FileVersionInfo]::GetVersionInfo(
+            (Resolve-Path "artifacts\ScribbleSetup.exe")).FileVersion
+          if ($actual -ne "$env:SCRIBBLE_VERSION.0" -and
+              $actual -ne $env:SCRIBBLE_VERSION) {
+            throw "ScribbleSetup.exe version is $actual, expected $env:SCRIBBLE_VERSION."
+          }
 
       - name: Sign the installer
         if: env.SIGNING_PFX != ''
@@ -776,12 +807,33 @@ jobs:
           draft: false
           prerelease: false
 
+      # Tagged releases are published but never marked Latest: the
+      # in-app Update button downloads releases/latest, so promoting
+      # a release to Latest is a separate, deliberate step.
       - name: Attach installer to GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
+          name: Scribble ${{ env.SCRIBBLE_VERSION }}
+          body: |
+            Scribble ${{ env.SCRIBBLE_VERSION }} is the 2.0.91 stable release with Google Gemini turned back on.
+
+            - Settings has the **Gemini** tab again: tick *Use Google Gemini with browser sign-in* and click **Sign in with Google**.
+            - After sign-in, `gemini-*` models appear in the model picker alongside your endpoint's own models. The model you pick decides where each request goes.
+            - The `DisableGemini` policy (DWORD `1` under `HKLM\Software\Policies\Scribble` or `HKCU\Software\Policies\Scribble`) still turns Gemini off on a machine.
+
+            Everything else is unchanged from 2.0.91.
+
+            To install, download **ScribbleSetup.exe** below, close Office, and run it.
+
+            This release is not marked Latest, so the in-app **Update** button and the existing download links still install 2.0.91.
+
+            Commit: ${{ github.sha }}
           files: artifacts/ScribbleSetup.exe
-          generate_release_notes: true
+          fail_on_unmatched_files: true
+          make_latest: false
+          draft: false
+          prerelease: false
 
   browser-extension-e2e:
     name: Optional browser extension fixtures

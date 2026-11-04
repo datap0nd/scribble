@@ -1,5 +1,14 @@
 # Release notes
 
+## 2.0.92: Gemini sign-in is back
+
+2.0.92 is the 2.0.91 stable release with direct Google Gemini turned back on.
+Settings has the **Gemini** tab again: tick *Use Google Gemini with browser
+sign-in* and click **Sign in with Google**. After sign-in, `gemini-*` models
+appear in the model picker alongside your endpoint's own models, and the model
+you pick decides where each request goes. The `DisableGemini` registry policy
+still turns Gemini off on a machine. Nothing else changed from 2.0.91.
+
 ## User-supplied domain navigation (extension 1.5.2)
 
 When the user types a bare domain such as `samsungtradein.ae`, Scribble now
