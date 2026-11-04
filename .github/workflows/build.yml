@@ -8,6 +8,11 @@ on:
       - "v*"
   pull_request:
   workflow_dispatch:
+    inputs:
+      release_version:
+        description: "Publish a release with exactly this version (for example 2.0.92). Leave empty for a test build."
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -41,19 +46,43 @@ jobs:
       # stamps exactly that version instead.
       # AssemblyVersion stays 1.1.0.0 - the COM registration in the
       # installer pins it, so only the file version may move.
+      # A manual run with release_version set publishes a new release
+      # (tag v<version> on this commit) through the same step a pushed
+      # v-tag uses. It refuses a version whose tag already exists, so
+      # an existing release's installer is never replaced.
       - name: Resolve build version
         shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ github.event.inputs.release_version }}
         run: |
           $version = "2.0.${{ github.run_number }}"
+          $releaseTag = ""
           $ref = "${{ github.ref }}"
+          $requested = ("" + $env:RELEASE_VERSION).Trim()
           if ($ref.StartsWith("refs/tags/v")) {
             if ($ref -notmatch '^refs/tags/v(\d+\.\d+\.\d+)$') {
               throw "Release tags must look like v2.0.92, not $ref."
             }
             $version = $Matches[1]
+            $releaseTag = "v$version"
+          }
+          elseif ($requested.Length -gt 0) {
+            if ($requested -notmatch '^\d+\.\d+\.\d+$') {
+              throw "release_version must look like 2.0.92, not $requested."
+            }
+            $existing = git ls-remote --tags origin "refs/tags/v$requested"
+            if ($LASTEXITCODE -ne 0) {
+              throw "Could not check whether tag v$requested exists."
+            }
+            if ($existing) {
+              throw "Tag v$requested already exists; choose a new version."
+            }
+            $version = $requested
+            $releaseTag = "v$version"
           }
           "SCRIBBLE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          Write-Host "Build version: $version"
+          "SCRIBBLE_RELEASE_TAG=$releaseTag" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Build version: $version; release tag: $releaseTag"
 
       - name: Stamp build version
         shell: pwsh
@@ -814,9 +843,11 @@ jobs:
       # in-app Update button downloads releases/latest, so promoting
       # a release to Latest is a separate, deliberate step.
       - name: Attach installer to GitHub release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: env.SCRIBBLE_RELEASE_TAG != ''
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.SCRIBBLE_RELEASE_TAG }}
+          target_commitish: ${{ github.sha }}
           name: Scribble ${{ env.SCRIBBLE_VERSION }}
           body: |
             Scribble ${{ env.SCRIBBLE_VERSION }} is the 2.0.91 stable release with Google Gemini turned back on.
