@@ -1,5 +1,13 @@
 # Release notes
 
+## 2.0.94: Gemini tool-call fix
+
+Gemini no longer fails with HTTP 400 ("the number of function response parts
+must equal the number of function call parts") when the model calls several
+tools in one turn. All results for a call turn are now returned together, in
+call order. A call with no recorded result is reported as an unknown outcome
+instead of being left out. Nothing else changed from 2.0.93.
+
 ## 2.0.93: Gemini 3.8 Flash
 
 Gemini 3.8 Flash (`gemini-3.8-flash`) is now in the Gemini model list, at the
