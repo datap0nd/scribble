@@ -883,16 +883,17 @@ jobs:
             "",
             "To install, download **ScribbleSetup.exe** below, close Office, and run it.",
             "",
-            "This release is not marked Latest, so the existing download links still install 2.0.91. Do not use the in-app **Update** button on this version: it installs the Latest release.",
+            "This release is Latest: the in-app **Update** button and the download links install it.",
             "",
             "Commit: $env:GITHUB_SHA"
           ) -join "`n"
           Set-Content -Path "artifacts/release-notes.md" -Value $body -Encoding utf8
           Get-Content "artifacts/release-notes.md"
 
-      # Tagged releases are published but never marked Latest: the
-      # in-app Update button downloads releases/latest, so promoting
-      # a release to Latest is a separate, deliberate step.
+      # Every release is published as Latest (the owner's standing
+      # instruction): the in-app Update button downloads
+      # releases/latest, so a new release reaches it immediately.
+      # promote_latest can re-point Latest at an older release.
       - name: Attach installer to GitHub release
         if: env.SCRIBBLE_RELEASE_TAG != ''
         uses: softprops/action-gh-release@v2
@@ -903,7 +904,7 @@ jobs:
           body_path: artifacts/release-notes.md
           files: artifacts/ScribbleSetup.exe
           fail_on_unmatched_files: true
-          make_latest: false
+          make_latest: true
           draft: false
           prerelease: false
 

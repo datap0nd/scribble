@@ -17,6 +17,13 @@ built or run on Linux — the Windows CI workflow
   push immediately after each change set.** The user pulls `main` on a work
   machine to test. Do not create side branches or pull requests unless
   explicitly asked.
+- **Every release is marked Latest** (owner's standing instruction). The
+  in-app Update button installs `releases/latest`. Release by running the
+  build workflow with `release_version` (e.g. `2.0.96`, with a matching
+  `## 2.0.96` section in `RELEASE_NOTES.md`); it publishes the release as
+  Latest after every build and test step passes. `promote_latest` re-points
+  Latest at an existing release. The 2.0.9x line (2.0.91 stable source +
+  Gemini) is developed on `claude/lucid-faraday-retpxj`.
 - Every push to `main` triggers CI: MSBuild, guardrail tests
   (`tests/GuardrailTests`), the static capability scan
   (`scripts/Test-Guardrails.ps1`), and republishing the installer to the
