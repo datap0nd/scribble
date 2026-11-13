@@ -1,5 +1,11 @@
 # Release notes
 
+Gemini no longer fails with HTTP 400 ("the number of function response parts
+must equal the number of function call parts") when the model calls several
+tools in one turn. All results for a call turn are now returned together, in
+call order. A call with no recorded result is reported as an unknown outcome
+instead of being left out.
+
 Test Lab now supports a single-case scope for host-by-host diagnosis, labels
 environment, model, evidence, correctness, and harness failures separately, and
 terminalizes the original submit receipt when the visible pane confirms it is
