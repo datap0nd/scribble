@@ -2235,7 +2235,9 @@ namespace GuardrailTests
 
         private static void HistoryIsBounded()
         {
-            var history = Enumerable.Range(0, 30)
+            var history = Enumerable.Range(
+                    0,
+                    TextBoundary.MaxConversationTurns + 18)
                 .Select(index => new ChatTurn("user", "turn " + index))
                 .ToList();
             var request = MakeRequest(history);
