@@ -1,8 +1,10 @@
 # Scribble
 
 **Public stable release: [2.0.91](https://github.com/datap0nd/scribble/releases/tag/stable-2.0.91).**
-Latest and the in-app update download are frozen at that version. Ongoing work
-lives on `codex/development`; the stable source is on `codex/stable-2.0.91`.
+Latest is frozen at that version. The in-app **Update Scribble** button of
+current builds follows the `continuous` release, which the owner publishes from
+`codex/development`. Ongoing work lives on `codex/development`; the stable
+source is on `codex/stable-2.0.91`.
 Development features described below may be newer than the stable installer.
 See [release channels](docs/release-channels.md) for the separation and download checks.
 
@@ -112,10 +114,11 @@ because Scribble deliberately detaches after every atomic action. Clicking
    the generated drafting instructions, edit them, and enable the profile.
 
 To update later, open **Settings** in any Scribble pane and click
-**Update Scribble**. Both updater generations now download stable 2.0.91.
-Users already on a newer build are not automatically downgraded by the newer
-updater; an intentional rollback uses the stable installer after saving work
-and closing Office. The following progress-window behavior describes the
+**Update Scribble**. Stable 2.0.91's original updater follows Latest and
+stays on 2.0.91; current builds follow the `continuous` release and install
+the newest published development build. The updater never downgrades; an
+intentional rollback uses the stable installer after saving work and closing
+Office. The following progress-window behavior describes the
 development updater, not the original updater bundled in 2.0.91.
 One confirmation opens a separate progress window. It
 downloads the continuous release, verifies its manifest, SHA-256 and version,
