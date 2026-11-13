@@ -1,5 +1,19 @@
 # Release notes
 
+## 2.0.95: Limits are back, ten times higher
+
+Settings has the **Limits** tab again. Recommended limits are now ten times
+the old values, sized for long Gemini runs: 60 tool rounds per request (was
+6), 40 tool calls per round (was 4), 40,000-character messages (was 4,000),
+120,000-character answers (was 12,000) and 120 conversation turns of history
+(was 12). Untick *Use recommended limits* to set your own, up to 80 tool
+rounds, 80 calls per round, 160,000-character messages, 480,000-character
+answers and 240 turns. Long PowerPoint and Excel runs no longer stop with
+"too many tools" or "maximum number of bounded tool rounds" at the old caps.
+The reading budget multiplier and the emails-per-request working set keep
+their previous defaults and are adjustable on the same tab. Drafting
+guardrails are unchanged. Nothing else changed from 2.0.94.
+
 ## 2.0.94: Gemini tool-call fix
 
 Gemini no longer fails with HTTP 400 ("the number of function response parts

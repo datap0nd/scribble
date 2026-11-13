@@ -622,16 +622,20 @@ if (-not $officePaneSource.Contains(
     throw "Document drafts are not gated by the local intent policy."
 }
 
-# End-user settings always reset the text and loop budgets to the
-# reviewed defaults. The mailbox working-set size is the one budget
-# the user owns; it is clamped and applied through the same
-# LimitOverrides path.
+# The Settings Limits tab adjusts the text and loop budgets inside
+# hard clamps; recommended limits apply by default. The mailbox
+# working-set size is clamped and applied through the same
+# LimitOverrides path either way.
 $textBoundarySource = Get-Content (
     Join-Path $sourceRoot "Security\TextBoundary.cs") -Raw
 foreach ($requiredLimitBoundary in @(
-    "MaxPromptCharacters = 16000",
-    "MaxAssistantCharactersLimit = 48000",
-    "MaxToolRoundsLimit = 8",
+    "RecommendedToolRounds = 60",
+    "RecommendedToolCallsPerRound = 40",
+    "MaxPromptCharacters = 160000",
+    "MaxAssistantCharactersLimit = 480000",
+    "MaxHistoryTurns = 240",
+    "MaxToolRoundsLimit = 80",
+    "MaxToolCallsPerRoundLimit = 80",
     "MaxUserMultiplier = 8",
     "MinWorkingSetMessages = 1",
     "MaxWorkingSetMessages = 10000",
@@ -648,32 +652,28 @@ if (-not $chatPaneSource.Contains("ApplyLimits()") -or
 $appSettingsSource = Get-Content (
     Join-Path $sourceRoot "Configuration\AppSettings.cs") -Raw
 foreach ($requiredAppLimit in @(
-    "TextBoundary.RecommendedUserPromptCharacters,",
-    "TextBoundary.RecommendedAssistantCharacters,",
-    "TextBoundary.RecommendedConversationTurns,",
-    "TextBoundary.RecommendedToolRounds,",
-    "TextBoundary.RecommendedToolCallsPerRound,"
+    "var custom = !UseRecommendedLimits;",
+    ": TextBoundary.RecommendedToolRounds,",
+    ": TextBoundary.RecommendedToolCallsPerRound,"
 )) {
     if (-not $appSettingsSource.Contains($requiredAppLimit)) {
-        throw "App settings must keep text and loop budgets at the reviewed defaults."
+        throw "App settings must apply recommended limits unless custom limits are chosen."
     }
 }
-if ($settingsWindowSource.Contains(
+if (-not $settingsWindowSource.Contains(
         "tabs.TabPages.Add(BuildLimitsPage())") -or
     $settingsWindowSource.Contains(
         "tabs.TabPages.Add(BuildMcpPage())")) {
-    throw "MCP and Limits must not be exposed in end-user Settings."
+    throw "Limits must be exposed in Settings and MCP must stay hidden."
 }
-if (-not $settingsWindowSource.Contains("_workingSetSize")) {
-    throw "The hidden working-set compatibility value was removed."
-}
-foreach ($lockedSetting in @(
-    "LimitPromptCharacters = TextBoundary",
-    "LimitAssistantCharacters = TextBoundary",
-    "LimitToolRounds = TextBoundary"
+foreach ($limitControl in @(
+    "_workingSetSize",
+    "_useRecommendedLimits",
+    "LimitOverrides.MaxToolRoundsLimit",
+    "LimitOverrides.MaxToolCallsPerRoundLimit"
 )) {
-    if (-not $settingsWindowSource.Contains($lockedSetting)) {
-        throw "Settings must not expose text or loop budgets: $lockedSetting."
+    if (-not $settingsWindowSource.Contains($limitControl)) {
+        throw "The Settings Limits tab is missing $limitControl."
     }
 }
 

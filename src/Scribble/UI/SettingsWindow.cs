@@ -47,6 +47,21 @@ namespace Scribble.UI
         private readonly Label _toneStrengthValue = new Label();
         private readonly NumericUpDown _workingSetSize =
             new NumericUpDown();
+        private readonly CheckBox _useRecommendedLimits =
+            new CheckBox();
+        private readonly TrackBar _limitMultiplier =
+            new TrackBar();
+        private readonly TrackBar _limitPrompt = new TrackBar();
+        private readonly TrackBar _limitAnswer = new TrackBar();
+        private readonly TrackBar _limitTurns = new TrackBar();
+        private readonly TrackBar _limitRounds = new TrackBar();
+        private readonly TrackBar _limitCalls = new TrackBar();
+        private readonly Label _limitMultiplierValue = new Label();
+        private readonly Label _limitPromptValue = new Label();
+        private readonly Label _limitAnswerValue = new Label();
+        private readonly Label _limitTurnsValue = new Label();
+        private readonly Label _limitRoundsValue = new Label();
+        private readonly Label _limitCallsValue = new Label();
         private readonly RichTextBox _draftRules =
             new RichTextBox();
         private readonly RichTextBox _supportText =
@@ -206,6 +221,7 @@ namespace Scribble.UI
                 tabs.TabPages.Add(BuildSkillsPage());
             }
             tabs.TabPages.Add(BuildWritingStylePage());
+            tabs.TabPages.Add(BuildLimitsPage());
             tabs.TabPages.Add(BuildSupportPage());
             root.Controls.Add(tabs, 0, 0);
 
@@ -257,6 +273,34 @@ namespace Scribble.UI
                         ? storedWorkingSet
                         : LimitOverrides
                             .RecommendedWorkingSetMessages));
+            _useRecommendedLimits.Checked =
+                current?.UseRecommendedLimits ?? true;
+            _limitMultiplier.Value = ClampTrack(
+                _limitMultiplier,
+                current?.LimitContextMultiplier ?? 1);
+            _limitPrompt.Value = ClampTrack(
+                _limitPrompt,
+                (current?.LimitPromptCharacters ??
+                 TextBoundary.RecommendedUserPromptCharacters) /
+                1000);
+            _limitAnswer.Value = ClampTrack(
+                _limitAnswer,
+                (current?.LimitAssistantCharacters ??
+                 TextBoundary.RecommendedAssistantCharacters) /
+                1000);
+            _limitTurns.Value = ClampTrack(
+                _limitTurns,
+                current?.LimitHistoryTurns ??
+                TextBoundary.RecommendedConversationTurns);
+            _limitRounds.Value = ClampTrack(
+                _limitRounds,
+                current?.LimitToolRounds ??
+                TextBoundary.RecommendedToolRounds);
+            _limitCalls.Value = ClampTrack(
+                _limitCalls,
+                current?.LimitToolCallsPerRound ??
+                TextBoundary.RecommendedToolCallsPerRound);
+            UpdateLimitsUi();
             foreach (var server in current?.McpServers ??
                 new List<McpServerConfig>())
             {
@@ -1744,27 +1788,94 @@ namespace Scribble.UI
                 new ColumnStyle(SizeType.AutoSize));
 
             var intro = SupportingText(
-                "How many emails Scribble can work with in a " +
-                "single request: the /search and Outlook " +
-                "multi-selection working set, mailbox search " +
-                "results, and the request-wide cap on message " +
-                "bodies. The default of " +
-                LimitOverrides.RecommendedWorkingSetMessages +
-                " suits local models with modest context " +
-                "windows. Raising it sends more mailbox text to " +
-                "the model, which can slow requests down or " +
-                "overflow a small model's context window. " +
-                "Drafting guardrails are unaffected: Scribble " +
-                "still never sends email and every draft stays " +
-                "yours to review.");
+                "These limits control how long Scribble keeps " +
+                "working on one request and how much text it " +
+                "sends. The recommended values are sized for " +
+                "Google Gemini's large context window: up to " +
+                TextBoundary.RecommendedToolRounds +
+                " tool rounds of up to " +
+                TextBoundary.RecommendedToolCallsPerRound +
+                " tool calls each. Smaller local models may need " +
+                "lower values. Drafting guardrails are not " +
+                "affected: Scribble never sends email or saves " +
+                "documents, and every draft stays yours to " +
+                "review.");
             intro.ForeColor = SystemColors.ControlText;
             layout.Controls.Add(intro, 0, 0);
             layout.SetColumnSpan(intro, 2);
 
+            _useRecommendedLimits.AutoSize = true;
+            _useRecommendedLimits.Checked = true;
+            _useRecommendedLimits.Text =
+                "Use recommended limits";
+            _useRecommendedLimits.AccessibleName =
+                "Use recommended limits";
+            _useRecommendedLimits.CheckedChanged +=
+                (sender, args) => UpdateLimitsUi();
+            layout.Controls.Add(_useRecommendedLimits, 0, 1);
+            layout.SetColumnSpan(_useRecommendedLimits, 2);
+
+            var row = 2;
+            AddLimitRow(
+                layout,
+                ref row,
+                "Tool rounds per request",
+                _limitRounds,
+                _limitRoundsValue,
+                LimitOverrides.MinToolRounds,
+                LimitOverrides.MaxToolRoundsLimit,
+                10);
+            AddLimitRow(
+                layout,
+                ref row,
+                "Tool calls per round",
+                _limitCalls,
+                _limitCallsValue,
+                LimitOverrides.MinToolCallsPerRound,
+                LimitOverrides.MaxToolCallsPerRoundLimit,
+                10);
+            AddLimitRow(
+                layout,
+                ref row,
+                "Your message length (thousand characters)",
+                _limitPrompt,
+                _limitPromptValue,
+                LimitOverrides.MinPromptCharacters / 1000,
+                LimitOverrides.MaxPromptCharacters / 1000,
+                20);
+            AddLimitRow(
+                layout,
+                ref row,
+                "Answer length (thousand characters)",
+                _limitAnswer,
+                _limitAnswerValue,
+                LimitOverrides.MinAssistantCharacters / 1000,
+                LimitOverrides.MaxAssistantCharactersLimit / 1000,
+                40);
+            AddLimitRow(
+                layout,
+                ref row,
+                "Conversation turns kept as history",
+                _limitTurns,
+                _limitTurnsValue,
+                LimitOverrides.MinHistoryTurns,
+                LimitOverrides.MaxHistoryTurns,
+                20);
+            AddLimitRow(
+                layout,
+                ref row,
+                "Reading budget multiplier (email bodies, " +
+                "attachments, documents)",
+                _limitMultiplier,
+                _limitMultiplierValue,
+                1,
+                ContextScale.MaxUserMultiplier,
+                1);
+
             layout.Controls.Add(
                 FieldLabel("Emails per request (working set)"),
                 0,
-                1);
+                row);
             _workingSetSize.Minimum =
                 LimitOverrides.MinWorkingSetMessages;
             _workingSetSize.Maximum =
@@ -1777,16 +1888,109 @@ namespace Scribble.UI
                 new Padding(0, 6, 0, 0);
             _workingSetSize.AccessibleName =
                 "Emails per request (working set)";
-            layout.Controls.Add(_workingSetSize, 1, 1);
+            layout.Controls.Add(_workingSetSize, 1, row);
+            row++;
 
             var note = SupportingText(
-                "Applies after Save, from the next request " +
+                "With Google Gemini sign-in the reading budgets " +
+                "already scale x" +
+                ContextScale.LargeContextMultiplier +
+                " automatically; the larger of that and your " +
+                "multiplier wins. The email working set applies " +
+                "whether or not recommended limits are on. " +
+                "Changes apply after Save, from the next request " +
                 "onward.");
-            layout.Controls.Add(note, 0, 2);
+            layout.Controls.Add(note, 0, row);
             layout.SetColumnSpan(note, 2);
 
             page.Controls.Add(layout);
             return page;
+        }
+
+        private void AddLimitRow(
+            TableLayoutPanel layout,
+            ref int row,
+            string caption,
+            TrackBar slider,
+            Label valueLabel,
+            int minimum,
+            int maximum,
+            int tickFrequency)
+        {
+            layout.Controls.Add(FieldLabel(caption), 0, row);
+            ConfigureSupportingLabel(valueLabel);
+            valueLabel.AutoSize = true;
+            valueLabel.Margin = new Padding(8, 6, 0, 0);
+            layout.Controls.Add(valueLabel, 1, row);
+            row++;
+            slider.Minimum = minimum;
+            slider.Maximum = maximum;
+            slider.TickFrequency = tickFrequency;
+            slider.SmallChange = 1;
+            slider.LargeChange = tickFrequency;
+            slider.Dock = DockStyle.Fill;
+            slider.AccessibleName = caption;
+            slider.ValueChanged +=
+                (sender, args) => UpdateLimitsUi();
+            layout.Controls.Add(slider, 0, row);
+            layout.SetColumnSpan(slider, 2);
+            row++;
+        }
+
+        // Recommended limits show the values that will apply; the
+        // sliders become editable only for custom limits.
+        private void UpdateLimitsUi()
+        {
+            var custom = !_useRecommendedLimits.Checked;
+            if (!custom)
+            {
+                _limitMultiplier.Value = ClampTrack(
+                    _limitMultiplier,
+                    1);
+                _limitPrompt.Value = ClampTrack(
+                    _limitPrompt,
+                    TextBoundary.RecommendedUserPromptCharacters /
+                    1000);
+                _limitAnswer.Value = ClampTrack(
+                    _limitAnswer,
+                    TextBoundary.RecommendedAssistantCharacters /
+                    1000);
+                _limitTurns.Value = ClampTrack(
+                    _limitTurns,
+                    TextBoundary.RecommendedConversationTurns);
+                _limitRounds.Value = ClampTrack(
+                    _limitRounds,
+                    TextBoundary.RecommendedToolRounds);
+                _limitCalls.Value = ClampTrack(
+                    _limitCalls,
+                    TextBoundary.RecommendedToolCallsPerRound);
+            }
+
+            _limitMultiplier.Enabled = custom;
+            _limitPrompt.Enabled = custom;
+            _limitAnswer.Enabled = custom;
+            _limitTurns.Enabled = custom;
+            _limitRounds.Enabled = custom;
+            _limitCalls.Enabled = custom;
+            _limitMultiplierValue.Text =
+                "x" + _limitMultiplier.Value;
+            _limitPromptValue.Text =
+                (_limitPrompt.Value * 1000).ToString("N0");
+            _limitAnswerValue.Text =
+                (_limitAnswer.Value * 1000).ToString("N0");
+            _limitTurnsValue.Text =
+                _limitTurns.Value.ToString();
+            _limitRoundsValue.Text =
+                _limitRounds.Value.ToString();
+            _limitCallsValue.Text =
+                _limitCalls.Value.ToString();
+        }
+
+        private static int ClampTrack(TrackBar slider, int value)
+        {
+            return Math.Max(
+                slider.Minimum,
+                Math.Min(slider.Maximum, value));
         }
 
         private TabPage BuildSupportPage()
@@ -2302,18 +2506,16 @@ namespace Scribble.UI
                 Topics = _topics
                     .Select(topic => topic.Sanitized())
                     .ToList(),
-                UseRecommendedLimits = true,
-                LimitContextMultiplier = 1,
-                LimitPromptCharacters = TextBoundary
-                    .RecommendedUserPromptCharacters,
-                LimitAssistantCharacters = TextBoundary
-                    .RecommendedAssistantCharacters,
-                LimitHistoryTurns = TextBoundary
-                    .RecommendedConversationTurns,
-                LimitToolRounds = TextBoundary
-                    .RecommendedToolRounds,
-                LimitToolCallsPerRound = TextBoundary
-                    .RecommendedToolCallsPerRound,
+                UseRecommendedLimits =
+                    _useRecommendedLimits.Checked,
+                LimitContextMultiplier = _limitMultiplier.Value,
+                LimitPromptCharacters =
+                    _limitPrompt.Value * 1000,
+                LimitAssistantCharacters =
+                    _limitAnswer.Value * 1000,
+                LimitHistoryTurns = _limitTurns.Value,
+                LimitToolRounds = _limitRounds.Value,
+                LimitToolCallsPerRound = _limitCalls.Value,
                 LimitWorkingSetMessages =
                     (int)_workingSetSize.Value
             };

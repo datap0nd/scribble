@@ -110,18 +110,40 @@ namespace Scribble.Configuration
                     McpServers = NormalizeMcpServers(
                         stored.McpServers),
                     Topics = NormalizeTopics(stored.Topics),
-                    UseRecommendedLimits = true,
-                    LimitContextMultiplier = 1,
-                    LimitPromptCharacters = TextBoundary
-                        .RecommendedUserPromptCharacters,
-                    LimitAssistantCharacters = TextBoundary
-                        .RecommendedAssistantCharacters,
-                    LimitHistoryTurns = TextBoundary
-                        .RecommendedConversationTurns,
-                    LimitToolRounds = TextBoundary
-                        .RecommendedToolRounds,
-                    LimitToolCallsPerRound = TextBoundary
-                        .RecommendedToolCallsPerRound,
+                    // A missing UseCustomLimits (older settings
+                    // files) means recommended limits. Recommended
+                    // files carry the current defaults so the Limits
+                    // sliders start there; missing custom values (0)
+                    // fall back to recommended.
+                    UseRecommendedLimits = !stored.UseCustomLimits,
+                    LimitContextMultiplier = CustomOrDefault(
+                        stored.UseCustomLimits,
+                        stored.LimitContextMultiplier,
+                        1),
+                    LimitPromptCharacters = CustomOrDefault(
+                        stored.UseCustomLimits,
+                        stored.LimitPromptCharacters,
+                        TextBoundary
+                            .RecommendedUserPromptCharacters),
+                    LimitAssistantCharacters = CustomOrDefault(
+                        stored.UseCustomLimits,
+                        stored.LimitAssistantCharacters,
+                        TextBoundary
+                            .RecommendedAssistantCharacters),
+                    LimitHistoryTurns = CustomOrDefault(
+                        stored.UseCustomLimits,
+                        stored.LimitHistoryTurns,
+                        TextBoundary
+                            .RecommendedConversationTurns),
+                    LimitToolRounds = CustomOrDefault(
+                        stored.UseCustomLimits,
+                        stored.LimitToolRounds,
+                        TextBoundary.RecommendedToolRounds),
+                    LimitToolCallsPerRound = CustomOrDefault(
+                        stored.UseCustomLimits,
+                        stored.LimitToolCallsPerRound,
+                        TextBoundary
+                            .RecommendedToolCallsPerRound),
                     LimitWorkingSetMessages = NormalizeWorkingSet(
                         stored.LimitWorkingSetMessages)
                 };
@@ -262,18 +284,17 @@ namespace Scribble.Configuration
                 McpServers = StoreMcpServers(
                     settings.McpServers),
                 Topics = StoreTopics(topics),
-                UseCustomLimits = false,
-                LimitContextMultiplier = 1,
-                LimitPromptCharacters = TextBoundary
-                    .RecommendedUserPromptCharacters,
-                LimitAssistantCharacters = TextBoundary
-                    .RecommendedAssistantCharacters,
-                LimitHistoryTurns = TextBoundary
-                    .RecommendedConversationTurns,
-                LimitToolRounds = TextBoundary
-                    .RecommendedToolRounds,
-                LimitToolCallsPerRound = TextBoundary
-                    .RecommendedToolCallsPerRound,
+                UseCustomLimits = !settings.UseRecommendedLimits,
+                LimitContextMultiplier =
+                    settings.LimitContextMultiplier,
+                LimitPromptCharacters =
+                    settings.LimitPromptCharacters,
+                LimitAssistantCharacters =
+                    settings.LimitAssistantCharacters,
+                LimitHistoryTurns = settings.LimitHistoryTurns,
+                LimitToolRounds = settings.LimitToolRounds,
+                LimitToolCallsPerRound =
+                    settings.LimitToolCallsPerRound,
                 LimitWorkingSetMessages = NormalizeWorkingSet(
                     settings.LimitWorkingSetMessages)
             };
@@ -598,6 +619,14 @@ namespace Scribble.Configuration
                     }
                 }
             }
+        }
+
+        private static int CustomOrDefault(
+            bool useCustom,
+            int value,
+            int fallback)
+        {
+            return useCustom && value > 0 ? value : fallback;
         }
 
         // Settings written before the working-set size became

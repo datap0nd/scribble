@@ -128,7 +128,7 @@ namespace Scribble.Office
         public const int PreferredBatchValues = 100;
         public const int MaxBatchCharacters = 10000;
         public const int MaxBatches = 5;
-        public const int MaxRequestToolRounds = 8;
+        public const int MaxRequestToolRounds = 80;
         public const int MaxCellCharacters = 500;
         public const int MaxExcelColumns = 16384;
 

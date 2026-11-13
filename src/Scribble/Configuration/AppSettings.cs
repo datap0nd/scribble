@@ -59,11 +59,10 @@ namespace Scribble.Configuration
         public List<TopicConfig> Topics { get; set; } =
             new List<TopicConfig>();
 
-        // Legacy serialized fields retained for settings-file
-        // compatibility. The text and loop budgets are no longer
-        // user-customized; ApplyLimits always selects the reviewed
-        // defaults for those. The mailbox working-set size is the
-        // one budget the user owns (Settings > Limits).
+        // Limits tab: recommended limits by default; when the user
+        // opts out, the custom values below apply within hard
+        // clamps. Only text and loop budgets - never capability
+        // caps. The mailbox working-set size applies either way.
         public bool UseRecommendedLimits { get; set; } = true;
 
         public int LimitContextMultiplier { get; set; } = 1;
@@ -88,23 +87,37 @@ namespace Scribble.Configuration
 
         // Pushes this settings object's limit choices into the
         // process-wide effective limits. Called wherever settings
-        // are loaded or saved. Text and loop budgets stay at the
-        // reviewed defaults; the working-set size honors the user's
-        // setting, falling back to the default when unset.
+        // are loaded or saved. Recommended limits select the
+        // reviewed defaults; custom limits are clamped inside
+        // LimitOverrides. The working-set size honors the user's
+        // setting either way, falling back to the default when unset.
         public void ApplyLimits()
         {
+            var custom = !UseRecommendedLimits;
             LimitOverrides.Apply(
                 false,
-                TextBoundary.RecommendedUserPromptCharacters,
-                TextBoundary.RecommendedAssistantCharacters,
-                TextBoundary.RecommendedConversationTurns,
-                TextBoundary.RecommendedToolRounds,
-                TextBoundary.RecommendedToolCallsPerRound,
+                custom
+                    ? LimitPromptCharacters
+                    : TextBoundary.RecommendedUserPromptCharacters,
+                custom
+                    ? LimitAssistantCharacters
+                    : TextBoundary.RecommendedAssistantCharacters,
+                custom
+                    ? LimitHistoryTurns
+                    : TextBoundary.RecommendedConversationTurns,
+                custom
+                    ? LimitToolRounds
+                    : TextBoundary.RecommendedToolRounds,
+                custom
+                    ? LimitToolCallsPerRound
+                    : TextBoundary.RecommendedToolCallsPerRound,
                 LimitWorkingSetMessages > 0
                     ? LimitWorkingSetMessages
                     : LimitOverrides.RecommendedWorkingSetMessages);
             ContextScale.ApplyUserMultiplier(
-                1);
+                custom
+                    ? LimitContextMultiplier
+                    : 1);
         }
 
         public bool IsConfigured

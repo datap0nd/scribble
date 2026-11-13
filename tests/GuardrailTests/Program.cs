@@ -347,8 +347,8 @@ namespace GuardrailTests
                     "Admin policy reads only documented switches",
                     AdminPolicyIsReadOnlyAndScoped);
                 Run(
-                    "Text budgets stay fixed; the working set honors the user",
-                    SettingsAlwaysApplyRecommendedLimits);
+                    "Settings limits apply within clamps; recommended by default",
+                    SettingsApplyLimitsWithinClamps);
                 Console.WriteLine("PASS: " + _passed + " guardrail tests");
                 return 0;
             }
@@ -6281,35 +6281,17 @@ namespace GuardrailTests
                 "MCP headers must cap at eight entries.");
         }
 
-        private static void SettingsAlwaysApplyRecommendedLimits()
+        private static void SettingsApplyLimitsWithinClamps()
         {
             try
             {
+                new AppSettings().ApplyLimits();
                 Assert(
+                    TextBoundary.RecommendedToolRounds == 60 &&
+                    TextBoundary.RecommendedToolCallsPerRound == 40 &&
                     TextBoundary.MaxUserPromptCharacters ==
                     TextBoundary
                         .RecommendedUserPromptCharacters &&
-                    TextBoundary.MaxAssistantCharacters ==
-                    TextBoundary.RecommendedAssistantCharacters &&
-                    TextBoundary.MaxToolRounds ==
-                    TextBoundary.RecommendedToolRounds,
-                    "Effective limits must default to the recommended values.");
-
-                var wild = new AppSettings
-                {
-                    UseRecommendedLimits = false,
-                    LimitContextMultiplier = 100,
-                    LimitPromptCharacters = 999999,
-                    LimitAssistantCharacters = 1,
-                    LimitHistoryTurns = 1000,
-                    LimitToolRounds = 100,
-                    LimitToolCallsPerRound = 0,
-                    LimitWorkingSetMessages = 1000
-                };
-                wild.ApplyLimits();
-                Assert(
-                    TextBoundary.MaxUserPromptCharacters ==
-                    TextBoundary.RecommendedUserPromptCharacters &&
                     TextBoundary.MaxAssistantCharacters ==
                     TextBoundary.RecommendedAssistantCharacters &&
                     TextBoundary.MaxConversationTurns ==
@@ -6318,39 +6300,81 @@ namespace GuardrailTests
                     TextBoundary.RecommendedToolRounds &&
                     TextBoundary.MaxToolCallsPerRound ==
                     TextBoundary.RecommendedToolCallsPerRound &&
-                    MailboxWorkingSet.MaxMessages == 1000 &&
                     ContextScale.Scaled(1000) == 1000,
-                    "Text and loop budgets must stay at the " +
-                    "reviewed fixed defaults while the working-set " +
-                    "size honors the user's setting.");
+                    "Effective limits must default to the recommended values.");
 
-                var overflowing = new AppSettings
-                {
-                    LimitWorkingSetMessages = 999999
-                };
-                overflowing.ApplyLimits();
-                Assert(
-                    MailboxWorkingSet.MaxMessages ==
-                    LimitOverrides.MaxWorkingSetMessages,
-                    "An out-of-range working-set size must clamp " +
-                    "to the maximum.");
-
-                var recommended = new AppSettings
+                var ignored = new AppSettings
                 {
                     UseRecommendedLimits = true,
                     LimitContextMultiplier = 8,
-                    LimitPromptCharacters = 999999
+                    LimitPromptCharacters = 999999,
+                    LimitToolRounds = 3,
+                    LimitToolCallsPerRound = 3
                 };
-                recommended.ApplyLimits();
+                ignored.ApplyLimits();
                 Assert(
                     TextBoundary.MaxUserPromptCharacters ==
                     TextBoundary
                         .RecommendedUserPromptCharacters &&
+                    TextBoundary.MaxToolRounds ==
+                    TextBoundary.RecommendedToolRounds &&
+                    TextBoundary.MaxToolCallsPerRound ==
+                    TextBoundary.RecommendedToolCallsPerRound &&
                     MailboxWorkingSet.MaxMessages ==
                     MailboxWorkingSet.RecommendedMaxMessages &&
                     ContextScale.Scaled(1000) == 1000,
-                    "Defaults must apply when no working-set size " +
-                    "is stored.");
+                    "Recommended limits must ignore stored custom values.");
+
+                var custom = new AppSettings
+                {
+                    UseRecommendedLimits = false,
+                    LimitContextMultiplier = 3,
+                    LimitPromptCharacters = 50000,
+                    LimitAssistantCharacters = 200000,
+                    LimitHistoryTurns = 150,
+                    LimitToolRounds = 75,
+                    LimitToolCallsPerRound = 12,
+                    LimitWorkingSetMessages = 500
+                };
+                custom.ApplyLimits();
+                Assert(
+                    TextBoundary.MaxUserPromptCharacters == 50000 &&
+                    TextBoundary.MaxAssistantCharacters == 200000 &&
+                    TextBoundary.MaxConversationTurns == 150 &&
+                    TextBoundary.MaxToolRounds == 75 &&
+                    TextBoundary.MaxToolCallsPerRound == 12 &&
+                    MailboxWorkingSet.MaxMessages == 500 &&
+                    ContextScale.Scaled(1000) == 3000,
+                    "Custom limits inside the clamps must apply exactly.");
+
+                var wild = new AppSettings
+                {
+                    UseRecommendedLimits = false,
+                    LimitContextMultiplier = 100,
+                    LimitPromptCharacters = 9999999,
+                    LimitAssistantCharacters = 1,
+                    LimitHistoryTurns = 10000,
+                    LimitToolRounds = 1000,
+                    LimitToolCallsPerRound = 0,
+                    LimitWorkingSetMessages = 999999
+                };
+                wild.ApplyLimits();
+                Assert(
+                    TextBoundary.MaxUserPromptCharacters ==
+                    LimitOverrides.MaxPromptCharacters &&
+                    TextBoundary.MaxAssistantCharacters ==
+                    LimitOverrides.MinAssistantCharacters &&
+                    TextBoundary.MaxConversationTurns ==
+                    LimitOverrides.MaxHistoryTurns &&
+                    TextBoundary.MaxToolRounds ==
+                    LimitOverrides.MaxToolRoundsLimit &&
+                    TextBoundary.MaxToolCallsPerRound ==
+                    LimitOverrides.MinToolCallsPerRound &&
+                    MailboxWorkingSet.MaxMessages ==
+                    LimitOverrides.MaxWorkingSetMessages &&
+                    ContextScale.Scaled(1000) ==
+                    1000 * ContextScale.MaxUserMultiplier,
+                    "Out-of-range custom limits must clamp.");
             }
             finally
             {

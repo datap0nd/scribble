@@ -5,14 +5,16 @@ namespace Scribble.Security
 {
     public static class TextBoundary
     {
-        // Reviewed defaults. AppSettings resets the effective Max*
-        // values below to these constants on every load/save;
-        // drafting and sending capability rules are never adjustable.
-        public const int RecommendedUserPromptCharacters = 4000;
-        public const int RecommendedAssistantCharacters = 12000;
-        public const int RecommendedConversationTurns = 12;
-        public const int RecommendedToolRounds = 6;
-        public const int RecommendedToolCallsPerRound = 4;
+        // Recommended defaults, sized for long Gemini runs (ten times
+        // the original local-model budgets). The effective Max*
+        // values below can be adjusted from the Settings Limits tab
+        // (LimitOverrides), always inside hard clamps; drafting and
+        // sending capability rules are never adjustable.
+        public const int RecommendedUserPromptCharacters = 40000;
+        public const int RecommendedAssistantCharacters = 120000;
+        public const int RecommendedConversationTurns = 120;
+        public const int RecommendedToolRounds = 60;
+        public const int RecommendedToolCallsPerRound = 40;
 
         public const int MaxMessageBodyCharacters = 24000;
         public const int MaxToneProfileCharacters = 5000;
@@ -114,8 +116,9 @@ namespace Scribble.Security
             Recompute();
         }
 
-        // Legacy context multiplier hook. End-user settings always
-        // pass one; the clamp remains an internal safety boundary.
+        // User-chosen reading budget multiplier from the Settings
+        // Limits tab; the larger of the provider multiplier and the
+        // user's choice wins, clamped to MaxUserMultiplier.
         public static void ApplyUserMultiplier(int multiplier)
         {
             _userMultiplier = Math.Max(
@@ -137,25 +140,23 @@ namespace Scribble.Security
         }
     }
 
-    // Effective request limits. AppSettings resets the text and
-    // loop budgets to the reviewed defaults on every load/save; the
-    // mailbox working-set size is the one budget the user owns and
-    // is applied from settings, clamped to the range below.
-    // Everything here is a text, loop, or working-set budget -
-    // drafting and sending capability rules live elsewhere and are
-    // never adjustable.
+    // Effective request limits, set from the Settings Limits tab
+    // within the hard clamps below. Everything here is a text, loop,
+    // or working-set budget - drafting and sending capability rules
+    // (one draft per request, no sending, marked draft surfaces
+    // only) live elsewhere and are never adjustable.
     public static class LimitOverrides
     {
         public const int MinPromptCharacters = 2000;
-        public const int MaxPromptCharacters = 16000;
+        public const int MaxPromptCharacters = 160000;
         public const int MinAssistantCharacters = 4000;
-        public const int MaxAssistantCharactersLimit = 48000;
+        public const int MaxAssistantCharactersLimit = 480000;
         public const int MinHistoryTurns = 4;
-        public const int MaxHistoryTurns = 24;
+        public const int MaxHistoryTurns = 240;
         public const int MinToolRounds = 2;
-        public const int MaxToolRoundsLimit = 8;
+        public const int MaxToolRoundsLimit = 80;
         public const int MinToolCallsPerRound = 2;
-        public const int MaxToolCallsPerRoundLimit = 8;
+        public const int MaxToolCallsPerRoundLimit = 80;
         public const int RecommendedWorkingSetMessages = 10;
         public const int MinWorkingSetMessages = 1;
         public const int MaxWorkingSetMessages = 10000;
