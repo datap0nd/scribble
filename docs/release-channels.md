@@ -1,8 +1,10 @@
 # Scribble release channels
 
-The owner froze the public release at **2.0.91** on 2026-09-14. Keep one
-repository so fixes and history remain shared, with separate source branches
-and a deliberate public-release boundary.
+The owner froze the public release (GitHub Latest) at **2.0.91** on
+2026-09-14. On 2026-11-13 the owner reopened the `continuous` release so the
+Update button of current builds delivers new development builds; Latest stays
+frozen. Keep one repository so fixes and history remain shared, with separate
+source branches and a deliberate public-release boundary.
 
 | Purpose | Branch or release | Policy |
 | --- | --- | --- |
@@ -10,25 +12,27 @@ and a deliberate public-release boundary.
 | Original stable source | `codex/stable-2.0.91` | Frozen at `f971839c873cb5fa3347b407a7dc37e49d1894f8`. Do not advance it. |
 | Integration history | `main` | Preserved, including the release-freeze change. Builds cannot publish releases. |
 | Public Latest | `stable-2.0.91` release/tag | Original 2.0.91 installer, not a rebuild. |
-| Newer updater compatibility | `continuous` release/tag | Same original installer plus a matching `candidate.json`. |
+| In-app updates of current builds | `continuous` release/tag | Newest owner-published `codex/development` build plus its matching `candidate.json`. |
 
 The original artifact is from [successful build 91](https://github.com/datap0nd/scribble/actions/runs/33855311737).
 Its Windows file version is `2.0.91.0`, browser extension version is `1.5.2`,
 and installer SHA-256 is
 `4c655e006c79b3d1ddc1995d32530e4636e37ce7ff4696c1fef1f84fbfe239fa`.
-The manifest was added during restoration for compatibility with newer updaters;
-it was not an artifact of build 91. It identifies the unchanged original bytes.
+The `stable-2.0.91` manifest was added during restoration for compatibility
+with newer updaters; it was not an artifact of build 91. It identifies the
+unchanged original bytes.
 
 ## User downloads
 
 - [Latest download](https://github.com/datap0nd/scribble/releases/latest/download/ScribbleSetup.exe): used by 2.0.91's Update button and existing installation links.
-- [Continuous download](https://github.com/datap0nd/scribble/releases/download/continuous/ScribbleSetup.exe): used by newer updater helpers.
+- [Continuous download](https://github.com/datap0nd/scribble/releases/download/continuous/ScribbleSetup.exe): used by the Update button of current builds; serves the newest published development build.
 - [Versioned stable download](https://github.com/datap0nd/scribble/releases/download/stable-2.0.91/ScribbleSetup.exe): fixed recovery link.
 
-All three must return the hash and version above. A person already running
-2.0.91 can reinstall the same stable release but receives no development build.
-Newer updater helpers reject downgrades, so an already-upgraded installation
-does not silently roll back. An intentional rollback requires saving work,
+Latest and the versioned stable link must return the hash and version above.
+A person running 2.0.91 can reinstall the same stable release but receives no
+development build, because its original updater follows Latest. Newer updater
+helpers reject downgrades, so an already-upgraded installation does not
+silently roll back. An intentional rollback requires saving work,
 closing Office and running the versioned stable installer. No compatibility
 claim for rolling newer settings back to 2.0.91 is made here.
 
@@ -40,11 +44,29 @@ new checkouts and PRs start in the correct place. Download development installer
 from Actions artifacts when explicitly testing development. Artifact version
 numbers may increase; that does not change the stable public release.
 
-The build workflow has no release job and uses `contents: read`. The old
-`Publish-ScribbleCandidate.ps1` entry point always throws before contacting
-GitHub, including when passed successful runs or acceptance evidence.
+## Publishing a continuous update
 
-Only a new explicit owner release request can lift the freeze. Prepare and
+1. Merge the tested change into `codex/development`.
+2. In Actions, open **Build Windows installer**, choose **Run workflow** on
+   `codex/development`, and tick **publish_continuous**.
+3. After every build and test gate passes, the `publish-continuous` job checks
+   that the installer matches its `candidate.json` and this commit, then
+   replaces both `continuous` assets and the release notes. It never creates a
+   release, moves a tag, or changes Latest.
+4. Installed current builds see the new version the next time **Update
+   Scribble** is clicked; the updater still verifies the SHA-256 and version
+   before installing.
+
+The workflow is `contents: read` everywhere except that one job, and
+`tests/ReleaseGate/Test-PublicReleaseFreeze.ps1` fails the build if any other
+job can write or if the publisher could touch Latest, tags or another release.
+The old `Publish-ScribbleCandidate.ps1` entry point always throws before
+contacting GitHub, including when passed successful runs or acceptance
+evidence.
+
+## Changing Latest
+
+Only a new explicit owner release request can lift the Latest freeze. Prepare and
 review a separate promotion change with the exact approved version, successful
 build, original artifact hash, recovery copy and matching manifest. Do not
 rebuild the old source and label that artifact 2.0.91: the workflow stamps its

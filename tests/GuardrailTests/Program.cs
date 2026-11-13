@@ -250,6 +250,9 @@ namespace GuardrailTests
                     "Gemini translation preserves the tool contract",
                     GeminiTranslationPreservesToolContract);
                 Run(
+                    "Gemini pairs every function call with one response",
+                    GeminiPairsEveryFunctionCallWithOneResponse);
+                Run(
                     "Direct Gemini is available to end users",
                     GeminiIsAvailableToEndUsers);
                 Run(
@@ -4913,6 +4916,184 @@ namespace GuardrailTests
             object nameValue;
             function.TryGetValue("name", out nameValue);
             return Convert.ToString(nameValue) ?? string.Empty;
+        }
+
+        private static ChatCompletionAssistantToolMessage
+            GeminiCallTurn(params string[] idsAndNames)
+        {
+            var calls = new List<ChatToolCall>();
+            for (var index = 0;
+                 index + 1 < idsAndNames.Length;
+                 index += 2)
+            {
+                calls.Add(new ChatToolCall
+                {
+                    id = idsAndNames[index],
+                    type = "function",
+                    function = new ChatToolCallFunction
+                    {
+                        name = idsAndNames[index + 1],
+                        arguments = "{}"
+                    }
+                });
+            }
+
+            return new ChatCompletionAssistantToolMessage
+            {
+                role = "assistant",
+                content = string.Empty,
+                tool_calls = calls
+            };
+        }
+
+        private static ChatCompletionToolResultMessage
+            GeminiToolResult(string id, string content)
+        {
+            return new ChatCompletionToolResultMessage
+            {
+                role = "tool",
+                tool_call_id = id,
+                content = content
+            };
+        }
+
+        private static List<IDictionary<string, object>>
+            GeminiContents(ChatCompletionRequest request)
+        {
+            var translated =
+                GeminiCodeAssistGateway.TranslateRequest(request);
+            var contents = new List<IDictionary<string, object>>();
+            foreach (var entry in
+                (List<object>)translated["contents"])
+            {
+                contents.Add((IDictionary<string, object>)entry);
+            }
+
+            return contents;
+        }
+
+        private static List<IDictionary<string, object>>
+            GeminiParts(
+                IDictionary<string, object> content,
+                string key)
+        {
+            var parts = new List<IDictionary<string, object>>();
+            foreach (var entry in (List<object>)content["parts"])
+            {
+                var part = (IDictionary<string, object>)entry;
+                object value;
+                if (part.TryGetValue(key, out value))
+                {
+                    parts.Add(
+                        value as IDictionary<string, object> ??
+                        part);
+                }
+            }
+
+            return parts;
+        }
+
+        private static void GeminiPairsEveryFunctionCallWithOneResponse()
+        {
+            var serializer = new JavaScriptSerializer();
+
+            // Parallel calls whose results arrive in a different
+            // order, followed by host-added vision context.
+            var parallel = GeminiContents(new ChatCompletionRequest
+            {
+                model = "gemini-2.5-flash",
+                messages = new List<object>
+                {
+                    new ChatCompletionInputMessage
+                    {
+                        role = "user",
+                        content = "Compare both emails."
+                    },
+                    GeminiCallTurn(
+                        "call_a",
+                        "read_messages",
+                        "call_b",
+                        "search_messages"),
+                    new ChatCompletionInputMessage
+                    {
+                        role = "system",
+                        content = "Late boundary text."
+                    },
+                    GeminiToolResult("call_b", "result-b"),
+                    GeminiToolResult("call_a", "result-a"),
+                    new ChatCompletionInputMessage
+                    {
+                        role = "user",
+                        content = "Vision context."
+                    }
+                }
+            });
+            Assert(
+                parallel.Count == 4,
+                "Parallel results must form one response turn: " +
+                serializer.Serialize(parallel));
+            var calls = GeminiParts(parallel[1], "functionCall");
+            var responses = GeminiParts(
+                parallel[2],
+                "functionResponse");
+            Assert(
+                calls.Count == 2 &&
+                responses.Count == 2 &&
+                Convert.ToString(parallel[2]["role"]) == "user" &&
+                Convert.ToString(responses[0]["name"]) ==
+                "read_messages" &&
+                Convert.ToString(responses[1]["name"]) ==
+                "search_messages" &&
+                serializer.Serialize(responses[0])
+                    .Contains("result-a") &&
+                serializer.Serialize(responses[1])
+                    .Contains("result-b"),
+                "Function responses must match the call turn in " +
+                "count and order: " +
+                serializer.Serialize(parallel));
+            Assert(
+                GeminiParts(parallel[3], "functionResponse")
+                    .Count == 0 &&
+                serializer.Serialize(parallel[3])
+                    .Contains("Vision context."),
+                "Context after the results must stay a separate " +
+                "turn.");
+
+            // A missing result still gets a response part, and an
+            // unmatched result never becomes an extra one.
+            var mismatched = GeminiContents(new ChatCompletionRequest
+            {
+                model = "gemini-2.5-flash",
+                messages = new List<object>
+                {
+                    new ChatCompletionInputMessage
+                    {
+                        role = "user",
+                        content = "Read both."
+                    },
+                    GeminiCallTurn(
+                        "call_c",
+                        "read_messages",
+                        "call_d",
+                        "read_messages"),
+                    GeminiToolResult("call_c", "result-c"),
+                    GeminiToolResult("call_c", "duplicate-c"),
+                    GeminiToolResult("call_unknown", "stray")
+                }
+            });
+            var json = serializer.Serialize(mismatched);
+            Assert(
+                mismatched.Count == 4 &&
+                GeminiParts(mismatched[2], "functionResponse")
+                    .Count == 2 &&
+                GeminiParts(mismatched[3], "functionResponse")
+                    .Count == 0 &&
+                json.Contains("TOOL_RESULT_MISSING") &&
+                json.Contains("duplicate-c") &&
+                json.Contains("stray") &&
+                json.Contains("Untrusted tool result"),
+                "Missing or unmatched results broke the " +
+                "call/response pairing: " + json);
         }
 
         private static void GeminiTranslationPreservesToolContract()

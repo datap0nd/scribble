@@ -7,6 +7,13 @@ on:
       - codex/development
   pull_request:
   workflow_dispatch:
+    inputs:
+      publish_continuous:
+        description: >-
+          Publish this codex/development build to the continuous release
+          (the in-app Update button). Latest stays at stable 2.0.91.
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -311,7 +318,7 @@ jobs:
         shell: pwsh
         run: ./tests/ReleaseGate/Test-ReleaseEvidence.Tests.ps1
 
-      - name: Verify public release freeze
+      - name: Verify release channel boundaries
         shell: pwsh
         run: ./tests/ReleaseGate/Test-PublicReleaseFreeze.ps1
 
@@ -1004,3 +1011,54 @@ jobs:
           name: BrowserFailureEvidence
           path: tests/BrowserExtensionE2E/test-results/
           retention-days: 14
+
+  # The only job allowed to write a release. It runs solely when the owner
+  # dispatches this workflow on codex/development with publish_continuous
+  # ticked, after every build and test gate above has passed. It replaces
+  # the two continuous assets that the in-app updater reads; it never
+  # creates a release, moves a tag, or changes which release is Latest.
+  publish-continuous:
+    name: Publish continuous update
+    needs: build
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.publish_continuous &&
+      github.ref == 'refs/heads/codex/development'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: publish-continuous
+      cancel-in-progress: false
+    steps:
+      - name: Download verified installer artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ScribbleSetup
+          path: release
+
+      - name: Replace continuous release assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $candidate = Get-Content release/candidate.json -Raw | ConvertFrom-Json
+          $hash = (Get-FileHash release/ScribbleSetup.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($candidate.installer_sha256 -ne $hash) { throw 'The installer does not match its manifest.' }
+          if ($candidate.commit -ne $env:GITHUB_SHA) { throw 'The manifest is not from this commit.' }
+          if ($candidate.version -notmatch '^2\.0\.[0-9]+\.0$') { throw 'The manifest version is invalid.' }
+          # Installer first: an updater that reads the old manifest with the
+          # new installer fails its checksum and retries; it never runs it.
+          gh release upload continuous release/ScribbleSetup.exe release/candidate.json --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'Uploading the continuous assets failed.' }
+          $notes = "Development build published to the in-app Update button.`n`n" +
+            "- Version: $($candidate.version)`n" +
+            "- Source commit: $($candidate.commit)`n" +
+            "- Build: $env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID`n" +
+            "- Installer SHA-256: $hash`n`n" +
+            "The public stable release (Latest) remains Scribble 2.0.91."
+          gh release edit continuous --title "Scribble $($candidate.version) (continuous)" --notes $notes --latest=false
+          if ($LASTEXITCODE -ne 0) { throw 'Updating the continuous release notes failed.' }
+          Write-Output "Published Scribble $($candidate.version) to the continuous release."

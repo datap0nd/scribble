@@ -13,18 +13,21 @@ built or run on Linux — the Windows CI workflow
 - **This is the only actively developed repository** — its predecessor
   `outlook-local-ai-chat` (MetoAI) is frozen; do not port changes there
   unless explicitly asked.
-- Public Scribble is **frozen at 2.0.91**. Both GitHub Latest and the
-  `continuous` compatibility download must serve the original stable installer.
-  Never publish a development build or change Latest without a new explicit
-  owner request. See [release channels](docs/release-channels.md).
+- GitHub Latest is **frozen at 2.0.91** (the original stable installer).
+  Never change Latest without a new explicit owner request. The `continuous`
+  release feeds the in-app Update button of current builds; it is replaced
+  only when the owner runs the build workflow on `codex/development` with
+  `publish_continuous` ticked. See [release channels](docs/release-channels.md).
 - Develop on `codex/development`, using `codex/` feature branches and tested
   PRs targeting `codex/development`. `codex/stable-2.0.91` preserves the exact
   stable source; do not advance or rewrite it. `main` retains the integration
   history and release-freeze change; it is not a public update channel.
 - CI on `main`, `codex/development`, and PRs builds and tests installers,
-  then uploads development artifacts only. The workflow has read-only
-  repository permissions and no public-release job. The legacy publication
-  script deliberately refuses every promotion while the freeze is in effect.
+  then uploads development artifacts only. The workflow is read-only except
+  the `publish-continuous` job, which runs only on that owner dispatch and
+  can only replace the two `continuous` assets (never Latest or tags);
+  `tests/ReleaseGate/Test-PublicReleaseFreeze.ps1` enforces that boundary.
+  The legacy publication script is retired and always refuses.
 
 ## Code conventions
 
